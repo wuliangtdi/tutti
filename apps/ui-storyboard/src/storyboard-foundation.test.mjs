@@ -57,6 +57,20 @@ test("foundation colors document stationary black and white tokens", () => {
   assert.equal(labels.has("--black-stationary"), true);
 });
 
+test("foundation colors place running status in state runtime group", () => {
+  const colors = JSON.parse(readFileSync(colorsContentUrl, "utf8"));
+  const stateRuntimeGroup = colors.groups.find(
+    (group) => group.title === "State / Runtime"
+  );
+
+  assert.equal(
+    stateRuntimeGroup?.tokens.some(
+      (token) => token.label === "--status-running"
+    ),
+    true
+  );
+});
+
 test("foundation colors use the updated #3C3C3C light token base in examples", () => {
   const colors = JSON.parse(readFileSync(colorsContentUrl, "utf8"));
   const tokens = new Map(
@@ -98,9 +112,47 @@ test("foundation colors use the updated #3C3C3C light token base in examples", (
   assert.doesNotMatch(readFileSync(colorsContentUrl, "utf8"), /43, 43, 43/);
 });
 
-test("storyboard theme maps accent for light and dark modes", () => {
-  assert.match(storyboardThemeSource, /"--accent":\s*"rgb\(65, 130, 245\)"/);
-  assert.match(storyboardThemeSource, /"--accent":\s*"rgb\(79, 143, 255\)"/);
+test("storyboard theme maps Codex accent for light and dark modes", () => {
+  assert.match(
+    storyboardThemeSource,
+    /"--accent-codex":\s*"rgb\(65, 130, 245\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--accent-codex":\s*"rgb\(79, 143, 255\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--accent-codex-border":\s*"color-mix\(in srgb, var\(--accent-codex\) 20%, transparent\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--status-running":\s*"rgb\(65, 130, 245\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--status-running":\s*"rgb\(79, 143, 255\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--tutti-purple":\s*"rgb\(109, 127, 245\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--tutti-purple":\s*"rgb\(136, 152, 255\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /const storyboardLightThemeVars = \{[\s\S]*?"--tutti-purple":\s*"rgb\(109, 127, 245\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /const storyboardDarkThemeVars = \{[\s\S]*?"--tutti-purple":\s*"rgb\(136, 152, 255\)"/
+  );
+  assert.match(
+    storyboardThemeSource,
+    /"--tutti-purple-bg":\s*"color-mix\(in srgb, var\(--background-fronted\) 88%, var\(--tutti-purple\) 12%\)"/
+  );
   assert.match(
     storyboardThemeSource,
     /"--border-focus":\s*"rgba\(65, 130, 245, 0\.24\)"/

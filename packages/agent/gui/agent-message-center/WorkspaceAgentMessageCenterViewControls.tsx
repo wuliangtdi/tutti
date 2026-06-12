@@ -114,7 +114,7 @@ export function MessageCenterViewMenu({
               onSelect={(event) => event.preventDefault()}
             >
               <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              <span className="ml-auto text-xs text-[var(--text-tertiary)]">
+              <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
                 {option.count}
               </span>
             </DropdownMenuCheckboxItem>
@@ -142,7 +142,7 @@ export function MessageCenterViewMenu({
                   <span className="min-w-0 flex-1 truncate">
                     {option.label}
                   </span>
-                  <span className="ml-auto text-xs text-[var(--text-tertiary)]">
+                  <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
                     {option.count}
                   </span>
                 </DropdownMenuCheckboxItem>

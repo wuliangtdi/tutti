@@ -171,7 +171,12 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       container.querySelector(
         '[data-message-center-item-id="message-center-session-1"]'
       )
-    ).toHaveClass("border-[var(--border-focus)]");
+    ).toHaveClass("border-[var(--tutti-purple-border)]");
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).toHaveClass("bg-[var(--tutti-purple-bg)]");
 
     rerender(
       <TooltipProvider>
@@ -442,6 +447,17 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     );
 
     expect(screen.getByText("Codex requests your authorization")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "整理本地文件夹" })).toHaveClass(
+      "text-[13px]"
+    );
+    expect(screen.getByText("Codex requests your authorization")).toHaveClass(
+      "agent-gui-conversation__interactive-prompt-lead"
+    );
+    expect(
+      screen
+        .getByRole("button", { name: /Yes/i })
+        .querySelector(".agent-gui-conversation__interactive-option-title")
+    ).toHaveClass("agent-gui-conversation__interactive-option-title");
     expect(screen.queryByText("Agent requests your authorization")).toBeNull();
   });
 
@@ -482,6 +498,10 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     expect(
       container.querySelector('img[src="https://cdn.example.com/codex.png"]')
     ).toBeTruthy();
+    expect(
+      container.querySelector('img[src="https://cdn.example.com/codex.png"]')
+        ?.parentElement
+    ).toHaveClass("rounded-full");
   });
 
   it("resolves summary file links through the shared workspace link action", () => {
@@ -503,7 +523,12 @@ describe("WorkspaceAgentMessageCenterCard", () => {
       </TooltipProvider>
     );
 
-    fireEvent.click(screen.getByRole("link", { name: "PROJECT_SUMMARY.md" }));
+    const link = screen.getByRole("link", { name: "PROJECT_SUMMARY.md" });
+    expect(link.closest('[data-workspace-agent-markdown="true"]')).toHaveClass(
+      "[&_a]:text-[var(--tutti-purple)]"
+    );
+
+    fireEvent.click(link);
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
@@ -708,10 +733,18 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     openViewOptions();
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Status" }));
 
-    expect(screen.getByRole("heading", { name: "Waiting · 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Error · 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Running · 1" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Completed · 1" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Waiting · 1" })).toHaveClass(
+      "font-normal"
+    );
+    expect(screen.getByRole("heading", { name: "Error · 1" })).toHaveClass(
+      "font-normal"
+    );
+    expect(screen.getByRole("heading", { name: "Running · 1" })).toHaveClass(
+      "font-normal"
+    );
+    expect(screen.getByRole("heading", { name: "Completed · 1" })).toHaveClass(
+      "font-normal"
+    );
   });
 
   it("filters message center items by status from the view menu", () => {
@@ -836,6 +869,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(summary).toHaveAttribute("data-stack-summary-count", "5");
     expect(summary).toHaveAttribute("data-stack-provider", "codex");
     expect(summary).toHaveTextContent("5 messages");
+    expect(summary.querySelector("img")).toHaveClass("rounded-full");
     expect(summary).toHaveTextContent("Running task 1 summary");
     expect(summary).not.toHaveTextContent("more");
     expect(summary).not.toHaveTextContent("Running task 2 summary");
@@ -967,6 +1001,13 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
         )
       ).toBeNull();
     });
+    expect(
+      screen
+        .getAllByText("5 messages")
+        .some((element) =>
+          element.parentElement?.classList.contains("text-[13px]")
+        )
+    ).toBe(true);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Collapse expanded messages" })

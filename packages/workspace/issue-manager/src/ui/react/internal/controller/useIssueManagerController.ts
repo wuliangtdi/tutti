@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
 import type { WorkspaceUserProjectServiceLike } from "@tutti-os/workspace-user-project/contracts";
+import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
   IssueManagerAgentProviderOption,
   IssueManagerContextRef,
@@ -138,6 +139,7 @@ export interface IssueManagerController {
     parentKind: "issue" | "task",
     mode: "files" | "folder"
   ) => Promise<void>;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   workspaceId: string;
 }
 
@@ -287,6 +289,7 @@ export function useIssueManagerController({
     providerOptions,
     executionDirectoryProjectService:
       feature.executionDirectoryPicker?.service ?? null,
+    workspaceUserProjectI18n: feature.workspaceUserProjectI18n,
     listExecutionDirectoryProjects: () =>
       feature.executionDirectoryPicker?.list() ??
       Promise.resolve({ projects: [] }),

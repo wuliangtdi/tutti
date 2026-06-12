@@ -5,7 +5,8 @@ import {
 } from "@tutti-os/workspace-file-manager";
 import browserDockIconUrl from "@tutti-os/browser-node/assets/workspace-dock-website.png";
 import { useService } from "@zk-tech/bedrock/di";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
 import { resolveOpenWithApplicationIconOverrideDataUrl } from "@shared/openWithApplicationIconOverrides";
 import { FileManagerDirectoryExpandedReporter } from "@renderer/features/analytics/reporters/file-manager-directory-expanded/fileManagerDirectoryExpandedReporter.ts";
 import { FileManagerPathCopiedReporter } from "@renderer/features/analytics/reporters/file-manager-path-copied/fileManagerPathCopiedReporter.ts";
@@ -55,6 +56,12 @@ export function WorkspaceFileManagerPane({
     void session.applyRevealIntent(revealIntent);
   }, [revealIntent, session]);
 
+  const resolveEntryIconUrl = useCallback(
+    (entry: WorkspaceFileEntry) =>
+      featureService.resolveEntryIconUrl(workspaceID, entry),
+    [featureService, workspaceID]
+  );
+
   return (
     <WorkspaceFileManager
       className={className}
@@ -102,6 +109,7 @@ export function WorkspaceFileManagerPane({
           }
         ).report();
       }}
+      resolveEntryIconUrl={resolveEntryIconUrl}
       session={session}
       surface="embedded"
     />

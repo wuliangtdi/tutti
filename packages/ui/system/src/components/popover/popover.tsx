@@ -40,7 +40,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "t-dropdown z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-lg border border-[var(--border-1)] bg-[var(--background-fronted)] p-3 text-sm text-popover-foreground shadow-soft outline-hidden",
+          "t-dropdown z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-lg border border-[var(--border-1)] bg-[var(--background-fronted)] p-3 text-[13px] text-popover-foreground shadow-soft outline-hidden",
           className
         )}
         style={{ zIndex: "var(--z-popover)" }}

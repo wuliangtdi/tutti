@@ -220,16 +220,7 @@ export function IssueManagerExecutionDirectoryTrigger({
       }}
       contentAlign="end"
       disabled={disabled}
-      labels={{
-        linkExistingProject: controller.copy.t(
-          "actions.linkExistingExecutionDirectory"
-        ),
-        loadingProjects: controller.copy.t(
-          "labels.loadingExecutionDirectories"
-        ),
-        noProject: controller.copy.t("labels.noProject"),
-        projectLabel: controller.copy.t("actions.selectExecutionDirectory")
-      }}
+      i18n={controller.workspaceUserProjectI18n}
       service={controller.executionDirectoryProjectService}
       selectedProjectPath={controller.nodeState.selectedExecutionDirectory}
       unlistedProjectLabel={controller.copy.t(
@@ -256,11 +247,11 @@ export function IssueManagerRunPanels({
   return (
     <div className="grid gap-4">
       <section className="rounded-lg border border-border-1 bg-transparent px-4 py-4">
-        <h4 className="mb-3 text-sm font-semibold leading-5 text-[var(--text-primary)]">
+        <h4 className="mb-3 text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {copy.t("labels.recentRuns")}
         </h4>
         {recentRuns.length === 0 ? (
-          <p className="text-sm leading-5 text-[var(--text-secondary)]">
+          <p className="text-[13px] leading-5 text-[var(--text-secondary)]">
             {copy.t("messages.noRecentRuns")}
           </p>
         ) : (
@@ -272,10 +263,10 @@ export function IssueManagerRunPanels({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                    <p className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                       {run.summary || run.runId}
                     </p>
-                    <p className="mt-1 text-xs leading-[1.55] text-[var(--text-secondary)]">
+                    <p className="mt-1 text-[11px] leading-[1.55] text-[var(--text-secondary)]">
                       {formatIssueManagerTimestamp(
                         run.updatedAtUnix ?? run.createdAtUnix
                       )}
@@ -286,7 +277,7 @@ export function IssueManagerRunPanels({
                   </Badge>
                 </div>
                 {run.errorMessage ? (
-                  <p className="mt-2 text-xs text-[var(--state-danger)]">
+                  <p className="mt-2 text-[11px] text-[var(--state-danger)]">
                     {run.errorMessage}
                   </p>
                 ) : null}
@@ -297,11 +288,11 @@ export function IssueManagerRunPanels({
       </section>
 
       <section className="rounded-lg border border-border-1 bg-transparent px-4 py-4">
-        <h4 className="mb-3 text-sm font-semibold leading-5 text-[var(--text-primary)]">
+        <h4 className="mb-3 text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {copy.t("labels.outputs")}
         </h4>
         {outputs.length === 0 ? (
-          <p className="text-sm leading-5 text-[var(--text-secondary)]">
+          <p className="text-[13px] leading-5 text-[var(--text-secondary)]">
             {copy.t("messages.noOutputs")}
           </p>
         ) : (
@@ -319,10 +310,10 @@ export function IssueManagerRunPanels({
                   });
                 }}
               >
-                <p className="truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                <p className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                   {output.displayName}
                 </p>
-                <p className="mt-1 truncate text-xs leading-[1.55] text-[var(--text-secondary)]">
+                <p className="mt-1 truncate text-[11px] leading-[1.55] text-[var(--text-secondary)]">
                   {output.path}
                 </p>
               </button>

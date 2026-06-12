@@ -781,6 +781,9 @@ function createHostFilesApi(): DesktopHostFilesApi {
     async openFileInBrowser() {},
     async resolveWorkspaceFileFileUrl() {
       return "file:///tmp/example.html";
+    },
+    async resolveEntryIcon() {
+      return null;
     }
   };
 }

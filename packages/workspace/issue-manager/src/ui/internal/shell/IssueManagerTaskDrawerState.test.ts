@@ -165,12 +165,20 @@ test("task drawer run controls do not use the global running task lock", () => {
 test("task drawer title wraps long unbroken text inside the panel", () => {
   assert.match(
     taskDrawerSectionsSource,
-    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-base font-semibold leading-6 text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
+    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-\[15px\] font-semibold leading-6 text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
   );
   assert.match(
     taskDrawerSectionsSource,
-    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-\[17px\] font-semibold leading-\[1\.35\] text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
+    /line-clamp-2 min-w-0 flex-1 whitespace-normal text-\[15px\] font-semibold leading-\[1\.35\] text-\[var\(--text-primary\)\] \[overflow-wrap:anywhere\]/
   );
+});
+
+test("task delete confirmation wraps long unbroken titles", () => {
+  assert.match(
+    taskDrawerSectionsSource,
+    /<span className="block max-w-full whitespace-normal \[overflow-wrap:anywhere\]">/
+  );
+  assert.match(taskDrawerSectionsSource, /description=\{\s*<span/);
 });
 
 test("clamped issue and task titles expose the full text in shared tooltips", () => {

@@ -1,9 +1,11 @@
 import { createElement, type ReactNode } from "react";
-import type {
-  WorkbenchContribution,
-  WorkbenchFrame,
-  WorkbenchHostDockEntry,
-  WorkbenchHostNodeBodyContext
+import {
+  getWorkbenchLayoutFrame,
+  type WorkbenchContribution,
+  type WorkbenchFrame,
+  type WorkbenchHostDockEntry,
+  type WorkbenchHostLaunchRequest,
+  type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import {
   resolveAgentGUIExpandedWindowFrame,
@@ -40,6 +42,8 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   x: 140,
   y: 48
 };
+
+export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "nextop:agent-gui-workbench-conversation-rail-toggle";
@@ -279,7 +283,10 @@ export function createAgentGuiWorkbenchContribution(
       }
       return {
         activation,
-        defaultFrame: frame,
+        defaultFrame: resolveAgentGuiWorkbenchDefaultLaunchFrame({
+          frame,
+          request
+        }),
         dockEntryId,
         framePolicy: "cascade-same-type-centered",
         instanceId,
@@ -288,6 +295,26 @@ export function createAgentGuiWorkbenchContribution(
         typeId: agentGuiWorkbenchTypeId
       };
     }
+  };
+}
+
+export function resolveAgentGuiWorkbenchDefaultLaunchFrame(input: {
+  frame: WorkbenchFrame;
+  request: Pick<
+    WorkbenchHostLaunchRequest,
+    "layoutConstraints" | "surfaceSize"
+  >;
+}): WorkbenchFrame {
+  const layoutFrame = getWorkbenchLayoutFrame(
+    input.request.surfaceSize,
+    input.request.layoutConstraints
+  );
+
+  return {
+    ...input.frame,
+    height: Math.round(
+      layoutFrame.height * agentGuiWorkbenchDefaultUsableHeightRatio
+    )
   };
 }
 

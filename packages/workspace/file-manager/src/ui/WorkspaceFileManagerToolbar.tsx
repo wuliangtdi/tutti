@@ -2,12 +2,15 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   Button,
+  GridHorizontalLinedIcon,
+  LayoutMenuIcon,
   LoadingIcon,
   RefreshIcon,
   cn
 } from "@tutti-os/ui-system";
 import { useState, type ReactElement } from "react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
+import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 
 export function WorkspaceFileManagerToolbar({
   breadcrumbs,
@@ -18,8 +21,10 @@ export function WorkspaceFileManagerToolbar({
   isBusy,
   isLoading,
   isMutating,
+  layoutMode,
   onGoBack,
   onGoForward,
+  onLayoutModeChange,
   onLoadDirectory,
   onRefresh
 }: {
@@ -31,8 +36,10 @@ export function WorkspaceFileManagerToolbar({
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
+  layoutMode: WorkspaceFileManagerLayoutMode;
   onGoBack: () => void;
   onGoForward: () => void;
+  onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
   onLoadDirectory: (path: string) => void;
   onRefresh: () => void;
 }): ReactElement {
@@ -81,6 +88,11 @@ export function WorkspaceFileManagerToolbar({
         </ol>
       </nav>
       <div className="@max-[600px]/workspace-file-manager:justify-end flex flex-none items-center gap-1.5">
+        <LayoutModeToggle
+          copy={copy}
+          layoutMode={layoutMode}
+          onLayoutModeChange={onLayoutModeChange}
+        />
         <ToolbarActionButton
           disabled={isLoading || isMutating || isBusy}
           onClick={handleRefresh}
@@ -103,6 +115,73 @@ export function WorkspaceFileManagerToolbar({
         </ToolbarActionButton>
       </div>
     </header>
+  );
+}
+
+function LayoutModeToggle({
+  copy,
+  layoutMode,
+  onLayoutModeChange
+}: {
+  copy: WorkspaceFileManagerI18nRuntime;
+  layoutMode: WorkspaceFileManagerLayoutMode;
+  onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
+}): ReactElement {
+  return (
+    <div
+      className="flex items-center rounded-md border border-[var(--border-1)] bg-[var(--transparency-block)] p-0.5"
+      role="group"
+    >
+      <LayoutModeButton
+        active={layoutMode === "icon"}
+        ariaLabel={copy.t("layoutIconViewLabel")}
+        onClick={() => {
+          onLayoutModeChange("icon");
+        }}
+      >
+        <LayoutMenuIcon className="size-3.5" />
+      </LayoutModeButton>
+      <LayoutModeButton
+        active={layoutMode === "list"}
+        ariaLabel={copy.t("layoutListViewLabel")}
+        onClick={() => {
+          onLayoutModeChange("list");
+        }}
+      >
+        <GridHorizontalLinedIcon className="size-3.5" />
+      </LayoutModeButton>
+    </div>
+  );
+}
+
+function LayoutModeButton({
+  active,
+  ariaLabel,
+  children,
+  onClick
+}: {
+  active: boolean;
+  ariaLabel: string;
+  children: ReactElement;
+  onClick: () => void;
+}): ReactElement {
+  return (
+    <Button
+      aria-label={ariaLabel}
+      aria-pressed={active}
+      className={cn(
+        "size-6 min-w-6 rounded-[4px] p-0 text-[var(--text-secondary)]",
+        active &&
+          "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+      )}
+      size="icon-sm"
+      title={ariaLabel}
+      type="button"
+      variant="ghost"
+      onClick={onClick}
+    >
+      {children}
+    </Button>
   );
 }
 

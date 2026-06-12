@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
+import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentModelReasoningDropdown,
@@ -33,6 +34,8 @@ const { mockAgentHostApi } = vi.hoisted(() => ({
   }
 }));
 
+const workspaceUserProjectI18n = createDefaultWorkspaceUserProjectI18nRuntime();
+
 vi.mock("../../agentActivityHost", () => ({
   useAgentHostApi: () => mockAgentHostApi
 }));
@@ -59,6 +62,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -99,6 +103,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -188,6 +193,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -250,6 +256,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -304,6 +311,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -354,6 +362,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -397,6 +406,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -426,6 +436,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -467,6 +478,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -518,6 +530,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -550,6 +563,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -583,6 +597,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -624,6 +639,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: true
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectMissingChange={onProjectMissingChange}
         onProjectPathChange={vi.fn()}
       />
@@ -665,6 +681,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: true
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectMissingChange={onProjectMissingChange}
         onProjectPathChange={vi.fn()}
       />
@@ -707,6 +724,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: true
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={vi.fn()}
       />
     );
@@ -750,6 +768,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -779,6 +798,7 @@ describe("AgentProjectDropdown", () => {
           projectLocked: false
         }}
         labels={projectLabels}
+        i18n={workspaceUserProjectI18n}
         onProjectPathChange={onProjectPathChange}
       />
     );
@@ -1522,30 +1542,7 @@ const labels = {
 } satisfies Parameters<typeof AgentModelReasoningDropdown>[0]["labels"];
 
 const projectLabels = {
-  addProject: "Add project",
-  createProjectCancel: "Cancel",
-  createProjectConfirm: "Create",
-  createProjectDocumentsUnavailable:
-    "Documents is unavailable. Choose an existing project instead.",
-  createProjectFailed: "Unable to create project",
-  createProjectNameConflict:
-    "A project with this name already exists. Use another name.",
-  createProjectNameInvalid:
-    "Project names cannot contain path separators or empty values.",
-  createProjectNameLabel:
-    "Enter a project name. A folder will be created in Documents/nextop",
-  createProjectNamePlaceholder: "Project name",
-  createProjectNameRequired: "Project name is required",
-  createProjectPermissionDenied:
-    "Nextop does not have permission to create folders in Documents.",
-  createProjectTitle: "Add project",
-  linkExistingProject: "Use existing project",
-  loadingProjects: "Loading projects",
-  noProject: "No project",
-  projectLabel: "Project",
   projectLocked: "Project locked",
   projectMissingDescription:
-    "This conversation's working directory no longer exists",
-  projectMissingTitle: "Current working directory missing",
-  projectUnavailable: "Project unavailable"
+    "This conversation's working directory no longer exists"
 } satisfies Parameters<typeof AgentProjectDropdown>[0]["labels"];

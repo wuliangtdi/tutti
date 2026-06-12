@@ -19,6 +19,7 @@ import {
   openFileWithDefaultBrowser,
   openFileWithOtherApplication
 } from "./openWithApplications.ts";
+import { resolveWorkspaceFileEntryIconDataUrl } from "./workspaceFileEntryIcon.ts";
 import {
   resolveTerminalLinkAbsolutePath,
   resolveWorkspaceLogicalFilePath,
@@ -51,6 +52,12 @@ export interface WorkspaceFileHostAccess {
   readPreviewFile(
     payload: DesktopWorkspaceFilePathPayload
   ): Promise<Uint8Array>;
+  resolveEntryIcon(
+    payload: DesktopWorkspaceFilePathPayload & {
+      entryKind: string;
+      entryName: string;
+    }
+  ): Promise<string | null>;
 }
 
 export interface WorkspaceFileHostAccessDependencies {
@@ -187,6 +194,15 @@ export function createWorkspaceFileHostAccess(
 
       const bytes = await readFileImpl(targetPath);
       return Uint8Array.from(bytes);
+    },
+
+    async resolveEntryIcon(payload) {
+      const targetPath = resolveWorkspaceTargetPath(payload);
+      return resolveWorkspaceFileEntryIconDataUrl(targetPath, {
+        kind: payload.entryKind,
+        name: payload.entryName,
+        path: payload.path
+      });
     }
   };
 }

@@ -341,7 +341,7 @@ export async function openFileWithApplication(
   throw new Error("open with application is only supported on macOS");
 }
 
-async function readApplicationIconDataUrl(
+export async function readApplicationIconDataUrl(
   applicationPath: string,
   applicationName: string
 ): Promise<string | null> {

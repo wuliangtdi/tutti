@@ -2442,6 +2442,9 @@ function createHostFilesApi(
     async resolveWorkspaceFileFileUrl() {
       return "file:///tmp/example.html";
     },
+    async resolveEntryIcon() {
+      return null;
+    },
     ...overrides
   };
 }

@@ -35,17 +35,17 @@ export function WorkspaceFilePreviewSurface<TEntry>({
   imageFrameClassName,
   loadingIndicator,
   loadingMessage,
-  messageClassName = "max-w-[24ch] text-center text-sm leading-5 text-[var(--text-tertiary)] [overflow-wrap:anywhere]",
+  messageClassName = "max-w-[24ch] text-center text-[13px] leading-5 text-[var(--text-tertiary)] [overflow-wrap:anywhere]",
   renderIcon,
   state,
-  textClassName = "h-full overflow-auto p-4 text-xs leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]",
+  textClassName = "h-full overflow-auto p-4 text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]",
   textFrameClassName
 }: WorkspaceFilePreviewSurfaceProps<TEntry>): ReactElement {
   switch (state.status) {
     case "directory":
       return (
         <WorkspaceFilePreviewFrame className={frameClassName}>
-          <div className="flex flex-col items-center justify-center gap-2.5 text-center text-sm leading-5 text-[var(--text-tertiary)]">
+          <div className="flex flex-col items-center justify-center gap-2.5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
             {renderIcon(state.entry)}
             <span>{directoryMessage}</span>
           </div>
@@ -54,7 +54,7 @@ export function WorkspaceFilePreviewSurface<TEntry>({
     case "loading":
       return (
         <WorkspaceFilePreviewFrame className={frameClassName}>
-          <div className="space-y-3 px-4 text-center text-sm text-[var(--text-tertiary)]">
+          <div className="space-y-3 px-4 text-center text-[13px] text-[var(--text-tertiary)]">
             {loadingIndicator}
             <span>{loadingMessage}</span>
           </div>
@@ -85,7 +85,7 @@ export function WorkspaceFilePreviewSurface<TEntry>({
     case "error":
       return (
         <WorkspaceFilePreviewFrame className={frameClassName}>
-          <div className="space-y-3 px-4 text-center text-sm text-[var(--text-tertiary)]">
+          <div className="space-y-3 px-4 text-center text-[13px] text-[var(--text-tertiary)]">
             {renderIcon(state.entry)}
             <span className={messageClassName}>{state.message}</span>
           </div>

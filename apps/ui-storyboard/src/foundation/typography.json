@@ -72,12 +72,12 @@
     "items": [
       {
         "label": "400 Regular",
-        "className": "font-[var(--font-ui)] text-sm font-normal",
+        "className": "font-[var(--font-ui)] text-[13px] font-normal",
         "sample": "正文、说明、输入内容、表格内容"
       },
       {
         "label": "600 Semibold",
-        "className": "font-[var(--font-ui)] text-sm font-semibold",
+        "className": "font-[var(--font-ui)] text-[13px] font-semibold",
         "sample": "可点击列表项、导航项、页面标题、按钮、badge、tab、主要状态"
       }
     ]
@@ -96,48 +96,48 @@
       },
       {
         "name": "弹窗标题",
-        "className": "font-[var(--font-ui)] text-[16px] font-semibold",
-        "meta": "16px / 600",
+        "className": "font-[var(--font-ui)] text-[15px] font-semibold",
+        "meta": "15px / 600",
         "english": "Create Room",
         "chinese": "创建房间",
         "sample": "弹窗、大浮层面板标题"
       },
       {
         "name": "区块标题",
-        "className": "font-[var(--font-ui)] text-sm font-semibold",
-        "meta": "14 / 600",
+        "className": "font-[var(--font-ui)] text-[13px] font-semibold",
+        "meta": "13px / 600",
         "english": "Agent Activity",
         "chinese": "代理活动",
         "sample": "面板标题、卡片组标题"
       },
       {
         "name": "控件文字",
-        "className": "font-[var(--font-ui)] text-sm font-semibold",
-        "meta": "14px / 400 / 600",
+        "className": "font-[var(--font-ui)] text-[13px] font-semibold",
+        "meta": "13px / 400 / 600",
         "english": "Open workspace",
         "chinese": "打开工作区",
         "sample": "按钮、导航、tab"
       },
       {
         "name": "正文",
-        "className": "font-[var(--font-ui)] text-sm font-normal",
-        "meta": "14px / 400",
+        "className": "font-[var(--font-ui)] text-[13px] font-normal",
+        "meta": "13px / 400",
         "english": "Agents are ready.",
         "chinese": "代理已就绪。",
         "sample": "英文与中文正文默认"
       },
       {
         "name": "辅助信息",
-        "className": "font-[var(--font-ui)] text-xs font-normal",
-        "meta": "12 / 400",
+        "className": "font-[var(--font-ui)] text-[11px] font-normal",
+        "meta": "11px / 400",
         "english": "Last synced 14:32",
         "chinese": "本地服务已连接",
         "sample": "描述、时间、路径说明"
       },
       {
         "name": "Badge / tag",
-        "className": "font-[var(--font-ui)] text-xs font-semibold",
-        "meta": "12px / 600",
+        "className": "font-[var(--font-ui)] text-[11px] font-semibold",
+        "meta": "11px / 600",
         "english": "Working",
         "chinese": "运行中",
         "sample": "状态、计数、短标签"
@@ -152,8 +152,8 @@
       },
       {
         "name": "终端 / 代码",
-        "className": "font-[var(--font-mono)] text-xs font-normal tabular-nums",
-        "meta": "12px / 400 mono",
+        "className": "font-[var(--font-mono)] text-[11px] font-normal tabular-nums",
+        "meta": "11px / 400 mono",
         "english": "node --watch",
         "chinese": "路径 / 日志",
         "sample": "终端、代码、路径、日志；数字可用 tabular"

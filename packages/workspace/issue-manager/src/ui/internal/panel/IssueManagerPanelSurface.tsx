@@ -35,10 +35,10 @@ export function IssueManagerTaskEmptyState({
     <div className="flex min-h-[320px] items-center justify-center px-6 py-10 text-center">
       <div className="grid max-w-[420px] justify-items-center gap-2">
         {illustration ?? null}
-        <p className="text-lg font-semibold leading-[1.35] text-[var(--text-primary)]">
+        <p className="text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)]">
           {title}
         </p>
-        <p className="max-w-[420px] text-base leading-[1.3] text-[var(--text-secondary)]">
+        <p className="max-w-[420px] text-[15px] leading-[1.3] text-[var(--text-secondary)]">
           {body}
         </p>
         <Button

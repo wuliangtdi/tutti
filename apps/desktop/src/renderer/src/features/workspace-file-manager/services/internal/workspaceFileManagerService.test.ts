@@ -438,6 +438,7 @@ function createDependenciesStub(): {
       openTerminalLink: fail,
       readLocalFileText: fail,
       readPreviewFile: fail,
+      resolveEntryIcon: async () => null,
       selectAppArchive: fail,
       selectAppArchiveExportPath: fail,
       selectAppIconImage: fail,

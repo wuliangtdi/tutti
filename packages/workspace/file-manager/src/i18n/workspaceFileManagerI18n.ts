@@ -104,7 +104,9 @@ const workspaceFileManagerEn = {
   importLabel: "Import",
   importTypeConflictDescription:
     "{{count}} import path conflicts with an existing file or folder using an incompatible type. Resolve it before retrying.",
-  importTypeConflictTitle: "Import path conflict"
+  importTypeConflictTitle: "Import path conflict",
+  layoutIconViewLabel: "Icon view",
+  layoutListViewLabel: "List view"
 } as const satisfies I18nDictionary;
 
 const workspaceFileManagerZhCN = {
@@ -188,7 +190,9 @@ const workspaceFileManagerZhCN = {
   importLabel: "导入",
   importTypeConflictDescription:
     "这次导入里有 {{count}} 个路径与现有文件或文件夹的类型不兼容。请先处理后再重试。",
-  importTypeConflictTitle: "导入路径冲突"
+  importTypeConflictTitle: "导入路径冲突",
+  layoutIconViewLabel: "图标",
+  layoutListViewLabel: "列表"
 } as const satisfies I18nDictionary;
 
 export type WorkspaceFileManagerI18nKey = keyof typeof workspaceFileManagerEn;

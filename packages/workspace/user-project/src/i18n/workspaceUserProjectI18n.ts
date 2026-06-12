@@ -67,7 +67,7 @@ const workspaceUserProjectZhCN = {
     createProjectTitle: "添加项目",
     linkExistingProject: "使用已有项目",
     loadingProjects: "正在加载项目",
-    noProject: "无项目",
+    noProject: "不使用项目",
     projectLabel: "项目",
     projectLocked: "项目已锁定",
     projectMissingTitle: "当前工作目录不存在",

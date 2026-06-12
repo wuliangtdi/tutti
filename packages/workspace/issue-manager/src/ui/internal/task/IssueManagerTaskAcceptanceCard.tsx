@@ -20,7 +20,7 @@ export function IssueManagerTaskAcceptanceCard({
 
   return (
     <div className="grid gap-2 rounded-md bg-[var(--transparency-block)] px-3 py-2">
-      <div className="min-w-0 text-[12px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+      <div className="min-w-0 text-[11px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
         <span className="font-semibold text-[var(--text-primary)]">
           {copy.t("labels.taskAcceptance")}
         </span>
@@ -29,7 +29,7 @@ export function IssueManagerTaskAcceptanceCard({
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button
-          className="h-7 px-2 text-xs text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
+          className="h-7 px-2 text-[11px] text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
           type="button"
           variant="ghost"
           onClick={() => updateStatus("not_started")}
@@ -37,7 +37,7 @@ export function IssueManagerTaskAcceptanceCard({
           {copy.t("actions.rejectTask")}
         </Button>
         <Button
-          className="h-7 px-2.5 text-xs"
+          className="h-7 px-2.5 text-[11px]"
           type="button"
           variant="secondary"
           onClick={() => updateStatus("completed")}

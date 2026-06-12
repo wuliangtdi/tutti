@@ -97,6 +97,16 @@ export function registerHostFilesIpc(deps: HostFilesIpcDependencies): void {
       hostAccess.readPreviewFile(payload)
   );
   registerDesktopIpcHandler(
+    desktopIpcChannels.host.files.resolveEntryIcon,
+    (
+      _event,
+      payload: DesktopWorkspaceFilePathPayload & {
+        entryKind: string;
+        entryName: string;
+      }
+    ) => hostAccess.resolveEntryIcon(payload)
+  );
+  registerDesktopIpcHandler(
     desktopIpcChannels.host.files.selectDirectory,
     (event) =>
       deps.fileDialogs.selectDirectory(resolveOwnerWindowFromEvent(event))

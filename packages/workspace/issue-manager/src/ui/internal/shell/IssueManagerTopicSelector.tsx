@@ -95,7 +95,7 @@ export function IssueManagerTopicSelector({
           <Button
             aria-label={topicLabel}
             className={cn(
-              "max-w-[220px] gap-1 rounded-md border-0 bg-transparent text-sm font-normal shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:bg-transparent focus-visible:ring-0 active:bg-transparent aria-expanded:bg-transparent [&[data-state=open]>svg]:rotate-180",
+              "max-w-[220px] gap-1 rounded-md border-0 bg-transparent text-[13px] font-normal shadow-none hover:bg-transparent focus:bg-transparent focus-visible:border-0 focus-visible:bg-transparent focus-visible:ring-0 active:bg-transparent aria-expanded:bg-transparent [&[data-state=open]>svg]:rotate-180",
               className
             )}
             size="sm"
@@ -213,7 +213,7 @@ export function IssueManagerTopicSelector({
             );
           })}
           {topics.length === 0 ? (
-            <div className="px-3 py-2 text-xs leading-4 text-[var(--text-tertiary)]">
+            <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-tertiary)]">
               {copy.t("messages.topicListEmpty")}
             </div>
           ) : null}
@@ -345,7 +345,7 @@ function IssueManagerTopicDialog({
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
           <label className="grid gap-2">
-            <span className="text-xs font-medium leading-4 text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium leading-4 text-[var(--text-secondary)]">
               {copy.t("labels.topicTitle")}
             </span>
             <Input
@@ -356,7 +356,7 @@ function IssueManagerTopicDialog({
             />
           </label>
           <label className="grid gap-2">
-            <span className="text-xs font-medium leading-4 text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium leading-4 text-[var(--text-secondary)]">
               {copy.t("labels.topicSummary")}
             </span>
             <Textarea

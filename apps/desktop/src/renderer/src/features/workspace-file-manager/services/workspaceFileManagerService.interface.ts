@@ -1,6 +1,7 @@
 import { createDecorator } from "@zk-tech/bedrock/di";
 import type {
   WorkspaceFileActivationTarget,
+  WorkspaceFileEntry,
   WorkspaceFileManagerI18nRuntime,
   WorkspaceFileManagerPersistedState,
   WorkspaceFileManagerSession as SharedWorkspaceFileManagerSession
@@ -23,6 +24,10 @@ export interface IWorkspaceFileManagerService {
   getSnapshotState(
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null;
+  resolveEntryIconUrl(
+    workspaceID: string,
+    entry: WorkspaceFileEntry
+  ): Promise<string | null>;
   setCanvasFilePreviewLauncher(
     workspaceID: string,
     launcher: WorkspaceFileManagerCanvasPreviewLauncher | null

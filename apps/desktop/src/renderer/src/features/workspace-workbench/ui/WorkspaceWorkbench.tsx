@@ -507,7 +507,7 @@ function WorkspaceFallbackState({
           </div>
           <div className="mt-6 flex flex-col items-center gap-3">
             <CardTitle className="text-3xl tracking-tight">{title}</CardTitle>
-            <CardDescription className="text-base text-muted-foreground">
+            <CardDescription className="text-[15px] text-muted-foreground">
               {description}
             </CardDescription>
             {onRetry ? (

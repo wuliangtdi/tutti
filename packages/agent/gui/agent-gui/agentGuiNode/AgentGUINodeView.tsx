@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   type CSSProperties,
   type KeyboardEvent,
@@ -27,6 +28,7 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
+import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
@@ -84,7 +86,6 @@ import {
   ConversationMeta,
   groupConversations
 } from "./agentGuiNodeViewConversation";
-import PixelCard from "./PixelCard";
 import styles from "./AgentGUINode.styles";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 
@@ -96,17 +97,6 @@ const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   gap: "24px"
 };
 
-const AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS =
-  "#ecfeff,#a7f3d0,#22d3ee,#0f766e";
-
-const AGENT_GUI_HERO_PARTICLE_COLORS: Record<string, string> = {
-  "claude-code": "#fff7ed,#fed7aa,#fb923c,#9a3412",
-  codex: "#f8fafc,#bfdbfe,#7dd3fc,#6366f1",
-  gemini: "#eef2ff,#c4b5fd,#818cf8,#38bdf8",
-  hermes: "#f8fafc,#e5e7eb,#9ca3af,#111827",
-  nextop: AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS,
-  openclaw: "#f5f3ff,#c4b5fd,#a78bfa,#64748b"
-};
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
@@ -114,25 +104,14 @@ const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
 const AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";
 
-export interface AgentGUIHeroParticleConfig {
-  normalizedProvider: string;
-  imageSrc: string;
-  colors: string;
-}
-
-export function resolveAgentGUIHeroParticleConfig(
+export function resolveAgentGUIHeroIconUrl(
   provider: string | undefined
-): AgentGUIHeroParticleConfig {
+): string {
   const normalizedProvider = normalizeManagedAgentProvider(provider);
-  return {
-    normalizedProvider,
-    imageSrc:
-      MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
-      MANAGED_AGENT_ICON_FALLBACK_URL,
-    colors:
-      AGENT_GUI_HERO_PARTICLE_COLORS[normalizedProvider] ??
-      AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS
-  };
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
 }
 
 const fallbackWorkspaceFileReferenceCopy: WorkspaceFileReferenceCopy = {
@@ -277,26 +256,8 @@ export interface AgentGUIViewLabels {
   removeMention: string;
   addReference: string;
   referenceWorkspaceFiles: string;
-  projectLabel: string;
-  noProject: string;
-  addProject: string;
-  createProjectCancel: string;
-  createProjectConfirm: string;
-  createProjectDocumentsUnavailable: string;
-  createProjectFailed: string;
-  createProjectNameConflict: string;
-  createProjectNameInvalid: string;
-  createProjectNameLabel: string;
-  createProjectNamePlaceholder: string;
-  createProjectNameRequired: string;
-  createProjectPermissionDenied: string;
-  createProjectTitle: string;
-  linkExistingProject: string;
   projectLocked: string;
   projectMissingDescription: string;
-  projectMissingTitle: string;
-  loadingProjects: string;
-  projectUnavailable: string;
   syncPending: string;
   syncSynced: string;
   syncFailed: string;
@@ -321,6 +282,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  showProjectSelector?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
   actions: {
     createConversation: (options?: { projectPath?: string | null }) => void;
@@ -367,6 +329,7 @@ interface AgentGUINodeViewProps {
   ) => void | Promise<void>;
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
@@ -653,6 +616,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  showProjectSelector = true,
   onAgentProviderLogin,
   actions,
   conversationRailCollapsed,
@@ -664,6 +628,7 @@ export function AgentGUINodeView({
   onWorkspaceFileReferencesAdded,
   onConversationRailWidthChanged,
   labels,
+  workspaceUserProjectI18n,
   workspaceFileReferenceAdapter = null,
   workspaceFileReferenceCopy = null,
   richTextAtProviders,
@@ -678,6 +643,10 @@ export function AgentGUINodeView({
   const [isRailResizing, setIsRailResizing] = useState(false);
   const [workspaceReferencePickerOpen, setWorkspaceReferencePickerOpen] =
     useState(false);
+  const [
+    localComposerFocusRequestSequence,
+    setLocalComposerFocusRequestSequence
+  ] = useState(0);
   const workspaceReferencePickerResolverRef = useRef<
     ((refs: WorkspaceFileReference[]) => void) | null
   >(null);
@@ -715,6 +684,21 @@ export function AgentGUINodeView({
     openclawGateway !== null && openclawGateway.status !== "ready";
   const createConversationDisabled =
     viewModel.isCreatingConversation || isOpenclawGatewayBlocking;
+  const detailComposerFocusRequestSequence =
+    localComposerFocusRequestSequence === 0
+      ? composerFocusRequestSequence
+      : (composerFocusRequestSequence ?? 0) + localComposerFocusRequestSequence;
+  const requestCreateConversation = useCallback(
+    (options?: { projectPath?: string | null }) => {
+      if (options) {
+        actions.createConversation(options);
+      } else {
+        actions.createConversation();
+      }
+      setLocalComposerFocusRequestSequence((current) => current + 1);
+    },
+    [actions]
+  );
   const effectiveWorkspaceAppIcons = useMemo(
     () =>
       mergeWorkspaceAppIconsFromCommands({
@@ -840,11 +824,12 @@ export function AgentGUINodeView({
               viewModel.isDeletingProjectConversations
             }
             labels={labels}
+            workspaceUserProjectI18n={workspaceUserProjectI18n}
             uiLanguage={uiLanguage}
             createConversationDisabled={createConversationDisabled}
             openclawGateway={openclawGateway}
             isCollapsed={conversationRailCollapsed}
-            onCreateConversation={actions.createConversation}
+            onCreateConversation={requestCreateConversation}
             onRetryOpenclawGateway={actions.retryOpenclawGateway}
             onSelectConversation={actions.selectConversation}
             onToggleConversationPinned={actions.toggleConversationPinned}
@@ -892,15 +877,17 @@ export function AgentGUINodeView({
             labels={labels}
             uiLanguage={uiLanguage}
             isActive={isActive}
-            composerFocusRequestSequence={composerFocusRequestSequence}
+            composerFocusRequestSequence={detailComposerFocusRequestSequence}
             isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
+            showProjectSelector={showProjectSelector}
             onLinkAction={onLinkAction}
             onAgentProviderLogin={onAgentProviderLogin}
             onRequestWorkspaceReferences={requestWorkspaceReferences}
             richTextAtProviders={richTextAtProviders}
             workspaceAppIcons={effectiveWorkspaceAppIcons}
+            workspaceUserProjectI18n={workspaceUserProjectI18n}
           />
         </section>
       </div>
@@ -921,12 +908,14 @@ interface AgentGUIDetailPaneProps {
   viewModel: AgentGUINodeViewModel;
   actions: AgentGUINodeViewProps["actions"];
   labels: AgentGUIViewLabels;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
   isActive: boolean;
   composerFocusRequestSequence: number | null;
   isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  showProjectSelector: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAgentProviderLogin?: (provider?: string | null) => void;
   onRequestWorkspaceReferences?:
@@ -1006,12 +995,14 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   viewModel,
   actions,
   labels,
+  workspaceUserProjectI18n,
   uiLanguage,
   isActive,
   composerFocusRequestSequence,
   isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
+  showProjectSelector,
   onLinkAction,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
@@ -1301,27 +1292,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       removeMention: labels.removeMention,
       addReference: labels.addReference,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
-      projectLabel: labels.projectLabel,
-      noProject: labels.noProject,
-      addProject: labels.addProject,
-      createProjectCancel: labels.createProjectCancel,
-      createProjectConfirm: labels.createProjectConfirm,
-      createProjectDocumentsUnavailable:
-        labels.createProjectDocumentsUnavailable,
-      createProjectFailed: labels.createProjectFailed,
-      createProjectNameConflict: labels.createProjectNameConflict,
-      createProjectNameInvalid: labels.createProjectNameInvalid,
-      createProjectNameLabel: labels.createProjectNameLabel,
-      createProjectNamePlaceholder: labels.createProjectNamePlaceholder,
-      createProjectNameRequired: labels.createProjectNameRequired,
-      createProjectPermissionDenied: labels.createProjectPermissionDenied,
-      createProjectTitle: labels.createProjectTitle,
-      linkExistingProject: labels.linkExistingProject,
       projectLocked: labels.projectLocked,
       projectMissingDescription: labels.projectMissingDescription,
-      projectMissingTitle: labels.projectMissingTitle,
-      loadingProjects: labels.loadingProjects,
-      projectUnavailable: labels.projectUnavailable,
       promptTipsPrefix: labels.promptTipsPrefix,
       ...interactivePromptLabels
     }),
@@ -1341,21 +1313,6 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.modelLabel,
       labels.modelDescriptions,
       labels.modelSelectionLabel,
-      labels.addProject,
-      labels.createProjectCancel,
-      labels.createProjectConfirm,
-      labels.createProjectDocumentsUnavailable,
-      labels.createProjectFailed,
-      labels.createProjectNameConflict,
-      labels.createProjectNameInvalid,
-      labels.createProjectNameLabel,
-      labels.createProjectNamePlaceholder,
-      labels.createProjectNameRequired,
-      labels.createProjectPermissionDenied,
-      labels.createProjectTitle,
-      labels.linkExistingProject,
-      labels.loadingProjects,
-      labels.noProject,
       labels.permissionLabel,
       labels.permissionModeAuto,
       labels.permissionModeFullAccess,
@@ -1364,11 +1321,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.planModeOffLabel,
       labels.planModeOnLabel,
       labels.planUnavailable,
-      labels.projectLabel,
       labels.projectLocked,
       labels.projectMissingDescription,
-      labels.projectMissingTitle,
-      labels.projectUnavailable,
       labels.promptTipsPrefix,
       labels.queuedLabel,
       labels.queuedPromptMoreActions,
@@ -1606,10 +1560,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               isActive,
               promptImagesSupported: viewModel.promptImagesSupported,
               promptTips: labels.promptTips,
+              showProjectSelector,
               isInterrupting: viewModel.isInterrupting,
               isSendingTurn: isComposerSending,
               isSubmittingPrompt: viewModel.isRespondingApproval,
               labels: composerLabels,
+              workspaceUserProjectI18n,
               onDraftChange: actions.updateDraftPrompt,
               onProjectPathChange: actions.updateSelectedProjectPath,
               onSettingsChange: actions.updateComposerSettings,
@@ -1677,10 +1633,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             composerFocusRequestSequence,
             isActive,
             promptImagesSupported: viewModel.promptImagesSupported,
+            showProjectSelector,
             isInterrupting: viewModel.isInterrupting,
             isSendingTurn: isComposerSending,
             isSubmittingPrompt: viewModel.isRespondingApproval,
             labels: composerLabels,
+            workspaceUserProjectI18n,
             onDraftChange: actions.updateDraftPrompt,
             onProjectPathChange: actions.updateSelectedProjectPath,
             onSettingsChange: actions.updateComposerSettings,
@@ -1803,7 +1761,7 @@ function AgentRunPathInfo({ path }: { path: string }): React.JSX.Element {
       <TooltipContent
         side="top"
         align="start"
-        className="max-w-[320px] text-xs [overflow-wrap:anywhere]"
+        className="max-w-[320px] text-[11px] [overflow-wrap:anywhere]"
       >
         {path}
       </TooltipContent>
@@ -1864,19 +1822,17 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 }: AgentGUIEmptyHeroPaneProps): React.JSX.Element {
   "use memo";
 
-  const agentParticleConfig = resolveAgentGUIHeroParticleConfig(provider);
+  const heroIconUrl = resolveAgentGUIHeroIconUrl(provider);
 
   return (
     <div className={styles.emptyHero}>
       <div className={styles.emptyHeroBody}>
-        <PixelCard
-          variant="blue"
-          gap={2}
-          speed={45}
-          colors={agentParticleConfig.colors}
-          imageSrc={agentParticleConfig.imageSrc}
-          noFocus
+        <img
+          aria-hidden="true"
           className={styles.emptyHeroIconEffect}
+          draggable={false}
+          src={heroIconUrl}
+          alt=""
         />
         <h2 className={styles.emptyHeroTitle}>
           <EmptyHeroTitle label={emptyLabel} providerLabel={emptyProvider} />
@@ -2020,6 +1976,7 @@ interface AgentGUIConversationRailPaneProps {
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;
   labels: AgentGUIViewLabels;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   uiLanguage: UiLanguage;
   createConversationDisabled: boolean;
   openclawGateway: OpenclawGatewayViewModel | null;
@@ -2075,6 +2032,7 @@ const AgentGUIConversationRailPane = memo(
     isDeletingConversation,
     isDeletingProjectConversations,
     labels,
+    workspaceUserProjectI18n,
     uiLanguage,
     createConversationDisabled,
     openclawGateway,
@@ -2222,9 +2180,6 @@ const AgentGUIConversationRailPane = memo(
           viewportRef={conversationListRef}
           viewportClassName={styles.conversationList}
         >
-          {!conversationQuery.trim() ? (
-            <AgentGUIProjectRailHeader labels={labels} />
-          ) : null}
           {isLoadingConversations && conversations.length === 0 ? (
             <AgentConversationListSkeleton
               label={labels.loadingConversations}
@@ -2240,12 +2195,17 @@ const AgentGUIConversationRailPane = memo(
               </span>
             </div>
           ) : (
-            groupedConversations.map((section) => {
+            groupedConversations.map((section, sectionIndex) => {
               const projectPath =
                 section.kind === "project" ? (section.project?.path ?? "") : "";
               const projectLabel =
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
+              const showProjectRailHeader =
+                !conversationQuery.trim() &&
+                section.kind !== "pinned" &&
+                (sectionIndex === 0 ||
+                  groupedConversations[sectionIndex - 1]?.kind === "pinned");
               const isSectionCollapsed =
                 isProjectSection && collapsedProjectSectionIds.has(section.id);
               const projectConversationCount = projectPath
@@ -2257,242 +2217,254 @@ const AgentGUIConversationRailPane = memo(
                   ).length
                 : 0;
               return (
-                <section
-                  key={section.id}
-                  className={styles.conversationSection}
-                  data-collapsed={isSectionCollapsed}
-                >
-                  <div className={styles.conversationSectionHeader}>
-                    {isProjectSection ? (
-                      <button
-                        type="button"
-                        className={styles.conversationSectionToggle}
-                        aria-expanded={!isSectionCollapsed}
-                        onClick={() =>
-                          toggleProjectSectionCollapsed(section.id)
-                        }
-                      >
-                        <ChevronRight
-                          aria-hidden="true"
-                          className={styles.conversationSectionChevron}
-                        />
-                        <span className={styles.conversationSectionLabel}>
-                          <FolderIcon
-                            aria-hidden="true"
-                            className={styles.conversationSectionLabelIcon}
-                          />
-                          <span>{section.label}</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <div className={styles.conversationSectionToggle}>
-                        <span className={styles.conversationSectionLabel}>
-                          <span>{section.label}</span>
-                        </span>
-                      </div>
-                    )}
-                    {projectPath ? (
-                      <div className={styles.conversationSectionActions}>
-                        <BareIconButton
-                          className={styles.conversationSectionMoreButton}
-                          aria-label={labels.projectSectionEdit}
-                          title={labels.projectSectionEdit}
-                          size="sm"
-                          disabled={createConversationDisabled}
-                          onClick={() => onCreateConversation({ projectPath })}
-                        >
-                          <EditIcon aria-hidden="true" />
-                        </BareIconButton>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <BareIconButton
-                              className={styles.conversationSectionMoreButton}
-                              aria-label={labels.projectSectionMoreActions}
-                              title={labels.projectSectionMoreActions}
-                              size="sm"
-                            >
-                              <MoreHorizontalIcon aria-hidden="true" />
-                            </BareIconButton>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
-                            sideOffset={6}
-                          >
-                            <DropdownMenuItem
-                              className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                              disabled={projectConversationCount === 0}
-                              onSelect={() => {
-                                const label = projectLabel || projectPath;
-                                setPendingProjectAction({
-                                  kind: "batch-delete",
-                                  conversationCount: projectConversationCount,
-                                  label,
-                                  path: projectPath
-                                });
-                              }}
-                            >
-                              <span>{labels.batchDeleteProjectSessions}</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                              onSelect={() => {
-                                const label = projectLabel || projectPath;
-                                setPendingProjectAction({
-                                  kind: "remove",
-                                  label,
-                                  path: projectPath
-                                });
-                              }}
-                            >
-                              <span>{labels.removeProject}</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div
-                    className={styles.conversationSectionItems}
-                    aria-hidden={isSectionCollapsed ? "true" : undefined}
+                <Fragment key={section.id}>
+                  {showProjectRailHeader ? (
+                    <AgentGUIProjectRailHeader
+                      labels={labels}
+                      workspaceUserProjectI18n={workspaceUserProjectI18n}
+                    />
+                  ) : null}
+                  <section
+                    className={styles.conversationSection}
+                    data-collapsed={isSectionCollapsed}
+                    data-kind={section.kind}
                   >
-                    <div className={styles.conversationSectionItemsInner}>
-                      {section.items.length === 0 ? (
-                        <div className={styles.conversationSectionEmpty}>
-                          {labels.emptyProjectConversations}
+                    <div className={styles.conversationSectionHeader}>
+                      {isProjectSection ? (
+                        <button
+                          type="button"
+                          className={styles.conversationSectionToggle}
+                          aria-expanded={!isSectionCollapsed}
+                          onClick={() =>
+                            toggleProjectSectionCollapsed(section.id)
+                          }
+                        >
+                          <ChevronRight
+                            aria-hidden="true"
+                            className={styles.conversationSectionChevron}
+                          />
+                          <span className={styles.conversationSectionLabel}>
+                            <FolderIcon
+                              aria-hidden="true"
+                              className={styles.conversationSectionLabelIcon}
+                            />
+                            <span>{section.label}</span>
+                          </span>
+                        </button>
+                      ) : (
+                        <div className={styles.conversationSectionToggle}>
+                          <span className={styles.conversationSectionLabel}>
+                            <span>{section.label}</span>
+                          </span>
+                        </div>
+                      )}
+                      {projectPath ? (
+                        <div className={styles.conversationSectionActions}>
+                          <BareIconButton
+                            className={styles.conversationSectionMoreButton}
+                            aria-label={labels.projectSectionEdit}
+                            title={labels.projectSectionEdit}
+                            size="sm"
+                            disabled={createConversationDisabled}
+                            onClick={() =>
+                              onCreateConversation({ projectPath })
+                            }
+                          >
+                            <EditIcon aria-hidden="true" />
+                          </BareIconButton>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <BareIconButton
+                                className={styles.conversationSectionMoreButton}
+                                aria-label={labels.projectSectionMoreActions}
+                                title={labels.projectSectionMoreActions}
+                                size="sm"
+                              >
+                                <MoreHorizontalIcon aria-hidden="true" />
+                              </BareIconButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
+                              sideOffset={6}
+                            >
+                              <DropdownMenuItem
+                                className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                                disabled={projectConversationCount === 0}
+                                onSelect={() => {
+                                  const label = projectLabel || projectPath;
+                                  setPendingProjectAction({
+                                    kind: "batch-delete",
+                                    conversationCount: projectConversationCount,
+                                    label,
+                                    path: projectPath
+                                  });
+                                }}
+                              >
+                                <span>{labels.batchDeleteProjectSessions}</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                                onSelect={() => {
+                                  const label = projectLabel || projectPath;
+                                  setPendingProjectAction({
+                                    kind: "remove",
+                                    label,
+                                    path: projectPath
+                                  });
+                                }}
+                              >
+                                <span>{labels.removeProject}</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       ) : null}
-                      {section.items.map((item) => {
-                        const isPendingDeleteConversation =
-                          pendingDeleteConversationId === item.id;
-
-                        return (
-                          <div
-                            key={item.id}
-                            ref={(element) => {
-                              if (element) {
-                                conversationItemElementsRef.current.set(
-                                  item.id,
-                                  element
-                                );
-                              } else {
-                                conversationItemElementsRef.current.delete(
-                                  item.id
-                                );
-                              }
-                            }}
-                            className={styles.conversationItem}
-                            data-active={item.id === activeConversationId}
-                            data-pinned={(item.pinnedAtUnixMs ?? 0) > 0}
-                            data-pending-delete={isPendingDeleteConversation}
-                            data-testid={`agent-gui-conversation-item-${item.id}`}
-                            onMouseLeave={() => {
-                              if (isPendingDeleteConversation) {
-                                onCancelDeleteConversation();
-                              }
-                            }}
-                          >
-                            <button
-                              type="button"
-                              className={styles.conversationSelect}
-                              onClick={() => onSelectConversation(item.id)}
-                            >
-                              <span className={styles.conversationTitle}>
-                                {conversationPlainTitle(
-                                  item,
-                                  labels,
-                                  uiLanguage
-                                )}
-                              </span>
-                              <ConversationMeta
-                                item={item}
-                                nowMs={currentTimeMs}
-                                labels={labels}
-                              />
-                            </button>
-                            <div className={styles.conversationActions}>
-                              {isPendingDeleteConversation ? (
-                                <button
-                                  type="button"
-                                  className={styles.conversationDeleteButton}
-                                  aria-label={labels.deleteSessionConfirm}
-                                  title={labels.deleteSessionConfirm}
-                                  disabled={isDeletingConversation}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    onConfirmDeleteConversation();
-                                  }}
-                                >
-                                  <span
-                                    className={
-                                      styles.conversationDeleteConfirmText
-                                    }
-                                  >
-                                    {labels.deleteSessionConfirm}
-                                  </span>
-                                </button>
-                              ) : (
-                                <>
-                                  <BareIconButton
-                                    className={styles.conversationPinButton}
-                                    aria-label={
-                                      (item.pinnedAtUnixMs ?? 0) > 0
-                                        ? labels.unpinSession
-                                        : labels.pinSession
-                                    }
-                                    title={
-                                      (item.pinnedAtUnixMs ?? 0) > 0
-                                        ? labels.unpinSession
-                                        : labels.pinSession
-                                    }
-                                    size="md"
-                                    onPointerDown={(event) => {
-                                      event.stopPropagation();
-                                    }}
-                                    onMouseDown={(event) => {
-                                      event.stopPropagation();
-                                    }}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onToggleConversationPinned(
-                                        item.id,
-                                        (item.pinnedAtUnixMs ?? 0) <= 0
-                                      );
-                                    }}
-                                  >
-                                    {(item.pinnedAtUnixMs ?? 0) > 0 ? (
-                                      <PinFilledIcon aria-hidden="true" />
-                                    ) : (
-                                      <PinLinedIcon aria-hidden="true" />
-                                    )}
-                                  </BareIconButton>
-                                  <BareIconButton
-                                    className={styles.conversationDeleteButton}
-                                    aria-label={labels.deleteSession}
-                                    title={labels.deleteSession}
-                                    size="md"
-                                    onPointerDown={(event) => {
-                                      event.stopPropagation();
-                                    }}
-                                    onMouseDown={(event) => {
-                                      event.stopPropagation();
-                                    }}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onRequestDeleteConversation(item.id);
-                                    }}
-                                  >
-                                    <CanvasNodeTrashLinedIcon aria-hidden="true" />
-                                  </BareIconButton>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
-                  </div>
-                </section>
+                    <div
+                      className={styles.conversationSectionItems}
+                      aria-hidden={isSectionCollapsed ? "true" : undefined}
+                    >
+                      <div className={styles.conversationSectionItemsInner}>
+                        {section.items.length === 0 ? (
+                          <div className={styles.conversationSectionEmpty}>
+                            {labels.emptyProjectConversations}
+                          </div>
+                        ) : null}
+                        {section.items.map((item) => {
+                          const isPendingDeleteConversation =
+                            pendingDeleteConversationId === item.id;
+
+                          return (
+                            <div
+                              key={item.id}
+                              ref={(element) => {
+                                if (element) {
+                                  conversationItemElementsRef.current.set(
+                                    item.id,
+                                    element
+                                  );
+                                } else {
+                                  conversationItemElementsRef.current.delete(
+                                    item.id
+                                  );
+                                }
+                              }}
+                              className={styles.conversationItem}
+                              data-active={item.id === activeConversationId}
+                              data-pinned={(item.pinnedAtUnixMs ?? 0) > 0}
+                              data-pending-delete={isPendingDeleteConversation}
+                              data-testid={`agent-gui-conversation-item-${item.id}`}
+                              onMouseLeave={() => {
+                                if (isPendingDeleteConversation) {
+                                  onCancelDeleteConversation();
+                                }
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className={styles.conversationSelect}
+                                onClick={() => onSelectConversation(item.id)}
+                              >
+                                <span className={styles.conversationTitle}>
+                                  {conversationPlainTitle(
+                                    item,
+                                    labels,
+                                    uiLanguage
+                                  )}
+                                </span>
+                                <ConversationMeta
+                                  item={item}
+                                  nowMs={currentTimeMs}
+                                  labels={labels}
+                                />
+                              </button>
+                              <div className={styles.conversationActions}>
+                                {isPendingDeleteConversation ? (
+                                  <button
+                                    type="button"
+                                    className={styles.conversationDeleteButton}
+                                    aria-label={labels.deleteSessionConfirm}
+                                    title={labels.deleteSessionConfirm}
+                                    disabled={isDeletingConversation}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onConfirmDeleteConversation();
+                                    }}
+                                  >
+                                    <span
+                                      className={
+                                        styles.conversationDeleteConfirmText
+                                      }
+                                    >
+                                      {labels.deleteSessionConfirm}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <>
+                                    <BareIconButton
+                                      className={styles.conversationPinButton}
+                                      aria-label={
+                                        (item.pinnedAtUnixMs ?? 0) > 0
+                                          ? labels.unpinSession
+                                          : labels.pinSession
+                                      }
+                                      title={
+                                        (item.pinnedAtUnixMs ?? 0) > 0
+                                          ? labels.unpinSession
+                                          : labels.pinSession
+                                      }
+                                      size="md"
+                                      onPointerDown={(event) => {
+                                        event.stopPropagation();
+                                      }}
+                                      onMouseDown={(event) => {
+                                        event.stopPropagation();
+                                      }}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onToggleConversationPinned(
+                                          item.id,
+                                          (item.pinnedAtUnixMs ?? 0) <= 0
+                                        );
+                                      }}
+                                    >
+                                      {(item.pinnedAtUnixMs ?? 0) > 0 ? (
+                                        <PinFilledIcon aria-hidden="true" />
+                                      ) : (
+                                        <PinLinedIcon aria-hidden="true" />
+                                      )}
+                                    </BareIconButton>
+                                    <BareIconButton
+                                      className={
+                                        styles.conversationDeleteButton
+                                      }
+                                      aria-label={labels.deleteSession}
+                                      title={labels.deleteSession}
+                                      size="md"
+                                      onPointerDown={(event) => {
+                                        event.stopPropagation();
+                                      }}
+                                      onMouseDown={(event) => {
+                                        event.stopPropagation();
+                                      }}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onRequestDeleteConversation(item.id);
+                                      }}
+                                    >
+                                      <CanvasNodeTrashLinedIcon aria-hidden="true" />
+                                    </BareIconButton>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                </Fragment>
               );
             })
           )}
@@ -2554,30 +2526,14 @@ const AgentGUIConversationRailPane = memo(
 );
 
 function AgentGUIProjectRailHeader({
-  labels
+  labels,
+  workspaceUserProjectI18n
 }: {
   labels: Pick<
     AgentGUIViewLabels,
-    | "addProject"
-    | "createProjectCancel"
-    | "createProjectConfirm"
-    | "createProjectDocumentsUnavailable"
-    | "createProjectFailed"
-    | "createProjectNameConflict"
-    | "createProjectNameInvalid"
-    | "createProjectNameLabel"
-    | "createProjectNamePlaceholder"
-    | "createProjectNameRequired"
-    | "createProjectPermissionDenied"
-    | "loadingProjects"
-    | "noProject"
-    | "projectLabel"
-    | "projectLocked"
-    | "projectRailCreateProject"
-    | "projectRailLinkExistingProject"
-    | "projectMissingTitle"
-    | "projectUnavailable"
+    "projectRailCreateProject" | "projectRailLinkExistingProject"
   >;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
 }): React.JSX.Element {
   "use memo";
   const agentHostApi = useAgentHostApi();
@@ -2595,7 +2551,9 @@ function AgentGUIProjectRailHeader({
   return (
     <div className={styles.projectRailHeader}>
       <div className={styles.projectRailTitle}>
-        <span>{labels.projectLabel}</span>
+        <span>
+          {workspaceUserProjectI18n.tFirst(["projectSelect.projectLabel"])}
+        </span>
       </div>
       <div className={styles.projectRailAddProject}>
         <WorkspaceUserProjectSelect
@@ -2617,27 +2575,14 @@ function AgentGUIProjectRailHeader({
           contentAlign="end"
           contentSide="bottom"
           contentSideOffset={6}
+          i18n={workspaceUserProjectI18n}
           labels={{
             addProject: labels.projectRailCreateProject,
-            createProjectCancel: labels.createProjectCancel,
-            createProjectConfirm: labels.createProjectConfirm,
-            createProjectDocumentsUnavailable:
-              labels.createProjectDocumentsUnavailable,
-            createProjectFailed: labels.createProjectFailed,
-            createProjectNameConflict: labels.createProjectNameConflict,
-            createProjectNameInvalid: labels.createProjectNameInvalid,
-            createProjectNameLabel: labels.createProjectNameLabel,
-            createProjectNamePlaceholder: labels.createProjectNamePlaceholder,
-            createProjectNameRequired: labels.createProjectNameRequired,
-            createProjectPermissionDenied: labels.createProjectPermissionDenied,
             createProjectTitle: labels.projectRailCreateProject,
             linkExistingProject: labels.projectRailLinkExistingProject,
-            loadingProjects: labels.loadingProjects,
-            noProject: labels.noProject,
-            projectLabel: labels.addProject,
-            projectLocked: labels.projectLocked,
-            projectMissingTitle: labels.projectMissingTitle,
-            projectUnavailable: labels.projectUnavailable
+            projectLabel: workspaceUserProjectI18n.tFirst([
+              "projectSelect.addProject"
+            ])
           }}
           renderAddProjectIcon={() => (
             <NewWorkspaceLinedIcon

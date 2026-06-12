@@ -15,6 +15,7 @@ import {
   FileCreateIcon,
   Input,
   OpenSessionsIcon as OpenSessionsFilledIcon,
+  RefreshIcon,
   Select,
   SelectContent,
   SelectItem,
@@ -409,6 +410,7 @@ export function AppCenterPanel({
   };
   const loadingMessage =
     catalogStatus === "loading" ? copy.t("messages.catalogLoading") : null;
+  const catalogLoading = catalogStatus === "loading";
   const failedMessage =
     catalogStatus === "failed" ? copy.t("messages.catalogFailed") : null;
   const statusToast =
@@ -544,13 +546,13 @@ export function AppCenterPanel({
                     </div>
                     {job.failureReason ? (
                       <p
-                        className="mt-2 truncate text-[12px] leading-4 text-[var(--state-danger)]"
+                        className="mt-2 truncate text-[11px] leading-4 text-[var(--state-danger)]"
                         title={job.failureReason}
                       >
                         {copy.t("factory.messages.factoryJobFailed")}
                       </p>
                     ) : (
-                      <p className="mt-2 truncate text-[12px] leading-4 text-[var(--text-secondary)]">
+                      <p className="mt-2 truncate text-[11px] leading-4 text-[var(--text-secondary)]">
                         {job.prompt}
                       </p>
                     )}
@@ -637,9 +639,10 @@ export function AppCenterPanel({
         ) : null}
 
         <section className="flex min-w-0 flex-col gap-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="flex h-8 min-w-0 items-center justify-between gap-3">
             <SectionTabs
               ariaLabel={copy.t("labels.appList")}
+              className="h-8"
               tabs={[
                 {
                   label: copy.t("labels.recommendedApps"),
@@ -653,7 +656,7 @@ export function AppCenterPanel({
               value={activeAppTab}
               onValueChange={setActiveAppTab}
             />
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex h-8 shrink-0 items-center gap-1">
               {activeAppTab === "my" ? (
                 <AppCenterHeaderActions
                   copy={copy}
@@ -665,7 +668,13 @@ export function AppCenterPanel({
                   }}
                 />
               ) : (
-                <div aria-hidden="true" className="h-8 w-[172px]" />
+                <AppCenterRecommendedHeaderActions
+                  copy={copy}
+                  loading={catalogLoading}
+                  onRefreshCatalog={() => {
+                    void actions.refreshCatalog?.();
+                  }}
+                />
               )}
             </div>
           </div>
@@ -765,7 +774,7 @@ export function AppCenterPanel({
               <DialogTitle>{copy.t("factory.labels.create")}</DialogTitle>
             </DialogHeader>
             <label className="grid min-w-0 gap-2">
-              <span className="text-[12px] font-semibold leading-4 text-[var(--text-secondary)]">
+              <span className="text-[11px] font-semibold leading-4 text-[var(--text-secondary)]">
                 {copy.t("factory.labels.appName")}
               </span>
               <Input
@@ -779,7 +788,7 @@ export function AppCenterPanel({
             <div className="grid min-w-0 gap-4">
               <div className="grid min-w-0 gap-2">
                 <label
-                  className="text-[12px] font-semibold leading-4 text-[var(--text-secondary)]"
+                  className="text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
                   htmlFor={promptTextareaId}
                 >
                   {copy.t("factory.labels.prompt")}
@@ -795,7 +804,7 @@ export function AppCenterPanel({
                   <div className="pointer-events-none absolute inset-x-3 bottom-1.5 flex min-w-0 flex-wrap items-end justify-between gap-2">
                     {providerErrorMessage &&
                     normalizedProviderOptions.length === 0 ? (
-                      <p className="pointer-events-auto max-w-[240px] text-[12px] leading-4 text-[var(--state-danger)]">
+                      <p className="pointer-events-auto max-w-[240px] text-[11px] leading-4 text-[var(--state-danger)]">
                         {providerErrorMessage}
                       </p>
                     ) : (
@@ -865,12 +874,12 @@ export function AppCenterPanel({
                   {copy.t("factory.labels.templates")}
                 </legend>
                 <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-                  <span className="shrink-0 text-[14px] font-medium leading-5 text-[var(--text-secondary)]">
+                  <span className="shrink-0 text-[13px] font-medium leading-5 text-[var(--text-secondary)]">
                     {copy.t("factory.labels.templateInspirationPrefix")}
                   </span>
                   {factoryTemplates.map((template) => (
                     <button
-                      className="inline-flex max-w-full items-center gap-1 border-0 bg-transparent p-0 text-[14px] font-medium leading-5 text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]"
+                      className="inline-flex max-w-full items-center gap-1 border-0 bg-transparent p-0 text-[13px] font-medium leading-5 text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]"
                       key={template.id}
                       type="button"
                       onClick={() => selectTemplate(template)}
@@ -1436,7 +1445,7 @@ function AppCenterStatusToast({
         anchor="node"
         busy={toast.busy}
         className={cn(
-          "z-30 w-[calc(100%_-_48px)] max-w-[640px] justify-start px-4 py-3 text-left text-[12px] leading-5 shadow-[0_14px_36px_var(--shadow-elevated)]",
+          "z-30 w-[calc(100%_-_48px)] max-w-[640px] justify-start px-4 py-3 text-left text-[11px] leading-5 shadow-[0_14px_36px_var(--shadow-elevated)]",
           toast.tone === "default"
             ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)]"
             : ""
@@ -1444,7 +1453,7 @@ function AppCenterStatusToast({
         nodeInsetTopPx={20}
         variant={toast.tone}
       >
-        <ToastTitle className="w-full justify-start gap-2 text-left text-[12px] leading-5">
+        <ToastTitle className="w-full justify-start gap-2 text-left text-[11px] leading-5">
           <span className="min-w-0 truncate">{toast.message}</span>
         </ToastTitle>
       </ToastRoot>
@@ -1489,6 +1498,37 @@ function AppCenterHeaderActions({
         {copy.t("factory.actions.create")}
       </Button>
     </>
+  );
+}
+
+function AppCenterRecommendedHeaderActions({
+  copy,
+  loading,
+  onRefreshCatalog
+}: {
+  readonly copy: AppCenterI18nRuntime;
+  readonly loading: boolean;
+  readonly onRefreshCatalog: () => void;
+}): ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={copy.t("actions.refreshCatalog")}
+          disabled={loading}
+          size="icon-sm"
+          title={copy.t("actions.refreshCatalog")}
+          type="button"
+          variant="ghost"
+          onClick={onRefreshCatalog}
+        >
+          <RefreshIcon className={loading ? "animate-spin" : undefined} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        {copy.t("actions.refreshCatalog")}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

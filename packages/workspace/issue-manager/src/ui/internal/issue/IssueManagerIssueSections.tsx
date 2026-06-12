@@ -49,7 +49,7 @@ export function IssueManagerDetailTextSection({
     ? stripIssueManagerDescriptionTerminalPunctuation(meta)
     : null;
   const bodyClassName = cn(
-    "max-w-full whitespace-normal break-words text-[14px] leading-5 [overflow-wrap:anywhere]",
+    "max-w-full whitespace-normal break-words text-[13px] leading-5 [overflow-wrap:anywhere]",
     isPlaceholder
       ? "font-normal text-[var(--text-secondary)]"
       : tone === "destructive"
@@ -60,7 +60,7 @@ export function IssueManagerDetailTextSection({
   if (isPlaceholder) {
     return (
       <section className="grid gap-2.5">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
           {label}
         </h3>
         <p className={bodyClassName}>{bodyText}</p>
@@ -70,13 +70,13 @@ export function IssueManagerDetailTextSection({
 
   return (
     <section className="grid gap-2.5">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
         {label}
       </h3>
       <div className="min-w-0 rounded-[12px] border border-[var(--line-2)] px-4 py-3">
         <p className={bodyClassName}>{bodyText}</p>
         {metaText ? (
-          <p className="mt-1 truncate text-xs font-normal text-[var(--text-secondary)]">
+          <p className="mt-1 truncate text-[11px] font-normal text-[var(--text-secondary)]">
             {metaText}
           </p>
         ) : null}
@@ -136,7 +136,7 @@ export function IssueManagerLatestRunStatusSection({
   ) {
     return (
       <section className="grid gap-2.5">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
           {copy.t("labels.latestRunStatus")}
         </h3>
         {renderedLatestRunStatus}
@@ -163,7 +163,7 @@ export function IssueManagerLatestRunStatusSection({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <p
             className={cn(
-              "min-w-0 flex-1 text-[14px] font-semibold leading-5 text-[var(--text-primary)] [overflow-wrap:anywhere]",
+              "min-w-0 flex-1 text-[13px] font-semibold leading-5 text-[var(--text-primary)] [overflow-wrap:anywhere]",
               agentSessionId ? "font-mono" : ""
             )}
           >
@@ -174,17 +174,17 @@ export function IssueManagerLatestRunStatusSection({
           </Badge>
         </div>
         {summary && agentSessionId ? (
-          <p className="mt-1 text-xs font-normal leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+          <p className="mt-1 text-[11px] font-normal leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]">
             {summary}
           </p>
         ) : null}
         {timestamp ? (
-          <p className="mt-1 truncate text-xs font-normal text-[var(--text-secondary)]">
+          <p className="mt-1 truncate text-[11px] font-normal text-[var(--text-secondary)]">
             {timestamp}
           </p>
         ) : null}
         {errorMessage ? (
-          <p className="mt-2 text-xs font-medium leading-5 text-[var(--state-danger)] [overflow-wrap:anywhere]">
+          <p className="mt-2 text-[11px] font-medium leading-5 text-[var(--state-danger)] [overflow-wrap:anywhere]">
             {errorMessage}
           </p>
         ) : null}
@@ -200,7 +200,7 @@ export function IssueManagerLatestRunStatusSection({
 
   return (
     <section className="grid gap-2.5">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
         {copy.t("labels.latestRunStatus")}
       </h3>
       {canOpenAgentSession ? (
@@ -233,11 +233,11 @@ export function IssueManagerOutputSection({
 }): JSX.Element {
   return (
     <section className="grid gap-2.5">
-      <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+      <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
         {copy.t("labels.executionOutputs")}
       </h3>
       {outputs.length === 0 ? (
-        <p className="text-sm font-normal leading-6 text-[var(--text-secondary)]">
+        <p className="text-[13px] font-normal leading-6 text-[var(--text-secondary)]">
           {copy.t("messages.noExecutionOutputs")}
         </p>
       ) : (
@@ -265,19 +265,19 @@ export function IssueManagerOutputSection({
                   <FileIcon size={16} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-[var(--text-primary)]">
+                  <span className="block truncate text-[13px] font-semibold text-[var(--text-primary)]">
                     {output.displayName}
                   </span>
-                  <span className="mt-1 block truncate text-xs font-normal text-[var(--text-secondary)]">
+                  <span className="mt-1 block truncate text-[11px] font-normal text-[var(--text-secondary)]">
                     {output.path}
                   </span>
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
-                <span className="text-xs font-normal text-[var(--text-secondary)]">
+                <span className="text-[11px] font-normal text-[var(--text-secondary)]">
                   {formatIssueManagerTimestamp(output.createdAtUnix) || ""}
                 </span>
-                <span className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/20 bg-transparency-actived px-2 text-xs font-semibold text-primary">
+                <span className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/20 bg-transparency-actived px-2 text-[11px] font-semibold text-primary">
                   {copy.t("actions.openReference")}
                   <ArrowRightIcon size={13} />
                 </span>
@@ -306,7 +306,7 @@ export function IssueManagerSubtaskSection({
   return (
     <section className="grid gap-2.5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
           {copy.t("labels.subtasks")}
         </h3>
         <Button size="dialog" type="button" variant="ghost" onClick={onCreate}>
@@ -315,7 +315,7 @@ export function IssueManagerSubtaskSection({
         </Button>
       </div>
       {tasks.length === 0 ? (
-        <p className="text-sm font-normal leading-6 text-[var(--text-secondary)]">
+        <p className="text-[13px] font-normal leading-6 text-[var(--text-secondary)]">
           {copy.t("messages.noSubtasksForIssue")}
         </p>
       ) : (
@@ -335,7 +335,7 @@ export function IssueManagerSubtaskSection({
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <IssueManagerTitleTooltip title={task.title}>
-                    <span className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                    <span className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
                       {task.title}
                     </span>
                   </IssueManagerTitleTooltip>
@@ -343,14 +343,14 @@ export function IssueManagerSubtaskSection({
                     {resolveIssueManagerStatusLabel(copy, task.status)}
                   </Badge>
                 </div>
-                <p className="mt-2 line-clamp-2 text-[12px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                <p className="mt-2 line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                   {summarizeIssueManagerContent(
                     task.content,
                     copy.t("messages.taskContentEmpty")
                   )}
                 </p>
               </div>
-              <span className="shrink-0 text-xs font-normal text-[var(--text-secondary)]">
+              <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
                 {formatIssueManagerTimestamp(
                   task.createdAtUnix ?? task.updatedAtUnix
                 ) || ""}
@@ -379,7 +379,7 @@ export function IssueManagerTaskSection({
     <section className="border-t border-[var(--line-2)] bg-transparent">
       <div className="flex items-center justify-between gap-4 border-b border-[var(--line-2)] px-8 py-4">
         <div>
-          <h3 className="text-base font-semibold text-[var(--text-primary)]">
+          <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">
             {copy.t("labels.taskList")}
           </h3>
         </div>
@@ -404,10 +404,10 @@ export function IssueManagerTaskSection({
           ) : tasks.length === 0 ? (
             <div className="overflow-hidden rounded-lg border border-[var(--line-2)] bg-transparent">
               <div className="px-4 py-10 text-center">
-                <p className="text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                <p className="text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                   {copy.t("messages.noTasks")}
                 </p>
-                <p className="mt-2 text-sm font-normal leading-5 text-[var(--text-secondary)]">
+                <p className="mt-2 text-[13px] font-normal leading-5 text-[var(--text-secondary)]">
                   {copy.t("messages.noTasksForIssueBody")}
                 </p>
               </div>
@@ -430,7 +430,7 @@ export function IssueManagerTaskSection({
                     <div className="flex min-w-0 items-center justify-between gap-3">
                       <div className="flex min-w-0 flex-wrap items-center gap-2.5">
                         <IssueManagerTitleTooltip title={task.title}>
-                          <span className="line-clamp-1 text-[14px] font-semibold leading-[1.3] text-[var(--text-primary)]">
+                          <span className="line-clamp-1 text-[13px] font-semibold leading-[1.3] text-[var(--text-primary)]">
                             {task.title}
                           </span>
                         </IssueManagerTitleTooltip>
@@ -440,13 +440,13 @@ export function IssueManagerTaskSection({
                           {resolveIssueManagerStatusLabel(copy, task.status)}
                         </Badge>
                       </div>
-                      <p className="text-[12px] font-normal leading-[18px] text-[var(--text-secondary)]">
+                      <p className="text-[11px] font-normal leading-[18px] text-[var(--text-secondary)]">
                         {formatIssueManagerTimestamp(
                           task.createdAtUnix ?? task.updatedAtUnix
                         )}
                       </p>
                     </div>
-                    <p className="line-clamp-2 text-[12px] font-normal leading-[1.5] text-[var(--text-secondary)]">
+                    <p className="line-clamp-2 text-[11px] font-normal leading-[1.5] text-[var(--text-secondary)]">
                       {summarizeIssueManagerContent(
                         task.content,
                         copy.t("messages.taskContentEmpty")

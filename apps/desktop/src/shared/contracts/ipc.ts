@@ -102,6 +102,7 @@ export const desktopIpcChannels = {
       openTerminalLink: "host:files:openTerminalLink",
       readLocalFileText: "host:files:readLocalFileText",
       readPreviewFile: "host:files:readPreviewFile",
+      resolveEntryIcon: "host:files:resolveEntryIcon",
       selectAppArchive: "host:files:selectAppArchive",
       selectAppArchiveExportPath: "host:files:selectAppArchiveExportPath",
       selectAppIconImage: "host:files:selectAppIconImage",
@@ -145,6 +146,11 @@ export interface DesktopWorkspaceFileOpenWithPayload extends DesktopWorkspaceFil
 
 export interface DesktopWorkspaceFileOpenWithOtherPayload extends DesktopWorkspaceFilePathPayload {
   applicationPickerPrompt?: string;
+}
+
+export interface DesktopWorkspaceFileEntryIconPayload extends DesktopWorkspaceFilePathPayload {
+  entryKind: string;
+  entryName: string;
 }
 
 export interface DesktopTerminalLinkPathPayload {
@@ -505,6 +511,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files.readLocalFileText]: string;
   [desktopIpcChannels.host.files
     .readPreviewFile]: DesktopWorkspaceFilePathPayload;
+  [desktopIpcChannels.host.files
+    .resolveEntryIcon]: DesktopWorkspaceFileEntryIconPayload;
   [desktopIpcChannels.host.files.selectAppArchive]: undefined;
   [desktopIpcChannels.host.files
     .selectAppArchiveExportPath]: DesktopSelectAppArchiveExportPathInput;
@@ -574,6 +582,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.openTerminalLink]: void;
   [desktopIpcChannels.host.files.readLocalFileText]: DesktopLocalFileTextResult;
   [desktopIpcChannels.host.files.readPreviewFile]: Uint8Array;
+  [desktopIpcChannels.host.files.resolveEntryIcon]: string | null;
   [desktopIpcChannels.host.files.selectAppArchive]: string | null;
   [desktopIpcChannels.host.files.selectAppArchiveExportPath]: string | null;
   [desktopIpcChannels.host.files.selectAppIconImage]: string | null;

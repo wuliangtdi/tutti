@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
+import type { WorkbenchHostLaunchRequest } from "@tutti-os/workbench-surface";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import type { ReporterEventInput } from "@renderer/features/analytics";
 import { createWorkspaceFilesContribution } from "./workspaceFilesContribution.ts";
@@ -97,6 +98,7 @@ test("workspace files launch uses responsive cascade placement", async () => {
 
   const result = await Promise.resolve(
     contribution.onLaunchRequest?.({
+      ...createLaunchRequestContext(),
       reason: "dock",
       typeId: workspaceFilesNodeID,
       workspaceId: "workspace-1"
@@ -132,6 +134,29 @@ test("workspace files contribution reports opened from the node lease once", () 
   ]);
 });
 
+function createLaunchRequestContext(): Pick<
+  WorkbenchHostLaunchRequest,
+  "layoutConstraints" | "surfaceSize"
+> {
+  return {
+    layoutConstraints: {
+      minHeight: 160,
+      minWidth: 280,
+      safeArea: {
+        bottom: 79,
+        left: 0,
+        right: 0,
+        top: 52
+      },
+      surfacePadding: 0
+    },
+    surfaceSize: {
+      height: 900,
+      width: 1440
+    }
+  };
+}
+
 function createFileManagerServiceStub(
   snapshotState: WorkspaceFileManagerPersistedState | null
 ): IWorkspaceFileManagerService & { emit(): void } {
@@ -149,6 +174,9 @@ function createFileManagerServiceStub(
     },
     getSnapshotState() {
       return snapshotState;
+    },
+    async resolveEntryIconUrl() {
+      return null;
     },
     setCanvasFilePreviewLauncher() {},
     subscribe(_workspaceID, listener) {

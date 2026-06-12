@@ -1589,8 +1589,10 @@ test("restored fullscreen nodes keep fullscreen sizing below 1440", async () => 
 test("launchNode asks host to create backing instance before opening shell", async () => {
   const launchRequests: Array<{
     dockEntryId?: string;
+    layoutConstraints: typeof defaultWorkbenchLayoutConstraints;
     payload?: unknown;
     reason: string;
+    surfaceSize: typeof defaultWorkbenchSurfaceSize;
     typeId: string;
     workspaceId: string;
   }> = [];
@@ -1599,8 +1601,10 @@ test("launchNode asks host to create backing instance before opening shell", asy
     async onLaunchRequest(request) {
       launchRequests.push({
         dockEntryId: request.dockEntryId,
+        layoutConstraints: request.layoutConstraints,
         payload: request.payload,
         reason: request.reason,
+        surfaceSize: request.surfaceSize,
         typeId: request.typeId,
         workspaceId: request.workspaceId
       });
@@ -1655,10 +1659,12 @@ test("launchNode asks host to create backing instance before opening shell", asy
   assert.deepEqual(launchRequests, [
     {
       dockEntryId: "dock:terminal",
+      layoutConstraints: defaultWorkbenchLayoutConstraints,
       payload: {
         provider: "codex"
       },
       reason: "dock",
+      surfaceSize: defaultWorkbenchSurfaceSize,
       typeId: "terminal",
       workspaceId: "workspace-1"
     }

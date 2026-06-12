@@ -94,7 +94,7 @@ export function WorkspaceOverview({
                     <CardTitle className="truncate text-3xl tracking-tight sm:text-4xl">
                       {t("common.workspace")}
                     </CardTitle>
-                    <CardDescription className="truncate text-base text-muted-foreground">
+                    <CardDescription className="truncate text-[15px] text-muted-foreground">
                       {workspace.id}
                     </CardDescription>
                   </div>
@@ -144,7 +144,7 @@ export function WorkspaceOverview({
                     {t("workspace.ready.description")}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="grid gap-3 text-sm text-muted-foreground">
+                <CardContent className="grid gap-3 text-[13px] text-muted-foreground">
                   <div className="rounded-lg border border-border/70 bg-transparency-block px-4 py-4">
                     {t("workspace.ready.panelOne")}
                   </div>
@@ -231,7 +231,7 @@ function WorkspaceFallbackState({
           </div>
           <div className="mt-6 flex flex-col items-center gap-3">
             <CardTitle className="text-3xl tracking-tight">{title}</CardTitle>
-            <CardDescription className="text-base text-muted-foreground">
+            <CardDescription className="text-[15px] text-muted-foreground">
               {description}
             </CardDescription>
             {onRetry ? (
@@ -263,10 +263,10 @@ function MetaBadge({ icon, label, value }: MetaBadgeProps) {
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
+        <p className="text-[11px] font-medium uppercase text-muted-foreground">
           {label}
         </p>
-        <p className="truncate text-sm font-semibold text-foreground">
+        <p className="truncate text-[13px] font-semibold text-foreground">
           {value}
         </p>
       </div>
@@ -339,10 +339,10 @@ function StatusPanel({
           "border-border/70 bg-transparency-block text-foreground"
       )}
     >
-      <p className="text-sm font-semibold">{title}</p>
+      <p className="text-[13px] font-semibold">{title}</p>
       <p
         className={cn(
-          "mt-1 text-sm",
+          "mt-1 text-[13px]",
           tone === "neutral" ? "text-muted-foreground" : "text-current/80"
         )}
       >

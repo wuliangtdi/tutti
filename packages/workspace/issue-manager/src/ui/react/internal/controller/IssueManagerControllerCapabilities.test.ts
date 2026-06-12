@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { IssueManagerFeature } from "../../../../core/index.ts";
 import {
   resolveIssueManagerAgentProviderOptions,
@@ -143,6 +144,7 @@ function createFeature(
     i18n: {} as IssueManagerFeature["i18n"],
     identityAdapter: {} as IssueManagerFeature["identityAdapter"],
     shareAdapter: overrides.shareAdapter,
+    workspaceUserProjectI18n: createDefaultWorkspaceUserProjectI18nRuntime(),
     ui: overrides.ui
   };
 }

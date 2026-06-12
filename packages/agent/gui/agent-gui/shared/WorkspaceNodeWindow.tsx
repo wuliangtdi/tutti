@@ -223,7 +223,7 @@ export function WorkspaceNodeWindow({
           }}
         >
           <div
-            className="workspace-node-window__title flex min-w-0 flex-1 items-center gap-1 text-[14px] leading-[18px] font-semibold text-foreground"
+            className="workspace-node-window__title flex min-w-0 flex-1 items-center gap-1 text-[13px] leading-[18px] font-semibold text-foreground"
             // i18n-check-ignore: Test selector marker, not a tooltip.
             data-workspace-node-window-title="true"
             title={title}

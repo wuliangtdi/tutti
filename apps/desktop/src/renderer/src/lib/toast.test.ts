@@ -45,6 +45,18 @@ test("desktop decision toasts keep the collapsed stack without leaking covered c
   );
   assert.match(
     desktopToastStyleSource,
+    /--agent-gui-star-border-color:\s*color-mix\(\s*in srgb,\s*var\(--tutti-purple\) 62%,\s*transparent\s*\);/s
+  );
+  assert.match(
+    desktopToastStyleSource,
+    /--agent-gui-star-border-mid-color:\s*color-mix\(\s*in srgb,\s*var\(--tutti-purple\) 28%,\s*transparent\s*\);/s
+  );
+  assert.match(
+    desktopToastStyleSource,
+    /--agent-gui-star-border-shadow:\s*drop-shadow\(\s*0 0 3px color-mix\(in srgb, var\(--tutti-purple\) 30%, transparent\)\s*\);/s
+  );
+  assert.match(
+    desktopToastStyleSource,
     /\.workspace-agent-decision-toast\[data-sonner-toast\]\s*{[^}]*overflow:\s*visible;[^}]*border:\s*0;[^}]*border-radius:\s*12px;[^}]*background:\s*transparent;[^}]*padding:\s*0;/s
   );
   assert.doesNotMatch(
@@ -155,7 +167,7 @@ test("desktop decision toasts keep the collapsed stack without leaking covered c
 test("desktop decision toast mirrors the message-center prompt card chrome", () => {
   assert.match(
     workspaceChromeSource,
-    /className="relative w-full min-w-0 overflow-visible rounded-\[12px\] border border-\[var\(--border-focus\)\] bg-\[var\(--accent-bg\)\] p-3\.5"/
+    /className="relative w-full min-w-0 overflow-visible rounded-\[12px\] border border-\[var\(--tutti-purple-border\)\] bg-\[var\(--tutti-purple-bg\)\] p-3\.5"/
   );
   assert.doesNotMatch(workspaceChromeSource, /relative -m-3/);
   assert.match(
@@ -168,7 +180,7 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
   assert.match(
     workspaceChromeSource,
-    /<h3 className="min-w-0 truncate text-sm font-bold leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{displayTitle\}[\s\S]*<\/h3>/
+    /<h3 className="min-w-0 truncate text-\[13px\] font-bold leading-5 text-\[var\(--text-secondary\)\]">[\s\S]*\{displayTitle\}[\s\S]*<\/h3>/
   );
   assert.match(
     workspaceChromeSource,
@@ -192,7 +204,7 @@ test("desktop decision toast mirrors the message-center prompt card chrome", () 
   );
   assert.match(
     workspaceChromeSource,
-    /className="flex min-w-0 items-center gap-2 text-sm font-normal leading-5 text-\[var\(--text-secondary\)\]"/
+    /className="flex min-w-0 items-center gap-2 text-\[13px\] font-normal leading-5 text-\[var\(--text-secondary\)\]"/
   );
   assert.match(
     workspaceChromeSource,

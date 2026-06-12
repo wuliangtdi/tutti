@@ -163,7 +163,7 @@ export function WorkspaceFilePreviewNodeBody({
         )
       }
       state={state}
-      textClassName="m-0 h-full min-h-0 min-w-0 w-full overflow-auto whitespace-pre-wrap break-words p-3 font-[var(--tsh-font-mono)] text-[12px] leading-[18px] text-[var(--text-secondary)]"
+      textClassName="m-0 h-full min-h-0 min-w-0 w-full overflow-auto whitespace-pre-wrap break-words p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)]"
       textFrameClassName="items-stretch justify-stretch"
     />
   );
@@ -183,13 +183,13 @@ function WorkspaceTextFileEditor({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-[var(--surface-primary)]">
       {saveError ? (
-        <div className="shrink-0 border-b border-[color-mix(in_srgb,var(--state-danger)_28%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_10%,var(--surface-primary))] px-3 py-2 text-[12px] leading-[18px] text-[var(--state-danger)]">
+        <div className="shrink-0 border-b border-[color-mix(in_srgb,var(--state-danger)_28%,transparent)] bg-[color-mix(in_srgb,var(--state-danger)_10%,var(--surface-primary))] px-3 py-2 text-[11px] leading-[18px] text-[var(--state-danger)]">
           {saveError}
         </div>
       ) : null}
       <textarea
         aria-label={state.entry.name}
-        className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[12px] leading-[18px] text-[var(--text-secondary)] outline-none"
+        className="h-full min-h-0 min-w-0 resize-none overflow-auto border-0 bg-transparent p-3 font-[var(--tsh-font-mono)] text-[11px] leading-[18px] text-[var(--text-secondary)] outline-none"
         disabled={isSaving}
         onChange={onChange}
         spellCheck={false}

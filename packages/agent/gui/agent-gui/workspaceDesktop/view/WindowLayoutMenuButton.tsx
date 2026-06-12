@@ -157,7 +157,7 @@ export function WindowLayoutMenuButton({
         data-testid="window-layout-menu"
       >
         <div className="p-2">
-          <div className="mx-1 mt-0.5 mb-1.5 px-1 text-[14px] leading-[20px] font-semibold text-[var(--text-primary)]">
+          <div className="mx-1 mt-0.5 mb-1.5 px-1 text-[13px] leading-[20px] font-semibold text-[var(--text-primary)]">
             {t("workspaceWindowLayout.moveAndResize")}
           </div>
           <div className="grid grid-cols-4 items-center gap-1">
@@ -183,7 +183,7 @@ export function WindowLayoutMenuButton({
         <div className="mx-1.5 my-1 border-t border-[var(--line-2)]" />
         <div className="px-1">
           <button
-            className="inline-flex min-h-8 w-full items-center gap-2 whitespace-nowrap rounded-[6px] border border-transparent bg-transparent px-0 text-left text-[14px] leading-[20px] font-semibold text-[var(--text-primary)] transition-[background-color,color,border-color] duration-150 ease-in-out hover:bg-block focus-visible:bg-block focus-visible:outline-none"
+            className="inline-flex min-h-8 w-full items-center gap-2 whitespace-nowrap rounded-[6px] border border-transparent bg-transparent px-0 text-left text-[13px] leading-[20px] font-semibold text-[var(--text-primary)] transition-[background-color,color,border-color] duration-150 ease-in-out hover:bg-block focus-visible:bg-block focus-visible:outline-none"
             type="button"
             aria-label={t(fullscreenLabelKey)}
             title={t(fullscreenLabelKey)}

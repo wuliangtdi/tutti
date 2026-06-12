@@ -4,6 +4,7 @@ import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
 import type {
   WorkbenchDisplayMode,
   WorkbenchFrame,
+  WorkbenchLayoutConstraints,
   WorkbenchLayoutConstraintsInput,
   WorkbenchNode,
   WorkbenchNodeSizeConstraints,
@@ -129,6 +130,8 @@ export interface WorkbenchHostLaunchInput {
 }
 
 export interface WorkbenchHostLaunchRequest extends WorkbenchHostLaunchInput {
+  layoutConstraints: WorkbenchLayoutConstraints;
+  surfaceSize: WorkbenchSize;
   workspaceId: string;
 }
 

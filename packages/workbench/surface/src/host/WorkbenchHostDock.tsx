@@ -18,10 +18,7 @@ import {
   Button,
   ChevronDownIcon,
   ChevronUpIcon,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
+  TooltipProvider
 } from "@tutti-os/ui-system";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import {
@@ -44,10 +41,12 @@ import {
 } from "./dockScrollState.ts";
 import { readWorkbenchHostExternalState } from "./externalState.ts";
 import {
+  resolveWorkbenchMinimizedDockAnchorKeyForNode,
   resolveWorkbenchMinimizedDockSlots,
   type WorkbenchMinimizedDockNode,
   type WorkbenchMinimizedDockSlot
 } from "./minimizedDockSlots.ts";
+import { useMinimizedDockStackPromotion } from "./minimizedDockStackPromotion.ts";
 import {
   WorkbenchHostDockPopup,
   type WorkbenchHostDockPopupAnchorRect,
@@ -78,9 +77,16 @@ function stripDockDescriptionTerminalPunctuation(value: string): string {
 }
 
 function isDockVisualMutationActive(element: HTMLElement | null): boolean {
+  if (!element) {
+    return false;
+  }
+
   return (
-    element?.hasAttribute("data-dock-pointer-active") === true ||
-    element?.hasAttribute("data-dock-hover-panel-open") === true
+    element.hasAttribute("data-dock-pointer-active") ||
+    element.hasAttribute("data-dock-hover-panel-open") ||
+    element.querySelector(
+      '[data-collapsing="true"], [data-presence="entering"], [data-presence="exiting"], [data-stack-dispatching="true"], [data-promoted-from-stack="true"]'
+    ) !== null
   );
 }
 
@@ -136,9 +142,6 @@ export function WorkbenchHostDock({
     clientX: number;
     clientY: number;
   } | null>(null);
-  const minimizedLaunchTimersRef = useRef(
-    new Map<string, ReturnType<typeof setTimeout>>()
-  );
   const hoverPanelRestTargetRef = useRef<{
     anchorKey: string;
     entryId: string;
@@ -174,6 +177,13 @@ export function WorkbenchHostDock({
     }));
   const [dockStateRevision, setDockStateRevision] = useState(0);
   const [externalStateRevision, setExternalStateRevision] = useState(0);
+  const [
+    collapsingMinimizedLaunchAnchorKeys,
+    setCollapsingMinimizedLaunchAnchorKeys
+  ] = useState<Set<string>>(() => new Set());
+  const collapsingMinimizedLaunchTimerRef = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
 
   const clearHoverPanelCloseTimer = useCallback(() => {
     if (hoverPanelCloseTimerRef.current === null) {
@@ -196,12 +206,44 @@ export function WorkbenchHostDock({
     () => () => {
       clearHoverPanelCloseTimer();
       clearHoverPanelOpenTimer();
-      for (const timer of minimizedLaunchTimersRef.current.values()) {
+      for (const timer of collapsingMinimizedLaunchTimerRef.current.values()) {
         clearTimeout(timer);
       }
-      minimizedLaunchTimersRef.current.clear();
+      collapsingMinimizedLaunchTimerRef.current.clear();
     },
     [clearHoverPanelCloseTimer, clearHoverPanelOpenTimer]
+  );
+
+  const clearCollapsingMinimizedLaunch = useCallback((anchorKey: string) => {
+    const timer = collapsingMinimizedLaunchTimerRef.current.get(anchorKey);
+    if (timer) {
+      clearTimeout(timer);
+      collapsingMinimizedLaunchTimerRef.current.delete(anchorKey);
+    }
+    setCollapsingMinimizedLaunchAnchorKeys((current) => {
+      if (!current.has(anchorKey)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(anchorKey);
+      return next;
+    });
+  }, []);
+
+  const scheduleCollapsingMinimizedLaunchClear = useCallback(
+    (anchorKey: string) => {
+      const existing = collapsingMinimizedLaunchTimerRef.current.get(anchorKey);
+      if (existing) {
+        clearTimeout(existing);
+      }
+      collapsingMinimizedLaunchTimerRef.current.set(
+        anchorKey,
+        setTimeout(() => {
+          clearCollapsingMinimizedLaunch(anchorKey);
+        }, minimizedDockSlotLayoutAnimationMs)
+      );
+    },
+    [clearCollapsingMinimizedLaunch]
   );
 
   useLayoutEffect(() => {
@@ -296,6 +338,8 @@ export function WorkbenchHostDock({
       }),
     [context.nodes, nodeDefinitions]
   );
+  const { promotedNodeId, stackDispatching } =
+    useMinimizedDockStackPromotion(minimizedDockSlots);
   const dockItems = useMemo(
     () =>
       createWorkbenchHostDockItems({
@@ -304,7 +348,9 @@ export function WorkbenchHostDock({
       }),
     [minimizedDockSlots, resolvedEntries]
   );
-  const presentDockItems = useDockPresenceItems(dockItems);
+  const presentDockItems = useDockPresenceItems(dockItems, (nodeId) =>
+    context.genie.shouldAnimateMinimizedDockEnter(nodeId)
+  );
   const dockWidth = useMemo(
     () => resolveWorkbenchHostDockItemsWidth(dockItems),
     [dockItems]
@@ -495,6 +541,7 @@ export function WorkbenchHostDock({
       hoverPanelRestTargetRef.current = null;
       clearHoverPanelOpenTimer();
       closeHoverPanelImmediate();
+      pauseDockMagnification();
 
       if (!anchorKey) {
         return false;
@@ -503,6 +550,7 @@ export function WorkbenchHostDock({
       if (!slotElement) {
         return false;
       }
+      clearSlotMagnification(anchorKey);
       if (slotElement.dataset.collapsing === "true") {
         return true;
       }
@@ -518,26 +566,26 @@ export function WorkbenchHostDock({
       slotElement.dataset.collapsing = "true";
       return true;
     },
-    [clearHoverPanelOpenTimer, closeHoverPanelImmediate]
+    [
+      clearHoverPanelOpenTimer,
+      clearSlotMagnification,
+      closeHoverPanelImmediate,
+      pauseDockMagnification
+    ]
   );
 
   const runDockMinimizedLaunchAfterCollapse = useCallback(
     (anchorKey: string, launch: () => void) => {
-      const shouldDelayLaunch = beginDockMinimizedInteraction(anchorKey);
-      if (!shouldDelayLaunch) {
-        launch();
-        return;
-      }
-      if (minimizedLaunchTimersRef.current.has(anchorKey)) {
-        return;
-      }
-      const timer = setTimeout(() => {
-        minimizedLaunchTimersRef.current.delete(anchorKey);
-        launch();
-      }, dockMinimizedSlotCollapseLaunchDelayMs);
-      minimizedLaunchTimersRef.current.set(anchorKey, timer);
+      beginDockMinimizedInteraction(anchorKey);
+      setCollapsingMinimizedLaunchAnchorKeys((current) => {
+        const next = new Set(current);
+        next.add(anchorKey);
+        return next;
+      });
+      scheduleCollapsingMinimizedLaunchClear(anchorKey);
+      launch();
     },
-    [beginDockMinimizedInteraction]
+    [beginDockMinimizedInteraction, scheduleCollapsingMinimizedLaunchClear]
   );
 
   const handleDockPointerTravel = useCallback(
@@ -932,6 +980,7 @@ export function WorkbenchHostDock({
                           ? "false"
                           : "true"
                       }
+                      title={entry.label}
                       type="button"
                       onPointerDown={() => {
                         if (
@@ -1101,19 +1150,7 @@ export function WorkbenchHostDock({
                         handleDockPointerLeave();
                       }}
                     >
-                      {hasHoverPanel ? (
-                        dockButton
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                          <TooltipContent
-                            side={dockPlacement === "left" ? "right" : "top"}
-                            sideOffset={26}
-                          >
-                            {entry.label}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {dockButton}
                     </span>
                   );
                 }
@@ -1129,6 +1166,7 @@ export function WorkbenchHostDock({
                       aria-label={i18n.t("minimizedWindows")}
                       className="desktop-dock__btn desktop-dock__minimized-btn"
                       data-interactive="true"
+                      title={i18n.t("minimizedWindows")}
                       type="button"
                       onPointerDown={() => {
                         beginDockMinimizedInteraction();
@@ -1211,16 +1249,11 @@ export function WorkbenchHostDock({
                       data-popup-active={stackPopupActive}
                       data-presence={dockItem.presence}
                       data-section-id="minimized"
+                      data-stack-dispatching={
+                        stackDispatching ? "true" : undefined
+                      }
                     >
-                      <Tooltip>
-                        <TooltipTrigger asChild>{stackButton}</TooltipTrigger>
-                        <TooltipContent
-                          side={dockPlacement === "left" ? "right" : "top"}
-                          sideOffset={26}
-                        >
-                          {i18n.t("minimizedWindows")}
-                        </TooltipContent>
-                      </Tooltip>
+                      {stackButton}
                     </span>
                   );
                 }
@@ -1231,6 +1264,7 @@ export function WorkbenchHostDock({
                     aria-label={i18n.t("launch", { title: node.title })}
                     className="desktop-dock__btn desktop-dock__minimized-btn"
                     data-interactive="true"
+                    title={node.title}
                     type="button"
                     onPointerDown={() => {
                       beginDockMinimizedInteraction(slot.anchorKey);
@@ -1265,21 +1299,21 @@ export function WorkbenchHostDock({
                     key={dockItem.key}
                     ref={registerDockSlot(slot.anchorKey)}
                     className="desktop-dock__slot desktop-dock__slot--minimized"
+                    data-collapsing={
+                      collapsingMinimizedLaunchAnchorKeys.has(slot.anchorKey)
+                        ? "true"
+                        : undefined
+                    }
                     data-desktop-dock-anchor-key={slot.anchorKey}
                     data-desktop-dock-slot="true"
                     data-node-state="minimized"
                     data-presence={dockItem.presence}
+                    data-promoted-from-stack={
+                      promotedNodeId === node.id ? "true" : undefined
+                    }
                     data-section-id="minimized"
                   >
-                    <Tooltip>
-                      <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                      <TooltipContent
-                        side={dockPlacement === "left" ? "right" : "top"}
-                        sideOffset={26}
-                      >
-                        {node.title}
-                      </TooltipContent>
-                    </Tooltip>
+                    {dockButton}
                   </span>
                 );
               })}
@@ -1467,13 +1501,16 @@ export function WorkbenchHostDock({
           onCreateNew={() => undefined}
           onSelectNode={(nodeId) => {
             closePopup();
-            context.genie.launchNodeFromAnchor(
-              activeMinimizedStackSlot.anchorKey,
-              nodeId,
-              () => {
+            const anchorKey =
+              resolveWorkbenchMinimizedDockAnchorKeyForNode({
+                nodeId,
+                slots: minimizedDockSlots
+              }) ?? activeMinimizedStackSlot.anchorKey;
+            runDockMinimizedLaunchAfterCollapse(anchorKey, () => {
+              context.genie.launchNodeFromAnchor(anchorKey, nodeId, () => {
                 host.focusNode(nodeId);
-              }
-            );
+              });
+            });
           }}
           showCreateNew={false}
           resolveDockPreviewCacheKey={(node) =>
@@ -1851,8 +1888,50 @@ function createWorkbenchHostDockItems({
   return items;
 }
 
+function resolveMinimizedDockItemNodeId(
+  item: WorkbenchHostDockItem
+): string | null {
+  if (item.kind !== "minimized" || item.slot.kind !== "node") {
+    return null;
+  }
+  return item.slot.node.id;
+}
+
+function resolveNextDockItemPresence(
+  item: WorkbenchHostDockItem,
+  initialized: boolean,
+  previousPresence: WorkbenchHostDockPresence | undefined,
+  shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
+): WorkbenchHostDockPresence {
+  if (!initialized) {
+    return "present";
+  }
+
+  if (item.key === "separator:minimized") {
+    return "present";
+  }
+
+  if (item.kind === "minimized") {
+    const nodeId = resolveMinimizedDockItemNodeId(item);
+    if (nodeId && shouldAnimateMinimizedDockEnter(nodeId)) {
+      if (previousPresence === "exiting") {
+        return "entering";
+      }
+      return previousPresence ?? "entering";
+    }
+    return "present";
+  }
+
+  if (previousPresence === "exiting") {
+    return "entering";
+  }
+
+  return previousPresence ?? "entering";
+}
+
 function useDockPresenceItems(
-  items: readonly WorkbenchHostDockItem[]
+  items: readonly WorkbenchHostDockItem[],
+  shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
 ): WorkbenchHostPresentDockItem[] {
   const latestItemsByKey = useRef(new Map<string, WorkbenchHostDockItem>());
   latestItemsByKey.current = new Map(items.map((item) => [item.key, item]));
@@ -1869,6 +1948,8 @@ function useDockPresenceItems(
   const initialized = useRef(false);
 
   useEffect(() => {
+    let nextSettleMs = dockPresenceAnimationMs;
+
     setPresentItems((current) => {
       const nextSourceItems = [...latestItemsByKey.current.values()];
       const currentByKey = new Map(current.map((item) => [item.key, item]));
@@ -1917,11 +1998,12 @@ function useDockPresenceItems(
         nextItems.push({
           item,
           key: item.key,
-          presence: initialized.current
-            ? currentByKey.get(item.key)?.presence === "exiting"
-              ? "entering"
-              : (currentByKey.get(item.key)?.presence ?? "entering")
-            : "present"
+          presence: resolveNextDockItemPresence(
+            item,
+            initialized.current,
+            currentByKey.get(item.key)?.presence,
+            shouldAnimateMinimizedDockEnter
+          )
         });
       }
 
@@ -1938,9 +2020,19 @@ function useDockPresenceItems(
         }
       }
 
-      return nextItems.filter(
+      const filteredItems = nextItems.filter(
         (item) => nextByKey.has(item.key) || item.presence === "exiting"
       );
+      if (
+        filteredItems.some(
+          (item) =>
+            item.item.kind === "minimized" &&
+            (item.presence === "entering" || item.presence === "exiting")
+        )
+      ) {
+        nextSettleMs = minimizedDockSlotLayoutAnimationMs;
+      }
+      return filteredItems;
     });
     initialized.current = true;
 
@@ -1954,10 +2046,10 @@ function useDockPresenceItems(
               : item
           )
       );
-    }, dockPresenceAnimationMs);
+    }, nextSettleMs);
 
     return () => globalThis.clearTimeout(timeout);
-  }, [itemKeys]);
+  }, [itemKeys, shouldAnimateMinimizedDockEnter]);
 
   return presentItems.map((presentItem) => {
     const latestItem = latestItemsByKey.current.get(presentItem.key);
@@ -1966,7 +2058,6 @@ function useDockPresenceItems(
 }
 
 const DOCK_BOUNCE_MS = 600;
-const dockMinimizedSlotCollapseLaunchDelayMs = 260;
 
 function useDockBounce(slotRefs: RefObject<Map<string, HTMLElement>>) {
   const timeoutsRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -2044,6 +2135,7 @@ const dockHoverPanelOpenDelayMs = 450;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelPointerRestTolerancePx = 4;
 const dockPresenceAnimationMs = 300;
+const minimizedDockSlotLayoutAnimationMs = 720;
 const dockItemsGapPx = 10.8;
 const dockItemsHorizontalPaddingPx = 12.6;
 const dockSeparatorOuterWidthPx = 8.1;

@@ -40,10 +40,19 @@ const storyboardLightThemeVars = {
   "--line-1": "var(--border-1)",
   "--line-2": "var(--border-2)",
   "--border-focus": "rgba(65, 130, 245, 0.24)",
-  "--accent": "rgb(65, 130, 245)",
+  "--accent-codex": "rgb(65, 130, 245)",
+  "--accent": "var(--accent-codex)",
+  "--accent-codex-border":
+    "color-mix(in srgb, var(--accent-codex) 20%, transparent)",
+  "--status-running": "rgb(65, 130, 245)",
+  "--tutti-purple": "rgb(109, 127, 245)",
+  "--tutti-purple-bg":
+    "color-mix(in srgb, var(--background-fronted) 88%, var(--tutti-purple) 12%)",
+  "--tutti-purple-border":
+    "color-mix(in srgb, var(--tutti-purple) 20%, transparent)",
   "--accent-claude": "rgb(251, 111, 62)",
   "--accent-bg":
-    "color-mix(in srgb, var(--background-fronted) 88%, var(--accent) 12%)",
+    "color-mix(in srgb, var(--background-fronted) 88%, var(--accent-codex) 12%)",
   "--shadow-elevated": "rgba(0, 0, 0, 0.08)",
   "--transparency-block": "rgba(60, 60, 60, 0.04)",
   "--transparency-hover": "rgba(60, 60, 60, 0.06)",
@@ -58,7 +67,7 @@ const storyboardLightThemeVars = {
   "--backdrop": "rgba(255, 255, 255, 0.60)",
   "--backdrop-dark": "rgba(0, 0, 0, 0.60)",
   "--rich-text-mention-app": "rgb(191, 90, 242)",
-  "--rich-text-mention-issue": "rgb(191, 90, 242)",
+  "--rich-text-mention-issue": "rgb(109, 127, 245)",
   "--rich-text-mention-session": "rgb(34, 197, 94)",
   "--folder": "rgb(80, 175, 238)",
   "--rich-text-folder": "rgb(80, 175, 238)",
@@ -85,10 +94,19 @@ const storyboardDarkThemeVars = {
   "--line-1": "var(--border-1)",
   "--line-2": "var(--border-2)",
   "--border-focus": "rgba(79, 143, 255, 0.24)",
-  "--accent": "rgb(79, 143, 255)",
+  "--accent-codex": "rgb(79, 143, 255)",
+  "--accent": "var(--accent-codex)",
+  "--accent-codex-border":
+    "color-mix(in srgb, var(--accent-codex) 20%, transparent)",
+  "--status-running": "rgb(79, 143, 255)",
+  "--tutti-purple": "rgb(136, 152, 255)",
+  "--tutti-purple-bg":
+    "color-mix(in srgb, var(--background-fronted) 88%, var(--tutti-purple) 12%)",
+  "--tutti-purple-border":
+    "color-mix(in srgb, var(--tutti-purple) 20%, transparent)",
   "--accent-claude": "rgb(251, 111, 62)",
   "--accent-bg":
-    "color-mix(in srgb, var(--background-fronted) 88%, var(--accent) 12%)",
+    "color-mix(in srgb, var(--background-fronted) 88%, var(--accent-codex) 12%)",
   "--shadow-elevated": "rgba(0, 0, 0, 0.5)",
   "--transparency-block": "rgba(255, 255, 255, 0.1)",
   "--transparency-hover": "rgba(255, 255, 255, 0.14)",
@@ -103,7 +121,7 @@ const storyboardDarkThemeVars = {
   "--backdrop": "rgba(0, 0, 0, 0.60)",
   "--backdrop-dark": "rgba(0, 0, 0, 0.60)",
   "--rich-text-mention-app": "rgb(191, 90, 242)",
-  "--rich-text-mention-issue": "rgb(191, 90, 242)",
+  "--rich-text-mention-issue": "rgb(109, 127, 245)",
   "--rich-text-mention-session": "rgb(74, 222, 128)",
   "--folder": "rgb(80, 175, 238)",
   "--rich-text-folder": "rgb(80, 175, 238)",

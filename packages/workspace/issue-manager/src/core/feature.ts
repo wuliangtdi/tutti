@@ -1,5 +1,9 @@
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import {
+  createWorkspaceUserProjectI18nRuntime,
+  type WorkspaceUserProjectI18nRuntime
+} from "@tutti-os/workspace-user-project/i18n";
+import {
   createIssueManagerI18nRuntime,
   type IssueManagerI18nRuntime
 } from "../i18n/issueManagerI18n.ts";
@@ -41,6 +45,7 @@ export interface IssueManagerFeature {
   notifications?: IssueManagerNotificationSink;
   shareAdapter?: IssueManagerShareAdapter;
   ui: IssueManagerFeatureUIConfig;
+  workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
 }
 
 export interface CreateIssueManagerFeatureInput {
@@ -90,7 +95,8 @@ export function createIssueManagerFeature(
     shareAdapter: input.shareAdapter,
     ui: {
       showInviteCollaborator: input.ui?.showInviteCollaborator ?? true
-    }
+    },
+    workspaceUserProjectI18n: createWorkspaceUserProjectI18nRuntime(input.i18n)
   };
 }
 

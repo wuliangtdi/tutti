@@ -31,6 +31,9 @@ import {
   WorkspaceFileManagerPanels
 } from "./WorkspaceFileManagerPanels.tsx";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
+import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
+import { useWorkspaceFileManagerLayoutMode } from "./useWorkspaceFileManagerLayoutMode.ts";
+import { useWorkspaceFileEntryIconUrls } from "./useWorkspaceFileEntryIconUrls.ts";
 import { shouldTrackDirectoryExpanded } from "./workspaceFileManagerAnalytics.ts";
 import {
   useWorkspaceFileManagerContextMenuView,
@@ -55,6 +58,9 @@ export interface WorkspaceFileManagerProps {
     entry: WorkspaceFileEntry,
     dataTransfer: DataTransfer
   ) => void;
+  resolveEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
   hostOs?: NodeJS.Platform;
   i18n: WorkspaceFileManagerI18nRuntime;
   session: WorkspaceFileManagerSession;
@@ -72,11 +78,13 @@ export function WorkspaceFileManager({
   onEntryDragStart,
   openInAppBrowserIcon,
   resolveOpenWithApplicationIcon,
+  resolveEntryIconUrl,
   hostOs = "linux",
   session,
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  const { layoutMode, setLayoutMode } = useWorkspaceFileManagerLayoutMode();
   const rootView = useWorkspaceFileManagerRootView(session);
   const { state: panelsState, view: panelsView } =
     useWorkspaceFileManagerPanelsView(session);
@@ -301,7 +309,9 @@ export function WorkspaceFileManager({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <WorkspaceFileManagerToolbarContainer
           i18n={i18n}
+          layoutMode={layoutMode}
           onDirectoryExpanded={onDirectoryExpanded}
+          onLayoutModeChange={setLayoutMode}
           session={session}
         />
         <div
@@ -316,9 +326,11 @@ export function WorkspaceFileManager({
             dateLocale={dateLocale}
             entryDragMode={entryDragMode}
             i18n={i18n}
+            layoutMode={layoutMode}
             onDirectoryExpanded={onDirectoryExpanded}
             onEntryDragStart={onEntryDragStart}
             onOpenContextMenu={openContextMenu}
+            resolveEntryIconUrl={resolveEntryIconUrl}
             session={session}
           />
         </div>
@@ -339,11 +351,15 @@ export function WorkspaceFileManager({
 
 function WorkspaceFileManagerToolbarContainer({
   i18n,
+  layoutMode,
   onDirectoryExpanded,
+  onLayoutModeChange,
   session
 }: {
   i18n: WorkspaceFileManagerI18nRuntime;
+  layoutMode: WorkspaceFileManagerLayoutMode;
   onDirectoryExpanded?: (path: string) => void;
+  onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { view } = useWorkspaceFileManagerToolbarView(session, i18n);
@@ -358,12 +374,14 @@ function WorkspaceFileManagerToolbarContainer({
       isBusy={view.isBusy}
       isLoading={view.isLoading}
       isMutating={view.isMutating}
+      layoutMode={layoutMode}
       onGoBack={() => {
         void session.goBack();
       }}
       onGoForward={() => {
         void session.goForward();
       }}
+      onLayoutModeChange={onLayoutModeChange}
       onLoadDirectory={(path) => {
         if (
           shouldTrackDirectoryExpanded({
@@ -386,14 +404,17 @@ function WorkspaceFileManagerPanelsContainer({
   dateLocale,
   entryDragMode,
   i18n,
+  layoutMode,
   onDirectoryExpanded,
   onEntryDragStart,
   onOpenContextMenu,
+  resolveEntryIconUrl,
   session
 }: {
   dateLocale?: NextopDateLocale;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   i18n: WorkspaceFileManagerI18nRuntime;
+  layoutMode: WorkspaceFileManagerLayoutMode;
   onDirectoryExpanded?: (path: string) => void;
   onEntryDragStart?: (
     entry: WorkspaceFileEntry,
@@ -403,9 +424,16 @@ function WorkspaceFileManagerPanelsContainer({
     event: ReactMouseEvent<HTMLElement>,
     entry: WorkspaceFileEntry | null
   ) => void;
+  resolveEntryIconUrl?: (
+    entry: WorkspaceFileEntry
+  ) => Promise<string | null | undefined>;
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { state, view } = useWorkspaceFileManagerPanelsView(session);
+  const iconUrlByCacheKey = useWorkspaceFileEntryIconUrls({
+    entries: state.entries,
+    resolveEntryIconUrl
+  });
 
   return (
     <WorkspaceFileManagerPanels
@@ -414,9 +442,11 @@ function WorkspaceFileManagerPanelsContainer({
       copy={i18n}
       dateLocale={dateLocale}
       entryDragMode={entryDragMode}
+      iconUrlByCacheKey={iconUrlByCacheKey}
       inlineRenameEntryPath={view.inlineRenameEntryPath}
       inlineRenameValidation={view.inlineRenameValidation}
       isRenaming={view.isRenaming}
+      layoutMode={layoutMode}
       pendingDirectoryPath={view.pendingDirectoryPath}
       previewState={view.previewState}
       selectedEntry={view.selectedEntry}

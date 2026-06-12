@@ -24,7 +24,7 @@ export function IssueManagerContextSection({
   return (
     <section className="rounded-lg border border-border-1 bg-transparent px-4 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h4 className="text-sm font-semibold leading-5 text-[var(--text-primary)]">
+        <h4 className="text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {copy.t("labels.contextReferences")}
         </h4>
         <Button
@@ -38,7 +38,7 @@ export function IssueManagerContextSection({
         </Button>
       </div>
       {refs.length === 0 ? (
-        <p className="text-sm leading-5 text-[var(--text-secondary)]">
+        <p className="text-[13px] leading-5 text-[var(--text-secondary)]">
           {emptyLabel}
         </p>
       ) : (
@@ -71,10 +71,10 @@ export function IssueManagerContextSection({
                   />
                 )}
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                  <span className="block truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                     {ref.displayName}
                   </span>
-                  <span className="block truncate text-xs leading-[1.55] text-[var(--text-secondary)]">
+                  <span className="block truncate text-[11px] leading-[1.55] text-[var(--text-secondary)]">
                     {ref.path}
                   </span>
                 </span>

@@ -27,6 +27,6 @@ test("workspace user project i18n follows merged host locale resources", () => {
     createWorkspaceUserProjectI18nRuntime(runtime);
 
   assert.equal(i18n.t("projectSelect.projectLabel"), "项目");
-  assert.equal(i18n.t("projectSelect.noProject"), "无项目");
+  assert.equal(i18n.t("projectSelect.noProject"), "不使用项目");
   assert.equal(i18n.t("projectSelect.linkExistingProject"), "使用已有项目");
 });

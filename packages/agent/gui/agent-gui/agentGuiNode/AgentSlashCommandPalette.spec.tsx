@@ -51,12 +51,12 @@ describe("AgentSlashCommandPalette", () => {
       "max-w-[48%]",
       "shrink-0",
       "truncate",
-      "text-[12px]"
+      "text-[11px]"
     );
     expect(screen.getByText("Inspect tasks and agent context.")).toHaveClass(
       "flex-1",
       "truncate",
-      "text-[12px]",
+      "text-[11px]",
       "text-[var(--text-secondary)]"
     );
     expect(screen.queryByText("[issue description]")).toBeNull();

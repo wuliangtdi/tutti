@@ -778,31 +778,9 @@ export const en = {
         selectedCount: "{{count}} selected",
         title: "Pick workspace references"
       },
-      projectLabel: "Project",
-      noProject: "No project",
-      addProject: "Add project",
-      createProjectConfirm: "Create",
-      createProjectDocumentsUnavailable:
-        "Documents is unavailable. Choose an existing project instead.",
-      createProjectFailed: "Unable to create project",
-      createProjectNameConflict:
-        "A project with this name already exists. Use another name.",
-      createProjectNameInvalid:
-        "Project names cannot contain path separators or empty values.",
-      createProjectNameLabel:
-        "Enter a project name. A folder will be created in Documents/nextop",
-      createProjectNamePlaceholder: "Project name",
-      createProjectNameRequired: "Project name is required",
-      createProjectPermissionDenied:
-        "Nextop does not have permission to create folders in Documents.",
-      createProjectTitle: "Add project",
-      linkExistingProject: "Use existing project",
       projectLocked: "Project cannot be changed after the session starts",
       projectMissingDescription:
         "This conversation's working directory no longer exists",
-      projectMissingTitle: "Current working directory missing",
-      loadingProjects: "Loading projects",
-      projectUnavailable: "Projects unavailable",
       fileMentionSwitchCategory: "Switch category",
       fileMentionSwitchSelection: "Switch selection",
       mentionFilterAll: "All",

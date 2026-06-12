@@ -424,7 +424,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("caches new conversation draft prompts by selected project folder", async () => {
+  it("keeps new conversation draft prompts while switching project folders", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -451,7 +451,7 @@ describe("useAgentGUINodeController", () => {
     act(() => {
       result.current.actions.updateSelectedProjectPath("/workspace/web");
     });
-    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(result.current.viewModel.draftPrompt).toBe("app draft");
 
     act(() => {
       result.current.actions.updateDraftPrompt("web draft");
@@ -467,7 +467,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.composerSettings.selectedProjectPath).toBe(
       "/workspace/app"
     );
-    expect(result.current.viewModel.draftPrompt).toBe("app draft");
+    expect(result.current.viewModel.draftPrompt).toBe("web draft");
   });
 
   it("tracks active conversation project setting changes through the host reporter", async () => {

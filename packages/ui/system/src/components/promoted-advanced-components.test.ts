@@ -55,7 +55,8 @@ test("promoted advanced primitive sources preserve their core interaction contra
   assert.match(underlineTabsSource, /ResizeObserver/);
   assert.match(underlineTabsSource, /h-\[33px\]/);
   assert.match(underlineTabsSource, /border-\[var\(--border-1\)\]/);
-  assert.match(underlineTabsSource, /--accent/);
+  assert.match(underlineTabsSource, /--tutti-purple/);
+  assert.doesNotMatch(underlineTabsSource, /--accent/);
   assert.match(underlineTabsSource, /gap-\[14px\]/);
   assert.match(underlineTabsSource, /text-\[13px\]/);
   assert.match(underlineTabsSource, /duration-\[220ms\]/);

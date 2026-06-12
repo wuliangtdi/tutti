@@ -340,8 +340,11 @@ class WorkbenchHostSessionController implements WorkbenchHostRuntimeHandle {
     }
 
     const launchSource = resolveWorkbenchHostLaunchSource(input);
+    const currentState = this.controller.getSnapshot();
     const request: WorkbenchHostLaunchRequest = {
       ...input,
+      layoutConstraints: currentState.layoutConstraints,
+      surfaceSize: currentState.surfaceSize,
       workspaceId: this.input.workspaceId
     };
     if (launchSource !== null) {

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 import type {
@@ -117,6 +118,7 @@ export interface AgentGUINodeProps {
   isMaximized?: boolean;
   isActive: boolean;
   composerFocusRequestSequence?: number | null;
+  showProjectSelector?: boolean;
   isMuted?: boolean;
   onMinimize?: () => void;
   onToggleMaximize?: () => void;
@@ -427,6 +429,7 @@ function areAgentGUINodePropsEqual(
     previous.workspaceAppIcons === next.workspaceAppIcons &&
     previous.embedded === next.embedded &&
     previous.isActive === next.isActive &&
+    previous.showProjectSelector === next.showProjectSelector &&
     previous.composerFocusRequestSequence === next.composerFocusRequestSequence
   );
 }
@@ -453,6 +456,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   isMaximized = false,
   isActive,
   composerFocusRequestSequence = null,
+  showProjectSelector = true,
   isMuted = false,
   onMinimize,
   onToggleMaximize,
@@ -465,7 +469,11 @@ export const AgentGUINode = memo(function AgentGUINode({
   embedded = false
 }: AgentGUINodeProps): React.JSX.Element {
   "use memo";
-  const { locale, t } = useTranslation();
+  const { i18n, locale, t } = useTranslation();
+  const workspaceUserProjectI18n = useMemo(
+    () => createWorkspaceUserProjectI18nRuntime(i18n),
+    [i18n]
+  );
   const handledHandoffRequestIdRef = useRef<string | null>(null);
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
@@ -820,40 +828,10 @@ export const AgentGUINode = memo(function AgentGUINode({
       syncPending: t("agentHost.agentGui.syncPending"),
       syncSynced: t("agentHost.agentGui.syncSynced"),
       syncFailed: t("agentHost.agentGui.syncFailed"),
-      projectLabel: t("agentHost.agentGui.projectLabel"),
-      noProject: t("agentHost.agentGui.noProject"),
-      addProject: t("agentHost.agentGui.addProject"),
-      createProjectCancel: t("common.cancel"),
-      createProjectConfirm: t("agentHost.agentGui.createProjectConfirm"),
-      createProjectDocumentsUnavailable: t(
-        "agentHost.agentGui.createProjectDocumentsUnavailable"
-      ),
-      createProjectFailed: t("agentHost.agentGui.createProjectFailed"),
-      createProjectNameConflict: t(
-        "agentHost.agentGui.createProjectNameConflict"
-      ),
-      createProjectNameInvalid: t(
-        "agentHost.agentGui.createProjectNameInvalid"
-      ),
-      createProjectNameLabel: t("agentHost.agentGui.createProjectNameLabel"),
-      createProjectNamePlaceholder: t(
-        "agentHost.agentGui.createProjectNamePlaceholder"
-      ),
-      createProjectNameRequired: t(
-        "agentHost.agentGui.createProjectNameRequired"
-      ),
-      createProjectPermissionDenied: t(
-        "agentHost.agentGui.createProjectPermissionDenied"
-      ),
-      createProjectTitle: t("agentHost.agentGui.createProjectTitle"),
-      linkExistingProject: t("agentHost.agentGui.linkExistingProject"),
       projectLocked: t("agentHost.agentGui.projectLocked"),
       projectMissingDescription: t(
         "agentHost.agentGui.projectMissingDescription"
       ),
-      projectMissingTitle: t("agentHost.agentGui.projectMissingTitle"),
-      loadingProjects: t("agentHost.agentGui.loadingProjects"),
-      projectUnavailable: t("agentHost.agentGui.projectUnavailable"),
       statusWorking: t("agentHost.workspaceAgentStatusWorking"),
       statusWaiting: t("agentHost.workspaceAgentStatusWaiting"),
       statusReady: t("agentHost.workspaceAgentStatusReady"),
@@ -1094,6 +1072,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            showProjectSelector={showProjectSelector}
             onLinkAction={handleLinkAction}
             onAgentProviderLogin={
               onAgentProviderLogin ? handleAgentProviderLogin : undefined
@@ -1122,6 +1101,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             }
             onConversationRailWidthChanged={handleConversationRailWidthChanged}
             labels={labels}
+            workspaceUserProjectI18n={workspaceUserProjectI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
             richTextAtProviders={richTextAtProviders}

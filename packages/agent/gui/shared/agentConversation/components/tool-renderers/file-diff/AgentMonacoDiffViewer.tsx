@@ -29,7 +29,7 @@ export function AgentMonacoDiffViewer({
     >
       {showHeader ? (
         <div
-          className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]"
+          className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
           data-agent-diff-header="true"
         >
           {path || "Diff"}
@@ -38,7 +38,7 @@ export function AgentMonacoDiffViewer({
       <div className="h-[220px] bg-[var(--background-panel)]">
         <Suspense
           fallback={
-            <div className="flex items-center gap-1.5 px-3 py-2.5 text-[12px] text-[var(--text-secondary)]">
+            <div className="flex items-center gap-1.5 px-3 py-2.5 text-[11px] text-[var(--text-secondary)]">
               <AtomIcon
                 size={14}
                 active

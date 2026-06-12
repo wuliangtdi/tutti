@@ -65,7 +65,7 @@ export function RichTextTextareaDecoratedContent({
                 summary={
                   <span
                     className={cn(
-                      "min-w-0 truncate text-xs text-current opacity-80",
+                      "min-w-0 truncate text-[11px] text-current opacity-80",
                       segment.kind === "folder"
                         ? "max-w-[18rem]"
                         : "max-w-[20rem]"

@@ -135,6 +135,14 @@ export interface DesktopHostFilesApi {
   }): Promise<void>;
   readLocalFileText(path: string): Promise<DesktopLocalFileTextResult>;
   readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array>;
+  resolveEntryIcon(
+    workspaceID: string,
+    entry: {
+      kind: string;
+      name: string;
+      path: string;
+    }
+  ): Promise<string | null>;
   selectUploadFiles(): Promise<string[]>;
   copyFilesToClipboard(paths: string[]): Promise<void>;
 }

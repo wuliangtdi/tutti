@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type {
   IssueManagerAnalyticsEvent,
   IssueManagerIssueDetail,
@@ -554,6 +555,7 @@ function createFeature(
         };
       }
     },
+    workspaceUserProjectI18n: createDefaultWorkspaceUserProjectI18nRuntime(),
     ui: {
       showInviteCollaborator: true
     }

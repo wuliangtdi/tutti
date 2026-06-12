@@ -240,6 +240,9 @@ function createWebHostApi(): DesktopHostApi {
       readPreviewFile() {
         return Promise.reject(electronDebugRequired("readPreviewFile"));
       },
+      resolveEntryIcon() {
+        return Promise.resolve(null);
+      },
       selectUploadFiles() {
         return Promise.reject(electronDebugRequired("selectUploadFiles"));
       },

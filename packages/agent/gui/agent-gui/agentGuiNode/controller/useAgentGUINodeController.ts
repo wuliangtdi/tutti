@@ -1409,13 +1409,9 @@ function nodeDefaultDraftKey(
 }
 
 function nodeDefaultDraftPromptKey(
-  agentProvider: AgentGUINodeData["provider"],
-  projectPath: string | null | undefined
+  agentProvider: AgentGUINodeData["provider"]
 ): string {
-  const normalizedProjectPath = normalizeProjectDraftPath(projectPath);
-  return normalizedProjectPath
-    ? `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}:project:${normalizedProjectPath}`
-    : nodeDefaultDraftKey(agentProvider);
+  return nodeDefaultDraftKey(agentProvider);
 }
 
 function normalizeProjectDraftPath(
@@ -1428,12 +1424,9 @@ function normalizeProjectDraftPath(
 function readNodeDefaultDraftPrompt(input: {
   data: AgentGUINodeData;
   drafts: Record<string, string>;
-  projectPath: string | null | undefined;
 }): string {
   return (
-    input.drafts[
-      nodeDefaultDraftPromptKey(input.data.provider, input.projectPath)
-    ] ??
+    input.drafts[nodeDefaultDraftPromptKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     ""
   );
@@ -4071,10 +4064,7 @@ export function useAgentGUINodeController({
           setActiveConversationId(conversation.id);
           setDraftBySessionId((current) => ({
             ...current,
-            [nodeDefaultDraftPromptKey(
-              dataRef.current.provider,
-              selectedProjectPath
-            )]: "",
+            [nodeDefaultDraftPromptKey(dataRef.current.provider)]: "",
             [conversation.id]: ""
           }));
           persistActiveConversation(conversation.id);
@@ -4150,10 +4140,7 @@ export function useAgentGUINodeController({
           setActiveConversationId(agentSessionId);
           setDraftBySessionId((current) => ({
             ...current,
-            [nodeDefaultDraftPromptKey(
-              dataRef.current.provider,
-              selectedProjectPathRef.current
-            )]: "",
+            [nodeDefaultDraftPromptKey(dataRef.current.provider)]: "",
             [agentSessionId]: ""
           }));
           setIsLoadingMessages(false);
@@ -4247,10 +4234,7 @@ export function useAgentGUINodeController({
     setDetailError(null);
     setDraftBySessionId((current) => ({
       ...current,
-      [nodeDefaultDraftPromptKey(
-        dataRef.current.provider,
-        selectedProjectPathRef.current
-      )]: nextDraftPrompt
+      [nodeDefaultDraftPromptKey(dataRef.current.provider)]: nextDraftPrompt
     }));
     persistActiveConversation(null);
     loadDraftComposerOptions();
@@ -4914,11 +4898,7 @@ export function useAgentGUINodeController({
   const updateDraftPrompt = useCallback((draftPrompt: string) => {
     const agentSessionId = activeConversationIdRef.current;
     const draftKey =
-      agentSessionId ??
-      nodeDefaultDraftPromptKey(
-        dataRef.current.provider,
-        selectedProjectPathRef.current
-      );
+      agentSessionId ?? nodeDefaultDraftPromptKey(dataRef.current.provider);
     setDraftBySessionId((current) => ({ ...current, [draftKey]: draftPrompt }));
   }, []);
 
@@ -6093,8 +6073,7 @@ export function useAgentGUINodeController({
     ? (draftBySessionId[activeConversationId] ?? "")
     : readNodeDefaultDraftPrompt({
         data,
-        drafts: draftBySessionId,
-        projectPath: selectedProjectPath
+        drafts: draftBySessionId
       });
   const availableCommands =
     activeSessionView?.controlCommands ?? EMPTY_AGENT_GUI_AVAILABLE_COMMANDS;

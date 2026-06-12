@@ -32,7 +32,7 @@ export function WorkspaceAgentSessionThinkingDisclosure({
       <button
         type="button"
         className={[
-          "group/thinking-disclosure inline-flex w-fit max-w-full min-w-0 items-center gap-1.5 border-0 bg-transparent p-0 text-left font-[var(--tsh-font-ui)] text-[14px] leading-[1.3] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--tsh-shell-body)]",
+          "group/thinking-disclosure inline-flex w-fit max-w-full min-w-0 items-center gap-1.5 border-0 bg-transparent p-0 text-left font-[var(--tsh-font-ui)] text-[13px] leading-[1.3] font-normal text-[var(--text-secondary)] transition-colors duration-150 hover:text-[var(--tsh-shell-body)]",
           isActive ? "tsh-inline-scanlight-group" : ""
         ]
           .filter(Boolean)
@@ -89,7 +89,7 @@ export function WorkspaceAgentSessionThinkingDisclosure({
           <AgentMessageMarkdown
             content={thinking.body}
             onLinkClick={onLinkClick}
-            className="text-[12px] text-[var(--text-secondary)] opacity-92 [&_p]:mb-1"
+            className="text-[11px] text-[var(--text-secondary)] opacity-92 [&_p]:mb-1"
             enableImageZoom
           />
         </div>

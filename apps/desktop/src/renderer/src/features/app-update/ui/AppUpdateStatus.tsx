@@ -38,8 +38,8 @@ export function AppUpdateStatus({
       className={cn(
         "flex flex-wrap items-center justify-between rounded-lg border",
         compact
-          ? "max-w-[min(13rem,34vw)] gap-2 px-2.5 py-1.5 text-xs"
-          : "gap-3 px-4 py-3 text-sm",
+          ? "max-w-[min(13rem,34vw)] gap-2 px-2.5 py-1.5 text-[11px]"
+          : "gap-3 px-4 py-3 text-[13px]",
         isError
           ? "border-[var(--state-danger)] bg-[var(--on-danger)] text-[var(--state-danger)]"
           : "border-border/70 bg-[var(--background-fronted)] text-foreground"

@@ -402,7 +402,7 @@ function ContextMenuActionButton({
   return (
     <button
       className={cn(
-        "flex h-8 w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-sm transition-colors disabled:cursor-default disabled:opacity-50",
+        "flex h-8 w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-[13px] transition-colors disabled:cursor-default disabled:opacity-50",
         danger
           ? "text-[var(--state-danger)] hover:bg-[var(--on-danger)]"
           : "text-[var(--text-primary)] hover:bg-transparency-block"
@@ -536,7 +536,7 @@ function OpenWithMenuItem({
         aria-expanded={open}
         aria-haspopup="menu"
         className={cn(
-          "flex h-8 w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-transparency-block disabled:cursor-default disabled:opacity-50",
+          "flex h-8 w-full items-center gap-2 rounded-md border-0 bg-transparent px-2 text-left text-[13px] text-[var(--text-primary)] transition-colors hover:bg-transparency-block disabled:cursor-default disabled:opacity-50",
           open && "bg-transparency-block"
         )}
         disabled={busy}
@@ -599,7 +599,7 @@ function OpenWithMenuItem({
         ) : null}
         {showExternalSection ? <ContextMenuDivider /> : null}
         {isLoading ? (
-          <div className="px-2 py-1.5 text-xs text-[var(--text-tertiary)]">
+          <div className="px-2 py-1.5 text-[11px] text-[var(--text-tertiary)]">
             {copy.t("openWithLoadingLabel")}
           </div>
         ) : null}
@@ -717,7 +717,7 @@ export function WorkspaceFileManagerCreateDialog({
             }}
           />
           {dialog.errorMessage ? (
-            <p className="text-sm text-[var(--state-danger)]">
+            <p className="text-[13px] text-[var(--state-danger)]">
               {dialog.errorMessage}
             </p>
           ) : null}
@@ -935,12 +935,12 @@ export function WorkspaceFileManagerImportConflictDialog({
           {dialog.conflicts.map((conflict) => (
             <div
               key={`${conflict.destinationPath}:${conflict.sourcePath}`}
-              className="flex flex-col gap-1 px-4 py-3 text-sm"
+              className="flex flex-col gap-1 px-4 py-3 text-[13px]"
             >
               <span className="font-medium text-[var(--text-primary)]">
                 {conflict.name}
               </span>
-              <span className="text-xs text-[var(--text-secondary)]">
+              <span className="text-[11px] text-[var(--text-secondary)]">
                 {copy.t("importConflictReviewLabel")}:{" "}
                 {conflict.destinationPath}
               </span>
@@ -1011,7 +1011,7 @@ function ImportConflictSummary({
   }
 
   return (
-    <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+    <div className="flex flex-wrap gap-2 text-[11px] text-[var(--text-secondary)]">
       {summaryItems.map((item) => (
         <span
           key={item}

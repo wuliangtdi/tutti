@@ -208,7 +208,7 @@ function IssueManagerSearchField({
       <Input
         aria-label={placeholder}
         className={cn(
-          "box-border h-8 min-h-8 rounded-md border-0 bg-[var(--transparency-block)] px-3 text-sm font-normal leading-normal text-[var(--text-primary)] shadow-none outline-none ring-0 transition-colors placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:border-0 focus:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100",
+          "box-border h-8 min-h-8 rounded-md border-0 bg-[var(--transparency-block)] px-3 text-[13px] font-normal leading-normal text-[var(--text-primary)] shadow-none outline-none ring-0 transition-colors placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:border-0 focus:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100",
           "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none",
           searchInput.value ? "pr-9" : "pr-3"
         )}
@@ -308,14 +308,14 @@ function IssueManagerSidebarItem({
         {resolveIssueManagerStatusLabel(copy, issue.status)}
       </Badge>
       <div className="min-w-0 space-y-2">
-        <p className="pr-28 text-[12px] leading-[1.55] text-[var(--text-secondary)]">
+        <p className="pr-28 text-[11px] leading-[1.55] text-[var(--text-secondary)]">
           {formatIssueManagerDate(issue.updatedAtUnix ?? issue.createdAtUnix)}
         </p>
-        <p className="line-clamp-4 text-[14px] font-medium leading-[1.35rem] text-[var(--text-primary)]">
+        <p className="line-clamp-4 text-[13px] font-medium leading-[1.35rem] text-[var(--text-primary)]">
           {issue.title}
         </p>
       </div>
-      <div className="mt-2 text-[12px] leading-[1.55] text-[var(--text-secondary)]">
+      <div className="mt-2 text-[11px] leading-[1.55] text-[var(--text-secondary)]">
         {copy.t("labels.taskCount", { count: issue.taskCount ?? 0 })}
       </div>
     </button>
@@ -374,7 +374,7 @@ function IssueManagerSidebarEmptyState({
     >
       <p
         className={cn(
-          "max-w-sm text-sm leading-5 text-[var(--text-secondary)]",
+          "max-w-sm text-[13px] leading-5 text-[var(--text-secondary)]",
           tone === "destructive"
             ? "text-[var(--state-danger)]"
             : "text-[var(--text-secondary)]"
@@ -406,7 +406,7 @@ function IssueManagerSidebarErrorState({
           : "min-h-full"
       )}
     >
-      <p className="text-sm font-semibold leading-5 text-[var(--state-danger)]">
+      <p className="text-[13px] font-semibold leading-5 text-[var(--state-danger)]">
         {title}
       </p>
       <Button

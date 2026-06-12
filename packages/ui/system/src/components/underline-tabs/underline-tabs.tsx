@@ -177,7 +177,7 @@ function UnderlineTabs<TValue extends string>({
                 aria-selected={isActive}
                 className={cn(
                   "relative inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap border-0 bg-transparent p-0 text-[13px] font-semibold leading-6 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none",
-                  isActive && "text-[var(--accent)]"
+                  isActive && "text-[var(--tutti-purple)]"
                 )}
                 data-active={isActive ? "true" : "false"}
                 data-slot="underline-tabs-tab"
@@ -193,7 +193,7 @@ function UnderlineTabs<TValue extends string>({
               >
                 <span>{tab.label}</span>
                 {tab.count !== undefined ? (
-                  <span className="text-xs font-semibold leading-6 text-[inherit]">
+                  <span className="text-[11px] font-semibold leading-6 text-[inherit]">
                     {tab.count}
                   </span>
                 ) : null}
@@ -202,7 +202,7 @@ function UnderlineTabs<TValue extends string>({
           })}
           <div
             aria-hidden
-            className="absolute bottom-0 left-0 z-[1] h-0.5 rounded-[1px] bg-[var(--accent)] transition-[transform,width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+            className="absolute bottom-0 left-0 z-[1] h-0.5 rounded-[1px] bg-[var(--tutti-purple)] transition-[transform,width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
             data-slot="underline-tabs-indicator"
             style={{
               transform: `translateX(${indicatorStyle.left}px)`,

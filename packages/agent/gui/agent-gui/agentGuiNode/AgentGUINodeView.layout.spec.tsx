@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -11,8 +12,14 @@ const conversationFlowMock = vi.hoisted(() => ({
 }));
 
 const composerMock = vi.hoisted(() => ({
-  calls: [] as Array<{ isSendingTurn?: boolean; showStopButton?: boolean }>
+  calls: [] as Array<{
+    composerFocusRequestSequence?: number | null;
+    isSendingTurn?: boolean;
+    showStopButton?: boolean;
+  }>
 }));
+
+const workspaceUserProjectI18n = createDefaultWorkspaceUserProjectI18nRuntime();
 
 const statusDotMock = vi.hoisted(() => ({
   calls: [] as Array<{
@@ -30,10 +37,12 @@ vi.mock("./AgentSessionChrome", () => ({
 
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
+    composerFocusRequestSequence?: number | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
   }) => {
     composerMock.calls.push({
+      composerFocusRequestSequence: props.composerFocusRequestSequence,
       isSendingTurn: props.isSendingTurn,
       showStopButton: props.showStopButton
     });
@@ -234,6 +243,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.createConversation).toHaveBeenCalledWith({
       projectPath: "/workspace/app"
     });
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
   it("shows empty project sections when projects have no conversations", () => {
@@ -356,6 +366,7 @@ describe("AgentGUINodeView layout persistence", () => {
           uiLanguage="en"
           onConversationRailWidthChanged={vi.fn()}
           labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
         />
       );
 
@@ -398,6 +409,7 @@ describe("AgentGUINodeView layout persistence", () => {
         uiLanguage="en"
         onConversationRailWidthChanged={onConversationRailWidthChanged}
         labels={labels}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
       />
     );
     const secondCall = conversationFlowMock.calls.at(-1);
@@ -472,6 +484,7 @@ describe("AgentGUINodeView layout persistence", () => {
         uiLanguage="en"
         onConversationRailWidthChanged={onConversationRailWidthChanged}
         labels={labels}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
       />
     );
 
@@ -516,6 +529,7 @@ describe("AgentGUINodeView layout persistence", () => {
         uiLanguage="en"
         onConversationRailWidthChanged={onConversationRailWidthChanged}
         labels={labels}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
       />
     );
 
@@ -700,6 +714,7 @@ function renderAgentGUINodeView({
       viewModel={viewModel}
       isAgentProviderReady={true}
       actions={actions}
+      workspaceUserProjectI18n={workspaceUserProjectI18n}
       conversationRailCollapsed={conversationRailCollapsed}
       conversationRailWidthPx={conversationRailWidthPx}
       conversationRailMinWidthPx={220}
@@ -957,26 +972,8 @@ function createLabels(): AgentGUIViewLabels {
     turnSummary: "turnSummary",
     planLead: "planLead",
     planModes: [],
-    projectLabel: "projectLabel",
-    noProject: "noProject",
-    addProject: "addProject",
-    createProjectCancel: "createProjectCancel",
-    createProjectConfirm: "createProjectConfirm",
-    createProjectDocumentsUnavailable: "createProjectDocumentsUnavailable",
-    createProjectFailed: "createProjectFailed",
-    createProjectNameConflict: "createProjectNameConflict",
-    createProjectNameInvalid: "createProjectNameInvalid",
-    createProjectNameLabel: "createProjectNameLabel",
-    createProjectNamePlaceholder: "createProjectNamePlaceholder",
-    createProjectNameRequired: "createProjectNameRequired",
-    createProjectPermissionDenied: "createProjectPermissionDenied",
-    createProjectTitle: "createProjectTitle",
-    linkExistingProject: "linkExistingProject",
     projectLocked: "projectLocked",
     projectMissingDescription: "projectMissingDescription",
-    projectMissingTitle: "projectMissingTitle",
-    loadingProjects: "loadingProjects",
-    projectUnavailable: "projectUnavailable",
     stayInPlan: "stayInPlan",
     sendFeedback: "sendFeedback",
     feedbackPlaceholder: "feedbackPlaceholder",

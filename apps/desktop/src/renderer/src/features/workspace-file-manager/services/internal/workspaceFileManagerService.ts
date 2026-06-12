@@ -1,5 +1,6 @@
 import {
   createWorkspaceFileManagerService,
+  type WorkspaceFileEntry,
   type WorkspaceFileManagerI18nRuntime,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFileManagerMutationErrorMessage
@@ -114,6 +115,17 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     workspaceID: string
   ): WorkspaceFileManagerPersistedState | null {
     return this.sessions.get(workspaceID)?.getPersistedState() ?? null;
+  }
+
+  resolveEntryIconUrl(
+    workspaceID: string,
+    entry: WorkspaceFileEntry
+  ): Promise<string | null> {
+    return this.dependencies.hostFilesApi.resolveEntryIcon(workspaceID, {
+      kind: entry.kind,
+      name: entry.name,
+      path: entry.path
+    });
   }
 
   setCanvasFilePreviewLauncher(

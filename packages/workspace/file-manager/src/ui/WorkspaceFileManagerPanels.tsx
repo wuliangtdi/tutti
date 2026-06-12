@@ -38,6 +38,9 @@ import type {
   WorkspaceFileManagerInlineRenameValidation,
   WorkspaceFilePreviewState
 } from "../services/workspaceFileManagerTypes.ts";
+import { WorkspaceFileManagerIconGrid } from "./WorkspaceFileManagerIconGrid.tsx";
+import { WorkspaceFileEntryIcon } from "./WorkspaceFileEntryIcon.tsx";
+import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 
 const workspaceFileManagerTableGridClassName =
   "grid-cols-[minmax(0,_1fr)_148px_96px]";
@@ -71,9 +74,11 @@ export function WorkspaceFileManagerPanels({
   entryDragMode,
   entrySelectionEnabled = true,
   copy,
+  iconUrlByCacheKey,
   inlineRenameEntryPath,
   inlineRenameValidation,
   isRenaming,
+  layoutMode,
   pendingDirectoryPath,
   previewState,
   selectedEntry,
@@ -96,9 +101,11 @@ export function WorkspaceFileManagerPanels({
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   entrySelectionEnabled?: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
+  iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameEntryPath: string | null;
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
   isRenaming: boolean;
+  layoutMode: WorkspaceFileManagerLayoutMode;
   pendingDirectoryPath: string | null;
   previewState: WorkspaceFilePreviewState;
   selectedEntry: WorkspaceFileEntry | null;
@@ -125,7 +132,7 @@ export function WorkspaceFileManagerPanels({
   onOpenEntry: (entry: WorkspaceFileEntry) => void;
   onSelect: (path: string) => void;
 }): ReactElement {
-  const { isStacked, rootRef } = useWorkspaceFileManagerStackedLayout(
+  const { rootRef } = useWorkspaceFileManagerStackedLayout(
     workspaceFileManagerStackedBreakpoint
   );
   const previewResizeRef = useRef<{
@@ -372,13 +379,15 @@ export function WorkspaceFileManagerPanels({
     stopMoveDragAutoScroll,
     updateMoveDragAutoScroll
   ]);
-  const previewPaneClassName = isStacked
+  const showPreviewPanel = false;
+  const useStackedPreview = false;
+  const previewPaneClassName = useStackedPreview
     ? "min-w-0 border-t border-[var(--border-1)]"
     : "min-w-[220px] border-l border-[var(--border-1)]";
-  const tableGridClassName = isStacked
+  const tableGridClassName = useStackedPreview
     ? workspaceFileManagerCompactTableGridClassName
     : workspaceFileManagerTableGridClassName;
-  const tableGridStyle = isStacked
+  const tableGridStyle = useStackedPreview
     ? workspaceFileManagerCompactTableGridStyle
     : workspaceFileManagerTableGridStyle;
   const tableCellPaddingClassName = "px-4";
@@ -398,7 +407,7 @@ export function WorkspaceFileManagerPanels({
 
   useLayoutEffect(() => {
     const element = rootRef.current;
-    if (!element || isStacked) {
+    if (!element || useStackedPreview || !showPreviewPanel) {
       return;
     }
 
@@ -427,7 +436,7 @@ export function WorkspaceFileManagerPanels({
     return () => {
       observer.disconnect();
     };
-  }, [clampPreviewPaneWidth, isStacked, rootRef]);
+  }, [clampPreviewPaneWidth, rootRef, showPreviewPanel, useStackedPreview]);
 
   const handlePreviewResizePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -486,7 +495,7 @@ export function WorkspaceFileManagerPanels({
     <div
       className={cn(
         "flex min-h-0 min-w-0 flex-col overflow-hidden",
-        isStacked ? "h-[44%] max-h-[48%] flex-none" : "flex-1"
+        useStackedPreview ? "h-[44%] max-h-[48%] flex-none" : "flex-1"
       )}
       onContextMenu={handleTablePanelContextMenu}
     >
@@ -498,78 +507,106 @@ export function WorkspaceFileManagerPanels({
         <FeedbackState message={copy.t("emptyDirectory")} />
       ) : (
         <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100">
-          <div className="flex flex-col">
-            <div
-              className={cn(
-                "grid h-9 min-h-9 items-center gap-x-6 border-b border-[var(--border-1)] text-xs font-normal text-[var(--text-secondary)]",
-                tableGridClassName
-              )}
-              style={tableGridStyle}
-            >
-              <span className={tableCellPaddingClassName}>
-                {copy.t("nameLabel")}
-              </span>
-              <span
-                className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+          {layoutMode === "icon" ? (
+            <WorkspaceFileManagerIconGrid
+              contextMenuEntryPath={contextMenuEntryPath}
+              copy={copy}
+              draggable={nativeEntryDragEnabled}
+              entries={state.entries}
+              iconUrlByCacheKey={iconUrlByCacheKey}
+              inlineRenameEntryPath={inlineRenameEntryPath}
+              inlineRenameValidation={inlineRenameValidation}
+              isRenaming={isRenaming}
+              moveDragActive={moveDragPreview !== null}
+              moveDragPreviewEntryPath={moveDragPreview?.entry.path ?? null}
+              moveDragTargetEntryPath={
+                moveDragPreview?.targetDirectoryPath ?? null
+              }
+              pendingDirectoryPath={pendingDirectoryPath}
+              selectedPath={selectedPath}
+              onCancelInlineRename={onCancelInlineRename}
+              onClearInlineRenameValidation={onClearInlineRenameValidation}
+              onConfirmInlineRename={onConfirmInlineRename}
+              onContextMenu={onEntryContextMenu}
+              onDragStart={onEntryDragStart}
+              onEntryClick={handleEntryClick}
+              onEntryPointerDown={handleEntryPointerDown}
+            />
+          ) : (
+            <div className="flex flex-col">
+              <div
+                className={cn(
+                  "grid h-9 min-h-9 items-center gap-x-6 border-b border-[var(--border-1)] text-xs font-normal text-[var(--text-secondary)]",
+                  tableGridClassName
+                )}
+                style={tableGridStyle}
               >
-                {copy.t("modifiedLabel")}
-              </span>
-              <span
-                className={cn("whitespace-nowrap", tableCellPaddingClassName)}
-              >
-                {copy.t("sizeLabel")}
-              </span>
+                <span className={tableCellPaddingClassName}>
+                  {copy.t("nameLabel")}
+                </span>
+                <span
+                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                >
+                  {copy.t("modifiedLabel")}
+                </span>
+                <span
+                  className={cn("whitespace-nowrap", tableCellPaddingClassName)}
+                >
+                  {copy.t("sizeLabel")}
+                </span>
+              </div>
+              {state.entries.map((entry) => (
+                <EntryRow
+                  key={entry.path}
+                  contextMenuActive={contextMenuEntryPath === entry.path}
+                  copy={copy}
+                  dateLocale={dateLocale}
+                  entry={entry}
+                  iconUrlByCacheKey={iconUrlByCacheKey}
+                  canMove={internalMoveEnabled}
+                  draggable={nativeEntryDragEnabled}
+                  gridClassName={tableGridClassName}
+                  gridStyle={tableGridStyle}
+                  inlineRenameValidation={
+                    inlineRenameEntryPath === entry.path
+                      ? inlineRenameValidation
+                      : null
+                  }
+                  isEnteringDirectory={pendingDirectoryPath === entry.path}
+                  isInlineRenaming={inlineRenameEntryPath === entry.path}
+                  isRenaming={isRenaming}
+                  moveDragActive={moveDragPreview !== null}
+                  moveDragSource={moveDragPreview?.entry.path === entry.path}
+                  moveDragTarget={
+                    moveDragPreview?.targetDirectoryPath === entry.path
+                  }
+                  tableCellPaddingClassName={tableCellPaddingClassName}
+                  selected={selectedPath === entry.path}
+                  onCancelInlineRename={onCancelInlineRename}
+                  onClearInlineRenameValidation={onClearInlineRenameValidation}
+                  onConfirmInlineRename={onConfirmInlineRename}
+                  onContextMenu={onEntryContextMenu}
+                  onDragStart={onEntryDragStart}
+                  onClick={handleEntryClick}
+                  onPointerDown={handleEntryPointerDown}
+                />
+              ))}
             </div>
-            {state.entries.map((entry) => (
-              <EntryRow
-                key={entry.path}
-                contextMenuActive={contextMenuEntryPath === entry.path}
-                copy={copy}
-                dateLocale={dateLocale}
-                entry={entry}
-                canMove={internalMoveEnabled}
-                draggable={nativeEntryDragEnabled}
-                gridClassName={tableGridClassName}
-                gridStyle={tableGridStyle}
-                inlineRenameValidation={
-                  inlineRenameEntryPath === entry.path
-                    ? inlineRenameValidation
-                    : null
-                }
-                isEnteringDirectory={pendingDirectoryPath === entry.path}
-                isInlineRenaming={inlineRenameEntryPath === entry.path}
-                isRenaming={isRenaming}
-                moveDragActive={moveDragPreview !== null}
-                moveDragSource={moveDragPreview?.entry.path === entry.path}
-                moveDragTarget={
-                  moveDragPreview?.targetDirectoryPath === entry.path
-                }
-                tableCellPaddingClassName={tableCellPaddingClassName}
-                selected={selectedPath === entry.path}
-                onCancelInlineRename={onCancelInlineRename}
-                onClearInlineRenameValidation={onClearInlineRenameValidation}
-                onConfirmInlineRename={onConfirmInlineRename}
-                onContextMenu={onEntryContextMenu}
-                onDragStart={onEntryDragStart}
-                onClick={handleEntryClick}
-                onPointerDown={handleEntryPointerDown}
-              />
-            ))}
-          </div>
+          )}
         </ScrollArea>
       )}
     </div>
   );
 
-  const previewPanel = (
+  const previewPanel = showPreviewPanel ? (
     <aside
       className={cn(
         "relative flex h-full min-h-0 flex-col gap-[14px] overflow-auto p-4",
-        isStacked ? "max-h-[44%] flex-none" : "flex-none",
+        useStackedPreview ? "max-h-[44%] flex-none" : "flex-none",
         previewPaneClassName
       )}
       style={
-        isStacked
+        useStackedPreview
           ? undefined
           : ({ width: previewPaneWidth } satisfies CSSProperties)
       }
@@ -581,7 +618,7 @@ export function WorkspaceFileManagerPanels({
         previewState={previewState}
       />
     </aside>
-  );
+  ) : null;
 
   return (
     <div
@@ -591,11 +628,11 @@ export function WorkspaceFileManagerPanels({
       <div
         className={cn(
           "h-full min-h-0 min-w-0 bg-transparent",
-          isStacked ? "flex flex-col gap-3" : "flex"
+          useStackedPreview ? "flex flex-col gap-3" : "flex"
         )}
       >
         {tablePanel}
-        {isStacked ? null : (
+        {showPreviewPanel && !useStackedPreview ? (
           <div
             aria-orientation="vertical"
             className="nodrag absolute top-0 bottom-0 z-[1] w-2 cursor-col-resize touch-none"
@@ -610,7 +647,7 @@ export function WorkspaceFileManagerPanels({
             onPointerMove={handlePreviewResizePointerMove}
             onPointerUp={handlePreviewResizePointerEnd}
           />
-        )}
+        ) : null}
         {previewPanel}
       </div>
       <div
@@ -624,7 +661,12 @@ export function WorkspaceFileManagerPanels({
           {copy.t("dropToImportLabel")}
         </div>
       </div>
-      {moveDragPreview ? <MoveDragPreview preview={moveDragPreview} /> : null}
+      {moveDragPreview ? (
+        <MoveDragPreview
+          iconUrlByCacheKey={iconUrlByCacheKey}
+          preview={moveDragPreview}
+        />
+      ) : null}
     </div>
   );
 }
@@ -678,6 +720,7 @@ function EntryRow({
   entry,
   gridClassName,
   gridStyle,
+  iconUrlByCacheKey,
   inlineRenameValidation,
   isEnteringDirectory,
   isInlineRenaming,
@@ -703,6 +746,7 @@ function EntryRow({
   entry: WorkspaceFileEntry;
   gridClassName: string;
   gridStyle: CSSProperties;
+  iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
   isEnteringDirectory: boolean;
   isInlineRenaming: boolean;
@@ -769,6 +813,7 @@ function EntryRow({
       <EntryNameCell
         copy={copy}
         entry={entry}
+        iconUrlByCacheKey={iconUrlByCacheKey}
         inlineRenameValidation={inlineRenameValidation}
         isEnteringDirectory={isEnteringDirectory}
         isInlineRenaming={isInlineRenaming}
@@ -839,12 +884,12 @@ function EntryRow({
 }
 
 function MoveDragPreview({
+  iconUrlByCacheKey,
   preview
 }: {
+  iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   preview: WorkspaceFileManagerMoveDragPreview;
 }): ReactElement {
-  const visualKind = resolveWorkspaceFileVisualKind(preview.entry);
-
   return (
     <div
       aria-hidden="true"
@@ -857,14 +902,12 @@ function MoveDragPreview({
         } satisfies CSSProperties
       }
     >
-      <span
-        className={cn(
-          "grid size-[18px] flex-none place-items-center",
-          entryIconColorClassName(visualKind)
-        )}
-      >
-        <EntryIcon visualKind={visualKind} />
-      </span>
+      <WorkspaceFileEntryIcon
+        entry={preview.entry}
+        frameClassName="size-[18px]"
+        iconClassName="size-4"
+        iconUrlByCacheKey={iconUrlByCacheKey}
+      />
       <span className="min-w-0 truncate">{preview.entry.name}</span>
     </div>
   );
@@ -968,6 +1011,7 @@ function canMoveEntryToDirectory(
 function EntryNameCell({
   copy,
   entry,
+  iconUrlByCacheKey,
   inlineRenameValidation = null,
   isEnteringDirectory = false,
   isInlineRenaming = false,
@@ -978,6 +1022,7 @@ function EntryNameCell({
 }: {
   copy: WorkspaceFileManagerI18nRuntime;
   entry: WorkspaceFileEntry;
+  iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameValidation?: WorkspaceFileManagerInlineRenameValidation | null;
   isEnteringDirectory?: boolean;
   isInlineRenaming?: boolean;
@@ -986,7 +1031,6 @@ function EntryNameCell({
   onClearInlineRenameValidation: () => void;
   onConfirmInlineRename: (newName: string) => Promise<boolean>;
 }): ReactElement {
-  const visualKind = resolveWorkspaceFileVisualKind(entry);
   const nameParts = splitWorkspaceFileName(entry.name);
   const hasFileExtension =
     nameParts.end.length > 0 && nameParts.end.startsWith(".");
@@ -1035,14 +1079,12 @@ function EntryNameCell({
   if (isInlineRenaming) {
     return (
       <span className="flex min-w-0 items-center gap-2">
-        <span
-          className={cn(
-            "grid size-[18px] flex-none place-items-center",
-            entryIconColorClassName(visualKind)
-          )}
-        >
-          <EntryIcon visualKind={visualKind} />
-        </span>
+        <WorkspaceFileEntryIcon
+          entry={entry}
+          frameClassName="size-[18px]"
+          iconClassName="size-4"
+          iconUrlByCacheKey={iconUrlByCacheKey}
+        />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <input
             aria-invalid={inlineRenameValidation !== null}
@@ -1100,20 +1142,13 @@ function EntryNameCell({
 
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <span
-        className={cn(
-          "grid size-[18px] flex-none place-items-center",
-          isEnteringDirectory
-            ? "text-[var(--text-tertiary)]"
-            : entryIconColorClassName(visualKind)
-        )}
-      >
-        {isEnteringDirectory ? (
-          <LoadingIcon className="size-4 animate-spin" />
-        ) : (
-          <EntryIcon visualKind={visualKind} />
-        )}
-      </span>
+      <WorkspaceFileEntryIcon
+        entry={entry}
+        frameClassName="size-[18px]"
+        iconClassName="size-4"
+        iconUrlByCacheKey={iconUrlByCacheKey}
+        isEnteringDirectory={isEnteringDirectory}
+      />
       <span className="flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-sm">
         <span className="min-w-0 overflow-hidden text-ellipsis">
           {nameParts.start}
@@ -1126,14 +1161,6 @@ function EntryNameCell({
       </span>
     </span>
   );
-}
-
-function entryIconColorClassName(
-  visualKind: ReturnType<typeof resolveWorkspaceFileVisualKind>
-): string {
-  return visualKind === "directory"
-    ? "text-[var(--rich-text-mention-file)]"
-    : "text-[var(--text-tertiary)]";
 }
 
 function EntryIcon({
