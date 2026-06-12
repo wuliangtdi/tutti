@@ -258,13 +258,12 @@ export function createAgentGuiWorkbenchContribution(
         activation,
         dockEntryId,
         instanceId,
-        pendingHandoff,
         provider,
         reuseDockEntryNode,
         targetAgentSessionId
       } = createAgentGuiWorkbenchLaunchDescriptor(request);
       const title = resolveAgentGuiWorkbenchProviderLabel(provider);
-      if (targetAgentSessionId || pendingHandoff) {
+      if (targetAgentSessionId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
           typeId: agentGuiWorkbenchTypeId
@@ -275,8 +274,7 @@ export function createAgentGuiWorkbenchContribution(
             ...(previousState ?? normalizeAgentGuiWorkbenchState(null)),
             ...(targetAgentSessionId
               ? { lastActiveAgentSessionId: targetAgentSessionId }
-              : {}),
-            ...(pendingHandoff ? { pendingHandoff } : {})
+              : {})
           },
           typeId: agentGuiWorkbenchTypeId
         });

@@ -699,39 +699,6 @@ describe("AgentGUINode", () => {
     });
   });
 
-  it("creates a new session handoff by prefilling without auto-submitting the pending prompt", () => {
-    const onUpdateNode = vi.fn();
-    const state: AgentGUINodeData = {
-      provider: "codex",
-      lastActiveAgentSessionId: null,
-      conversationRailWidthPx: null,
-      pendingHandoff: {
-        requestId: "handoff-1",
-        title: "登录改版 / 修复验证码异常",
-        prompt:
-          "请执行这个任务引用：\n\n[@登录改版 / 修复验证码异常](mention://workspace-issue?workspaceId=room-1&id=issue-1)",
-        taskId: "task-1",
-        issueId: "issue-1",
-        taskTitle: "登录改版",
-        issueTitle: "修复验证码异常"
-      }
-    };
-
-    renderAgentGUINode({ state, onUpdateNode });
-
-    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "请执行这个任务引用：\n\n[@登录改版 / 修复验证码异常](mention://workspace-issue?workspaceId=room-1&id=issue-1)"
-    );
-    expect(mockSubmitPrompt).not.toHaveBeenCalled();
-    expect(onUpdateNode).toHaveBeenCalledWith(expect.any(Function));
-
-    const clearPendingHandoff = onUpdateNode.mock.calls[0]?.[0] as
-      | ((current: AgentGUINodeData) => AgentGUINodeData)
-      | undefined;
-    expect(clearPendingHandoff?.(state).pendingHandoff).toBeNull();
-  });
-
   it("keeps the conversations section visible when there are no sessions", () => {
     renderAgentGUINode();
 

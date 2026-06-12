@@ -197,6 +197,7 @@ export type IssueManagerExecutionDirectoryPicker = Pick<
 };
 
 export interface IssueManagerAgentBreakdownRequest extends IssueManagerScope {
+  executionDirectory?: string | null;
   issueDetail: {
     contextRefs: readonly IssueManagerContextRef[];
     issue: IssueManagerIssueSummary;

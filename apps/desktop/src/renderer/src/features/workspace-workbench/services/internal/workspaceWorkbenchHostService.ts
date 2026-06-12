@@ -47,6 +47,10 @@ import {
   type IWorkspaceAgentActivityService as WorkspaceAgentActivityService
 } from "../../../workspace-agent/services/workspaceAgentActivityService.interface.ts";
 import {
+  IWorkspaceAgentPromptSessionService,
+  type IWorkspaceAgentPromptSessionService as WorkspaceAgentPromptSessionService
+} from "../../../workspace-agent/services/workspaceAgentPromptSessionService.interface.ts";
+import {
   createWorkspaceAppCenterDockEntries,
   IWorkspaceAppCenterService,
   reportWorkspaceAppOpenedFromDockEntry
@@ -99,6 +103,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceAgentActivityService: WorkspaceAgentActivityService;
+  workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService;
   eventStreamClient?: NextopdEventStreamClient;
   nextopdClient: NextopdClient;
   platformApi: Pick<
@@ -164,6 +169,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     richTextAtService: IDesktopRichTextAtService,
     agentProviderStatusService: AgentProviderStatusService,
     workspaceAgentActivityService: WorkspaceAgentActivityService,
+    workspaceAgentPromptSessionService: WorkspaceAgentPromptSessionService,
     appCenterService: IWorkspaceAppCenterService,
     workspaceFileManagerService: IWorkspaceFileManagerService,
     workspaceUserProjectService: IWorkspaceUserProjectService
@@ -186,6 +192,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       workspaceFileManagerService,
       workspaceUserProjectService,
       workspaceAgentActivityService,
+      workspaceAgentPromptSessionService,
       nextopdClient: externalDependencies.nextopdClient,
       platformApi: externalDependencies.platformApi,
       repository,
@@ -568,6 +575,8 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             this.dependencies.workspaceUserProjectService,
           workspaceAgentActivityService:
             this.dependencies.workspaceAgentActivityService,
+          workspaceAgentPromptSessionService:
+            this.dependencies.workspaceAgentPromptSessionService,
           nextopdClient: this.dependencies.nextopdClient,
           platformApi: this.dependencies.platformApi,
           reporterService: this.dependencies.reporterService,
@@ -701,9 +710,14 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 IDesktopRichTextAtService(WorkspaceWorkbenchHostService, undefined, 1);
 IAgentProviderStatusService(WorkspaceWorkbenchHostService, undefined, 2);
 IWorkspaceAgentActivityService(WorkspaceWorkbenchHostService, undefined, 3);
-IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 4);
-IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 5);
-IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 6);
+IWorkspaceAgentPromptSessionService(
+  WorkspaceWorkbenchHostService,
+  undefined,
+  4
+);
+IWorkspaceAppCenterService(WorkspaceWorkbenchHostService, undefined, 5);
+IWorkspaceFileManagerService(WorkspaceWorkbenchHostService, undefined, 6);
+IWorkspaceUserProjectService(WorkspaceWorkbenchHostService, undefined, 7);
 
 interface CachedWorkspaceWorkbenchHostInput {
   appI18n: I18nRuntime<string>;

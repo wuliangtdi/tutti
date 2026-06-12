@@ -497,7 +497,11 @@ export function createIssueManagerControllerActions(
         const outcome = createIssueManagerRunTaskSuccessOutcome({
           status: result.status
         });
-        applyOutcome(outcome);
+        if (outcome.notificationKey && result.errorMessage?.trim()) {
+          notifyTip(result.errorMessage.trim());
+        } else {
+          applyOutcome(outcome);
+        }
       } catch (error) {
         notifyTip(
           resolveIssueManagerErrorMessage(error, copy, "messages.runFailed")
@@ -536,6 +540,7 @@ export function createIssueManagerControllerActions(
         );
       }
 
+      setIsRunningTask(true);
       try {
         trackIssueManagerAnalytics(feature, {
           name: "issue_manager.issue_breakdown_initiated",
@@ -545,6 +550,11 @@ export function createIssueManagerControllerActions(
           }
         });
         const result = await breakdownLauncher.startBreakdown({
+          ...(nodeState.selectedExecutionDirectory?.trim()
+            ? {
+                executionDirectory: nodeState.selectedExecutionDirectory.trim()
+              }
+            : {}),
           issueDetail: currentIssueDetail,
           provider: breakdownPlan.provider,
           workspaceId
@@ -562,6 +572,8 @@ export function createIssueManagerControllerActions(
             "messages.breakdownOpenFailed"
           )
         );
+      } finally {
+        setIsRunningTask(false);
       }
     },
 

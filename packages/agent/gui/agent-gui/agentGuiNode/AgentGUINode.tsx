@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useTranslation, type TranslateFn } from "../../i18n/index";
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
@@ -333,12 +333,6 @@ function agentGuiStateEquals(
     left === right ||
     (left.provider === right.provider &&
       left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
-      (left.pendingHandoff?.requestId ?? null) ===
-        (right.pendingHandoff?.requestId ?? null) &&
-      (left.pendingHandoff?.prompt ?? null) ===
-        (right.pendingHandoff?.prompt ?? null) &&
-      (left.pendingHandoff?.title ?? null) ===
-        (right.pendingHandoff?.title ?? null) &&
       left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
       left.conversationRailWidthPx === right.conversationRailWidthPx &&
       left.conversationRailCollapsed === right.conversationRailCollapsed &&
@@ -474,7 +468,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     () => createWorkspaceUserProjectI18nRuntime(i18n),
     [i18n]
   );
-  const handledHandoffRequestIdRef = useRef<string | null>(null);
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction) => {
       onLinkAction?.(
@@ -593,32 +586,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     onDataChange: handleDataChange,
     onShowMessage
   });
-
-  useEffect(() => {
-    const pendingHandoff = state.pendingHandoff;
-    const requestId = pendingHandoff?.requestId?.trim() ?? "";
-    const prompt = pendingHandoff?.prompt?.trim() ?? "";
-    if (
-      !requestId ||
-      !prompt ||
-      handledHandoffRequestIdRef.current === requestId
-    ) {
-      return;
-    }
-    handledHandoffRequestIdRef.current = requestId;
-    actions.createConversation();
-    actions.updateDraftPrompt(prompt);
-    onUpdateNode((current) =>
-      current.pendingHandoff?.requestId === requestId
-        ? { ...current, pendingHandoff: null }
-        : current
-    );
-  }, [
-    actions.createConversation,
-    actions.updateDraftPrompt,
-    onUpdateNode,
-    state.pendingHandoff
-  ]);
 
   const fallbackAgentTitle = t("sidebar.fallbackAgentLabel");
   const activeProvider =
