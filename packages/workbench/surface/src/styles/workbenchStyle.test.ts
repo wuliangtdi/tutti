@@ -201,6 +201,14 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
+    /\.desktop-dock\[data-dock-pointer-active="true"\]:not\(\[data-scroll-overflow="true"\]\)\s+\.desktop-dock__items\s*{[^}]*justify-content:\s*flex-start;[^}]*--desktop-dock-magnify-start-padding/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock\[data-dock-placement="left"\]\[data-dock-pointer-active="true"\]:not\(\s*\[data-scroll-overflow="true"\]\s*\)\s+\.desktop-dock__items\s*{[^}]*padding-top:\s*var\(--desktop-dock-magnify-start-padding\);/s
+  );
+  assert.match(
+    css,
     /\.desktop-dock\[data-dock-pointer-active="true"\]\s+\.desktop-dock__btn\s*{[^}]*transition:\s*none;/s
   );
   assert.match(

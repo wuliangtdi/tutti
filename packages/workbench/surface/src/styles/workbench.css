@@ -749,6 +749,28 @@
   mask-image: none;
 }
 
+.desktop-dock[data-dock-pointer-active="true"]:not(
+    [data-scroll-overflow="true"]
+  )
+  .desktop-dock__items {
+  justify-content: flex-start;
+  padding-top: 0;
+  padding-right: var(--desktop-dock-items-padding);
+  padding-bottom: var(--desktop-dock-items-padding-block-end);
+  padding-left: var(--desktop-dock-magnify-start-padding);
+}
+
+.desktop-dock[data-dock-placement="left"][data-dock-pointer-active="true"]:not(
+    [data-scroll-overflow="true"]
+  )
+  .desktop-dock__items {
+  justify-content: flex-start;
+  padding-top: var(--desktop-dock-magnify-start-padding);
+  padding-right: 0;
+  padding-bottom: var(--desktop-dock-left-items-padding-block);
+  padding-left: var(--desktop-dock-left-indicator-gutter);
+}
+
 .desktop-dock[data-dock-pointer-active="true"]
   [data-radix-popper-content-wrapper] {
   display: none !important;
