@@ -118,6 +118,7 @@ import {
   normalizeAgentSessionMentionTitle
 } from "../agentRichText/agentFileMentionExtension";
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
+import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   INITIAL_USAGE_ALERT_STATE,
   nextUsageAlert,
@@ -1268,20 +1269,18 @@ function buildNodeDefaultComposerSettings(
     defaultReasoningEffort?: AgentSessionReasoningEffort | null;
   }
 ): AgentSessionComposerSettings {
-  const supports = composerSupportForProvider(data.provider);
+  // Generic cleanup only — provider-level clamping is owned by the daemon
+  // (normalizeComposerSettingsForProvider and the session create path).
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
-    model: supports.model
-      ? normalizeOptionalText(composerOverrides.model)
-      : null,
-    reasoningEffort: supports.reasoning
-      ? ((normalizeOptionalText(
-          composerOverrides.reasoningEffort
-        ) as AgentSessionReasoningEffort | null) ??
-        options?.defaultReasoningEffort ??
-        null)
-      : null,
-    planMode: supports.plan ? Boolean(composerOverrides.planMode) : false,
+    model: normalizeOptionalText(composerOverrides.model),
+    reasoningEffort:
+      (normalizeOptionalText(
+        composerOverrides.reasoningEffort
+      ) as AgentSessionReasoningEffort | null) ??
+      options?.defaultReasoningEffort ??
+      null,
+    planMode: Boolean(composerOverrides.planMode),
     permissionModeId: normalizePermissionModeId(
       composerOverrides.permissionModeId
     )
@@ -1296,32 +1295,6 @@ function nodeComposerOverridesForProvider(
     data.composerOverrides ??
     null
   );
-}
-
-function composerSupportForProvider(provider: AgentGUINodeData["provider"]): {
-  model: boolean;
-  permission: boolean;
-  reasoning: boolean;
-  plan: boolean;
-} {
-  if (
-    provider === "claude-code" ||
-    provider === "codex" ||
-    provider === "gemini"
-  ) {
-    return {
-      model: true,
-      permission: provider === "claude-code" || provider === "codex",
-      reasoning: true,
-      plan: false
-    };
-  }
-  return {
-    model: false,
-    permission: provider === "nexight",
-    reasoning: false,
-    plan: false
-  };
 }
 
 function permissionModeOptions(
@@ -1342,13 +1315,11 @@ function nodeDataFromComposerSettings(
   current: AgentGUINodeData,
   settings: AgentSessionComposerSettings
 ): AgentGUINodeData {
-  const supports = composerSupportForProvider(current.provider);
+  // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
-    model: supports.model ? normalizeOptionalText(settings.model) : null,
-    reasoningEffort: supports.reasoning
-      ? normalizeOptionalText(settings.reasoningEffort)
-      : null,
-    planMode: supports.plan ? Boolean(settings.planMode) : false,
+    model: normalizeOptionalText(settings.model),
+    reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
+    planMode: Boolean(settings.planMode),
     permissionModeId: normalizePermissionModeId(settings.permissionModeId)
   };
   return {
@@ -1998,6 +1969,14 @@ export function useAgentGUINodeController({
     sessionRuntimeContext: activeSessionState?.runtimeContext
   });
   const activeSessionRuntimeContext = activeSessionState?.runtimeContext;
+  const composerSupport = useMemo(
+    () =>
+      composerSettingsSupportFromOptions(
+        providerComposerOptions,
+        activeSessionRuntimeContext ?? null
+      ),
+    [providerComposerOptions, activeSessionRuntimeContext]
+  );
   const usage = useMemo(
     () =>
       resolveAgentActivityUsage({
@@ -2310,9 +2289,9 @@ export function useAgentGUINodeController({
   });
   const activeConversationLiveState = activation.stateFor(activeConversationId);
   const unactivateRef = useRef(activation.unactivate);
-  const supports = composerSupportForProvider(data.provider);
-  const defaultReasoningEffort: AgentSessionReasoningEffort | null =
-    supports.reasoning ? "high" : null;
+  // Daemon clamps reasoning for providers without settings support, so the
+  // draft default no longer needs a provider gate here.
+  const defaultReasoningEffort: AgentSessionReasoningEffort | null = "high";
   const markFailedLiveState = activation.markFailed;
   const clearFailedLiveState = activation.clearFailure;
 
@@ -3359,10 +3338,9 @@ export function useAgentGUINodeController({
 
   const loadDraftComposerOptions = useCallback(
     (options?: { force?: boolean }): void => {
+      // Composer options are loaded for every provider: besides settings they
+      // carry the capabilities fallback and the skills list.
       const provider = dataRef.current.provider;
-      if (!supports.model && !supports.reasoning && !supports.permission) {
-        return;
-      }
       if (isCreatingConversationRef.current) {
         return;
       }
@@ -3381,20 +3359,10 @@ export function useAgentGUINodeController({
         })
       ).catch(() => undefined);
     },
-    [
-      agentActivityRuntime,
-      defaultReasoningEffort,
-      supports.model,
-      supports.permission,
-      supports.reasoning,
-      workspaceId
-    ]
+    [agentActivityRuntime, defaultReasoningEffort, workspaceId]
   );
 
   useEffect(() => {
-    if (!supports.model && !supports.reasoning && !supports.permission) {
-      return;
-    }
     const projectKey = `${data.provider}\0${selectedProjectPath ?? ""}`;
     const previousProjectKey = composerOptionsProjectKeyRef.current;
     composerOptionsProjectKeyRef.current = projectKey;
@@ -3402,19 +3370,9 @@ export function useAgentGUINodeController({
       return;
     }
     loadDraftComposerOptions({ force: true });
-  }, [
-    data.provider,
-    loadDraftComposerOptions,
-    selectedProjectPath,
-    supports.model,
-    supports.permission,
-    supports.reasoning
-  ]);
+  }, [data.provider, loadDraftComposerOptions, selectedProjectPath]);
 
   useEffect(() => {
-    if (!supports.model && !supports.reasoning && !supports.permission) {
-      return undefined;
-    }
     return subscribeCoalesced(
       "agent-model-catalog-invalidated",
       {
@@ -3441,14 +3399,7 @@ export function useAgentGUINodeController({
         });
       }
     );
-  }, [
-    loadDraftComposerOptions,
-    loadSessionState,
-    workspaceId,
-    supports.model,
-    supports.permission,
-    supports.reasoning
-  ]);
+  }, [loadDraftComposerOptions, loadSessionState, workspaceId]);
 
   useEffect(() => {
     loadDraftComposerOptions();
@@ -5118,15 +5069,11 @@ export function useAgentGUINodeController({
 
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
-      const currentSupports = composerSupportForProvider(
-        dataRef.current.provider
-      );
+      // Values pass through unclamped: the toggle visibility is capability
+      // gated and the daemon clamps persisted settings per provider.
       const supportedNextSettings: Partial<AgentSessionComposerSettings> = {
         ...nextSettings
       };
-      if (!currentSupports.plan) {
-        delete supportedNextSettings.planMode;
-      }
       const agentSessionId = activeConversationIdRef.current;
       if (!agentSessionId) {
         const defaultDraftKey = nodeDefaultDraftKey(dataRef.current.provider);
@@ -5141,9 +5088,7 @@ export function useAgentGUINodeController({
         const merged = {
           ...previousSettings,
           ...supportedNextSettings,
-          planMode: currentSupports.plan
-            ? (supportedNextSettings.planMode ?? previousSettings.planMode)
-            : false
+          planMode: supportedNextSettings.planMode ?? previousSettings.planMode
         };
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
@@ -5195,9 +5140,8 @@ export function useAgentGUINodeController({
           supportedNextSettings.reasoningEffort !== undefined
             ? supportedNextSettings.reasoningEffort
             : baseDefaultsFromSession.reasoningEffort,
-        planMode: currentSupports.plan
-          ? (supportedNextSettings.planMode ?? baseDefaultsFromSession.planMode)
-          : false,
+        planMode:
+          supportedNextSettings.planMode ?? baseDefaultsFromSession.planMode,
         permissionModeId:
           supportedNextSettings.permissionModeId !== undefined
             ? supportedNextSettings.permissionModeId
@@ -6475,11 +6419,9 @@ export function useAgentGUINodeController({
     );
     const hasOptionsSource = providerComposerOptions !== null;
     const hasACPSettings =
-      !supports.model && !supports.reasoning && !supports.permission
-        ? true
-        : hasOptionsSource &&
-          (!supports.model || activeSessionModelSelection !== null) &&
-          (!supports.reasoning || activeSessionReasoningSelection !== null);
+      hasOptionsSource &&
+      (!composerSupport.model || activeSessionModelSelection !== null) &&
+      (!composerSupport.reasoning || activeSessionReasoningSelection !== null);
     const isSettingsLoading = !hasACPSettings;
     const selectedModelValue = draftModel;
     const selectedReasoningEffortValue =
@@ -6503,21 +6445,21 @@ export function useAgentGUINodeController({
           draftSettings.permissionModeId
         )
       },
-      effectivePlanMode: supports.plan ? effectivePlanMode : false,
-      supportsModel: supports.model,
-      supportsReasoningEffort: supports.reasoning,
+      effectivePlanMode: composerSupport.plan ? effectivePlanMode : false,
+      supportsModel: composerSupport.model,
+      supportsReasoningEffort: composerSupport.reasoning,
       supportsPermissionMode,
-      supportsPlanMode: supports.plan,
+      supportsPlanMode: composerSupport.plan,
       isSettingsLoading,
       modelUnavailable:
         activeConversationId !== null &&
         sessionSettings === null &&
-        supports.model &&
+        composerSupport.model &&
         draftModel === null,
       reasoningUnavailable:
         activeConversationId !== null &&
         sessionSettings === null &&
-        supports.reasoning &&
+        composerSupport.reasoning &&
         draftReasoningEffort === null,
       permissionModeUnavailable:
         activeConversationId !== null &&
@@ -6527,7 +6469,7 @@ export function useAgentGUINodeController({
       planUnavailable:
         activeConversationId !== null &&
         sessionSettings === null &&
-        supports.plan &&
+        composerSupport.plan &&
         !effectivePlanMode,
       selectedModelValue,
       selectedReasoningEffortValue,
@@ -6539,13 +6481,13 @@ export function useAgentGUINodeController({
           : selectedProjectPath,
       projectLocked: activeConversationId !== null,
       availableModels:
-        supports.model &&
+        composerSupport.model &&
         hasOptionsSource &&
         activeSessionModelSelection !== null
           ? activeSessionModelSelection.options
           : [],
       availableReasoningEfforts:
-        supports.reasoning &&
+        composerSupport.reasoning &&
         hasOptionsSource &&
         activeSessionReasoningSelection !== null
           ? activeSessionReasoningSelection.options
@@ -6565,10 +6507,7 @@ export function useAgentGUINodeController({
     sessionPlanModeState,
     sessionSettings,
     selectedProjectPath,
-    supports.model,
-    supports.permission,
-    supports.plan,
-    supports.reasoning,
+    composerSupport,
     timelinePlanModeState,
     draftModel,
     draftReasoningEffort

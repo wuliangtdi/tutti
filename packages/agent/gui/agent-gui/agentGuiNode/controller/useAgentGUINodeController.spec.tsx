@@ -2527,7 +2527,16 @@ describe("useAgentGUINodeController", () => {
       result.current.actions.updateComposerSettings({ planMode: false });
     });
 
-    expect(updateSettings).not.toHaveBeenCalled();
+    // Pass-through contract: the GUI no longer swallows planMode updates —
+    // the explicit false is sent and the daemon clamps per provider support.
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledTimes(1);
+    });
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ planMode: false })
+      })
+    );
   });
 
   it("uses a newer completed ExitPlanMode tool event as the effective plan mode", async () => {
@@ -5595,7 +5604,9 @@ describe("useAgentGUINodeController", () => {
       ).toMatchObject({
         model: "gpt-5",
         reasoningEffort: "high",
-        planMode: false,
+        // Stored planMode passes through unclamped — the daemon clamps it for
+        // providers without the capability.
+        planMode: true,
         permissionModeId: "auto"
       });
     });
@@ -5722,7 +5733,8 @@ describe("useAgentGUINodeController", () => {
       ).toMatchObject({
         model: "gpt-5",
         reasoningEffort: "high",
-        planMode: false,
+        // planMode passes through unclamped — the daemon clamps per provider.
+        planMode: true,
         permissionModeId: "full-access"
       });
     });
@@ -5741,7 +5753,8 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: "gpt-5",
             reasoningEffort: "high",
-            planMode: false,
+            // Sent as-is; nextopd clamps planMode for codex at session create.
+            planMode: true,
             permissionModeId: "full-access"
           }
         })
@@ -5824,7 +5837,8 @@ describe("useAgentGUINodeController", () => {
           settings: {
             model: settings.model ?? "gpt-5",
             reasoningEffort: settings.reasoningEffort ?? "medium",
-            planMode: settings.planMode ?? false,
+            // Emulates the daemon clamping planMode for codex.
+            planMode: false,
             permissionModeId: settings.permissionModeId ?? "auto"
           }
         }))
@@ -5916,7 +5930,9 @@ describe("useAgentGUINodeController", () => {
       ).toMatchObject({
         model: "gpt-5.1",
         reasoningEffort: "high",
-        planMode: false,
+        // Optimistic patch carries planMode through; the daemon clamps it for
+        // codex and the server echo below resets it to false.
+        planMode: true,
         permissionModeId: "auto"
       });
     });
@@ -5933,7 +5949,8 @@ describe("useAgentGUINodeController", () => {
         agentSessionId: "session-1",
         settings: {
           model: "gpt-5.1",
-          reasoningEffort: "high"
+          reasoningEffort: "high",
+          planMode: true
         }
       });
     });
@@ -5962,6 +5979,7 @@ describe("useAgentGUINodeController", () => {
     ).toMatchObject({
       model: "gpt-5.1",
       reasoningEffort: "high",
+      // The server echo (daemon clamp) resyncs the draft back to false.
       planMode: false,
       permissionModeId: "auto"
     });
@@ -5985,7 +6003,9 @@ describe("useAgentGUINodeController", () => {
       composerOverrides: {
         model: "gpt-5.1",
         reasoningEffort: "high",
-        planMode: false,
+        // Node defaults persist the requested value unclamped — the daemon
+        // clamps it whenever the stored value is used.
+        planMode: true,
         permissionModeId: "auto"
       }
     });
@@ -6927,7 +6947,8 @@ describe("useAgentGUINodeController", () => {
       result.current.viewModel.composerSettings.draftSettings
     ).toMatchObject({
       model: "gpt-5",
-      planMode: false,
+      // planMode passes through unclamped — the daemon clamps per provider.
+      planMode: true,
       permissionModeId: "full-access"
     });
     expect(onDataChange).toHaveBeenCalled();
@@ -7733,7 +7754,7 @@ describe("useAgentGUINodeController", () => {
   });
 
   it.each([
-    ["claude-code", false],
+    ["claude-code", true],
     ["codex", false],
     ["gemini", false]
   ] as const)(
@@ -7742,7 +7763,20 @@ describe("useAgentGUINodeController", () => {
       installAgentHostApi({
         list: vi.fn(async () => ({ presences: [], sessions: [] })),
         listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
-        subscribeEvents: vi.fn(() => vi.fn())
+        subscribeEvents: vi.fn(() => vi.fn()),
+        getComposerOptions: vi.fn(async () => ({
+          provider,
+          modelConfig: {
+            configurable: true,
+            options: [{ id: "gpt-5", label: "GPT-5", value: "gpt-5" }]
+          },
+          reasoningConfig: {
+            configurable: true,
+            options: [{ id: "high", label: "High", value: "high" }]
+          },
+          runtimeContext:
+            provider === "claude-code" ? { capabilities: ["planMode"] } : {}
+        }))
       });
 
       const { result, unmount } = renderHook(() =>
@@ -8193,12 +8227,14 @@ describe("useAgentGUINodeController", () => {
       expect(
         result.current.viewModel.composerSettings.supportsReasoningEffort
       ).toBe(false);
+      // Stored overrides are no longer clamped GUI-side — the daemon owns
+      // provider-level clamping; the composer simply hides the controls.
       expect(
         result.current.viewModel.composerSettings.draftSettings.model
-      ).toBeNull();
+      ).toBe("gpt-5");
       expect(
         result.current.viewModel.composerSettings.draftSettings.reasoningEffort
-      ).toBeNull();
+      ).toBe("high");
       expect(listModels).not.toHaveBeenCalled();
       unmount();
     }
@@ -10670,22 +10706,36 @@ function composerOptionsFromRuntimeResult(
   const configOptions = Array.isArray(runtimeContext.configOptions)
     ? runtimeContext.configOptions
     : [];
+  const models = Array.isArray(result.models)
+    ? settingOptionsFromRuntimeOptions(result.models)
+    : settingOptionsFromRuntimeConfig(
+        recordValue(result.modelConfig),
+        configOptions,
+        ["model"]
+      );
+  const reasoningEfforts = Array.isArray(result.reasoningEfforts)
+    ? settingOptionsFromRuntimeOptions(result.reasoningEfforts)
+    : settingOptionsFromRuntimeConfig(
+        recordValue(result.reasoningConfig),
+        configOptions,
+        ["reasoning_effort", "model_reasoning_effort", "effort"]
+      );
+  const modelConfig = recordValue(result.modelConfig) ?? {};
+  const reasoningConfig = recordValue(result.reasoningConfig) ?? {};
+  // Mirrors the production adapter mapping: configurable comes from the wire,
+  // with a fixture convenience fallback to "has any options".
+  const modelConfigurable =
+    modelConfig.configurable === true ||
+    (modelConfig.configurable === undefined && models.length > 0);
+  const reasoningConfigurable =
+    reasoningConfig.configurable === true ||
+    (reasoningConfig.configurable === undefined && reasoningEfforts.length > 0);
   return {
     provider: normalizeConfigOptionValue(result.provider) ?? provider,
-    models: Array.isArray(result.models)
-      ? settingOptionsFromRuntimeOptions(result.models)
-      : settingOptionsFromRuntimeConfig(
-          recordValue(result.modelConfig),
-          configOptions,
-          ["model"]
-        ),
-    reasoningEfforts: Array.isArray(result.reasoningEfforts)
-      ? settingOptionsFromRuntimeOptions(result.reasoningEfforts)
-      : settingOptionsFromRuntimeConfig(
-          recordValue(result.reasoningConfig),
-          configOptions,
-          ["reasoning_effort", "model_reasoning_effort", "effort"]
-        ),
+    models,
+    reasoningEfforts,
+    modelConfigurable,
+    reasoningConfigurable,
     permissionConfig: permissionConfigFromRuntimeResult(
       result.permissionConfig
     ),
