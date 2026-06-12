@@ -18,10 +18,7 @@ import {
   Button,
   ChevronDownIcon,
   ChevronUpIcon,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
+  TooltipProvider
 } from "@tutti-os/ui-system";
 import type { WorkbenchDockContext } from "../react/types.ts";
 import {
@@ -92,8 +89,6 @@ function isDockVisualMutationActive(element: HTMLElement | null): boolean {
     ) !== null
   );
 }
-
-const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;
 
 export function WorkbenchHostDock({
   context,
@@ -180,7 +175,7 @@ export function WorkbenchHostDock({
       canScrollForward: false,
       hasOverflow: false
     }));
-  const [, setDockStateRevision] = useState(0);
+  const [dockStateRevision, setDockStateRevision] = useState(0);
   const [externalStateRevision, setExternalStateRevision] = useState(0);
   const [
     collapsingMinimizedLaunchAnchorKeys,
@@ -318,10 +313,14 @@ export function WorkbenchHostDock({
     });
   }, [dockStateSource]);
 
-  const renderedDockEntries = dockEntries.map((entry) => {
-    const dynamicState = dockStateSource?.getEntryState(entry.id);
-    return dynamicState ? { ...entry, ...dynamicState } : entry;
-  });
+  const renderedDockEntries = useMemo(
+    () =>
+      dockEntries.map((entry) => {
+        const dynamicState = dockStateSource?.getEntryState(entry.id);
+        return dynamicState ? { ...entry, ...dynamicState } : entry;
+      }),
+    [dockEntries, dockStateRevision, dockStateSource]
+  );
   const resolvedEntries = useMemo(
     () =>
       resolveWorkbenchDockEntries({
@@ -981,6 +980,7 @@ export function WorkbenchHostDock({
                           ? "false"
                           : "true"
                       }
+                      title={entry.label}
                       type="button"
                       onPointerDown={() => {
                         if (
@@ -1150,19 +1150,7 @@ export function WorkbenchHostDock({
                         handleDockPointerLeave();
                       }}
                     >
-                      {hasHoverPanel ? (
-                        dockButton
-                      ) : (
-                        <Tooltip>
-                          <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                          <TooltipContent
-                            side={dockPlacement === "left" ? "right" : "top"}
-                            sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                          >
-                            {entry.label}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                      {dockButton}
                     </span>
                   );
                 }
@@ -1178,6 +1166,7 @@ export function WorkbenchHostDock({
                       aria-label={i18n.t("minimizedWindows")}
                       className="desktop-dock__btn desktop-dock__minimized-btn"
                       data-interactive="true"
+                      title={i18n.t("minimizedWindows")}
                       type="button"
                       onPointerDown={() => {
                         beginDockMinimizedInteraction();
@@ -1264,15 +1253,7 @@ export function WorkbenchHostDock({
                         stackDispatching ? "true" : undefined
                       }
                     >
-                      <Tooltip>
-                        <TooltipTrigger asChild>{stackButton}</TooltipTrigger>
-                        <TooltipContent
-                          side={dockPlacement === "left" ? "right" : "top"}
-                          sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                        >
-                          {i18n.t("minimizedWindows")}
-                        </TooltipContent>
-                      </Tooltip>
+                      {stackButton}
                     </span>
                   );
                 }
@@ -1283,6 +1264,7 @@ export function WorkbenchHostDock({
                     aria-label={i18n.t("launch", { title: node.title })}
                     className="desktop-dock__btn desktop-dock__minimized-btn"
                     data-interactive="true"
+                    title={node.title}
                     type="button"
                     onPointerDown={() => {
                       beginDockMinimizedInteraction(slot.anchorKey);
@@ -1331,15 +1313,7 @@ export function WorkbenchHostDock({
                     }
                     data-section-id="minimized"
                   >
-                    <Tooltip>
-                      <TooltipTrigger asChild>{dockButton}</TooltipTrigger>
-                      <TooltipContent
-                        side={dockPlacement === "left" ? "right" : "top"}
-                        sideOffset={DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET}
-                      >
-                        {node.title}
-                      </TooltipContent>
-                    </Tooltip>
+                    {dockButton}
                   </span>
                 );
               })}

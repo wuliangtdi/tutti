@@ -536,7 +536,7 @@ export function WorkspaceFileManagerPanels({
             <div className="flex flex-col">
               <div
                 className={cn(
-                  "grid h-9 min-h-9 items-center gap-x-6 border-b border-[var(--border-1)] text-[11px] font-normal text-[var(--text-secondary)]",
+                  "grid h-9 min-h-9 items-center gap-x-6 border-b border-[var(--border-1)] text-xs font-normal text-[var(--text-secondary)]",
                   tableGridClassName
                 )}
                 style={tableGridStyle}
@@ -657,7 +657,7 @@ export function WorkspaceFileManagerPanels({
           showDropOverlay && "opacity-100"
         )}
       >
-        <div className="rounded-lg border border-[var(--border-1)] bg-[var(--background-fronted)] px-5 py-3 text-[13px] font-normal text-[var(--text-primary)] shadow-panel">
+        <div className="rounded-lg border border-[var(--border-1)] bg-[var(--background-fronted)] px-5 py-3 text-sm font-normal text-[var(--text-primary)] shadow-panel">
           {copy.t("dropToImportLabel")}
         </div>
       </div>
@@ -827,7 +827,7 @@ function EntryRow({
   const modifiedCell = (
     <span
       className={cn(
-        "truncate text-[11px] text-[var(--text-secondary)]",
+        "truncate text-xs text-[var(--text-secondary)]",
         tableCellPaddingClassName
       )}
     >
@@ -837,7 +837,7 @@ function EntryRow({
   const sizeCell = (
     <span
       className={cn(
-        "truncate text-[11px] text-[var(--text-secondary)]",
+        "truncate text-xs text-[var(--text-secondary)]",
         tableCellPaddingClassName
       )}
     >
@@ -893,7 +893,7 @@ function MoveDragPreview({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed z-[60] flex max-w-[280px] items-center gap-2 rounded-md border border-[var(--line-1)] bg-[var(--background-fronted)] px-3 py-2 text-[13px] font-normal text-[var(--text-primary)] shadow-panel"
+      className="pointer-events-none fixed z-[60] flex max-w-[280px] items-center gap-2 rounded-md border border-[var(--line-1)] bg-[var(--background-fronted)] px-3 py-2 text-sm font-normal text-[var(--text-primary)] shadow-panel"
       style={
         {
           left: preview.x,
@@ -1090,7 +1090,7 @@ function EntryNameCell({
             aria-invalid={inlineRenameValidation !== null}
             aria-label={copy.t("renameLabel")}
             className={cn(
-              "min-w-0 max-w-full rounded-md border border-transparent bg-[var(--transparency-block)] px-1.5 py-0.5 text-[13px] text-[var(--text-primary)] outline-none transition-colors duration-200 selection:bg-[var(--transparency-active)] selection:text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100",
+              "min-w-0 max-w-full rounded-md border border-transparent bg-[var(--transparency-block)] px-1.5 py-0.5 text-sm text-[var(--text-primary)] outline-none transition-colors duration-200 selection:bg-[var(--transparency-active)] selection:text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100",
               inlineRenameValidation !== null && "border-[var(--state-danger)]"
             )}
             disabled={isRenaming}
@@ -1131,7 +1131,7 @@ function EntryNameCell({
             }}
           />
           {validationMessage ? (
-            <span className="text-[11px] text-[var(--state-danger)]">
+            <span className="text-xs text-[var(--state-danger)]">
               {validationMessage}
             </span>
           ) : null}
@@ -1149,7 +1149,7 @@ function EntryNameCell({
         iconUrlByCacheKey={iconUrlByCacheKey}
         isEnteringDirectory={isEnteringDirectory}
       />
-      <span className="flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-[13px]">
+      <span className="flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-sm">
         <span className="min-w-0 overflow-hidden text-ellipsis">
           {nameParts.start}
         </span>
@@ -1202,7 +1202,7 @@ function PreviewPane({
 }): ReactElement {
   if (!entry || previewState.status === "empty") {
     return (
-      <div className="grid h-full min-h-[180px] place-items-center overflow-hidden p-8 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
+      <div className="grid h-full min-h-[180px] place-items-center overflow-hidden p-8 text-center text-sm leading-5 text-[var(--text-tertiary)]">
         <span className="max-w-[24ch] [overflow-wrap:anywhere]">
           {copy.t("previewEmptyLabel")}
         </span>
@@ -1218,7 +1218,7 @@ function PreviewPane({
           <strong className="min-w-0 truncate text-[15px] font-semibold text-[var(--text-primary)]">
             {entry.name}
           </strong>
-          <p className="min-w-0 truncate text-[11px] text-[var(--text-secondary)]">
+          <p className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
             {entry.path}
           </p>
         </div>
@@ -1294,7 +1294,7 @@ function PreviewDetail({
 }): ReactElement {
   return (
     <div
-      className="@max-[600px]/workspace-file-manager:grid-cols-1 @max-[600px]/workspace-file-manager:gap-0.5 grid gap-2.5 border-b border-[var(--border-1)] py-2.5 text-[11px]"
+      className="@max-[600px]/workspace-file-manager:grid-cols-1 @max-[600px]/workspace-file-manager:gap-0.5 grid gap-2.5 border-b border-[var(--border-1)] py-2.5 text-xs"
       style={workspaceFileManagerPreviewDetailGridStyle}
     >
       <dt className="truncate text-[var(--text-secondary)]">{label}</dt>
@@ -1307,7 +1307,7 @@ function PreviewDetail({
 
 function FeedbackState({ message }: { message: string }): ReactElement {
   return (
-    <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-[13px] text-[var(--text-tertiary)]">
+    <div className="grid min-h-0 flex-1 place-items-center p-6 text-center text-sm text-[var(--text-tertiary)]">
       <span className="max-w-[34ch] [overflow-wrap:anywhere]">{message}</span>
     </div>
   );
