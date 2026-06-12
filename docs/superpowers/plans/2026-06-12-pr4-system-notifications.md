@@ -59,5 +59,5 @@ export function buildWorkspaceAgentOutcomeNotification(
 
 ### Task C: 回歸驗證
 
-- [ ] **Step 1:** `agentPowerSaveBlocker` 測試重跑（`cd apps/desktop && pnpm vitest run agentPowerSaveBlocker`）+ desktop 全 typecheck。
-- [ ] **Step 2:** `pnpm lint:ts 2>&1 | tail -3` 無 error。
+- [x] **Step 1:** `agentPowerSaveBlocker` 測試重跑（`cd apps/desktop && pnpm vitest run agentPowerSaveBlocker`）+ desktop 全 typecheck。
+- [x] **Step 2:** `pnpm lint:ts 2>&1 | tail -3` 無 error。
