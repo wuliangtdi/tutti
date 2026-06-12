@@ -1,7 +1,7 @@
 # Agent GUI 能力對齊設計（本期）
 
 - 日期：2026-06-12
-- 狀態：待審閱
+- 狀態：已實施（capability-negotiation 分支,堆疊於 codex-app-server;真機驗收清單待跑）
 - 需求來源：[【Tutti】Agent GUI 对齐 Agent 交互](https://ccn53rwonxso.feishu.cn/wiki/BkgPwgCFpiuCT6kzDsNcRA29nUc)（PRD）；[Codex 功能重要性分析](https://ccn53rwonxso.feishu.cn/docx/GTCmdgIimowmjBxG7BacIaXZnVg)（11 人投票，22 項功能）
 - 前置依賴：`codex-app-server` 分支（PR #143）先合入——圖片透傳、`/compact`、usage/rateLimits/capabilities 上報均建立在其上
 
