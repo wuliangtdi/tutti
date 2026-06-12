@@ -44,6 +44,7 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
 };
 
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
+export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "nextop:agent-gui-workbench-conversation-rail-toggle";
@@ -280,14 +281,17 @@ export function createAgentGuiWorkbenchContribution(
           typeId: agentGuiWorkbenchTypeId
         });
       }
+      const defaultFrame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
+        frame,
+        request
+      });
       return {
         activation,
-        defaultFrame: resolveAgentGuiWorkbenchDefaultLaunchFrame({
-          frame,
-          request
-        }),
+        defaultFrame,
         dockEntryId,
-        framePolicy: "cascade-same-type-centered",
+        framePolicy: isAgentGuiWorkbenchCompactVisibleFrame(defaultFrame, frame)
+          ? "absolute"
+          : "cascade-same-type-centered",
         instanceId,
         reuseDockEntryNode,
         title,
@@ -308,13 +312,40 @@ export function resolveAgentGuiWorkbenchDefaultLaunchFrame(input: {
     input.request.surfaceSize,
     input.request.layoutConstraints
   );
+  const defaultHeight = Math.round(
+    layoutFrame.height * agentGuiWorkbenchDefaultUsableHeightRatio
+  );
+
+  if (
+    layoutFrame.width < input.frame.width ||
+    layoutFrame.height < input.frame.height
+  ) {
+    const width = Math.round(
+      layoutFrame.width * agentGuiWorkbenchCompactVisibleAreaRatio
+    );
+    const height = Math.round(
+      layoutFrame.height * agentGuiWorkbenchCompactVisibleAreaRatio
+    );
+
+    return {
+      height,
+      width,
+      x: Math.round(layoutFrame.x + (layoutFrame.width - width) / 2),
+      y: Math.round(layoutFrame.y + (layoutFrame.height - height) / 2)
+    };
+  }
 
   return {
     ...input.frame,
-    height: Math.round(
-      layoutFrame.height * agentGuiWorkbenchDefaultUsableHeightRatio
-    )
+    height: defaultHeight
   };
+}
+
+function isAgentGuiWorkbenchCompactVisibleFrame(
+  frame: WorkbenchFrame,
+  defaultFrame: WorkbenchFrame
+): boolean {
+  return frame.width !== defaultFrame.width || frame.x !== defaultFrame.x;
 }
 
 export function resolveAgentGuiWorkbenchContributionCopy(

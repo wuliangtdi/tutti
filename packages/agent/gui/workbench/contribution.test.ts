@@ -82,7 +82,7 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("opens at 70 percent of the workbench area excluding chrome and dock safe areas", () => {
+  it("opens at the default width and 70 percent height when the workbench area can fit the default frame", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -109,6 +109,75 @@ describe("agent GUI workbench contribution copy", () => {
       width: 1040,
       x: 140,
       y: 48
+    });
+  });
+
+  it("opens at 90 percent of the visible workbench area when the window cannot fit the default frame", () => {
+    const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
+      frame: { height: 560, width: 1040, x: 140, y: 48 },
+      request: {
+        layoutConstraints: {
+          minHeight: 160,
+          minWidth: 280,
+          safeArea: {
+            bottom: 79,
+            left: 0,
+            right: 0,
+            top: 52
+          },
+          surfacePadding: 0
+        },
+        surfaceSize: {
+          height: 700,
+          width: 980
+        }
+      }
+    });
+
+    expect(frame).toEqual({
+      height: 512,
+      width: 882,
+      x: 49,
+      y: 81
+    });
+  });
+
+  it("preserves the 90 percent visible-area frame during compact launches", () => {
+    const contribution = createAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    const launchResult = contribution.onLaunchRequest?.({
+      layoutConstraints: {
+        minHeight: 160,
+        minWidth: 280,
+        safeArea: {
+          bottom: 79,
+          left: 0,
+          right: 0,
+          top: 52
+        },
+        surfacePadding: 0
+      },
+      payload: null,
+      reason: "dock",
+      surfaceSize: {
+        height: 700,
+        width: 980
+      },
+      typeId: "agent-gui",
+      workspaceId: "workspace-1"
+    });
+
+    expect(launchResult).toMatchObject({
+      defaultFrame: {
+        height: 512,
+        width: 882,
+        x: 49,
+        y: 81
+      },
+      framePolicy: "absolute"
     });
   });
 });
