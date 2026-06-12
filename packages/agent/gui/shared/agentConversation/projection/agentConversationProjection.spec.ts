@@ -45,7 +45,7 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
-  it("only projects the latest unsettled tool from an active tail tool chain", () => {
+  it("only projects the latest tool from an unfinalized tail tool chain", () => {
     const calls = [
       {
         id: "call:1",
@@ -72,8 +72,8 @@ describe("projectAgentConversationVM", () => {
         name: "Read web page",
         toolName: "web_fetch",
         callType: "tool",
-        status: "Running",
-        statusKind: "working" as const,
+        status: "Completed",
+        statusKind: "completed" as const,
         summary: "https://example.com/c",
         payload: null
       }

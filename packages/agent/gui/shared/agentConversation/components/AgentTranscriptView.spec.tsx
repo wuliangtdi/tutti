@@ -568,7 +568,7 @@ describe("AgentTranscriptView", () => {
     expect(screen.getByText("http://0.0.0.0:4173")).toBeTruthy();
   });
 
-  it("keeps trailing tool calls split while the session is still active and shows the processing row", async () => {
+  it("keeps only the latest trailing tool while the session is still active and shows the processing row", async () => {
     render(
       <AgentTranscriptView
         conversation={projectAgentConversationVM(
@@ -652,12 +652,12 @@ describe("AgentTranscriptView", () => {
       />
     );
 
-    expect(screen.getByText("Edit file")).toBeTruthy();
+    expect(screen.queryByText("Edit file")).toBeNull();
     expect(screen.getByText("Write file")).toBeTruthy();
     expect(screen.getByText("Planning next moves")).toBeTruthy();
   });
 
-  it("shows only the latest unsettled tool from an active tail tool chain", () => {
+  it("shows only the latest tool from an unfinalized tail tool chain", () => {
     const calls = [
       {
         id: "call:1",
@@ -684,8 +684,8 @@ describe("AgentTranscriptView", () => {
         name: "Read page C",
         toolName: "web_fetch",
         callType: "tool",
-        status: "Running" as const,
-        statusKind: "working" as const,
+        status: "Completed" as const,
+        statusKind: "completed" as const,
         summary: "https://example.com/c",
         payload: null
       }

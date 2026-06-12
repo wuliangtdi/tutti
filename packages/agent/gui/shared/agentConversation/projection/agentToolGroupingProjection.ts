@@ -278,10 +278,6 @@ function isGroupableToolCall(call: AgentToolCallVM): boolean {
   }
 }
 
-function isUnsettledToolCall(call: AgentToolCallVM): boolean {
-  return call.statusKind === "working" || call.statusKind === "waiting";
-}
-
 function findActiveTailSuppressedToolIndices(
   sequence: readonly AgentTurnSequenceItemVM[]
 ): Set<number> {
@@ -321,9 +317,6 @@ function findActiveTailSuppressedToolIndices(
 }
 
 function isSuppressingActiveTailTool(call: AgentToolCallVM): boolean {
-  if (!isUnsettledToolCall(call)) {
-    return false;
-  }
   switch (call.rendererKind) {
     case "approval":
     case "ask-user":
