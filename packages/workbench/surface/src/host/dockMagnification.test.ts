@@ -12,6 +12,7 @@ import {
   isDockMagnificationSpringSettled,
   mapDistanceToTargetSize,
   resolveDockMagnificationHitBounds,
+  resolveDockMagnificationSlotLayoutSize,
   resolveDockMagnificationSlotCenter
 } from "./dockMagnification.ts";
 
@@ -90,11 +91,37 @@ test("left dock magnification hit bounds use the vertical slot range", () => {
   );
 
   assertBoundsEqual(hitBounds, {
-    crossEnd: 71.2,
+    crossEnd: 101.44,
     crossStart: 12,
     mainEnd: 203.2,
     mainStart: 100
   });
+});
+
+test("left dock magnification hit bounds include the expanded icon width", () => {
+  const hitBounds = resolveDockMagnificationHitBounds(
+    [{ bottom: 143.2, left: 20, right: 63.2, top: 100 }],
+    "left"
+  );
+
+  assertBoundsEqual(hitBounds, {
+    crossEnd: 101.44,
+    crossStart: 12,
+    mainEnd: 143.2,
+    mainStart: 100
+  });
+});
+
+test("dock magnification expands both slot axes so neighbors keep spacing", () => {
+  assert.deepEqual(
+    resolveDockMagnificationSlotLayoutSize({
+      size: DOCK_ICON_PEAK_SIZE
+    }),
+    {
+      height: DOCK_ICON_PEAK_SIZE,
+      width: DOCK_ICON_PEAK_SIZE
+    }
+  );
 });
 
 test("dock magnification center ignores the slot's current magnified size", () => {
@@ -187,14 +214,14 @@ test("dock magnification skips layout-locked dock slots", () => {
   assert.match(source, /isDockMagnificationSlotLayoutLocked\(slotElement\)/);
 });
 
-test("dock magnification captures slot centers on pointer entry only", () => {
+test("dock magnification refreshes slot centers while the pointer is active", () => {
   const runAnimationFrameSource =
     source.match(
       /const runAnimationFrame = useCallback\([\s\S]*?\n {4}\},\n {4}\[captureRestCenters, setMagnifyActive, slotRefs\]\n {2}\);/
     )?.[0] ?? "";
 
   assert.notEqual(runAnimationFrameSource, "");
-  assert.doesNotMatch(
+  assert.match(
     runAnimationFrameSource,
     /if \(pointerAxis !== null\) \{[\s\S]*?captureRestCenters\(\);/
   );

@@ -8,6 +8,7 @@ import {
 import type {
   WorkbenchContribution,
   WorkbenchHostDockEntry,
+  WorkbenchHostLaunchRequest,
   WorkbenchHostLaunchResult,
   WorkbenchHostNodeDefinition
 } from "./types.ts";
@@ -219,6 +220,7 @@ test("resolveWorkbenchHostConfig runs explicit launch handler before contributio
 
   assert.deepEqual(
     await resolved.onLaunchRequest?.({
+      ...createLaunchRequestContext(),
       reason: "dock",
       typeId: "browser",
       workspaceId: "workspace-1"
@@ -235,6 +237,7 @@ test("resolveWorkbenchHostConfig runs explicit launch handler before contributio
   calls.length = 0;
   assert.deepEqual(
     await resolved.onLaunchRequest?.({
+      ...createLaunchRequestContext(),
       reason: "dock",
       typeId: "files",
       workspaceId: "workspace-1"
@@ -339,6 +342,29 @@ function createDockEntry(id: string, label: string): WorkbenchHostDockEntry {
     id,
     label,
     typeId: id
+  };
+}
+
+function createLaunchRequestContext(): Pick<
+  WorkbenchHostLaunchRequest,
+  "layoutConstraints" | "surfaceSize"
+> {
+  return {
+    layoutConstraints: {
+      minHeight: 160,
+      minWidth: 280,
+      safeArea: {
+        bottom: 88,
+        left: 0,
+        right: 0,
+        top: 52
+      },
+      surfacePadding: 0
+    },
+    surfaceSize: {
+      height: 720,
+      width: 1024
+    }
   };
 }
 

@@ -85,7 +85,6 @@ import {
   ConversationMeta,
   groupConversations
 } from "./agentGuiNodeViewConversation";
-import PixelCard from "./PixelCard";
 import styles from "./AgentGUINode.styles";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 
@@ -97,17 +96,6 @@ const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   gap: "24px"
 };
 
-const AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS =
-  "#ecfeff,#a7f3d0,#22d3ee,#0f766e";
-
-const AGENT_GUI_HERO_PARTICLE_COLORS: Record<string, string> = {
-  "claude-code": "#fff7ed,#fed7aa,#fb923c,#9a3412",
-  codex: "#f8fafc,#bfdbfe,#7dd3fc,#6366f1",
-  gemini: "#eef2ff,#c4b5fd,#818cf8,#38bdf8",
-  hermes: "#f8fafc,#e5e7eb,#9ca3af,#111827",
-  nextop: AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS,
-  openclaw: "#f5f3ff,#c4b5fd,#a78bfa,#64748b"
-};
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
@@ -115,25 +103,14 @@ const AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME =
 const AGENT_GUI_CONFIRMATION_DIALOG_OVERLAY_CLASS_NAME =
   "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]";
 
-export interface AgentGUIHeroParticleConfig {
-  normalizedProvider: string;
-  imageSrc: string;
-  colors: string;
-}
-
-export function resolveAgentGUIHeroParticleConfig(
+export function resolveAgentGUIHeroIconUrl(
   provider: string | undefined
-): AgentGUIHeroParticleConfig {
+): string {
   const normalizedProvider = normalizeManagedAgentProvider(provider);
-  return {
-    normalizedProvider,
-    imageSrc:
-      MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
-      MANAGED_AGENT_ICON_FALLBACK_URL,
-    colors:
-      AGENT_GUI_HERO_PARTICLE_COLORS[normalizedProvider] ??
-      AGENT_GUI_HERO_FALLBACK_PARTICLE_COLORS
-  };
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
 }
 
 const fallbackWorkspaceFileReferenceCopy: WorkspaceFileReferenceCopy = {
@@ -1880,19 +1857,17 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
 }: AgentGUIEmptyHeroPaneProps): React.JSX.Element {
   "use memo";
 
-  const agentParticleConfig = resolveAgentGUIHeroParticleConfig(provider);
+  const heroIconUrl = resolveAgentGUIHeroIconUrl(provider);
 
   return (
     <div className={styles.emptyHero}>
       <div className={styles.emptyHeroBody}>
-        <PixelCard
-          variant="blue"
-          gap={2}
-          speed={45}
-          colors={agentParticleConfig.colors}
-          imageSrc={agentParticleConfig.imageSrc}
-          noFocus
+        <img
+          aria-hidden="true"
           className={styles.emptyHeroIconEffect}
+          draggable={false}
+          src={heroIconUrl}
+          alt=""
         />
         <h2 className={styles.emptyHeroTitle}>
           <EmptyHeroTitle label={emptyLabel} providerLabel={emptyProvider} />

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { WorkbenchHostLaunchRequest } from "@tutti-os/workbench-surface";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface.ts";
 import type {
@@ -25,6 +26,7 @@ test("workspace app contribution reports app open from dock launch requests", as
     appCenterService: createAppCenterService([app]),
     reporterService: createReporterService(reporterCalls),
     request: {
+      ...createLaunchRequestContext(),
       dockEntryId: workspaceAppDockEntryId("ready"),
       reason: "dock",
       typeId: workspaceAppWebviewTypeID,
@@ -61,6 +63,7 @@ test("workspace app launch request applies declared minimum webview size", async
   const result = await resolveWorkspaceAppCenterLaunchRequest({
     appCenterService: createAppCenterService([app]),
     request: {
+      ...createLaunchRequestContext(),
       dockEntryId: workspaceAppDockEntryId("ready"),
       reason: "dock",
       typeId: workspaceAppWebviewTypeID,
@@ -92,6 +95,7 @@ test("workspace app launch request preserves prepared payload previous status", 
     appCenterService: createAppCenterService([app]),
     reporterService: createReporterService(reporterCalls),
     request: {
+      ...createLaunchRequestContext(),
       payload: {
         appId: "ready",
         prepared: true,
@@ -199,6 +203,29 @@ function createAppCenterService(
     getViewState: () => ({ activeAppTab: "apps" }),
     subscribe: () => () => {}
   } as unknown as IWorkspaceAppCenterService;
+}
+
+function createLaunchRequestContext(): Pick<
+  WorkbenchHostLaunchRequest,
+  "layoutConstraints" | "surfaceSize"
+> {
+  return {
+    layoutConstraints: {
+      minHeight: 160,
+      minWidth: 280,
+      safeArea: {
+        bottom: 79,
+        left: 0,
+        right: 0,
+        top: 52
+      },
+      surfacePadding: 0
+    },
+    surfaceSize: {
+      height: 900,
+      width: 1440
+    }
+  };
 }
 
 function createReporterService(calls: ReporterEventInput[][]) {

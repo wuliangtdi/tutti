@@ -14,7 +14,7 @@ import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import { AgentGUINode } from "./AgentGUINode";
-import { resolveAgentGUIHeroParticleConfig } from "./AgentGUINodeView";
+import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -1321,40 +1321,25 @@ describe("AgentGUINode", () => {
     ).toBeTruthy();
     expect(screen.queryByTestId("agent-gui-bottom-dock")).toBeNull();
     expect(emptyHeading).toBeTruthy();
-    expect(iconEffect).toHaveClass("agent-gui-pixel-card");
-    expect(iconEffect).toHaveAttribute("data-active", "false");
-    expect(iconEffect).toHaveAttribute("data-particle-visible", "true");
-    expect(iconEffect).toHaveAttribute("data-static-image", "false");
-    expect(iconEffect?.querySelector("canvas")).toHaveClass(
-      "agent-gui-pixel-card__canvas"
+    expect(iconEffect).toHaveAttribute(
+      "src",
+      expect.stringContaining("manage-agent-codex.png")
     );
-    expect(iconEffect?.querySelector("img")).toBeNull();
-    fireEvent.pointerEnter(iconEffect ?? document.body, {
-      clientX: 90,
-      clientY: 90
-    });
-    expect(iconEffect).toHaveAttribute("data-active", "true");
-    expect(iconEffect).toHaveAttribute("data-particle-visible", "true");
+    expect(iconEffect?.querySelector("canvas")).toBeNull();
     expect(
       document.querySelector(".agent-gui-node__timeline-centered")
     ).toContainElement(emptyHeading);
   });
 
-  it("resolves provider-specific hero particle artwork", () => {
-    expect(resolveAgentGUIHeroParticleConfig("codex").imageSrc).toContain(
+  it("resolves provider-specific hero icon artwork", () => {
+    expect(resolveAgentGUIHeroIconUrl("codex")).toContain(
       "manage-agent-codex.png"
     );
-    expect(resolveAgentGUIHeroParticleConfig("claude").imageSrc).toContain(
+    expect(resolveAgentGUIHeroIconUrl("claude")).toContain(
       "manage-agent-claude-code.png"
     );
-    expect(resolveAgentGUIHeroParticleConfig("hermes").imageSrc).toContain(
+    expect(resolveAgentGUIHeroIconUrl("hermes")).toContain(
       "manage-agent-hermes.png"
-    );
-    expect(resolveAgentGUIHeroParticleConfig("hermes").colors).toBe(
-      "#f8fafc,#e5e7eb,#9ca3af,#111827"
-    );
-    expect(resolveAgentGUIHeroParticleConfig("hermes").colors).not.toBe(
-      resolveAgentGUIHeroParticleConfig("codex").colors
     );
   });
 

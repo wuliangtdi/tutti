@@ -94,8 +94,13 @@ export function resolveDockMagnificationHitBounds(
     }
   }
 
+  const effectiveCrossAxisEndPadding =
+    dockPlacement === "left"
+      ? crossAxisPadding + (DOCK_ICON_PEAK_SIZE - DOCK_ICON_BASE_SIZE)
+      : crossAxisPadding;
+
   return {
-    crossEnd: crossEnd + crossAxisPadding,
+    crossEnd: crossEnd + effectiveCrossAxisEndPadding,
     crossStart: crossStart - crossAxisPadding,
     mainEnd,
     mainStart
@@ -184,6 +189,14 @@ function hasAppliedSizeChanged(
   return Math.abs(previous.size - next.size) > MAGNIFICATION_SIZE_EPSILON;
 }
 
+export function resolveDockMagnificationSlotLayoutSize({
+  size
+}: {
+  size: number;
+}): { height: number; width: number } {
+  return { height: size, width: size };
+}
+
 export function isDockMagnificationSlotLayoutLocked(
   slotElement: HTMLElement
 ): boolean {
@@ -251,8 +264,11 @@ function applyDockSlotMagnification(
   }
 
   const scale = nextStyle.size / baseSize;
-  slotElement.style.width = `${nextStyle.size}px`;
-  slotElement.style.height = `${nextStyle.size}px`;
+  const layoutSize = resolveDockMagnificationSlotLayoutSize({
+    size: nextStyle.size
+  });
+  slotElement.style.width = `${layoutSize.width}px`;
+  slotElement.style.height = `${layoutSize.height}px`;
   shell.style.transform = `scale(${scale})`;
 }
 
@@ -349,6 +365,7 @@ export function useDockMagnification({
 
       const pointerAxis = pointerAxisRef.current;
       if (pointerAxis !== null) {
+        captureRestCenters();
         entryRampStartedAtRef.current ??= frameTime;
       }
       const slots = slotRefs.current;
