@@ -246,7 +246,7 @@ function ScrollAreaFrame({
           data-slot="scroll-area-content"
           style={{
             minWidth: "100%",
-            display: "table",
+            display: "block",
             ...viewportContentStyle
           }}
         >
