@@ -409,6 +409,24 @@ export function WorkbenchHostDock({
     ]
   );
 
+  const scheduleHoverPanelClose = useCallback(
+    (entryId?: string) => {
+      clearHoverPanelOpenTimer();
+      clearHoverPanelCloseTimer();
+      hoverPanelCloseTimerRef.current = setTimeout(() => {
+        hoverPanelCloseTimerRef.current = null;
+        closeHoverPanelImmediate(entryId);
+        handleDockPointerLeave();
+      }, dockHoverPanelCloseDelayMs);
+    },
+    [
+      clearHoverPanelCloseTimer,
+      clearHoverPanelOpenTimer,
+      closeHoverPanelImmediate,
+      handleDockPointerLeave
+    ]
+  );
+
   const showHoverPanel = useCallback(
     (entryId: string, anchorKey: string, anchorElement: HTMLElement): void => {
       const dockElement = dockMeasureRef.current;
@@ -485,6 +503,50 @@ export function WorkbenchHostDock({
         }
       }
       return null;
+    },
+    []
+  );
+
+  const isPointerInsideActiveHoverPanelRegion = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const activeHoverPanel = activeHoverPanelRef.current;
+      if (!activeHoverPanel) {
+        return false;
+      }
+
+      const anchorSlot = slotRefs.current.get(activeHoverPanel.anchorKey);
+      const panel = hoverPanelRef.current;
+      if (
+        !anchorSlot ||
+        !panel ||
+        !anchorSlot.isConnected ||
+        !panel.isConnected
+      ) {
+        return false;
+      }
+
+      const anchorRect = anchorSlot.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      return (
+        rectContainsPoint(
+          anchorRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          panelRect,
+          clientX,
+          clientY,
+          dockHoverPanelHitSlopPx
+        ) ||
+        rectContainsPoint(
+          createHoverPanelBridgeRect(anchorRect, panelRect),
+          clientX,
+          clientY,
+          dockHoverPanelBridgeSlopPx
+        )
+      );
     },
     []
   );
@@ -591,7 +653,11 @@ export function WorkbenchHostDock({
   const handleDockPointerTravel = useCallback(
     (clientX: number, clientY: number) => {
       if (activeHoverPanelRef.current !== null) {
-        closeHoverPanelImmediate();
+        if (isPointerInsideActiveHoverPanelRegion(clientX, clientY)) {
+          clearHoverPanelCloseTimer();
+          return;
+        }
+        scheduleHoverPanelClose(activeHoverPanelRef.current.entryId);
         handleDockPointerLeave();
         return;
       }
@@ -600,9 +666,11 @@ export function WorkbenchHostDock({
       scheduleHoverPanelAtPointAfterRest(clientX, clientY);
     },
     [
-      closeHoverPanelImmediate,
+      clearHoverPanelCloseTimer,
       handleDockPointerMove,
       handleDockPointerLeave,
+      isPointerInsideActiveHoverPanelRegion,
+      scheduleHoverPanelClose,
       scheduleHoverPanelAtPointAfterRest
     ]
   );
@@ -1366,7 +1434,7 @@ export function WorkbenchHostDock({
                   ) {
                     return;
                   }
-                  closeHoverPanelImmediate(activeHoverPanel.entryId);
+                  scheduleHoverPanelClose(activeHoverPanel.entryId);
                   handleDockPointerLeave();
                 }}
               />
@@ -2132,8 +2200,40 @@ function resolveWorkbenchHostDockItemsWidth(
 }
 
 const dockHoverPanelOpenDelayMs = 450;
+const dockHoverPanelCloseDelayMs = 160;
 const dockHoverPanelHitSlopPx = 12;
+const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
+
+function rectContainsPoint(
+  rect: DOMRect,
+  clientX: number,
+  clientY: number,
+  slopPx = 0
+): boolean {
+  return (
+    clientX >= rect.left - slopPx &&
+    clientX <= rect.right + slopPx &&
+    clientY >= rect.top - slopPx &&
+    clientY <= rect.bottom + slopPx
+  );
+}
+
+function createHoverPanelBridgeRect(anchor: DOMRect, panel: DOMRect): DOMRect {
+  if (anchor.right <= panel.left || panel.right <= anchor.left) {
+    const left = Math.min(anchor.right, panel.right);
+    const right = Math.max(anchor.left, panel.left);
+    const top = Math.max(anchor.top, panel.top);
+    const bottom = Math.min(anchor.bottom, panel.bottom);
+    return new DOMRect(left, top, right - left, Math.max(0, bottom - top));
+  }
+
+  const left = Math.max(anchor.left, panel.left);
+  const right = Math.min(anchor.right, panel.right);
+  const top = Math.min(anchor.bottom, panel.bottom);
+  const bottom = Math.max(anchor.top, panel.top);
+  return new DOMRect(left, top, Math.max(0, right - left), bottom - top);
+}
 const dockPresenceAnimationMs = 300;
 const minimizedDockSlotLayoutAnimationMs = 720;
 const dockItemsGapPx = 10.8;
