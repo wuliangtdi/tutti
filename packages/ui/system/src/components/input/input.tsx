@@ -10,10 +10,10 @@ type InputProps = Omit<React.ComponentProps<"input">, "size"> & {
 };
 
 const inputVariantClassNames: Record<InputVariant | "default", string> = {
-  default: "h-8 rounded-[6px] px-3 py-0 text-sm leading-[1.3]",
-  lg: "h-12 rounded-[8px] px-4 py-3 text-base leading-[1.3]",
-  md: "h-8 rounded-[6px] px-3 py-0 text-sm leading-[1.3]",
-  sm: "h-8 rounded-[6px] px-3 py-0 text-sm leading-[1.3]",
+  default: "h-8 rounded-[6px] px-3 py-0 text-[13px] leading-[1.3]",
+  lg: "h-12 rounded-[8px] px-4 py-3 text-[15px] leading-[1.3]",
+  md: "h-8 rounded-[6px] px-3 py-0 text-[13px] leading-[1.3]",
+  sm: "h-8 rounded-[6px] px-3 py-0 text-[13px] leading-[1.3]",
   otp: "h-12 w-12 rounded-[4px] px-0 text-center text-xl font-medium sm:h-14 sm:w-14 sm:text-2xl"
 };
 
@@ -33,9 +33,9 @@ function Input({
       data-size={size}
       data-variant={resolvedVariant}
       className={cn(
-        "w-full min-w-0 border border-transparent bg-[var(--transparency-block)] font-normal text-[var(--text-primary)] shadow-none transition-colors duration-200 outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:ring-0 aria-invalid:shadow-none",
+        "w-full min-w-0 border border-transparent bg-[var(--transparency-block)] font-normal text-[var(--text-primary)] shadow-none transition-colors duration-200 outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-[13px] file:font-medium file:text-[var(--text-primary)] placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:ring-0 aria-invalid:shadow-none",
         inputVariantClassNames[resolvedVariant],
-        !variant && size === "sm" && "h-7 rounded-[4px] px-2 text-xs",
+        !variant && size === "sm" && "h-7 rounded-[4px] px-2 text-[11px]",
         className
       )}
       {...props}

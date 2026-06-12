@@ -588,7 +588,7 @@ function WorkspaceAgentMessageCenterAction({
               }
             >
               <AgentStatusPetIcon mood={triggerPetMood} />
-              <span className="text-sm font-semibold">{triggerLabel}</span>
+              <span className="text-[13px] font-semibold">{triggerLabel}</span>
             </Button>
           </span>
         </TooltipTrigger>
@@ -662,7 +662,7 @@ function WorkspaceAgentDecisionToast({
   const displayTitle = conversationTitle || agentName;
 
   return (
-    <article className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--border-focus)] bg-[var(--accent-bg)] p-3.5">
+    <article className="relative w-full min-w-0 overflow-visible rounded-[12px] border border-[var(--tutti-purple-border)] bg-[var(--tutti-purple-bg)] p-3.5">
       <span
         aria-hidden="true"
         className="workspace-agent-decision-toast__edge-glow agent-gui-edge-glow pointer-events-none inset-0 rounded-[12px]"
@@ -678,11 +678,11 @@ function WorkspaceAgentDecisionToast({
       </button>
       <div className="workspace-agent-decision-toast__content relative z-[1] grid min-w-0 gap-2.5 transition-opacity">
         <div className="flex min-w-0 items-center justify-between gap-2.5 pr-2">
-          <h3 className="min-w-0 truncate text-sm font-bold leading-5 text-[var(--text-secondary)]">
+          <h3 className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">
             {displayTitle}
           </h3>
           <span
-            className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold leading-4 text-[var(--text-secondary)]"
+            className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
             data-status="waiting"
             title={waitingStatusLabel}
           >
@@ -710,7 +710,7 @@ function WorkspaceAgentDecisionToast({
             }}
           />
         </div>
-        <div className="flex min-w-0 items-center gap-2 text-sm font-normal leading-5 text-[var(--text-secondary)]">
+        <div className="flex min-w-0 items-center gap-2 text-[13px] font-normal leading-5 text-[var(--text-secondary)]">
           <span className="inline-flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--line-1)] bg-[var(--transparency-block)]">
             <img
               src={agentIconUrl}

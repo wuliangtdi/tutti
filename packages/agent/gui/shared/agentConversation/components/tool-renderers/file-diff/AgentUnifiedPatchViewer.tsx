@@ -72,7 +72,7 @@ export function AgentUnifiedPatchViewer({
     collapsible && lines.length > MAX_VISIBLE_LINES ? (
       <button
         type="button"
-        className="flex w-full items-center px-3 py-2 text-left text-[11px] font-medium text-[var(--accent)] transition-colors"
+        className="flex w-full items-center px-3 py-2 text-left text-[11px] font-medium text-[var(--tutti-purple)] transition-colors"
         onClick={() => setExpanded((value) => !value)}
       >
         {expanded
@@ -92,7 +92,7 @@ export function AgentUnifiedPatchViewer({
         <>
           {showHeader ? (
             <div
-              className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[12px]"
+              className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px]"
               data-agent-diff-header="true"
             >
               <span
@@ -101,7 +101,7 @@ export function AgentUnifiedPatchViewer({
               >
                 {fileLabel}
               </span>
-              <span className="inline-flex items-center gap-2 text-[12px] font-semibold">
+              <span className="inline-flex items-center gap-2 text-[11px] font-semibold">
                 <span className="text-[var(--state-success)]">
                   +{stats.added}
                 </span>
@@ -129,13 +129,13 @@ export function AgentUnifiedPatchViewer({
         <>
           {showHeader ? (
             <div
-              className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]"
+              className="border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]"
               data-agent-diff-header="true"
             >
               {path || "Patch"}
             </div>
           ) : null}
-          <AgentToolScrollArea viewportClassName="agent-tool-diff__viewport px-4 py-3 text-[12px] leading-5">
+          <AgentToolScrollArea viewportClassName="agent-tool-diff__viewport px-4 py-3 text-[11px] leading-5">
             {visibleLines.map(({ key, line }) => (
               <div key={key} className={lineClassName(line)}>
                 {line || " "}
@@ -163,12 +163,12 @@ function fileNameFromPath(path: string | null | undefined): string | null {
 
 function flatLineClassName(kind: "add" | "remove" | "context"): string {
   if (kind === "add") {
-    return "agent-tool-diff__line grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-success)] font-[var(--tsh-font-mono)] text-[12px] leading-6";
+    return "agent-tool-diff__line grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-success)] font-[var(--tsh-font-mono)] text-[11px] leading-6";
   }
   if (kind === "remove") {
-    return "grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-danger)] bg-[color:color-mix(in_srgb,var(--state-danger)_10%,transparent)] font-[var(--tsh-font-mono)] text-[12px] leading-6";
+    return "grid grid-cols-[48px_minmax(0,1fr)] border-l-[2px] border-l-[var(--state-danger)] bg-[color:color-mix(in_srgb,var(--state-danger)_10%,transparent)] font-[var(--tsh-font-mono)] text-[11px] leading-6";
   }
-  return "agent-tool-diff__line grid grid-cols-[48px_minmax(0,1fr)] font-[var(--tsh-font-mono)] text-[12px] leading-6";
+  return "agent-tool-diff__line grid grid-cols-[48px_minmax(0,1fr)] font-[var(--tsh-font-mono)] text-[11px] leading-6";
 }
 
 function visiblePatchLines(value: string, compact: boolean): string[] {

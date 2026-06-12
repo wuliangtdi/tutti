@@ -24,7 +24,7 @@ function WorkspaceFilesNodeBody({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceFileManagerPane
-        className="min-h-0 flex-1 text-sm"
+        className="min-h-0 flex-1 text-[13px]"
         restoredState={externalNodeState}
         revealIntent={toWorkspaceFilesRevealIntent(activation)}
         workspaceID={workspaceId}

@@ -50,7 +50,7 @@ export function AgentCodeBlock({
     collapsible && lineCount > MAX_VISIBLE_LINES ? (
       <button
         type="button"
-        className="flex w-full items-center px-3 py-2 text-left text-[11px] font-medium text-[var(--accent)] transition-colors"
+        className="flex w-full items-center px-3 py-2 text-left text-[11px] font-medium text-[var(--tutti-purple)] transition-colors"
         onClick={() => setExpanded((value) => !value)}
       >
         {expanded
@@ -69,7 +69,7 @@ export function AgentCodeBlock({
       {flat ? (
         <>
           {showHeader ? (
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[12px]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px]">
               <span
                 className="truncate font-[var(--tsh-font-mono)] text-[var(--text-secondary)]"
                 title={path ?? undefined}
@@ -85,7 +85,7 @@ export function AgentCodeBlock({
             {visibleLines.map((line) => (
               <div
                 key={line.key}
-                className="grid grid-cols-[56px_minmax(0,1fr)] border-l-[3px] border-l-[var(--state-success)] font-[var(--tsh-font-mono)] text-[12px] leading-6"
+                className="grid grid-cols-[56px_minmax(0,1fr)] border-l-[3px] border-l-[var(--state-success)] font-[var(--tsh-font-mono)] text-[11px] leading-6"
               >
                 <div className="select-none px-2.5 text-right text-[color:color-mix(in_srgb,var(--state-success)_90%,transparent)]">
                   {line.lineNumber}
@@ -101,7 +101,7 @@ export function AgentCodeBlock({
       ) : (
         <>
           {showHeader ? (
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-1.5 text-[11px] text-[var(--text-secondary)]">
               <span className="truncate font-[var(--tsh-font-mono)]">
                 {path || "Code"}
               </span>
@@ -111,7 +111,7 @@ export function AgentCodeBlock({
               </span>
             </div>
           ) : null}
-          <pre className="workspace-agents-status-panel__detail-scroll-region max-h-[200px] overflow-auto px-3 py-2 text-[12px] leading-5 text-[var(--text-primary)]">
+          <pre className="workspace-agents-status-panel__detail-scroll-region max-h-[200px] overflow-auto px-3 py-2 text-[11px] leading-5 text-[var(--text-primary)]">
             <code>{visibleContent}</code>
           </pre>
           {disclosureButton}

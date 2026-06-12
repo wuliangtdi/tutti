@@ -602,7 +602,7 @@ code {
 
 .preview-kicker {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -644,7 +644,7 @@ code {
 
 .boundary-row dt {
   color: hsl(var(--muted-foreground));
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -652,7 +652,7 @@ code {
 .boundary-row dd {
   margin: 0;
   color: hsl(var(--foreground));
-  font-size: 14px;
+  font-size: 13px;
 }
 `;
 }

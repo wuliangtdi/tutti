@@ -33,7 +33,7 @@ export function AgentSearchContent({
             {resultFiles.map(({ key, value: file, isFirst }) => (
               <div
                 key={key}
-                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[12px] text-[var(--text-primary)] ${
+                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] text-[var(--text-primary)] ${
                   isFirst ? "" : "border-t border-[var(--line-2)]"
                 }`}
               >
@@ -45,7 +45,7 @@ export function AgentSearchContent({
       ) : null}
       {search.mode === "content" && search.output ? (
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
-          <pre className="max-h-[320px] overflow-auto rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-2 text-[12px] leading-5 text-[var(--text-primary)]">
+          <pre className="max-h-[320px] overflow-auto rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-2 text-[11px] leading-5 text-[var(--text-primary)]">
             {outputLines.map(({ key, value: line }) => (
               <div
                 key={key}

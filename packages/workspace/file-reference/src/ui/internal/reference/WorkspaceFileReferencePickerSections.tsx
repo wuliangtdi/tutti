@@ -44,7 +44,7 @@ export function WorkspaceFileReferencePickerPreviewPane({
                 <p className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
                   {resolveWorkspaceFileReferenceLabel(focusedEntry)}
                 </p>
-                <p className="line-clamp-3 text-sm text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+                <p className="line-clamp-3 text-[13px] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
                   {focusedEntry.path}
                 </p>
               </div>
@@ -84,7 +84,7 @@ function WorkspaceFileReferencePreviewSurface({
         </span>
       }
       loadingMessage={copy.t("referencePicker.previewLoading")}
-      messageClassName="mx-auto max-w-[24ch] text-sm leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
+      messageClassName="mx-auto max-w-[24ch] text-[13px] leading-5 text-[var(--text-secondary)] [overflow-wrap:anywhere]"
       renderIcon={(entry) =>
         entry.kind === "folder" ? (
           <FolderFilledIcon className="mx-auto size-9 text-[var(--rich-text-folder)]" />
@@ -97,7 +97,7 @@ function WorkspaceFileReferencePreviewSurface({
         focusedEntry,
         previewState
       )}
-      textClassName="h-full overflow-auto p-3 text-left text-xs leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
+      textClassName="h-full overflow-auto p-3 text-left text-[11px] leading-5 whitespace-pre-wrap break-words text-[var(--text-primary)]"
       textFrameClassName="items-stretch justify-stretch"
     />
   );
@@ -206,7 +206,7 @@ export function WorkspaceFileReferencePickerFooter({
   return (
     <div className="nodrag flex flex-col gap-3 border-t border-[var(--line-1)] px-4 py-4 [-webkit-app-region:no-drag] sm:px-6 lg:flex-row lg:items-center lg:justify-between">
       <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-1">
-        <span className="text-sm text-[var(--text-secondary)]">
+        <span className="text-[13px] text-[var(--text-secondary)]">
           {copy.t("referencePicker.selectedCount", {
             count: selectedRefs.length
           })}
@@ -259,7 +259,7 @@ function WorkspaceFileReferencePickerFeedback({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="grid min-h-0 flex-1 place-items-center px-4 text-center text-sm text-[var(--text-secondary)]">
+    <div className="grid min-h-0 flex-1 place-items-center px-4 text-center text-[13px] text-[var(--text-secondary)]">
       {children}
     </div>
   );

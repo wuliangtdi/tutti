@@ -39,12 +39,12 @@ export function AgentReadContent({
       ) : path || fileLineRange || fileTotalLines !== null ? (
         <div className="rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-3 py-2">
           {path ? (
-            <div className="font-[var(--tsh-font-mono)] text-[12px] text-[var(--text-secondary)]">
+            <div className="font-[var(--tsh-font-mono)] text-[11px] text-[var(--text-secondary)]">
               {path}
             </div>
           ) : null}
           {fileLineRange || fileTotalLines !== null ? (
-            <div className="mt-1 text-[12px] text-[var(--text-secondary)]">
+            <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {[
                 fileLineRange,
                 fileTotalLines !== null ? `${fileTotalLines} lines` : null

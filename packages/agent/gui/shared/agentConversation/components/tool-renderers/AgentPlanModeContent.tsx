@@ -16,7 +16,7 @@ export function AgentPlanModeContent({
       return null;
     }
     return (
-      <div className="rounded-[8px] bg-[var(--transparency-block)] px-3 py-2 text-[12px] text-[var(--text-secondary)]">
+      <div className="rounded-[8px] bg-[var(--transparency-block)] px-3 py-2 text-[11px] text-[var(--text-secondary)]">
         <ToolMarkdownBlock
           content={planMode.enterText}
           onLinkClick={onLinkClick}

@@ -22,19 +22,19 @@ export const primitiveExamples: Record<string, ComponentExample> = {
       "Default, focused-adjacent, disabled, and invalid text fields.",
     render: () => (
       <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
-        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="grid gap-1.5 text-[11px] font-medium text-muted-foreground">
           Workspace name
           <Input defaultValue="Nextop Design System" />
         </label>
-        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="grid gap-1.5 text-[11px] font-medium text-muted-foreground">
           Search token
           <Input placeholder="component, hook, token..." />
         </label>
-        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="grid gap-1.5 text-[11px] font-medium text-muted-foreground">
           Disabled
           <Input disabled defaultValue="Locked by policy" />
         </label>
-        <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="grid gap-1.5 text-[11px] font-medium text-muted-foreground">
           Invalid
           <Input aria-invalid defaultValue="invalid#value" />
         </label>

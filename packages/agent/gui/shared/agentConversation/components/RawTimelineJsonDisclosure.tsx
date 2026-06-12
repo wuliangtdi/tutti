@@ -20,7 +20,7 @@ export function RawTimelineJsonDisclosure({
   }
 
   return (
-    <div className="mt-2 rounded-md border border-[color:color-mix(in_srgb,var(--state-danger)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--background-fronted)_92%,var(--state-danger))] px-2 py-1.5 text-[12px] text-[var(--state-danger)]">
+    <div className="mt-2 rounded-md border border-[color:color-mix(in_srgb,var(--state-danger)_18%,transparent)] bg-[color:color-mix(in_srgb,var(--background-fronted)_92%,var(--state-danger))] px-2 py-1.5 text-[11px] text-[var(--state-danger)]">
       <button
         type="button"
         className="inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-left font-semibold text-[var(--state-danger)]"

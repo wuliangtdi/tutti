@@ -37,9 +37,9 @@ const paletteStyles = {
     "nodrag min-h-9 w-full min-w-0 justify-start overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus-visible:outline-none data-[highlighted]:bg-[var(--transparency-block)] active:bg-[var(--transparency-active)]"
   ),
   copy: "flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden leading-[16px]",
-  name: "min-w-0 max-w-[48%] shrink-0 truncate text-[12px] font-semibold text-[var(--text-primary)]",
+  name: "min-w-0 max-w-[48%] shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]",
   descriptionText:
-    "min-w-0 flex-1 truncate text-[12px] font-normal text-[var(--text-secondary)]"
+    "min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]"
 };
 
 export function AgentSlashCommandPalette({

@@ -109,7 +109,7 @@
   border-radius: 999px;
   background: rgb(5 8 18 / 78%);
   color: rgb(244 244 245);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   outline: none;
   padding: 0 11px;
@@ -221,7 +221,7 @@
   border-radius: 6px;
   background: rgb(69 10 10 / 92%);
   color: rgb(254 226 226);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.4;
   padding: 6px 8px;
 }
@@ -253,7 +253,7 @@
 
 .workspace-terminal__close-guard > h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .workspace-terminal__close-guard > p {
@@ -268,7 +268,7 @@
   border-radius: 4px;
   background: rgb(0 0 0 / 32%);
   color: inherit;
-  font-size: 12px;
+  font-size: 11px;
   padding: 6px 8px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -290,7 +290,7 @@
   border-radius: 6px;
   background: rgb(69 10 10 / 92%);
   color: rgb(254 226 226);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.4;
   padding: 6px 8px;
 }

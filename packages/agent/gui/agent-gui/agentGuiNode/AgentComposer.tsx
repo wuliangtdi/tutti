@@ -444,11 +444,11 @@ function AgentSlashStatusPanel({
       role="status"
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="truncate text-[12px] font-semibold leading-4">
+        <h3 className="truncate text-[11px] font-semibold leading-4">
           {labels.slashStatusTitle}
         </h3>
         <button
-          className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[12px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
+          className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
           type="button"
           onClick={onClose}
         >

@@ -284,7 +284,7 @@ export function WorkspaceFileManager({
   return (
     <section
       className={cn(
-        "@container/workspace-file-manager relative flex h-full min-h-0 w-full overflow-hidden text-[14px] text-[var(--text-primary)]",
+        "@container/workspace-file-manager relative flex h-full min-h-0 w-full overflow-hidden text-[13px] text-[var(--text-primary)]",
         surface === "card"
           ? "rounded-lg border border-[var(--border-1)] bg-[var(--background-panel)]"
           : "rounded-none border-0 bg-transparent",

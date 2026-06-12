@@ -6,6 +6,12 @@ import test from "node:test";
 const source = readFileSync(resolve("src/host/WorkbenchHostDock.tsx"), "utf8");
 
 test("dock hover panels survive pointer travel from slot to panel", () => {
+  assert.match(source, /const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;/);
+  assert.equal(
+    source.match(/sideOffset=\{DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET\}/g)?.length,
+    3
+  );
+  assert.doesNotMatch(source, /sideOffset=\{26\}/);
   assert.match(source, /const dockHoverPanelOpenDelayMs = 450;/);
   assert.match(source, /const dockHoverPanelPointerRestTolerancePx = 4;/);
   assert.match(source, /const hoverPanelCloseTimerRef = useRef/);

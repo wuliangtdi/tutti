@@ -15,7 +15,7 @@ function Switch({
       data-slot="switch"
       data-size={size}
       className={cn(
-        "peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-[background-color,border-color,box-shadow] outline-none focus-visible:border-[var(--border-focus)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)] aria-invalid:border-[var(--state-danger)] aria-invalid:ring-2 aria-invalid:ring-[color-mix(in_srgb,var(--state-danger)_20%,transparent)] data-[size=default]:h-[18px] data-[size=default]:w-[32px] data-[size=sm]:h-[14px] data-[size=sm]:w-[24px] data-[state=checked]:bg-[var(--accent)] data-[state=unchecked]:bg-[var(--text-disabled)] data-disabled:cursor-not-allowed data-disabled:opacity-100",
+        "peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-[background-color,border-color,box-shadow] outline-none focus-visible:border-[var(--border-focus)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--border-focus)_30%,transparent)] aria-invalid:border-[var(--state-danger)] aria-invalid:ring-2 aria-invalid:ring-[color-mix(in_srgb,var(--state-danger)_20%,transparent)] data-[size=default]:h-[18px] data-[size=default]:w-[32px] data-[size=sm]:h-[14px] data-[size=sm]:w-[24px] data-[state=checked]:bg-[var(--tutti-purple)] data-[state=unchecked]:bg-[var(--text-disabled)] data-disabled:cursor-not-allowed data-disabled:opacity-100",
         className
       )}
       {...props}

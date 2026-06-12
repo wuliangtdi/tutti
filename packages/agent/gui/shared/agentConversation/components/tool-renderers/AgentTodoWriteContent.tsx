@@ -23,7 +23,7 @@ export function AgentTodoWriteContent({
           {todos.map((todo) => (
             <div
               key={`${todo.content}:${todo.status ?? "pending"}`}
-              className="flex items-start gap-2 rounded-[8px] px-1 py-0.5 text-[12px]"
+              className="flex items-start gap-2 rounded-[8px] px-1 py-0.5 text-[11px]"
             >
               <div className="mt-[1px] shrink-0">
                 {iconForStatus(todo.status)}
@@ -54,7 +54,7 @@ function iconForStatus(status: string | null): JSX.Element {
         <AtomIcon
           size={14}
           active
-          className="text-[var(--accent)]"
+          className="text-[var(--tutti-purple)]"
           aria-hidden="true"
         />
       );

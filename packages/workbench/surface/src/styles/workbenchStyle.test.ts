@@ -29,7 +29,7 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   );
   assert.match(
     css,
-    /\.desktop-dock__hover-panel\[data-dock-placement="left"\]\s*{[^}]*left:\s*calc\(\s*var\(--desktop-dock-hover-panel-anchor-left\)\s*\+\s*var\(--desktop-dock-hover-panel-anchor-width\)\s*\+\s*var\(--desktop-dock-tooltip-gap, 32px\)\s*\);/s
+    /\.desktop-dock__hover-panel\[data-dock-placement="left"\]\s*{[^}]*left:\s*calc\(\s*var\(--desktop-dock-hover-panel-anchor-left\)\s*\+\s*var\(--desktop-dock-hover-panel-anchor-width\)\s*\+\s*var\(--desktop-dock-tooltip-gap, 16px\)\s*\);/s
   );
   assert.match(
     css,
@@ -80,6 +80,10 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   assert.match(
     css,
     /\.desktop-dock\s*{[^}]*max-width:\s*calc\(100vw - var\(--desktop-dock-safe-inline\) \* 2\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock\s*{[^}]*--desktop-dock-tooltip-gap:\s*16px;/s
   );
   assert.match(
     css,

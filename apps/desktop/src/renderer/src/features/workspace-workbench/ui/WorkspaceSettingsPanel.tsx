@@ -59,7 +59,7 @@ import {
 } from "../services/workspaceWallpaper";
 
 const workspaceSettingsSelectTriggerClass =
-  "w-full h-8 rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-sm font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0";
+  "w-full h-8 rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0";
 const workspaceSettingsSelectContentClass =
   "w-[var(--radix-select-trigger-width)] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-1 text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] [--nextop-select-content-min-width:100%] !outline-none !ring-0";
 const workspaceSettingsInputClass =
@@ -117,7 +117,7 @@ export function WorkspaceSettingsPanel({
         <div className="col-[1/-1] row-start-1 flex h-[54px] min-h-[54px] items-center justify-between border-b border-[var(--border-1)] px-[22px] py-[13px] max-[760px]:px-5">
           <h2
             id="workspace-settings-title"
-            className="m-0 text-[16px] font-semibold leading-[1.3] text-[var(--text-primary)]"
+            className="m-0 text-[15px] font-semibold leading-[1.3] text-[var(--text-primary)]"
           >
             {t("workspace.settings.title")}
           </h2>
@@ -163,7 +163,7 @@ export function WorkspaceSettingsPanel({
                 key={section.id}
                 aria-pressed={selected}
                 className={cn(
-                  "block w-full min-w-0 truncate whitespace-nowrap rounded-md border-0 px-2.5 py-1.5 text-left text-[14px] font-semibold leading-[1.35] outline-none transition-colors duration-150 hover:bg-[var(--transparency-block)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
+                  "block w-full min-w-0 truncate whitespace-nowrap rounded-md border-0 px-2.5 py-1.5 text-left text-[13px] font-semibold leading-[1.35] outline-none transition-colors duration-150 hover:bg-[var(--transparency-block)] hover:text-[var(--text-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-focus)]",
                   selected
                     ? "bg-[var(--transparency-block)] text-[var(--text-primary)]"
                     : "bg-transparent text-[var(--text-secondary)]"
@@ -373,7 +373,7 @@ function WorkspaceAppsSettingsSection({
   return (
     <SettingsRows>
       <div className="flex w-full flex-col gap-2">
-        <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
           {t("workspace.settings.apps.managedModels.title")}
         </strong>
         <p className="m-0 text-[13px] leading-[1.35] text-[var(--text-secondary)]">
@@ -412,10 +412,10 @@ function WorkspaceAppsSettingsSection({
         <section className="flex w-full flex-col gap-4 rounded-[10px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+              <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
                 {managedModelProviderLabels[selectedProvider.provider]}
               </strong>
-              <p className="m-0 mt-1 text-[12px] leading-[1.3] text-[var(--text-secondary)]">
+              <p className="m-0 mt-1 text-[11px] leading-[1.3] text-[var(--text-secondary)]">
                 {selectedProvider.hasApiKey
                   ? t("workspace.settings.apps.managedModels.keyConfigured")
                   : t("workspace.settings.apps.managedModels.keyMissing")}
@@ -434,7 +434,7 @@ function WorkspaceAppsSettingsSection({
 
           <div className="grid grid-cols-2 gap-3 max-[640px]:grid-cols-1">
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 {t("workspace.settings.apps.managedModels.apiKey")}
               </span>
               <input
@@ -455,7 +455,7 @@ function WorkspaceAppsSettingsSection({
             </label>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
                 {t("workspace.settings.apps.managedModels.baseUrl")}
               </span>
               <input
@@ -475,7 +475,7 @@ function WorkspaceAppsSettingsSection({
           </div>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+            <span className="text-[11px] font-medium text-[var(--text-secondary)]">
               {t("workspace.settings.apps.managedModels.models")}
             </span>
             <textarea
@@ -566,7 +566,7 @@ function WorkspaceDeveloperSettingsSection({
       {analyticsDebugAvailable ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
           <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-            <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+            <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
               {t("workspace.settings.developer.analyticsDebugLabel")}
             </strong>
             <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -678,7 +678,7 @@ function SettingsRow({
   return (
     <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
       <div className="min-w-0">
-        <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
           {label}
         </strong>
       </div>
@@ -729,7 +729,7 @@ function WorkspaceGeneralSettingsSection({
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.languageLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -766,7 +766,7 @@ function WorkspaceGeneralSettingsSection({
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.defaultAgentProviderLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -805,7 +805,7 @@ function WorkspaceGeneralSettingsSection({
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.preventSleepLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -888,7 +888,7 @@ function WorkspaceAppearanceSettingsSection({
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.appearance.themeLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -929,7 +929,7 @@ function WorkspaceAppearanceSettingsSection({
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.appearance.dockPlacementLabel")}
           </strong>
           <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
@@ -975,7 +975,7 @@ function WorkspaceAppearanceSettingsSection({
           className="flex min-w-0 flex-col gap-1"
           id="workspace-settings-wallpaper-heading"
         >
-          <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.appearance.wallpaperLabel")}
           </strong>
         </div>
@@ -1146,7 +1146,7 @@ function WorkspaceWallpaperPicker({
           ) : (
             <UploadIcon className="size-4" />
           )}
-          <span className="max-w-full whitespace-normal text-[12px] font-medium leading-tight">
+          <span className="max-w-full whitespace-normal text-[11px] font-medium leading-tight">
             {isSaving
               ? t("workspace.settings.appearance.wallpaperUploading")
               : t("workspace.settings.appearance.wallpaperUpload")}
@@ -1167,7 +1167,7 @@ function WorkspaceWallpaperPicker({
       {customWallpaper.exists && customSelected ? (
         <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
           <div className="min-w-0">
-            <strong className="text-[14px] font-semibold text-[var(--text-primary)]">
+            <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
               {t("workspace.settings.appearance.wallpaperDisplayModeLabel")}
             </strong>
           </div>
@@ -1204,7 +1204,7 @@ function WorkspaceWallpaperPicker({
       ) : null}
 
       {uploadError ? (
-        <p className="m-0 text-[12px] leading-[1.4] text-[var(--state-danger)]">
+        <p className="m-0 text-[11px] leading-[1.4] text-[var(--state-danger)]">
           {uploadError}
         </p>
       ) : null}

@@ -31,13 +31,13 @@ export function IssueManagerTaskComposerPane({
           <div
             className={`${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay0ClassName}`}
           >
-            <h2 className="m-0 text-[17px] font-semibold leading-[1.35] text-[var(--text-primary)]">
+            <h2 className="m-0 text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)]">
               {copy.t("actions.addSubtask")}
             </h2>
           </div>
           <div className="flex w-full min-w-0 flex-col gap-6">
             <label
-              className={`flex w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay1ClassName}`}
+              className={`flex w-full min-w-0 flex-col gap-2 text-[13px] font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay1ClassName}`}
             >
               <span className="leading-5">{copy.t("labels.title")}</span>
               <IssueManagerDraftTitleInput
@@ -47,7 +47,7 @@ export function IssueManagerTaskComposerPane({
               />
             </label>
             <div
-              className={`flex min-h-0 w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay2ClassName}`}
+              className={`flex min-h-0 w-full min-w-0 flex-col gap-2 text-[13px] font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay2ClassName}`}
             >
               <span className="leading-5">
                 {copy.t("labels.requirementDescription")}

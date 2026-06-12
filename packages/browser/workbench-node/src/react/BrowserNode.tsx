@@ -183,11 +183,11 @@ export function BrowserNode({
               <div className="mt-4 text-lg font-semibold text-[var(--text-primary)]">
                 {feature.i18n.t("loadFailed")}
               </div>
-              <div className="mt-1 max-w-[360px] text-sm leading-5 text-[var(--text-secondary)]">
+              <div className="mt-1 max-w-[360px] text-[13px] leading-5 text-[var(--text-secondary)]">
                 {errorMessage}
               </div>
               {errorStatus ? (
-                <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">
+                <div className="mt-4 rounded-full border border-border bg-[var(--transparency-block)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-secondary)]">
                   {errorStatus}
                 </div>
               ) : null}

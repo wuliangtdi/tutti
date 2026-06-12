@@ -396,7 +396,7 @@ function MentionPaletteEmptyState({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-sm text-[var(--text-tertiary)]"
+      className="flex h-full min-h-0 flex-1 items-center justify-center px-4 py-6 text-center text-[13px] text-[var(--text-tertiary)]"
       data-empty-state-icon={icon}
       data-testid="agent-gui-mention-palette-empty-state"
     >
@@ -418,7 +418,7 @@ function MentionPaletteLoading({
 }): React.JSX.Element {
   "use memo";
   return (
-    <div className="flex min-h-[52px] items-center gap-2 rounded-xl px-3 text-sm text-[var(--text-secondary)]">
+    <div className="flex min-h-[52px] items-center gap-2 rounded-xl px-3 text-[13px] text-[var(--text-secondary)]">
       <Spinner
         size={16}
         className="text-[var(--text-secondary)]"
@@ -437,7 +437,7 @@ function MentionPaletteLoadingBanner({
   "use memo";
   return (
     <div
-      className="flex items-center gap-2 border-b border-[var(--line-1)] px-3 py-2 text-[12px] font-medium text-[var(--text-secondary)]"
+      className="flex items-center gap-2 border-b border-[var(--line-1)] px-3 py-2 text-[11px] font-medium text-[var(--text-secondary)]"
       data-testid="agent-mention-loading-banner"
     >
       <Spinner
@@ -804,7 +804,7 @@ function MentionFileSearchMoreHint(): React.JSX.Element {
   "use memo";
   return (
     <p
-      className="px-3 pb-1 pt-2 text-center text-[12px] leading-5 text-[var(--text-tertiary)]"
+      className="px-3 pb-1 pt-2 text-center text-[11px] leading-5 text-[var(--text-tertiary)]"
       data-agent-mention-file-search-hint="true"
     >
       {translate("agentHost.agentGui.mentionFileSearchMoreHint")}
@@ -846,14 +846,14 @@ function renderMentionGroups(
           />
         ) : null}
         {showGroupLabel ? (
-          <div className="px-3 text-[12px] font-normal text-[var(--text-secondary)]">
+          <div className="px-3 text-[11px] font-normal text-[var(--text-secondary)]">
             {agentMentionGroupLabel(group.id)}
           </div>
         ) : null}
         <div className="grid gap-1">
           {group.items.length === 0 &&
           !shouldSuppressFileSearchGroupChrome(filter, query) ? (
-            <div className="px-3 py-1 text-[12px] font-normal text-[var(--text-tertiary)]">
+            <div className="px-3 py-1 text-[11px] font-normal text-[var(--text-tertiary)]">
               {agentMentionEmptyGroupLabel(group.id, query)}
             </div>
           ) : null}
@@ -974,11 +974,11 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
       >
         <MentionFileIcon item={item} visualKind={visualKind} />
         <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-          <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--text-primary)]">
+          <span className="min-w-0 truncate text-[11px] font-semibold text-[var(--text-primary)]">
             {item.name}
           </span>
           {childCountLabel ? (
-            <span className="shrink-0 text-[12px] font-normal text-[var(--text-secondary)]">
+            <span className="shrink-0 text-[11px] font-normal text-[var(--text-secondary)]">
               {childCountLabel}
             </span>
           ) : null}
@@ -993,7 +993,7 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
       <span className="flex min-w-0 items-center justify-between gap-3">
         <span className="flex min-w-0 items-center gap-2">
           <MentionSessionAvatarStack item={item} />
-          <span className="min-w-0 truncate text-[12px] font-semibold leading-[16px] text-[var(--text-primary)]">
+          <span className="min-w-0 truncate text-[11px] font-semibold leading-[16px] text-[var(--text-primary)]">
             <MentionSessionTitle item={item} />
           </span>
         </span>
@@ -1007,11 +1007,11 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
       <span className="flex min-w-0 items-center gap-2 overflow-hidden">
         <MentionWorkspaceAppIcon iconUrl={item.iconUrl} />
         <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden">
-          <span className="min-w-0 max-w-[40%] shrink-0 truncate text-[12px] font-semibold text-[var(--text-primary)]">
+          <span className="min-w-0 max-w-[40%] shrink-0 truncate text-[11px] font-semibold text-[var(--text-primary)]">
             {item.name}
           </span>
           {item.description ? (
-            <span className="min-w-0 flex-1 truncate text-[12px] font-normal text-[var(--text-secondary)]">
+            <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-[var(--text-secondary)]">
               {item.description}
             </span>
           ) : null}
@@ -1023,7 +1023,7 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
   if (item.kind === "workspace-app-factory") {
     return (
       <span className="grid min-w-0 overflow-hidden gap-1">
-        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[var(--text-primary)]">
+        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-[var(--text-primary)]">
           {item.name}
         </span>
       </span>
@@ -1033,13 +1033,13 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
   return (
     <span className="grid min-w-0 overflow-hidden gap-1">
       <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-        <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--text-primary)]">
+        <span className="min-w-0 truncate text-[11px] font-semibold text-[var(--text-primary)]">
           {item.title}
         </span>
         {item.status ? <IssueMentionStatusTag status={item.status} /> : null}
       </span>
       {item.creatorName ? (
-        <span className="truncate text-[12px] font-normal text-[var(--text-secondary)]">
+        <span className="truncate text-[11px] font-normal text-[var(--text-secondary)]">
           {item.creatorName}
         </span>
       ) : null}
@@ -1192,10 +1192,10 @@ function MentionSessionTitle({
   "use memo";
   return (
     <>
-      <span className="text-[12px] leading-[16px]">
+      <span className="text-[11px] leading-[16px]">
         {item.initiatorName} & {item.agentName}
       </span>
-      <span className="text-[12px] font-normal leading-[16px] text-[var(--text-secondary)]">
+      <span className="text-[11px] font-normal leading-[16px] text-[var(--text-secondary)]">
         {" "}
         {item.title}
       </span>

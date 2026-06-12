@@ -11,7 +11,11 @@ const conversationFlowMock = vi.hoisted(() => ({
 }));
 
 const composerMock = vi.hoisted(() => ({
-  calls: [] as Array<{ isSendingTurn?: boolean; showStopButton?: boolean }>
+  calls: [] as Array<{
+    composerFocusRequestSequence?: number | null;
+    isSendingTurn?: boolean;
+    showStopButton?: boolean;
+  }>
 }));
 
 const statusDotMock = vi.hoisted(() => ({
@@ -30,10 +34,12 @@ vi.mock("./AgentSessionChrome", () => ({
 
 vi.mock("./AgentComposer", () => ({
   AgentComposer: (props: {
+    composerFocusRequestSequence?: number | null;
     isSendingTurn?: boolean;
     showStopButton?: boolean;
   }) => {
     composerMock.calls.push({
+      composerFocusRequestSequence: props.composerFocusRequestSequence,
       isSendingTurn: props.isSendingTurn,
       showStopButton: props.showStopButton
     });
@@ -234,6 +240,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.createConversation).toHaveBeenCalledWith({
       projectPath: "/workspace/app"
     });
+    expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
   it("shows empty project sections when projects have no conversations", () => {

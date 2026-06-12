@@ -655,21 +655,21 @@ const localizedSection = (
 const standardButtonBase =
   "border-0 !shadow-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background-1)] active:translate-y-0 disabled:!text-[var(--text-disabled)] disabled:!opacity-100";
 const standardDisabledSurfaceClass = "disabled:!bg-[var(--transparency-block)]";
-const standardPrimaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--text-primary)] px-3 text-sm font-normal text-[var(--text-inverted)] hover:bg-[var(--text-primary-hover)]`;
-const standardSecondaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--transparency-block)] px-3 text-sm font-normal text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]`;
-const standardGhostButtonClass = `${standardButtonBase} h-8 rounded-[6px] bg-transparent px-3 text-sm font-normal text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:!bg-transparent`;
-const standardDestructiveButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] !bg-[var(--state-danger)] px-3 text-sm font-normal !text-[var(--white-stationary)] hover:!bg-[var(--state-danger-hover)]`;
-const standardDestructiveSecondaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--on-danger)] px-3 text-sm font-normal text-[var(--state-danger)] hover:bg-[var(--on-danger-hover)]`;
-const standardDestructiveGhostButtonClass = `${standardButtonBase} h-8 rounded-[6px] bg-transparent px-3 text-sm font-normal !text-[var(--state-danger)] hover:!bg-[var(--on-danger)] hover:!text-[var(--state-danger-hover)] disabled:!bg-transparent`;
+const standardPrimaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--text-primary)] px-3 text-[13px] font-normal text-[var(--text-inverted)] hover:bg-[var(--text-primary-hover)]`;
+const standardSecondaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--transparency-block)] px-3 text-[13px] font-normal text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]`;
+const standardGhostButtonClass = `${standardButtonBase} h-8 rounded-[6px] bg-transparent px-3 text-[13px] font-normal text-[var(--text-primary)] hover:bg-[var(--transparency-hover)] disabled:!bg-transparent`;
+const standardDestructiveButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] !bg-[var(--state-danger)] px-3 text-[13px] font-normal !text-[var(--white-stationary)] hover:!bg-[var(--state-danger-hover)]`;
+const standardDestructiveSecondaryButtonClass = `${standardButtonBase} ${standardDisabledSurfaceClass} h-8 rounded-[6px] bg-[var(--on-danger)] px-3 text-[13px] font-normal text-[var(--state-danger)] hover:bg-[var(--on-danger-hover)]`;
+const standardDestructiveGhostButtonClass = `${standardButtonBase} h-8 rounded-[6px] bg-transparent px-3 text-[13px] font-normal !text-[var(--state-danger)] hover:!bg-[var(--on-danger)] hover:!text-[var(--state-danger-hover)] disabled:!bg-transparent`;
 const standardBadgeBase =
-  "h-5 rounded-[4px] border-0 px-2 py-0 text-xs font-normal shadow-none transition-colors duration-200";
+  "h-5 rounded-[4px] border-0 px-2 py-0 text-[11px] font-normal shadow-none transition-colors duration-200";
 const standardBadgeDefaultClass = `${standardBadgeBase} bg-[var(--transparency-block)] text-[var(--text-primary)]`;
 const standardBadgeSecondaryClass = `${standardBadgeBase} bg-[var(--transparency-block)] text-[var(--text-secondary)]`;
 const standardBadgeDestructiveClass = `${standardBadgeBase} bg-[var(--on-danger)] text-[var(--state-danger)]`;
 const standardFieldLabelClass =
-  "text-xs font-normal leading-5 text-[var(--text-secondary)]";
+  "text-[11px] font-normal leading-5 text-[var(--text-secondary)]";
 const standardInputClass =
-  "h-8 rounded-[6px] border border-transparent bg-[var(--transparency-block)] px-3 text-sm font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:!ring-0 disabled:!bg-[var(--transparency-block)] disabled:!text-[var(--text-disabled)] disabled:!opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:!shadow-none aria-invalid:!ring-0";
+  "h-8 rounded-[6px] border border-transparent bg-[var(--transparency-block)] px-3 text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:!ring-0 disabled:!bg-[var(--transparency-block)] disabled:!text-[var(--text-disabled)] disabled:!opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:!shadow-none aria-invalid:!ring-0";
 const standardRuleTableFrameClass =
   "overflow-hidden border border-[var(--border-1)]";
 const standardRuleTableHeaderRowClass =
@@ -680,19 +680,19 @@ const standardRuleTableDividerClass = "border-b border-[var(--border-1)]";
 const standardRuleStrongClass = "font-semibold text-[var(--text-primary)]";
 const standardRuleSeparatorClass = "mx-1 text-[var(--text-tertiary)]";
 const standardSelectTriggerClass =
-  "h-8 rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-sm font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 data-[size=sm]:h-7 data-[size=sm]:rounded-[4px] data-[size=sm]:px-2 data-[size=sm]:text-xs";
+  "h-8 rounded-[6px] border-0 bg-[var(--transparency-block)] px-3 text-[13px] font-normal text-[var(--text-primary)] !shadow-none !outline-none !ring-0 transition-colors duration-200 hover:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:!ring-0 data-[size=sm]:h-7 data-[size=sm]:rounded-[4px] data-[size=sm]:px-2 data-[size=sm]:text-[11px]";
 const standardSelectContentClass =
   "w-[240px] rounded-[8px] border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] !outline-none !ring-0";
 const standardSelectGroupClass = "p-0";
 const standardSelectLabelClass =
-  "px-2 py-1 text-xs font-normal !text-[var(--text-secondary)]";
+  "px-2 py-1 text-[11px] font-normal !text-[var(--text-secondary)]";
 const standardSelectItemClass =
-  "flex h-7 items-center rounded-[4px] px-2 py-0 pr-8 text-sm !text-[var(--text-primary)] transition-colors duration-200 hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus:!text-[var(--text-primary)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:!text-[var(--text-primary)] data-[state=checked]:bg-transparent data-[state=checked]:!text-[var(--text-primary)] data-[state=checked]:hover:bg-[var(--transparency-block)] data-[state=checked]:focus:bg-[var(--transparency-block)] data-[state=checked][data-highlighted]:bg-[var(--transparency-block)]";
+  "flex h-7 items-center rounded-[4px] px-2 py-0 pr-8 text-[13px] !text-[var(--text-primary)] transition-colors duration-200 hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] focus:!text-[var(--text-primary)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:!text-[var(--text-primary)] data-[state=checked]:bg-transparent data-[state=checked]:!text-[var(--text-primary)] data-[state=checked]:hover:bg-[var(--transparency-block)] data-[state=checked]:focus:bg-[var(--transparency-block)] data-[state=checked][data-highlighted]:bg-[var(--transparency-block)]";
 const standardSelectMenuClass = `${standardSelectContentClass} flex w-[240px] flex-col gap-0.5 p-1`;
 const standardSelectMenuLabelClass =
-  "px-2 py-1 text-xs font-normal text-[var(--text-secondary)]";
+  "px-2 py-1 text-[11px] font-normal text-[var(--text-secondary)]";
 const standardSelectMenuItemClass =
-  "flex h-7 items-center gap-2 rounded-[4px] px-2 text-sm font-normal text-[var(--text-primary)] transition-colors duration-200 hover:bg-[var(--transparency-block)]";
+  "flex h-7 items-center gap-2 rounded-[4px] px-2 text-[13px] font-normal text-[var(--text-primary)] transition-colors duration-200 hover:bg-[var(--transparency-block)]";
 const standardSelectMenuItemActiveClass = "text-[var(--text-primary)]";
 const standardSelectMenuSeparatorClass =
   "mx-2 my-0.5 h-px bg-[var(--border-2)]";
@@ -703,22 +703,22 @@ const standardSelectSplitItemBodyClass = "flex min-w-0 flex-1 flex-col gap-0.5";
 const standardSelectSplitItemTitleClass =
   "flex min-w-0 items-center font-normal leading-[1.2]";
 const standardSelectSplitItemDescriptionClass =
-  "m-0 whitespace-normal text-xs leading-[1.3] text-[var(--text-secondary)]";
+  "m-0 whitespace-normal text-[11px] leading-[1.3] text-[var(--text-secondary)]";
 const standardPopoverTitleClass =
-  "text-sm font-semibold text-[var(--text-primary)]";
+  "text-[13px] font-semibold text-[var(--text-primary)]";
 const standardPopoverDescriptionClass =
-  "text-xs leading-[1.3] text-[var(--text-tertiary)]";
+  "text-[11px] leading-[1.3] text-[var(--text-tertiary)]";
 const standardPopoverLabelClass =
-  "inline-flex items-center gap-2 text-sm text-[var(--text-primary)]";
+  "inline-flex items-center gap-2 text-[13px] text-[var(--text-primary)]";
 const standardMenuSurfaceItemClass =
-  "flex h-8 w-full items-center rounded-[6px] px-2 text-left text-sm transition-colors duration-200";
+  "flex h-8 w-full items-center rounded-[6px] px-2 text-left text-[13px] transition-colors duration-200";
 const standardOverlayContentClass =
   "max-w-[360px] rounded-[16px] border border-[var(--border-1)] bg-[var(--background-fronted)] p-[18px] text-[var(--text-primary)] shadow-[0_16px_40px_var(--shadow-elevated)] ring-0";
 const standardOverlayClass = "bg-[var(--backdrop-dark)] backdrop-blur-sm";
 const standardDialogTitleClass =
-  "text-[16px] font-semibold text-[var(--text-primary)]";
+  "text-[15px] font-semibold text-[var(--text-primary)]";
 const standardDialogDescriptionClass =
-  "text-sm font-[400] leading-[1.3] text-[var(--text-secondary)]";
+  "text-[13px] font-[400] leading-[1.3] text-[var(--text-secondary)]";
 const standardDialogFooterClass = "gap-2.5 pt-1";
 const standardToastClass =
   "mx-auto w-fit border border-[var(--toast-neutral-border)] bg-[var(--toast-neutral-bg)] text-[var(--toast-neutral-fg)]";
@@ -770,47 +770,47 @@ const buttonSizeSpecs = [
   {
     label: "mini",
     usage: "极紧凑计数 / 标签旁",
-    className: "h-6 rounded-[4px] px-2 text-xs leading-tight",
+    className: "h-6 rounded-[4px] px-2 text-[11px] leading-tight",
     gapClass: "gap-1",
     gapMeta: "4px",
     iconClass: "size-3",
-    meta: "24px high · 12px text · 8px padding · 12px icon · radius 4px"
+    meta: "24px high · 11px text · 8px padding · 12px icon · radius 4px"
   },
   {
     label: "sm",
     usage: "紧凑工具栏",
-    className: "h-7 rounded-[4px] px-2 text-xs",
+    className: "h-7 rounded-[4px] px-2 text-[11px]",
     gapClass: "gap-1",
     gapMeta: "4px",
     iconClass: "size-4",
-    meta: "28px high · 12px text · 8px padding · 16px icon · radius 4px"
+    meta: "28px high · 11px text · 8px padding · 16px icon · radius 4px"
   },
   {
     label: "default / md",
     usage: "主界面常规按钮",
-    className: "h-8 rounded-[6px] px-3 text-sm",
+    className: "h-8 rounded-[6px] px-3 text-[13px]",
     gapClass: "gap-[6px]",
     gapMeta: "6px",
     iconClass: "size-4",
-    meta: "32px high · 14px text · 12px padding · 16px icon · radius 6px"
+    meta: "32px high · 13px text · 12px padding · 16px icon · radius 6px"
   },
   {
     label: "dialog",
     usage: "Modal / 弹窗底栏",
-    className: "h-8 rounded-[6px] px-3 text-sm leading-5",
+    className: "h-8 rounded-[6px] px-3 text-[13px] leading-5",
     gapClass: "gap-[6px]",
     gapMeta: "6px",
     iconClass: "size-4",
-    meta: "32px high · 14px text · 12px padding · 16px icon · radius 6px · 20px line-height"
+    meta: "32px high · 13px text · 12px padding · 16px icon · radius 6px · 20px line-height"
   },
   {
     label: "lg",
     usage: "少数强调 CTA",
-    className: "h-10 rounded-[8px] px-5 text-sm",
+    className: "h-10 rounded-[8px] px-5 text-[13px]",
     gapClass: "gap-2",
     gapMeta: "8px",
     iconClass: "size-4",
-    meta: "40px high · 14px text · 20px padding · 16px icon · radius 8px"
+    meta: "40px high · 13px text · 20px padding · 16px icon · radius 8px"
   }
 ];
 
@@ -892,7 +892,7 @@ function DocsSection({
           </h2>
           {componentId ? <ComponentIdBadge id={componentId} /> : null}
         </div>
-        <p className="mt-3 text-sm leading-[1.3] text-[var(--text-secondary)]">
+        <p className="mt-3 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
           {description}
         </p>
       </div>
@@ -913,7 +913,7 @@ function StoryLayerHeading({
       <p className="text-[11px] font-bold uppercase tracking-normal text-[var(--text-tertiary)]">
         {title}
       </p>
-      <p className="mt-2 max-w-2xl text-sm leading-[1.3] text-[var(--text-secondary)]">
+      <p className="mt-2 max-w-2xl text-[13px] leading-[1.3] text-[var(--text-secondary)]">
         {description}
       </p>
     </div>
@@ -953,11 +953,11 @@ function ComponentIdBadge({ id }: { id: string }) {
   }, [id]);
 
   return (
-    <div className="flex h-8 min-w-0 items-center gap-1.5 border border-[var(--border-1)] bg-[var(--background-fronted)] px-2.5 text-xs text-[var(--text-secondary)]">
+    <div className="flex h-8 min-w-0 items-center gap-1.5 border border-[var(--border-1)] bg-[var(--background-fronted)] px-2.5 text-[11px] text-[var(--text-secondary)]">
       <span className="shrink-0 font-medium uppercase tracking-normal text-[var(--text-tertiary)]">
         ID
       </span>
-      <code className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--text-primary)]">
+      <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-primary)]">
         {id}
       </code>
       <button
@@ -1012,7 +1012,7 @@ function StoryboardControls({
           <button
             key={option.value}
             type="button"
-            className={`h-7 min-w-9 px-2 text-xs font-medium transition-colors ${
+            className={`h-7 min-w-9 px-2 text-[11px] font-medium transition-colors ${
               language === option.value
                 ? "bg-[var(--text-primary)] text-[var(--text-inverted)]"
                 : "text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
@@ -1030,7 +1030,7 @@ function StoryboardControls({
           <button
             key={value}
             type="button"
-            className={`inline-flex h-7 min-w-9 items-center justify-center gap-1.5 px-2 text-xs font-medium transition-colors ${
+            className={`inline-flex h-7 min-w-9 items-center justify-center gap-1.5 px-2 text-[11px] font-medium transition-colors ${
               themeMode === value
                 ? "bg-[var(--text-primary)] text-[var(--text-inverted)]"
                 : "text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
@@ -1061,10 +1061,10 @@ function ExampleCard({
   return (
     <div className="border border-[var(--border-1)] bg-[var(--background-fronted)] p-5">
       <div className="mb-4 space-y-1">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+        <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">
           {title}
         </h3>
-        <p className="text-xs leading-[1.3] text-[var(--text-secondary)]">
+        <p className="text-[11px] leading-[1.3] text-[var(--text-secondary)]">
           {description}
         </p>
       </div>
@@ -1178,10 +1178,10 @@ function OverviewSection({ language }: { language: StoryboardLanguage }) {
             <div className="space-y-3">
               {card.items.map((item) => (
                 <div key={item.keyword} className="flex items-baseline gap-3">
-                  <span className="shrink-0 text-sm font-semibold tracking-normal text-[var(--text-primary)]">
+                  <span className="shrink-0 text-[13px] font-semibold tracking-normal text-[var(--text-primary)]">
                     {item.keyword}
                   </span>
-                  <span className="text-xs leading-5 text-[var(--text-secondary)]">
+                  <span className="text-[11px] leading-5 text-[var(--text-secondary)]">
                     {item.desc}
                   </span>
                 </div>
@@ -1248,13 +1248,13 @@ function TypographySection({ language }: { language: StoryboardLanguage }) {
                 key={font.label}
                 className="grid gap-3 border border-[#1a1a1a]/10 bg-white p-3 lg:grid-cols-[180px_1fr_1fr]"
               >
-                <p className="text-xs font-semibold text-[#1a1a1a]">
+                <p className="text-[11px] font-semibold text-[#1a1a1a]">
                   {font.label}
                 </p>
                 <code className="font-[var(--font-mono)] text-[11px] leading-5 text-[#1a1a1a]/55">
                   {font.stack}
                 </code>
-                <p className="text-xs leading-5 text-[#1a1a1a]/45">
+                <p className="text-[11px] leading-5 text-[#1a1a1a]/45">
                   {font.note}
                 </p>
               </div>
@@ -1273,10 +1273,10 @@ function TypographySection({ language }: { language: StoryboardLanguage }) {
                 className="grid gap-3 border border-[#1a1a1a]/10 bg-white p-3 lg:grid-cols-[140px_1fr]"
               >
                 <div>
-                  <p className="font-mono text-xs text-[#1a1a1a]">
+                  <p className="font-mono text-[11px] text-[#1a1a1a]">
                     {font.label}
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-[#1a1a1a]/45">
+                  <p className="mt-1 text-[11px] leading-5 text-[#1a1a1a]/45">
                     {font.sample}
                   </p>
                 </div>
@@ -1302,7 +1302,7 @@ function TypographySection({ language }: { language: StoryboardLanguage }) {
                 <p className={`${weight.className} text-[#1a1a1a]`}>
                   {weight.label}
                 </p>
-                <p className="mt-2 text-xs leading-5 text-[#1a1a1a]/45">
+                <p className="mt-2 text-[11px] leading-5 text-[#1a1a1a]/45">
                   {weight.sample}
                 </p>
               </div>
@@ -1321,10 +1321,12 @@ function TypographySection({ language }: { language: StoryboardLanguage }) {
                 className="grid gap-4 py-5 lg:grid-cols-[150px_minmax(130px,1fr)_minmax(130px,1fr)_1.3fr] lg:items-center"
               >
                 <div>
-                  <p className="text-sm font-semibold text-[#1a1a1a]">
+                  <p className="text-[13px] font-semibold text-[#1a1a1a]">
                     {type.name}
                   </p>
-                  <p className="mt-1 text-xs text-[#1a1a1a]/40">{type.meta}</p>
+                  <p className="mt-1 text-[11px] text-[#1a1a1a]/40">
+                    {type.meta}
+                  </p>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1">
                   <p className="text-[10px] font-semibold uppercase tracking-normal text-[#1a1a1a]/30">
@@ -1390,7 +1392,7 @@ function TypographySection({ language }: { language: StoryboardLanguage }) {
             {typographyContent.rules.items.map((rule) => (
               <div
                 key={rule}
-                className="border border-[#1a1a1a]/10 bg-white px-3 py-2 text-xs leading-5 text-[#1a1a1a]/55"
+                className="border border-[#1a1a1a]/10 bg-white px-3 py-2 text-[11px] leading-5 text-[#1a1a1a]/55"
               >
                 {rule}
               </div>
@@ -1422,7 +1424,7 @@ function MetricsSection({ language }: { language: StoryboardLanguage }) {
                 key={space}
                 className="grid grid-cols-[42px_1fr] items-center gap-3"
               >
-                <span className="font-mono text-xs text-[var(--text-tertiary)]">
+                <span className="font-mono text-[11px] text-[var(--text-tertiary)]">
                   {space}px
                 </span>
                 <div
@@ -1467,7 +1469,7 @@ function MetricsSection({ language }: { language: StoryboardLanguage }) {
                 key={motion.label}
                 className="flex items-center justify-between border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 py-2"
               >
-                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                <span className="text-[11px] font-semibold text-[var(--text-primary)]">
                   {motion.label}
                 </span>
                 <code className="font-mono text-[11px] text-[var(--text-tertiary)]">
@@ -1557,7 +1559,7 @@ function ShortcutBadgeStoryboard() {
 function RichTextFieldPreview({ children }: { children: ReactNode }) {
   return (
     <div
-      className="min-h-20 rounded-[8px] border border-transparent bg-[var(--transparency-block)] p-3 text-sm font-normal leading-[1.3] text-[var(--text-primary)] transition-[background-color,border-color,color]"
+      className="min-h-20 rounded-[8px] border border-transparent bg-[var(--transparency-block)] p-3 text-[13px] font-normal leading-[1.3] text-[var(--text-primary)] transition-[background-color,border-color,color]"
       data-rich-text-field-state="default"
     >
       {children}
@@ -1664,7 +1666,7 @@ function SpinnerStoryboard() {
                 className="flex items-center justify-between border border-[rgba(0,0,0,0.08)] bg-[rgb(255,255,255)] px-3 py-2"
               >
                 <div>
-                  <p className="text-xs font-semibold text-[rgb(0,0,0)]">
+                  <p className="text-[11px] font-semibold text-[rgb(0,0,0)]">
                     {spec.label}
                     <span className="ml-2 font-mono text-[11px] font-normal text-[rgba(43,43,43,0.50)]">
                       {spec.size}px
@@ -1692,14 +1694,16 @@ function SpinnerStoryboard() {
               Syncing
             </Button>
             <div className="flex items-center justify-between border border-[rgba(0,0,0,0.08)] bg-[rgba(43,43,43,0.04)] px-3 py-2">
-              <span className="text-sm font-normal text-[rgba(43,43,43,0.70)]">
+              <span className="text-[13px] font-normal text-[rgba(43,43,43,0.70)]">
                 Loading workspace files
               </span>
               <StorySpinner className="text-[var(--text-primary)]" />
             </div>
             <div className="flex items-center gap-3 bg-[rgba(0,0,0,0.72)] px-3 py-2 text-white">
               <StorySpinner className="text-white" />
-              <span className="text-xs font-semibold">Restoring terminal</span>
+              <span className="text-[11px] font-semibold">
+                Restoring terminal
+              </span>
             </div>
           </div>
         </ExampleCard>
@@ -1719,7 +1723,7 @@ function StoryCheckbox({
 }) {
   return (
     <label
-      className={`inline-flex items-center gap-2 text-left text-sm font-normal ${
+      className={`inline-flex items-center gap-2 text-left text-[13px] font-normal ${
         disabled
           ? "cursor-not-allowed text-[var(--text-disabled)]"
           : "text-[var(--text-primary)]"
@@ -1756,7 +1760,7 @@ function CheckboxStoryboard() {
         </ExampleCard>
         <ExampleCard title="Usage" description="设置面板和文件选择场景">
           <div className="grid gap-3">
-            <label className="inline-flex w-fit items-center gap-2 text-sm font-normal text-[var(--text-primary)]">
+            <label className="inline-flex w-fit items-center gap-2 text-[13px] font-normal text-[var(--text-primary)]">
               <Checkbox
                 checked={includeIgnored}
                 onCheckedChange={(checked) =>
@@ -1776,7 +1780,7 @@ function CheckboxStoryboard() {
                       checked={index === 0}
                       label={`Select ${file}`}
                     />
-                    <span className="text-xs text-[var(--text-tertiary)]">
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
                       {file}
                     </span>
                   </div>
@@ -1803,7 +1807,7 @@ function StorySwitch({
 }) {
   return (
     <label
-      className={`inline-flex items-center gap-3 text-left text-sm font-normal text-[rgb(0,0,0)] ${
+      className={`inline-flex items-center gap-3 text-left text-[13px] font-normal text-[rgb(0,0,0)] ${
         disabled ? "cursor-not-allowed opacity-50" : ""
       }`}
     >
@@ -1840,10 +1844,10 @@ function SwitchStoryboard() {
           <div className="grid gap-3">
             <div className="flex items-center justify-between border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 py-2">
               <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">
+                <p className="text-[13px] font-semibold text-[var(--text-primary)]">
                   Auto update workspace index
                 </p>
-                <p className="text-xs text-[var(--text-tertiary)]">
+                <p className="text-[11px] text-[var(--text-tertiary)]">
                   Refresh references when files change
                 </p>
               </div>
@@ -2121,7 +2125,7 @@ function UnderlineTabsStoryboard() {
               value={value}
               onValueChange={setValue}
             />
-            <div className="border border-[rgba(0,0,0,0.08)] bg-[rgba(43,43,43,0.04)] px-3 py-4 text-sm text-[rgba(43,43,43,0.70)]">
+            <div className="border border-[rgba(0,0,0,0.08)] bg-[rgba(43,43,43,0.04)] px-3 py-4 text-[13px] text-[rgba(43,43,43,0.70)]">
               Active tab:{" "}
               <span className="font-semibold text-[rgb(0,0,0)]">{value}</span>
             </div>
@@ -2183,7 +2187,7 @@ function StatusDotStoryboard() {
                       tone as "neutral" | "green" | "blue" | "amber" | "red"
                     }
                   />
-                  <span className="text-sm text-[rgb(0,0,0)]">{label}</span>
+                  <span className="text-[13px] text-[rgb(0,0,0)]">{label}</span>
                 </div>
                 <code className="font-mono text-[11px] text-[rgba(43,43,43,0.50)]">
                   {tone}
@@ -2237,12 +2241,12 @@ function MenuSurfaceStoryboard() {
           title="Composition Contract"
           description="公开稳定容器，不绑定触发器、定位或 dismiss 行为"
         >
-          <div className="grid gap-3 text-sm leading-6 text-[var(--text-secondary)]">
+          <div className="grid gap-3 text-[13px] leading-6 text-[var(--text-secondary)]">
             <p>
               MenuSurface 只负责菜单外观和 state data attribute。
               触发器、定位、焦点管理与关闭逻辑由调用方或更高阶浮层组件持有。
             </p>
-            <code className="rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 font-mono text-xs text-[var(--text-primary)]">
+            <code className="rounded-[6px] bg-[var(--transparency-block)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)]">
               {'<MenuSurface state="open" />'}
             </code>
           </div>
@@ -2348,12 +2352,12 @@ function ViewportMenuSurfaceStoryboard() {
           title="Surface Contract"
           description="点位放置、边界钳制与外部 dismiss"
         >
-          <div className="grid gap-3 text-sm leading-6 text-[var(--text-secondary)]">
+          <div className="grid gap-3 text-[13px] leading-6 text-[var(--text-secondary)]">
             <p>
               用于不依赖 Radix anchor tree 的 overlay，例如 canvas
               右键菜单、board 节点工具条、 任意 point-based 浮层。
             </p>
-            <ul className="grid gap-1 text-xs text-[var(--text-tertiary)]">
+            <ul className="grid gap-1 text-[11px] text-[var(--text-tertiary)]">
               <li>支持 absolute 或 point placement</li>
               <li>支持 escape、outside pointer down、scroll dismiss</li>
               <li>
@@ -2873,7 +2877,7 @@ function InputStoryboard() {
                 defaultValue="invalid#value"
               />
               <span
-                className="block text-xs font-normal leading-[1.3] text-[var(--state-danger)]"
+                className="block text-[11px] font-normal leading-[1.3] text-[var(--state-danger)]"
                 id="input-invalid-message"
               >
                 Only letters, numbers, dashes, and underscores.
@@ -3035,13 +3039,13 @@ function ResizableStoryboard() {
         <div className="h-[220px] overflow-hidden rounded-[12px] border border-[var(--border-1)] bg-[var(--background-fronted)]">
           <ResizablePanelGroup orientation="horizontal">
             <ResizablePanel defaultSize={34} minSize="120px">
-              <div className="flex h-full items-center justify-center bg-[var(--transparency-block)] px-4 text-sm font-semibold text-[var(--text-secondary)]">
+              <div className="flex h-full items-center justify-center bg-[var(--transparency-block)] px-4 text-[13px] font-semibold text-[var(--text-secondary)]">
                 Rail
               </div>
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={66} minSize="120px">
-              <div className="flex h-full items-center justify-center px-4 text-sm font-semibold text-[var(--text-primary)]">
+              <div className="flex h-full items-center justify-center px-4 text-[13px] font-semibold text-[var(--text-primary)]">
                 Detail
               </div>
             </ResizablePanel>
@@ -3259,10 +3263,10 @@ function DrawerStoryboard() {
               </DrawerHeader>
               <div className="grid gap-3 p-4">
                 <div className="rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-3">
-                  <p className="m-0 text-sm font-semibold text-[var(--text-primary)]">
+                  <p className="m-0 text-[13px] font-semibold text-[var(--text-primary)]">
                     Approval required
                   </p>
-                  <p className="m-0 mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                  <p className="m-0 mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">
                     The drawer owns the edge motion while the content keeps the
                     local product layout.
                   </p>
@@ -3303,7 +3307,7 @@ function ToastStoryboard() {
         <ExampleCard title="Default Toast" description="保存、同步和轻量反馈">
           <div className="flex min-h-[88px] items-start justify-center pt-4">
             <div
-              className={`${standardToastClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-sm font-normal leading-normal shadow-none`}
+              className={`${standardToastClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-[13px] font-normal leading-normal shadow-none`}
               role="status"
             >
               <span className="flex min-w-0 flex-col items-center justify-center whitespace-normal break-words text-center">
@@ -3315,7 +3319,7 @@ function ToastStoryboard() {
         <ExampleCard title="Destructive Toast" description="失败与风险提醒">
           <div className="flex min-h-[88px] items-start justify-center pt-4">
             <div
-              className={`${standardToastDestructiveClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-sm font-normal leading-normal shadow-none`}
+              className={`${standardToastDestructiveClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-[13px] font-normal leading-normal shadow-none`}
               role="alert"
             >
               <span className="flex min-w-0 max-w-full flex-col items-center justify-center whitespace-normal break-words text-center">
@@ -3323,7 +3327,7 @@ function ToastStoryboard() {
                   <FailedFilledIcon className="size-4 shrink-0 text-current" />
                   <span className="min-w-0 break-words">Upload failed</span>
                 </span>
-                <span className="text-xs font-normal leading-[1.3] text-current opacity-75">
+                <span className="text-[11px] font-normal leading-[1.3] text-current opacity-75">
                   The selected file could not be written to the workspace
                 </span>
               </span>
@@ -3333,7 +3337,7 @@ function ToastStoryboard() {
         <ExampleCard title="Success Toast" description="完成与成功反馈">
           <div className="flex min-h-[88px] items-start justify-center pt-4">
             <div
-              className={`${standardToastSuccessClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-sm font-normal leading-normal shadow-none`}
+              className={`${standardToastSuccessClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-[13px] font-normal leading-normal shadow-none`}
               role="status"
             >
               <span className="flex min-w-0 max-w-full flex-col items-center justify-center whitespace-normal break-words text-center">
@@ -3348,7 +3352,7 @@ function ToastStoryboard() {
         <ExampleCard title="Loading Toast" description="长任务进行中反馈">
           <div className="flex min-h-[88px] items-start justify-center pt-4">
             <div
-              className={`${standardToastClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-sm font-normal leading-normal shadow-none`}
+              className={`${standardToastClass} flex min-h-8 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-[13px] font-normal leading-normal shadow-none`}
               role="status"
               aria-busy="true"
             >
@@ -3421,10 +3425,10 @@ function SonnerStoryboard() {
               <div className="flex min-w-0 items-start gap-2">
                 <WarningLinedIcon className="mt-0.5 size-4 shrink-0 text-[var(--accent)]" />
                 <div className="min-w-0 flex-1">
-                  <p className="m-0 text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                  <p className="m-0 text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                     Agent needs your decision
                   </p>
-                  <p className="m-0 mt-0.5 text-xs leading-5 text-[var(--text-secondary)]">
+                  <p className="m-0 mt-0.5 text-[11px] leading-5 text-[var(--text-secondary)]">
                     Review the waiting session in Agent messages.
                   </p>
                 </div>
@@ -3432,7 +3436,7 @@ function SonnerStoryboard() {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  className={`${standardPrimaryButtonClass} h-7 px-2.5 text-xs`}
+                  className={`${standardPrimaryButtonClass} h-7 px-2.5 text-[11px]`}
                 >
                   Review
                 </Button>
@@ -3580,7 +3584,7 @@ export function App() {
               <h1 className="text-[clamp(36px,6vw,72px)] font-semibold leading-[0.95] tracking-normal text-[var(--storyboard-ink)]">
                 {copy.title}
               </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-5 text-[var(--text-secondary)]">
+              <p className="mt-4 max-w-2xl text-[13px] leading-5 text-[var(--text-secondary)]">
                 {copy.subtitle}
               </p>
             </div>

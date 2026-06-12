@@ -142,10 +142,34 @@
           "usage": "选中态强描边"
         },
         {
-          "label": "--accent",
+          "label": "--accent-codex",
           "dark": "rgb(79, 143, 255)",
           "light": "rgb(65, 130, 245)",
           "usage": "主强调、链接、选中边框、焦点"
+        },
+        {
+          "label": "--accent-codex-border",
+          "dark": "color-mix(in srgb, var(--accent-codex) 20%, transparent)",
+          "light": "color-mix(in srgb, var(--accent-codex) 20%, transparent)",
+          "usage": "基于 Codex 强调色的 20% 描边"
+        },
+        {
+          "label": "--tutti-purple",
+          "dark": "rgb(136, 152, 255)",
+          "light": "rgb(109, 127, 245)",
+          "usage": "Tutti 品牌紫色"
+        },
+        {
+          "label": "--tutti-purple-bg",
+          "dark": "color-mix(in srgb, var(--background-fronted) 88%, var(--tutti-purple) 12%)",
+          "light": "color-mix(in srgb, var(--background-fronted) 88%, var(--tutti-purple) 12%)",
+          "usage": "基于 Tutti 品牌紫色的 12% 浅底"
+        },
+        {
+          "label": "--tutti-purple-border",
+          "dark": "color-mix(in srgb, var(--tutti-purple) 20%, transparent)",
+          "light": "color-mix(in srgb, var(--tutti-purple) 20%, transparent)",
+          "usage": "基于 Tutti 品牌紫色的 20% 边框"
         },
         {
           "label": "--accent-claude",
@@ -155,8 +179,8 @@
         },
         {
           "label": "--accent-bg",
-          "dark": "color-mix(in srgb, var(--background-fronted) 88%, var(--accent) 12%)",
-          "light": "color-mix(in srgb, var(--background-fronted) 88%, var(--accent) 12%)",
+          "dark": "color-mix(in srgb, var(--background-fronted) 88%, var(--accent-codex) 12%)",
+          "light": "color-mix(in srgb, var(--background-fronted) 88%, var(--accent-codex) 12%)",
           "usage": "基于前景表面的强调色浅底"
         }
       ]
@@ -203,8 +227,8 @@
         },
         {
           "label": "--rich-text-mention-issue",
-          "dark": "rgb(191, 90, 242)",
-          "light": "rgb(191, 90, 242)",
+          "dark": "rgb(109, 127, 245)",
+          "light": "rgb(109, 127, 245)",
           "usage": "Issue / task mention 的图标与文字色"
         },
         {
@@ -237,6 +261,12 @@
       "title": "State / Runtime",
       "description": "状态色与终端固定对比运行时例外",
       "tokens": [
+        {
+          "label": "--status-running",
+          "dark": "rgb(79, 143, 255)",
+          "light": "rgb(65, 130, 245)",
+          "usage": "运行中状态色"
+        },
         {
           "label": "--state-success",
           "dark": "rgb(74, 222, 128)",

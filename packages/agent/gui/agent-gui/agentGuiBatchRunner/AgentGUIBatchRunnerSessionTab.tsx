@@ -125,14 +125,14 @@ export function AgentGUIBatchRunnerSessionTab({
           </span>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <strong className="truncate text-[14px] font-semibold text-neutral-950">
+              <strong className="truncate text-[13px] font-semibold text-neutral-950">
                 {providerLabel}
               </strong>
               <span className="truncate text-[13px] font-medium text-neutral-700">
                 {result.title ?? result.id}
               </span>
             </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-3 text-[12px] text-neutral-500">
+            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-3 text-[11px] text-neutral-500">
               <span>{t(batchRunnerStatusKeyByStatus[result.status])}</span>
               <span className="font-mono">{sessionId || "-"}</span>
               <span>
@@ -153,7 +153,7 @@ export function AgentGUIBatchRunnerSessionTab({
             type="button"
             variant="secondary"
             size="sm"
-            className="h-8 gap-2 px-3 text-[12px]"
+            className="h-8 gap-2 px-3 text-[11px]"
             data-testid="agent-gui-batch-session-back"
             onClick={onBackToResults}
           >
@@ -164,7 +164,7 @@ export function AgentGUIBatchRunnerSessionTab({
             type="button"
             variant="secondary"
             size="sm"
-            className="h-8 gap-2 px-3 text-[12px]"
+            className="h-8 gap-2 px-3 text-[11px]"
             disabled={timelineState?.loading === true || !sessionId}
             data-testid="agent-gui-batch-session-refresh"
             onClick={onRefresh}
@@ -184,7 +184,7 @@ export function AgentGUIBatchRunnerSessionTab({
       </div>
 
       {timelineState?.error ? (
-        <div className="mx-4 mt-3 flex shrink-0 gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
+        <div className="mx-4 mt-3 flex shrink-0 gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
           <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
           <span className="min-w-0 whitespace-pre-wrap break-words">
             {timelineState.error}

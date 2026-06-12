@@ -136,8 +136,8 @@
 }
 
 [data-testid="workspace-agent-message-center"] {
-  --agent-gui-package-accent: rgb(65 130 245);
-  --agent-gui-package-accent-strong: rgb(65 130 245);
+  --agent-gui-package-accent: var(--accent-codex);
+  --agent-gui-package-accent-strong: var(--accent-codex);
   --agent-gui-package-success: rgb(34 197 94);
   --agent-gui-package-warning: rgb(234 121 8);
   --agent-gui-package-danger: rgb(220 38 38);
@@ -199,8 +199,8 @@
 }
 
 .workspace-agent-message-center__card[data-waiting="true"] {
-  border-color: var(--border-focus);
-  background: var(--accent-bg);
+  border-color: var(--tutti-purple-border);
+  background: var(--tutti-purple-bg);
 }
 
 .workspace-agent-message-center__card[data-highlighted="true"] {
@@ -214,7 +214,7 @@
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 16px;
 }
@@ -463,7 +463,7 @@ aside.workspace-agents-status-panel
   margin: 0;
   color: var(--text-primary);
   font-family: var(--tsh-font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   font-synthesis: none;
   line-height: 1.3;
@@ -498,7 +498,7 @@ aside.workspace-agents-status-panel
   overflow: hidden;
   color: var(--text-primary);
   font-family: var(--tsh-font-display);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   font-synthesis: none;
   line-height: 1.3;
@@ -971,7 +971,7 @@ aside.workspace-agents-status-panel
   min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -1006,7 +1006,7 @@ aside.workspace-agents-status-panel
   border: 0;
   border-radius: 4px;
   color: var(--tsh-ui-pill-neutral-fg);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -1031,7 +1031,7 @@ aside.workspace-agents-status-panel
   margin: 4px 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
   -webkit-box-orient: vertical;
@@ -1044,7 +1044,7 @@ aside.workspace-agents-status-panel
   padding: 12px;
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   background: var(--transparency-block);
   overflow-wrap: anywhere;
@@ -1077,7 +1077,7 @@ aside.workspace-agents-status-panel
   margin: 0;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1153,7 +1153,7 @@ aside.workspace-agents-status-panel
   .workspace-agents-status-panel__detail-markdown
   code
   a {
-  color: var(--accent);
+  color: var(--tutti-purple);
   font-weight: 600;
 }
 
@@ -1177,7 +1177,7 @@ aside.workspace-agents-status-panel
   border: 0;
   border-radius: 6px;
   color: var(--accent);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -1216,7 +1216,7 @@ aside.workspace-agents-status-panel
   min-height: 0;
   padding: 34px 18px;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
   text-align: center;
 }
@@ -1232,7 +1232,7 @@ aside.workspace-agents-status-panel
   min-width: 0;
   padding: 34px 18px;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.4;
   text-align: center;
   overflow-wrap: anywhere;
@@ -1255,7 +1255,7 @@ aside.workspace-agents-status-panel
   );
   padding: 8px 10px;
   color: var(--label-orange);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.35;
 }
 
@@ -1414,7 +1414,7 @@ aside.workspace-agents-status-panel
   border: 0;
   color: var(--text-secondary);
   font-family: var(--tsh-font-ui);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
   text-align: left;
@@ -1541,7 +1541,7 @@ aside.workspace-agents-status-panel
   width: 100%;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
 }
 
@@ -1555,7 +1555,7 @@ aside.workspace-agents-status-panel
   padding: 2px 0;
   color: var(--text-secondary);
   font-family: var(--tsh-font-ui);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
 }
@@ -1630,7 +1630,7 @@ aside.workspace-agents-status-panel
   min-width: 0;
   overflow: hidden;
   font-family: var(--tsh-font-ui);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -1640,7 +1640,7 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-tool-status {
   flex: 0 0 auto;
   color: currentColor;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
 }
@@ -1651,7 +1651,7 @@ aside.workspace-agents-status-panel
   gap: 4px;
   align-items: center;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
 }
 
@@ -1676,7 +1676,7 @@ aside.workspace-agents-status-panel
   min-width: 0;
   overflow: hidden;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -1705,7 +1705,7 @@ aside.workspace-agents-status-panel
   padding: 0 0 0 20px;
   color: currentColor;
   font-family: var(--tsh-font-ui);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.45;
   opacity: 0.9;
@@ -1749,7 +1749,7 @@ aside.workspace-agents-status-panel
   padding: 10px 12px;
   border-radius: 6px;
   background: var(--transparency-block);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -1799,7 +1799,7 @@ aside.workspace-agents-status-panel
 
 .workspace-agents-status-panel__detail-tool-section-title {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.35;
   text-transform: uppercase;
@@ -1809,7 +1809,7 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-tool-question {
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -1825,14 +1825,14 @@ aside.workspace-agents-status-panel
   margin: 0;
   padding-left: 18px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
 .workspace-agents-status-panel__detail-tool-markdown {
   width: 100%;
   min-width: 0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -1850,7 +1850,7 @@ aside.workspace-agents-status-panel
   border: 0;
   color: var(--text-primary);
   font-family: var(--tsh-font-ui);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
   background: transparent;
   box-shadow: none;
@@ -2573,7 +2573,7 @@ aside.workspace-agents-status-panel
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
 }
 
@@ -2757,18 +2757,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-prompt-lead {
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
 }
 
 .agent-gui-conversation__interactive-prompt-meta {
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .agent-gui-conversation__interactive-prompt-question {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -2788,7 +2788,7 @@ aside.workspace-agents-status-panel
   background: var(--transparency-block);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
   padding: 8px 8px 8px 12px;
@@ -2817,7 +2817,7 @@ aside.workspace-agents-status-panel
   border-radius: 8px;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
   padding: 12px;
@@ -2849,7 +2849,7 @@ aside.workspace-agents-status-panel
   display: -webkit-box;
   max-width: 100%;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
   overflow-wrap: anywhere;
@@ -2879,7 +2879,7 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-option-description {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 1.3;
 }
@@ -3031,7 +3031,7 @@ aside.workspace-agents-status-panel
   background: var(--background-fronted);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 560;
   padding: 6px 12px;
 }
@@ -3181,7 +3181,7 @@ aside.workspace-agents-status-panel
   background: transparent;
   box-shadow: none;
   color: var(--agent-conversation-text, var(--text-primary));
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.72;
 }
 
@@ -3197,7 +3197,7 @@ aside.workspace-agents-status-panel
   border-radius: 8px;
   background: var(--agent-conversation-user-bg, var(--transparency-block));
   color: var(--agent-conversation-user-text, var(--text-primary));
-  font-size: 14px;
+  font-size: 13px;
   line-height: 24px;
   box-shadow: none;
 }
@@ -3316,7 +3316,7 @@ aside.workspace-agents-status-panel
   border-radius: 4px;
   background: transparent;
   color: var(--folder);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 20px;
   vertical-align: middle;
@@ -3350,7 +3350,7 @@ aside.workspace-agents-status-panel
   padding: 0;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   line-height: inherit;
   vertical-align: middle;
@@ -3394,7 +3394,7 @@ aside.workspace-agents-status-panel
   height: 16px;
   padding: 0 4px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 16px;
@@ -3497,7 +3497,7 @@ aside.workspace-agents-status-panel
 }
 
 [data-agent-mention-kind="workspace-app"].tsh-agent-object-token--entity {
-  color: var(--accent);
+  color: var(--tutti-purple);
 }
 
 [data-agent-mention-kind="workspace-app"]
@@ -3534,6 +3534,23 @@ aside.workspace-agents-status-panel
 .agent-gui-node__composer-textarea
   [data-agent-file-mention="true"].tsh-agent-object-token:hover {
   background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.agent-gui-conversation__assistant-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token,
+.workspace-agents-status-panel__detail-user-message
+  [data-agent-file-mention="true"].tsh-agent-object-token {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.agent-gui-conversation__assistant-markdown
+  [data-agent-file-mention="true"].tsh-agent-object-token
+  .tsh-agent-object-token__main,
+.workspace-agents-status-panel__detail-user-message
+  [data-agent-file-mention="true"].tsh-agent-object-token
+  .tsh-agent-object-token__main {
+  font-size: 13px;
 }
 
 .agent-gui-conversation__assistant-markdown
@@ -3606,14 +3623,14 @@ aside.workspace-agents-status-panel
   --agent-gui-surface-hover: var(--transparency-block);
   --agent-gui-border: var(--cove-border);
   --agent-gui-border-subtle: var(--line-2);
-  --agent-gui-package-accent: rgb(65 130 245);
-  --agent-gui-package-accent-strong: rgb(65 130 245);
+  --agent-gui-package-accent: var(--accent-codex);
+  --agent-gui-package-accent-strong: var(--accent-codex);
   --agent-gui-package-accent-bg: color-mix(
     in srgb,
     var(--agent-gui-surface-raised) 88%,
     var(--agent-gui-package-accent) 12%
   );
-  --agent-gui-package-border-focus: rgb(65 130 245 / 24%);
+  --agent-gui-package-border-focus: var(--accent-codex-border);
   --agent-gui-package-success: rgb(34 197 94);
   --agent-gui-package-warning: rgb(234 121 8);
   --agent-gui-package-danger: rgb(220 38 38);
@@ -3789,9 +3806,6 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__project-rail-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   flex: 0 0 auto;
   min-width: 0;
@@ -3801,7 +3815,10 @@ aside.workspace-agents-status-panel
   min-height: 26px;
   margin-bottom: 8px;
   padding: 0 6px 0 10px;
-  background: color-mix(in srgb, var(--node-surface) 94%, transparent);
+}
+
+.agent-gui-node__conversation-section + .agent-gui-node__project-rail-header {
+  margin-top: 24px;
 }
 
 .agent-gui-node__project-rail-title {
@@ -3811,7 +3828,7 @@ aside.workspace-agents-status-panel
   gap: 6px;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 18px;
 }
@@ -3975,8 +3992,8 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__new-conversation-icon-button svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
@@ -4094,7 +4111,19 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__conversation-section + .agent-gui-node__conversation-section {
-  margin-top: 6px;
+  margin-top: 12px;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  + .agent-gui-node__conversation-section[data-kind="project"] {
+  margin-top: 2px;
+}
+
+.agent-gui-node__conversation-section[data-kind="pinned"]
+  + .agent-gui-node__conversation-section[data-kind="conversations"],
+.agent-gui-node__conversation-section[data-kind="project"]
+  + .agent-gui-node__conversation-section[data-kind="conversations"] {
+  margin-top: 24px;
 }
 
 .agent-gui-node__conversation-section-header {
@@ -4104,16 +4133,25 @@ aside.workspace-agents-status-panel
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 0 6px 0 10px;
+  border-radius: 6px;
+  background-color: transparent;
+  padding: 4px 6px 4px 10px;
+  transition: background-color 140ms ease;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  > .agent-gui-node__conversation-section-header:hover {
+  background-color: var(--agent-gui-surface-hover);
 }
 
 .agent-gui-node__conversation-section-toggle {
+  position: relative;
   display: inline-flex;
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -4131,13 +4169,24 @@ button.agent-gui-node__conversation-section-toggle:hover {
 }
 
 .agent-gui-node__conversation-section-chevron {
+  position: absolute;
+  left: 0;
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
   color: var(--text-tertiary);
+  opacity: 0;
+  pointer-events: none;
   transition:
     color 140ms ease,
+    opacity 140ms ease,
     transform 140ms ease;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  > .agent-gui-node__conversation-section-header:hover
+  .agent-gui-node__conversation-section-chevron {
+  opacity: 1;
 }
 
 .agent-gui-node__conversation-section-toggle[aria-expanded="true"]
@@ -4159,7 +4208,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   gap: 6px;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 18px;
   font-weight: 400;
 }
@@ -4175,6 +4224,13 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 12px;
   height: 12px;
   flex: 0 0 auto;
+  transition: opacity 140ms ease;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  > .agent-gui-node__conversation-section-header:hover
+  .agent-gui-node__conversation-section-label-icon {
+  opacity: 0;
 }
 
 .agent-gui-node__conversation-section-actions {
@@ -4223,6 +4279,23 @@ button.agent-gui-node__conversation-section-toggle:hover
     opacity 140ms ease,
     visibility 0s linear 0s;
   padding-left: 14px;
+  padding-top: 8px;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  .agent-gui-node__conversation-section-items {
+  padding-left: 0;
+  padding-top: 4px;
+}
+
+.agent-gui-node__conversation-section[data-kind="pinned"]
+  .agent-gui-node__conversation-section-items {
+  padding-left: 0;
+}
+
+.agent-gui-node__conversation-section[data-kind="conversations"]
+  .agent-gui-node__conversation-section-items {
+  padding-left: 0;
 }
 
 .agent-gui-node__conversation-section[data-collapsed="true"]
@@ -4244,6 +4317,11 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-width: 100%;
   gap: 4px;
   overflow: hidden;
+}
+
+.agent-gui-node__conversation-section[data-kind="project"]
+  .agent-gui-node__conversation-section-items-inner {
+  gap: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4368,10 +4446,10 @@ button.agent-gui-node__conversation-section-toggle:hover
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  height: 36px;
-  min-height: 36px;
+  height: 32px;
+  min-height: 32px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 6px;
   background-color: transparent;
   color: var(--agent-gui-text-primary);
   overflow: hidden;
@@ -4411,6 +4489,21 @@ button.agent-gui-node__conversation-section-toggle:hover
   transition: padding-right 140ms ease;
 }
 
+.agent-gui-node__conversation-section[data-kind="project"]
+  .agent-gui-node__conversation-select {
+  padding-left: 26px;
+}
+
+.agent-gui-node__conversation-section[data-kind="pinned"]
+  .agent-gui-node__conversation-select {
+  padding-left: 26px;
+}
+
+.agent-gui-node__conversation-section[data-kind="conversations"]
+  .agent-gui-node__conversation-select {
+  padding-left: 26px;
+}
+
 .agent-gui-node__conversation-item:hover .agent-gui-node__conversation-select {
   grid-template-columns: minmax(0, 1fr) 0;
   padding-right: 72px;
@@ -4448,14 +4541,14 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__conversation-actions {
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 4px;
   z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 4px;
+  gap: 0;
   box-sizing: border-box;
-  min-width: 60px;
+  min-width: 48px;
   max-width: calc(100% - 20px);
   opacity: 0;
   transform: translateY(-50%);
@@ -4464,24 +4557,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 
 .agent-gui-node__conversation-delete-button,
 .agent-gui-node__conversation-pin-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  flex: 0 0 28px;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  border: 1px solid transparent;
-  border-radius: 4px;
   background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  transition:
-    background-color 140ms ease,
-    color 140ms ease;
-  appearance: none;
+  background-color: transparent;
+  color: var(--text-tertiary);
 }
 
 .agent-gui-node__conversation-pin-button svg,
@@ -4601,7 +4679,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 18px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -4626,7 +4704,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   flex: none;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 400;
   line-height: 18px;
   white-space: nowrap;
@@ -4924,7 +5002,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__empty,
 .agent-gui-node__empty-state {
   color: var(--agent-gui-text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
 }
 
@@ -4961,7 +5039,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__unavailable-chat-empty-text {
   margin-top: 10px;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 20px;
 }
@@ -5010,7 +5088,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 20px;
 }
@@ -5157,7 +5235,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   max-width: 100%;
   min-width: 0;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 20px;
 }
 
@@ -5212,7 +5290,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   gap: 8px;
   margin-bottom: 4px;
   color: var(--agent-gui-text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 18px;
 }
 
@@ -5265,7 +5343,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: var(--background-fronted);
   box-shadow: 0 6px 18px rgb(0 0 0 / 4%);
   color: var(--agent-gui-text-primary);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .agent-gui-node__slash-status-limit {
@@ -5351,12 +5429,18 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-gui-star-border-size: 2px;
   --agent-gui-star-border-duration: 5.8s;
   --agent-gui-star-border-color: rgb(248 250 252 / 90%);
-  --agent-gui-star-border-mid-color: rgb(71 135 255 / 68%);
+  --agent-gui-star-border-mid-color: color-mix(
+    in srgb,
+    var(--accent-codex) 68%,
+    transparent
+  );
   --agent-gui-star-border-core-stop: 42%;
   --agent-gui-star-border-fade-stop: 72%;
   --agent-gui-star-border-length: clamp(88px, 18%, 160px);
   --agent-gui-star-border-radius: 16px;
-  --agent-gui-star-border-shadow: drop-shadow(0 0 8px rgb(125 211 252 / 58%));
+  --agent-gui-star-border-shadow: drop-shadow(
+    0 0 8px color-mix(in srgb, var(--accent-codex) 58%, transparent)
+  );
   position: relative;
   isolation: isolate;
   overflow: hidden;
@@ -5374,8 +5458,16 @@ button.agent-gui-node__conversation-section-toggle:hover
 html[data-theme="light"] .agent-gui-edge-glow,
 html[data-theme="light"]
   .agent-gui-node__composer-input-group[data-edge-glow="true"] {
-  --agent-gui-star-border-color: rgb(65 130 245 / 90%);
-  --agent-gui-star-border-mid-color: rgb(65 130 245 / 50%);
+  --agent-gui-star-border-color: color-mix(
+    in srgb,
+    var(--accent-codex) 90%,
+    transparent
+  );
+  --agent-gui-star-border-mid-color: color-mix(
+    in srgb,
+    var(--accent-codex) 50%,
+    transparent
+  );
   --agent-gui-star-border-core-stop: 24%;
   --agent-gui-star-border-fade-stop: 58%;
 }
@@ -5424,13 +5516,23 @@ html[data-theme="light"]
 
 .workspace-agent-decision-toast__edge-glow.agent-gui-edge-glow {
   --agent-gui-star-border-size: 1px;
-  --agent-gui-star-border-color: rgb(65 130 245 / 62%);
-  --agent-gui-star-border-mid-color: rgb(65 130 245 / 28%);
+  --agent-gui-star-border-color: color-mix(
+    in srgb,
+    var(--tutti-purple) 62%,
+    transparent
+  );
+  --agent-gui-star-border-mid-color: color-mix(
+    in srgb,
+    var(--tutti-purple) 28%,
+    transparent
+  );
   --agent-gui-star-border-core-stop: 18%;
   --agent-gui-star-border-fade-stop: 48%;
   --agent-gui-star-border-length: clamp(180px, 58%, 280px);
   --agent-gui-star-border-radius: 12px;
-  --agent-gui-star-border-shadow: drop-shadow(0 0 3px rgb(125 211 252 / 30%));
+  --agent-gui-star-border-shadow: drop-shadow(
+    0 0 3px color-mix(in srgb, var(--tutti-purple) 30%, transparent)
+  );
 }
 
 .workspace-agent-decision-toast[data-sonner-toast] {
@@ -5597,8 +5699,18 @@ html[data-theme="light"]
   border-color: var(--border-focus);
 }
 
-[data-message-center-item-id].agent-gui-edge-glow {
+[data-message-center-item-id].agent-gui-edge-glow,
+html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
+  --agent-gui-star-border-color: var(--tutti-purple);
+  --agent-gui-star-border-mid-color: color-mix(
+    in srgb,
+    var(--tutti-purple) 48%,
+    transparent
+  );
   --agent-gui-star-border-radius: 8px;
+  --agent-gui-star-border-shadow: drop-shadow(
+    0 0 6px color-mix(in srgb, var(--tutti-purple) 58%, transparent)
+  );
   overflow: hidden;
 }
 
@@ -5746,7 +5858,7 @@ html[data-theme="light"]
   min-width: 0;
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
-  font-size: 14px;
+  font-size: 13px;
   line-height: 28px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5890,7 +6002,7 @@ html[data-theme="light"]
   background: transparent;
   color: var(--agent-gui-text-primary);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 24px;
   outline: 0;
   padding: 0;
@@ -5917,7 +6029,7 @@ html[data-theme="light"]
 
 .agent-gui-node__composer-textarea p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 24px;
   min-height: 1.4em;
 }
@@ -5934,7 +6046,7 @@ html[data-theme="light"]
   float: left;
   height: 0;
   color: var(--agent-gui-text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.3;
   pointer-events: none;
 }
@@ -6010,7 +6122,7 @@ html[data-theme="light"]
   height: 18px;
   overflow: hidden;
   color: var(--agent-gui-text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 18px;
   text-align: right;
 }
@@ -6191,7 +6303,7 @@ html[data-theme="light"]
   ),
 .agent-gui-node__composer-menu-trigger[data-permission-tone="accent"] > span,
 .agent-gui-node__composer-menu-trigger[data-permission-tone="accent"] > svg {
-  color: var(--agent-gui-accent);
+  color: var(--tutti-purple);
 }
 
 .agent-gui-node__composer-menu-trigger[data-permission-tone="success"],
@@ -6230,13 +6342,14 @@ html[data-theme="light"]
 }
 
 .agent-gui-node__composer-menu-content {
+  --accent: var(--tutti-purple);
   --agent-gui-text-primary: var(--text-primary);
   --agent-gui-text-secondary: var(--text-secondary);
   --agent-gui-text-tertiary: var(--text-tertiary);
   --agent-gui-surface-raised: var(--background-fronted);
   --agent-gui-border-subtle: var(--line-2);
-  --agent-gui-package-accent: rgb(65 130 245);
-  --agent-gui-package-accent-strong: rgb(65 130 245);
+  --agent-gui-package-accent: var(--tutti-purple);
+  --agent-gui-package-accent-strong: var(--tutti-purple);
   --agent-gui-package-success: rgb(34 197 94);
   --agent-gui-package-warning: rgb(234 121 8);
   --agent-gui-package-danger: rgb(220 38 38);
@@ -6261,7 +6374,7 @@ html[data-theme="light"]
 .agent-gui-node__composer-menu-label {
   padding: 4px 10px 2px;
   color: var(--agent-gui-text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 14px;
   font-weight: 600;
 }

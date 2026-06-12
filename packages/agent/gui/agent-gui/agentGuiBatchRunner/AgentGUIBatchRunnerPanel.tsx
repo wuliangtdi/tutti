@@ -370,7 +370,7 @@ export function AgentGUIBatchRunnerPanel({
                 {t("agentHost.agentGui.batchRunnerPromptSource")}
               </span>
               {runner.selectedFile ? (
-                <span className="mt-1 flex min-w-0 items-center gap-2 text-[14px] leading-5">
+                <span className="mt-1 flex min-w-0 items-center gap-2 text-[13px] leading-5">
                   <span className="truncate font-semibold text-neutral-950">
                     {runner.selectedFile.name}
                   </span>
@@ -381,14 +381,14 @@ export function AgentGUIBatchRunnerPanel({
                   </span>
                 </span>
               ) : (
-                <span className="mt-1 block text-[14px] font-semibold leading-5 text-neutral-950">
+                <span className="mt-1 block text-[13px] font-semibold leading-5 text-neutral-950">
                   {t("agentHost.agentGui.batchRunnerSelectFile")}
                 </span>
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[11px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={
                     runner.status === "running" || runner.status === "exporting"
                   }
@@ -400,7 +400,7 @@ export function AgentGUIBatchRunnerPanel({
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[11px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={
                     runner.status === "running" || runner.status === "exporting"
                   }
@@ -463,7 +463,7 @@ export function AgentGUIBatchRunnerPanel({
               type="button"
               variant="default"
               size="sm"
-              className="h-11 min-w-[124px] gap-2 px-4 text-[14px]"
+              className="h-11 min-w-[124px] gap-2 px-4 text-[13px]"
               disabled={!runner.isRunnable}
               data-testid="agent-gui-batch-run"
               onClick={() => void runner.run()}
@@ -477,7 +477,7 @@ export function AgentGUIBatchRunnerPanel({
               type="button"
               variant="secondary"
               size="sm"
-              className="h-11 min-w-[92px] gap-2 px-4 text-[14px]"
+              className="h-11 min-w-[92px] gap-2 px-4 text-[13px]"
               disabled={!runner.isExportable}
               data-testid="agent-gui-batch-export"
               onClick={() => void runner.exportRun()}
@@ -537,7 +537,7 @@ export function AgentGUIBatchRunnerPanel({
 
       {runner.parseErrors.length > 0 ? (
         <div
-          className="mx-4 mt-3 max-h-20 shrink-0 overflow-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] leading-5 text-red-700"
+          className="mx-4 mt-3 max-h-20 shrink-0 overflow-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-700"
           data-testid="agent-gui-batch-error"
         >
           {runner.parseErrors.map((error) => (
@@ -548,7 +548,7 @@ export function AgentGUIBatchRunnerPanel({
         </div>
       ) : runner.error ? (
         <pre
-          className="mx-4 mt-3 max-h-20 shrink-0 overflow-auto whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] leading-5 text-red-700"
+          className="mx-4 mt-3 max-h-20 shrink-0 overflow-auto whitespace-pre-wrap rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] leading-5 text-red-700"
           data-testid="agent-gui-batch-error"
         >
           {runner.error === "empty-file"
@@ -621,7 +621,7 @@ export function AgentGUIBatchRunnerPanel({
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[960px] border-collapse text-left">
-                <thead className="sticky top-0 z-10 bg-neutral-50 text-[12px] font-semibold text-neutral-600">
+                <thead className="sticky top-0 z-10 bg-neutral-50 text-[11px] font-semibold text-neutral-600">
                   <tr className="border-b border-neutral-200">
                     <th className="w-[160px] px-4 py-3">
                       {t("agentHost.agentGui.batchRunnerAgent")}
@@ -713,14 +713,14 @@ export function AgentGUIBatchRunnerPanel({
                               {row.title ?? row.id}
                             </span>
                             {row.error ? (
-                              <span className="mt-0.5 block truncate text-[12px] text-red-600">
+                              <span className="mt-0.5 block truncate text-[11px] text-red-600">
                                 {row.error}
                               </span>
                             ) : null}
                           </td>
                           <td className="px-4 py-3">
                             <span
-                              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px] font-semibold ${statusToneClassNames[row.status]}`}
+                              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold ${statusToneClassNames[row.status]}`}
                             >
                               {statusIcon(row.status)}
                               {t(batchRunnerStatusKeyByStatus[row.status])}
@@ -734,7 +734,7 @@ export function AgentGUIBatchRunnerPanel({
                               {showRowDiagnostics ? (
                                 <>
                                   <span
-                                    className={`inline-flex items-center rounded-md border px-2 py-1 text-[12px] font-semibold ${
+                                    className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${
                                       rowDiagnostics.errorCount > 0
                                         ? "border-red-200 bg-red-50 text-red-700"
                                         : "border-neutral-200 bg-neutral-50 text-neutral-500"
@@ -748,7 +748,7 @@ export function AgentGUIBatchRunnerPanel({
                                     )}
                                   </span>
                                   <span
-                                    className={`inline-flex items-center rounded-md border px-2 py-1 text-[12px] font-semibold ${
+                                    className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${
                                       rowDiagnostics.failedToolCount > 0
                                         ? "border-red-200 bg-red-50 text-red-700"
                                         : "border-neutral-200 bg-neutral-50 text-neutral-500"
@@ -771,7 +771,7 @@ export function AgentGUIBatchRunnerPanel({
                           </td>
                           <td className="px-4 py-3">
                             {sessionId ? (
-                              <span className="inline-flex rounded-md bg-neutral-100 px-2 py-1 font-mono text-[12px] tabular-nums text-neutral-700">
+                              <span className="inline-flex rounded-md bg-neutral-100 px-2 py-1 font-mono text-[11px] tabular-nums text-neutral-700">
                                 {shortSessionId(sessionId)}
                               </span>
                             ) : (
@@ -873,7 +873,7 @@ export function AgentGUIBatchRunnerPanel({
 
       {runner.exportResult?.filePath ? (
         <div
-          className="mx-4 mb-3 shrink-0 truncate rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700"
+          className="mx-4 mb-3 shrink-0 truncate rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700"
           data-testid="agent-gui-batch-export-result"
         >
           {t("agentHost.agentGui.batchRunnerExported", {

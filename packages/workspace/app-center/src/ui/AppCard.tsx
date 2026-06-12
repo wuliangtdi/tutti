@@ -222,7 +222,7 @@ export function AppCard({
       <div className="mt-5 flex min-h-0 min-w-0 flex-1 flex-col p-1">
         <div className="min-w-0">
           <div className="flex min-w-0 items-baseline gap-2">
-            <h3 className="block min-w-0 truncate text-[16px] font-semibold leading-6 tracking-[0] text-[var(--text-primary)]">
+            <h3 className="block min-w-0 truncate text-[15px] font-semibold leading-6 tracking-[0] text-[var(--text-primary)]">
               {app.name}
             </h3>
             {app.version ? (
@@ -265,7 +265,7 @@ export function AppCard({
           <div className="mt-auto flex min-w-0 flex-col gap-3 pt-3">
             {app.errorMessage ? (
               <p
-                className="min-w-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] px-2 py-1 text-[12px] leading-4 text-[var(--state-danger)]"
+                className="min-w-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] px-2 py-1 text-[11px] leading-4 text-[var(--state-danger)]"
                 title={app.errorMessage}
               >
                 {copy.t("messages.appRuntimeFailed")}

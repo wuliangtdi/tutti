@@ -131,7 +131,7 @@ function DropdownMenuCheckboxItem({
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon />
+          <CheckIcon className="text-[var(--tutti-purple)]" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -176,7 +176,7 @@ function DropdownMenuRadioItem({
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon />
+          <CheckIcon className="text-[var(--tutti-purple)]" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -196,7 +196,7 @@ function DropdownMenuLabel({
       data-inset={inset}
       data-slot="dropdown-menu-label"
       className={cn(
-        "px-1.5 py-1 text-xs font-medium text-[var(--text-secondary)] data-inset:pl-7",
+        "px-1.5 py-1 text-[11px] font-medium text-[var(--text-secondary)] data-inset:pl-7",
         className
       )}
       {...props}
@@ -225,7 +225,7 @@ function DropdownMenuShortcut({
     <span
       data-slot="dropdown-menu-shortcut"
       className={cn(
-        "ml-auto text-xs tracking-widest text-[var(--text-secondary)] group-focus/dropdown-menu-item:text-[var(--text-primary)]",
+        "ml-auto text-[11px] tracking-widest text-[var(--text-secondary)] group-focus/dropdown-menu-item:text-[var(--text-primary)]",
         className
       )}
       {...props}

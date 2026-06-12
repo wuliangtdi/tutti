@@ -194,7 +194,7 @@ Use these rules:
 - use a `760px` desktop width cap, `500px` height cap, `16px` outer radius, and a `54px` title bar
 - use a fixed two-column structure on desktop: `160px` section navigation on the left, settings content on the right
 - keep navigation items compact and scannable, with selected state from the shared accent surface
-- align compact setting rows as label/content pairs; labels use semibold `14px`, values use `12px`
+- align compact setting rows as label/content pairs; labels use semibold `13px`, values use `11px`
 - keep routine select/input controls around `200px` wide on desktop and full-width only on narrow responsive layouts
 - keep routine controls at `32px` height with `6px` radius
 - use token-backed danger surfaces for destructive zones: `--state-danger`, `--on-danger`, and `--on-danger-hover`

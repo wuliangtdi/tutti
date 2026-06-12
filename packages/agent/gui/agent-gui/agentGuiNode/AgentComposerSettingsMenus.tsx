@@ -769,7 +769,7 @@ function ComposerSettingsModelItems({
                 {formatModelDisplayLabel(model.label)}
               </span>
               {model.description ? (
-                <span className="whitespace-normal text-[12px] leading-[1.3] text-[var(--text-tertiary)]">
+                <span className="whitespace-normal text-[11px] leading-[1.3] text-[var(--text-tertiary)]">
                   {resolveModelDescription(model.description, labels)}
                 </span>
               ) : null}

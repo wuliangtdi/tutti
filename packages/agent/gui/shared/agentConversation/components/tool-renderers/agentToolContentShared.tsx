@@ -441,7 +441,7 @@ export function RawPayloadSection({
     <div className="workspace-agents-status-panel__detail-tool-raw">
       <button
         type="button"
-        className="group/raw-payload inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[12px] font-normal text-[var(--text-secondary)]"
+        className="group/raw-payload inline-flex items-center gap-1.5 border-0 bg-transparent p-0 text-left text-[11px] font-normal text-[var(--text-secondary)]"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -463,7 +463,7 @@ export function RawPayloadSection({
         )}
       </button>
       <CollapsibleReveal expanded={expanded} preMountOnIdle>
-        <pre className="workspace-agents-status-panel__detail-scroll-region mt-2 max-h-[320px] overflow-auto rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-2 text-[12px] leading-[1.45] text-[var(--text-secondary)]">
+        <pre className="workspace-agents-status-panel__detail-scroll-region mt-2 max-h-[320px] overflow-auto rounded-[8px] border border-[var(--line-2)] bg-[var(--transparency-block)] px-3 py-2 text-[11px] leading-[1.45] text-[var(--text-secondary)]">
           <code>{rawJson}</code>
         </pre>
       </CollapsibleReveal>

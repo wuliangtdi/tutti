@@ -194,7 +194,7 @@ function WorkspaceFileReferencePickerTreeEntry({
   const childContent = shouldBuildChildContent ? (
     childState?.loading ? (
       <div
-        className="flex items-center gap-2 px-2 py-2 text-xs text-[var(--text-secondary)]"
+        className="flex items-center gap-2 px-2 py-2 text-[11px] text-[var(--text-secondary)]"
         style={{
           paddingLeft: `${childDepth * workspaceFileReferenceTreeIndent + 12}px`
         }}
@@ -222,7 +222,7 @@ function WorkspaceFileReferencePickerTreeEntry({
       </div>
     ) : childState?.loaded ? (
       <div
-        className="px-2 py-2 text-xs text-[var(--text-secondary)]"
+        className="px-2 py-2 text-[11px] text-[var(--text-secondary)]"
         style={{
           paddingLeft: `${childDepth * workspaceFileReferenceTreeIndent + 12}px`
         }}
@@ -282,7 +282,7 @@ function WorkspaceFileReferencePickerTreeEntry({
           ) : (
             <FileIcon className="size-4 shrink-0 text-[var(--text-tertiary)]" />
           )}
-          <span className="truncate text-sm text-[var(--text-primary)]">
+          <span className="truncate text-[13px] text-[var(--text-primary)]">
             {resolveWorkspaceFileReferenceLabel(entry)}
           </span>
         </button>
@@ -373,10 +373,10 @@ function WorkspaceFileReferencePickerSearchEntry({
           )}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-[var(--text-primary)]">
+          <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">
             {resolveWorkspaceFileReferenceLabel(entry)}
           </span>
-          <span className="block truncate text-xs text-[var(--text-secondary)]">
+          <span className="block truncate text-[11px] text-[var(--text-secondary)]">
             {entry.path}
           </span>
         </span>
@@ -410,7 +410,7 @@ function WorkspaceFileReferencePickerFeedback({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="grid min-h-0 flex-1 place-items-center px-4 text-center text-sm text-[var(--text-secondary)]">
+    <div className="grid min-h-0 flex-1 place-items-center px-4 text-center text-[13px] text-[var(--text-secondary)]">
       {children}
     </div>
   );

@@ -90,7 +90,7 @@ function ConfirmationDialog({
           ) : null}
         </DialogHeader>
         {children ? (
-          <div className="text-sm leading-[1.3] text-text-secondary">
+          <div className="text-[13px] leading-[1.3] text-text-secondary">
             {children}
           </div>
         ) : null}

@@ -212,7 +212,7 @@ export function AgentMessageMarkdown({
     >
       <ContainerTag
         className={cn(
-          "relative w-full min-w-0 overflow-x-auto text-[14px] leading-[1.5] text-[var(--text-primary)] [overflow-wrap:anywhere]",
+          "relative w-full min-w-0 overflow-x-auto text-[13px] leading-[1.5] text-[var(--text-primary)] [overflow-wrap:anywhere]",
           "[&_>table:first-child]:mt-0 [&_p]:mb-2 [&_pre]:mb-2 [&_blockquote]:mb-2",
           "[&_hr]:my-4 [&_hr]:h-0 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-t-[color-mix(in_srgb,var(--text-primary)_14%,transparent)]",
           "[&_ul]:my-2 [&_ul]:max-w-full [&_ul]:rounded-[8px] [&_ul]:border [&_ul]:border-[var(--line-2)] [&_ul]:bg-[var(--background-panel)] [&_ul]:px-4 [&_ul]:py-2",
@@ -223,9 +223,9 @@ export function AgentMessageMarkdown({
           "[&_th]:max-w-[280px] [&_th]:border-r [&_th]:border-b [&_th]:border-[var(--line-2)] [&_th]:px-2 [&_th]:py-1.5 [&_th]:align-top [&_th]:font-semibold [&_th]:text-[var(--text-primary)] [&_th]:[overflow-wrap:anywhere] [&_th]:bg-[color-mix(in_srgb,var(--background-panel)_94%,var(--text-primary))]",
           "[&_td]:max-w-[280px] [&_td]:border-r [&_td]:border-b [&_td]:border-[var(--line-2)] [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_td]:[overflow-wrap:anywhere]",
           "[&_tr:last-child_th]:border-b-0 [&_tr:last-child_td]:border-b-0 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0",
-          "[&_a]:font-semibold [&_a]:text-[var(--accent)] [&_a]:no-underline [&_a:hover]:underline [&_a:focus-visible]:underline",
+          "[&_a]:cursor-pointer [&_a]:font-semibold [&_a]:text-[var(--tutti-purple)] [&_a]:no-underline [&_a:hover]:underline [&_a:focus-visible]:underline",
           "[&_strong]:font-semibold",
-          "[&_code]:inline [&_code]:rounded-[2px] [&_code]:bg-[var(--transparency-block)] [&_code]:px-1 [&_code]:py-[1px] [&_code]:font-[var(--tsh-font-mono)] [&_code]:text-[12px] [&_code]:leading-[1.35] [&_code]:text-[var(--text-primary)] [&_code]:[box-decoration-break:clone] [&_code]:[-webkit-box-decoration-break:clone] [&_code]:[overflow-wrap:anywhere] [&_code]:[word-break:break-word]",
+          "[&_code]:inline [&_code]:rounded-[2px] [&_code]:bg-[var(--transparency-block)] [&_code]:px-1 [&_code]:py-[1px] [&_code]:font-[var(--tsh-font-mono)] [&_code]:text-[11px] [&_code]:leading-[1.35] [&_code]:text-[var(--text-primary)] [&_code]:[box-decoration-break:clone] [&_code]:[-webkit-box-decoration-break:clone] [&_code]:[overflow-wrap:anywhere] [&_code]:[word-break:break-word]",
           "[&_pre]:box-border [&_pre]:overflow-auto [&_pre]:rounded-[6px] [&_pre]:bg-[var(--transparency-block)] [&_pre]:px-2.5 [&_pre]:py-2",
           "[&_pre_code]:inline [&_pre_code]:h-auto [&_pre_code]:items-normal [&_pre_code]:rounded-none [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-[inherit] [&_pre_code]:leading-[inherit] [&_pre_code]:[white-space:pre-wrap] [&_pre_code]:[overflow-wrap:anywhere] [&_pre_code]:[word-break:break-word]",
           "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
@@ -234,7 +234,7 @@ export function AgentMessageMarkdown({
           shouldCollapse &&
             "overflow-hidden transition-[max-height] duration-220 ease-out",
           isCollapsed &&
-            "max-h-[calc(14px*1.5*8)] overflow-hidden [mask-image:linear-gradient(180deg,black_0%,black_calc(100%_-_36px),transparent_100%)] [-webkit-mask-image:linear-gradient(180deg,black_0%,black_calc(100%_-_36px),transparent_100%)] [&_pre]:overflow-hidden",
+            "max-h-[calc(13px*1.5*8)] overflow-hidden [mask-image:linear-gradient(180deg,black_0%,black_calc(100%_-_36px),transparent_100%)] [-webkit-mask-image:linear-gradient(180deg,black_0%,black_calc(100%_-_36px),transparent_100%)] [&_pre]:overflow-hidden",
           shouldCollapse && !isCollapsed && "max-h-[72rem]",
           className
         )}
@@ -264,7 +264,7 @@ export function AgentMessageMarkdown({
       {shouldCollapse && !isExpanded ? (
         <button
           type="button"
-          className="m-0 border-0 bg-transparent p-0 text-[12px] leading-[1.4] font-semibold text-[var(--accent)] hover:underline focus-visible:underline focus-visible:outline-none"
+          className="m-0 border-0 bg-transparent p-0 text-[11px] leading-[1.4] font-semibold text-[var(--tutti-purple)] hover:underline focus-visible:underline focus-visible:outline-none"
           onClick={() => setIsExpanded(true)}
         >
           {resolvedExpandLabel}
@@ -915,7 +915,7 @@ function MarkdownImage({
   }
 
   return (
-    <span className="flex min-h-[160px] w-full items-center justify-center rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-5 py-5 text-center text-[14px] leading-5 text-[var(--text-tertiary)]">
+    <span className="flex min-h-[160px] w-full items-center justify-center rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
       {state?.status === "error"
         ? state.reason === "unsupported"
           ? t("agentHost.workspaceFileManager.previewUnsupported")

@@ -90,6 +90,18 @@ test("field controls use the shared transparency field surface", () => {
   assert.match(menuSurfaceSource, /menuItemWithIndicatorClassName/);
   assert.match(menuSurfaceSource, /bg-\[var\(--transparency-hover\)\]/);
   assert.match(menuSurfaceSource, /text-\[var\(--text-primary\)\]/);
+  assert.match(
+    menuSurfaceSource,
+    /menuItemIndicatorClassName[\s\S]*text-\[var\(--tutti-purple\)\]/
+  );
+  assert.doesNotMatch(
+    menuSurfaceSource,
+    /menuItemIndicatorClassName[\s\S]*text-\[var\(--accent\)\]/
+  );
+  assert.doesNotMatch(
+    menuSurfaceSource,
+    /menuItemIndicatorClassName[\s\S]*text-\[var\(--text-primary\)\]/
+  );
   assert.doesNotMatch(menuSurfaceSource, /text-foreground/);
   assert.doesNotMatch(menuSurfaceSource, /text-muted-foreground/);
 
@@ -97,6 +109,10 @@ test("field controls use the shared transparency field surface", () => {
   assert.match(selectSource, /MenuSurface/);
   assert.match(selectSource, /menuItemWithIndicatorClassName/);
   assert.match(selectSource, /menuItemIndicatorClassName/);
+  assert.match(
+    selectSource,
+    /CheckIcon[\s\S]*className="pointer-events-none text-\[var\(--tutti-purple\)\]"/
+  );
   assert.match(selectSource, /rounded-lg/);
   assert.match(selectSource, /bg-\[var\(--transparency-block\)\]/);
   assert.match(selectSource, /hover:bg-\[var\(--transparency-hover\)\]/);
@@ -123,8 +139,33 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
   assert.match(themeSource, /--font-weight-regular:\s*400/);
   assert.match(themeSource, /--font-weight-regular-cjk:\s*400/);
   assert.match(themeSource, /--font-weight-emphasis-cjk:\s*500/);
-  assert.match(themeSource, /--accent:\s*rgb\(65 130 245\)/);
-  assert.match(themeSource, /--accent:\s*rgb\(79 143 255\)/);
+  assert.match(themeSource, /--accent-codex:\s*rgb\(65 130 245\)/);
+  assert.match(themeSource, /--accent-codex:\s*rgb\(79 143 255\)/);
+  assert.match(themeSource, /--accent:\s*var\(--accent-codex\)/);
+  assert.match(
+    themeSource,
+    /--accent-codex-border:\s*color-mix\(\s*in srgb,\s*var\(--accent-codex\) 20%,\s*transparent\s*\)/
+  );
+  assert.match(themeSource, /--status-running:\s*rgb\(65 130 245\)/);
+  assert.match(themeSource, /--status-running:\s*rgb\(79 143 255\)/);
+  assert.match(themeSource, /--tutti-purple:\s*rgb\(109 127 245\)/);
+  assert.match(themeSource, /--tutti-purple:\s*rgb\(136 152 255\)/);
+  assert.match(
+    themeSource,
+    /:root\s*\{[\s\S]*?--tutti-purple:\s*rgb\(109 127 245\)/
+  );
+  assert.match(
+    themeSource,
+    /:root\[data-theme="dark"\]\s*\{[\s\S]*?--tutti-purple:\s*rgb\(136 152 255\)/
+  );
+  assert.match(
+    themeSource,
+    /--tutti-purple-border:\s*color-mix\(\s*in srgb,\s*var\(--tutti-purple\) 20%,\s*transparent\s*\)/
+  );
+  assert.match(
+    themeSource,
+    /--rich-text-mention-issue:\s*rgb\(109, 127, 245\)/
+  );
   assert.match(themeSource, /--accent-claude:\s*rgb\(251 111 62\)/);
   assert.match(themeSource, /--folder:\s*rgb\(80, 175, 238\)/);
   assert.match(themeSource, /--border-focus:\s*rgb\(65 130 245 \/ 24%\)/);
@@ -203,5 +244,11 @@ test("card, dialog, dropdown, and toast surfaces avoid raw visual drift", () => 
 
     assert.doesNotMatch(source, /shadow-\[/);
     assert.doesNotMatch(source, /bg-black\/12/);
+    if (fileName === "dropdown-menu.tsx") {
+      assert.match(
+        source,
+        /CheckIcon className="text-\[var\(--tutti-purple\)\]"/
+      );
+    }
   }
 });

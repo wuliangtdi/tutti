@@ -60,13 +60,13 @@ export function IssueManagerTaskDrawerHeader({
         <div className="flex items-center justify-between gap-6">
           {view.showTaskMetadata && selectedTask ? (
             <IssueManagerTitleTooltip title={view.title}>
-              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-base font-semibold leading-6 text-[var(--text-primary)] [overflow-wrap:anywhere]">
+              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-6 text-[var(--text-primary)] [overflow-wrap:anywhere]">
                 {view.title}
               </h3>
             </IssueManagerTitleTooltip>
           ) : (
             <IssueManagerTitleTooltip title={view.title}>
-              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[17px] font-semibold leading-[1.35] text-[var(--text-primary)] [overflow-wrap:anywhere]">
+              <h3 className="line-clamp-2 min-w-0 flex-1 whitespace-normal text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)] [overflow-wrap:anywhere]">
                 {view.title}
               </h3>
             </IssueManagerTitleTooltip>
@@ -138,7 +138,7 @@ function IssueManagerTaskMetadataRow({
   selectedTask: IssueManagerTaskSummary;
 }): JSX.Element {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12px] font-normal leading-[1.3] text-[var(--text-secondary)]">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[11px] font-normal leading-[1.3] text-[var(--text-secondary)]">
       <Badge variant={issueManagerStatusBadgeVariant(selectedTask.status)}>
         {resolveIssueManagerStatusLabel(copy, selectedTask.status)}
       </Badge>
@@ -146,14 +146,14 @@ function IssueManagerTaskMetadataRow({
         aria-hidden="true"
         className="h-4 w-px shrink-0 bg-[var(--line-2)]"
       />
-      <span className="text-[12px] font-normal leading-[1.3]">
+      <span className="text-[11px] font-normal leading-[1.3]">
         {copy.t("labels.creator")} {resolveTaskCreatorLabel(selectedTask)}
       </span>
       <span
         aria-hidden="true"
         className="h-4 w-px shrink-0 bg-[var(--line-2)]"
       />
-      <span className="text-[12px] font-normal leading-[1.3]">
+      <span className="text-[11px] font-normal leading-[1.3]">
         {copy.t("labels.createdAt")}{" "}
         {formatIssueManagerTimestamp(selectedTask.createdAtUnix) || "-"}
       </span>
@@ -170,7 +170,7 @@ function IssueManagerTaskAcceptanceCard({
 
   return (
     <div className="grid gap-2 rounded-md bg-[var(--transparency-block)] px-3 py-2">
-      <div className="min-w-0 text-[12px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
+      <div className="min-w-0 text-[11px] font-normal leading-[1.45] text-[var(--text-secondary)] [overflow-wrap:anywhere]">
         <span className="font-semibold text-[var(--text-primary)]">
           {copy.t("labels.taskAcceptance")}
         </span>
@@ -179,7 +179,7 @@ function IssueManagerTaskAcceptanceCard({
       </div>
       <div className="flex items-center justify-end gap-2">
         <Button
-          className="h-7 px-2 text-xs text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
+          className="h-7 px-2 text-[11px] text-[var(--state-danger)] hover:bg-[var(--on-danger)] hover:text-[var(--state-danger)]"
           type="button"
           variant="ghost"
           onClick={() => void controller.setSelectedTaskStatus("not_started")}
@@ -187,7 +187,7 @@ function IssueManagerTaskAcceptanceCard({
           {copy.t("actions.rejectTask")}
         </Button>
         <Button
-          className="h-7 px-2.5 text-xs"
+          className="h-7 px-2.5 text-[11px]"
           type="button"
           variant="secondary"
           onClick={() => void controller.setSelectedTaskStatus("completed")}
@@ -254,13 +254,13 @@ export function IssueManagerTaskDrawerEditBody({
       <div
         className={`${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay0ClassName}`}
       >
-        <h2 className="m-0 text-[17px] font-semibold leading-[1.35] text-[var(--text-primary)]">
+        <h2 className="m-0 text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)]">
           {title}
         </h2>
       </div>
       <div className="flex w-full min-w-0 flex-col gap-6">
         <label
-          className={`flex w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay1ClassName}`}
+          className={`flex w-full min-w-0 flex-col gap-2 text-[13px] font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay1ClassName}`}
         >
           <span className="leading-5">{copy.t("labels.title")}</span>
           <IssueManagerDraftTitleInput
@@ -270,7 +270,7 @@ export function IssueManagerTaskDrawerEditBody({
           />
         </label>
         <div
-          className={`flex min-h-0 w-full min-w-0 flex-col gap-2 text-sm font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay2ClassName}`}
+          className={`flex min-h-0 w-full min-w-0 flex-col gap-2 text-[13px] font-semibold text-[var(--text-secondary)] ${issueManagerEditorRiseInClassName} ${issueManagerEditorRiseInDelay2ClassName}`}
         >
           <span className="leading-5">{copy.t("labels.content")}</span>
           <IssueManagerRichTextTextarea

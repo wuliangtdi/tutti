@@ -31,7 +31,7 @@ export function AgentToolSearchContent({
             {toolSearch.matches.map((match, index) => (
               <div
                 key={match}
-                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[12px] text-[var(--text-primary)] ${
+                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] text-[var(--text-primary)] ${
                   index > 0 ? "border-t border-[var(--line-2)]" : ""
                 }`}
               >

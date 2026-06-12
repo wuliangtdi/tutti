@@ -125,7 +125,7 @@ function DialogContent({
         forceMount
         className={cn(
           portaled ? "fixed" : "absolute",
-          "pointer-events-none top-1/2 left-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 origin-center gap-3 rounded-[16px] border border-border-1 bg-[var(--background-panel)] p-[18px] text-sm text-foreground shadow-panel outline-none ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[transform,opacity] sm:max-w-[360px] data-[state=closed]:!pointer-events-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[0.96] data-[state=closed]:duration-[150ms] data-[state=open]:pointer-events-auto data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.96] data-[state=open]:duration-[250ms] motion-reduce:animate-none",
+          "pointer-events-none top-1/2 left-1/2 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 origin-center gap-3 rounded-[16px] border border-border-1 bg-[var(--background-panel)] p-[18px] text-[13px] text-foreground shadow-panel outline-none ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[transform,opacity] sm:max-w-[360px] data-[state=closed]:!pointer-events-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[0.96] data-[state=closed]:duration-[150ms] data-[state=open]:pointer-events-auto data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.96] data-[state=open]:duration-[250ms] motion-reduce:animate-none",
           className
         )}
         style={{ zIndex: "var(--z-dialog)", ...style }}
@@ -202,7 +202,7 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "text-base leading-[1.35] font-semibold tracking-normal text-foreground",
+        "text-[15px] leading-[1.35] font-semibold tracking-normal text-foreground",
         className
       )}
       {...props}
@@ -218,7 +218,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-sm font-[400] leading-[1.3] text-text-secondary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "text-[13px] font-[400] leading-[1.3] text-text-secondary *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
         className
       )}
       {...props}

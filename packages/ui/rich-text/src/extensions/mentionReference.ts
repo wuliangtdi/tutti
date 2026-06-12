@@ -63,7 +63,7 @@ export const MentionReference = Node.create({
       mergeAttributes(HTMLAttributes, {
         "data-rich-text-mention-reference": "true",
         class:
-          "inline-flex max-w-full items-center overflow-hidden rounded-md bg-transparency-block px-1.5 py-0.5 align-baseline text-sm font-medium text-[var(--text-primary)]"
+          "inline-flex max-w-full items-center overflow-hidden rounded-md bg-transparency-block px-1.5 py-0.5 align-baseline text-[13px] font-medium text-[var(--text-primary)]"
       }),
       `@${label}`
     ];

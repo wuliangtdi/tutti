@@ -491,7 +491,7 @@ export function WorkbenchHostDockPopup({
         style={panelStyle}
       >
         <div className="mb-2.5 flex items-center justify-between">
-          <span className="min-w-0 truncate text-sm font-semibold">
+          <span className="min-w-0 truncate text-[13px] font-semibold">
             {label}
           </span>
         </div>
@@ -573,7 +573,7 @@ export function WorkbenchHostDockPopup({
                   className="text-[var(--text-primary)]"
                   size={28}
                 />
-                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                <span className="text-[11px] font-semibold text-[var(--text-primary)]">
                   {newWindowLabel}
                 </span>
               </button>
@@ -742,7 +742,7 @@ function WorkbenchHostDockPopupCardLabel({ title }: { title: string }) {
       title={title}
     >
       <span className="desktop-dock-popup__title-viewport block min-w-0 flex-1 overflow-hidden whitespace-nowrap">
-        <span className="desktop-dock-popup__title-marquee inline-block max-w-full overflow-hidden text-[12px] font-semibold leading-5 text-ellipsis whitespace-nowrap">
+        <span className="desktop-dock-popup__title-marquee inline-block max-w-full overflow-hidden text-[11px] font-semibold leading-5 text-ellipsis whitespace-nowrap">
           {title}
         </span>
       </span>

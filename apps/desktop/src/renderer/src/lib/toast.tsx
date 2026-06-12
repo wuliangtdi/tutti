@@ -25,7 +25,7 @@ const desktopToastTopOffset = `${workspaceChromeHeightPx + toastChromeGapPx}px`;
 const desktopSonnerToastClassName =
   "group pointer-events-auto flex min-h-14 w-[min(360px,calc(100vw-16px))] flex-col items-start !overflow-visible rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] p-3 text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]";
 const desktopSonnerActionButtonClassName =
-  "!ml-auto !mr-0 mt-2 h-7 self-end rounded-[6px] bg-[var(--text-primary)] px-2.5 text-xs font-normal text-[var(--text-inverted)] transition-colors hover:bg-[var(--text-primary-hover)]";
+  "!ml-auto !mr-0 mt-2 h-7 self-end rounded-[6px] bg-[var(--text-primary)] px-2.5 text-[11px] font-normal text-[var(--text-inverted)] transition-colors hover:bg-[var(--text-primary-hover)]";
 const desktopSonnerCloseButtonClassName =
   "!top-0 !right-0 !left-auto border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)] !shadow-none [transform:translate(35%,-35%)!important] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]";
 let nextToastID = 0;

@@ -44,12 +44,14 @@ function Toaster({ toastOptions, style, ...props }: ToasterProps) {
         classNames: {
           toast:
             "group pointer-events-auto min-h-14 rounded-[8px] border border-[var(--line-2)] bg-[var(--background-fronted)] px-3.5 py-3 text-[var(--text-primary)] shadow-[0_14px_40px_var(--shadow-elevated)]",
-          title: "text-sm font-semibold leading-5 text-[var(--text-primary)]",
-          description: "mt-0.5 text-xs leading-5 text-[var(--text-secondary)]",
+          title:
+            "text-[13px] font-semibold leading-5 text-[var(--text-primary)]",
+          description:
+            "mt-0.5 text-[11px] leading-5 text-[var(--text-secondary)]",
           actionButton:
-            "h-7 rounded-[6px] bg-[var(--text-primary)] px-2.5 text-xs font-normal text-[var(--text-inverted)] transition-colors hover:bg-[var(--text-primary-hover)]",
+            "h-7 rounded-[6px] bg-[var(--text-primary)] px-2.5 text-[11px] font-normal text-[var(--text-inverted)] transition-colors hover:bg-[var(--text-primary-hover)]",
           cancelButton:
-            "h-7 rounded-[6px] bg-[var(--transparency-block)] px-2.5 text-xs font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)]",
+            "h-7 rounded-[6px] bg-[var(--transparency-block)] px-2.5 text-[11px] font-normal text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)]",
           closeButton:
             "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-secondary)] hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]",
           icon: "text-[var(--accent)]",

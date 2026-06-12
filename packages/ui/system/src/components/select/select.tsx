@@ -53,7 +53,7 @@ function SelectTrigger({
       className={cn(
         variant === "button"
           ? buttonVariants({ variant: "default", size })
-          : "flex w-fit cursor-pointer items-center justify-between gap-1.5 rounded-lg border border-transparent bg-[var(--transparency-block)] py-2 pr-2 pl-2.5 text-sm text-[var(--text-primary)] whitespace-nowrap transition-colors outline-none select-none hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 disabled:cursor-not-allowed disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:ring-0 aria-invalid:shadow-none data-placeholder:text-[var(--text-placeholder)] data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+          : "flex w-fit cursor-pointer items-center justify-between gap-1.5 rounded-lg border border-transparent bg-[var(--transparency-block)] py-2 pr-2 pl-2.5 text-[13px] text-[var(--text-primary)] whitespace-nowrap transition-colors outline-none select-none hover:bg-[var(--transparency-hover)] focus:bg-[var(--transparency-hover)] focus-visible:border-transparent focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 disabled:cursor-not-allowed disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100 aria-invalid:border-[var(--state-danger)] aria-invalid:bg-[var(--transparency-block)] aria-invalid:hover:bg-[var(--transparency-hover)] aria-invalid:focus:bg-[var(--transparency-hover)] aria-invalid:focus-visible:bg-[var(--transparency-hover)] aria-invalid:ring-0 aria-invalid:shadow-none data-placeholder:text-[var(--text-placeholder)] data-[size=default]:h-8 data-[size=sm]:h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "[&[data-state=open]>svg]:rotate-180 [&>svg]:transition-transform [&>svg]:duration-200",
         className
       )}
@@ -121,7 +121,7 @@ function SelectLabel({
     <SelectPrimitive.Label
       data-slot="select-label"
       className={cn(
-        "px-1.5 py-1 text-xs font-normal text-[var(--text-secondary)]",
+        "px-1.5 py-1 text-[11px] font-normal text-[var(--text-secondary)]",
         className
       )}
       {...props}
@@ -166,7 +166,7 @@ function SelectSplitColumnLabel({
     <div
       data-slot="select-split-column-label"
       className={cn(
-        "shrink-0 px-2 pt-1 pb-2 text-xs font-normal leading-[18px] text-[var(--text-secondary)]",
+        "shrink-0 px-2 pt-1 pb-2 text-[11px] font-normal leading-[18px] text-[var(--text-secondary)]",
         className
       )}
       {...props}
@@ -224,12 +224,12 @@ function SelectItem({
       <span className={menuItemIndicatorClassName}>
         {forceSelectedIndicator ? (
           <CheckIcon
-            className="pointer-events-none"
+            className="pointer-events-none text-[var(--tutti-purple)]"
             data-slot="select-item-forced-indicator"
           />
         ) : (
           <SelectPrimitive.ItemIndicator>
-            <CheckIcon className="pointer-events-none" />
+            <CheckIcon className="pointer-events-none text-[var(--tutti-purple)]" />
           </SelectPrimitive.ItemIndicator>
         )}
       </span>

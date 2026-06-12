@@ -70,7 +70,7 @@ export function NextopSelectOptionContent({
           <span className="min-w-0 flex-1 truncate">{option.label}</span>
         </span>
         {option.description ? (
-          <span className="m-0 whitespace-normal text-[12px] leading-[1.3] text-muted-foreground">
+          <span className="m-0 whitespace-normal text-[11px] leading-[1.3] text-muted-foreground">
             {option.description}
           </span>
         ) : null}
@@ -102,7 +102,7 @@ function resolveNextopSelectMenuContentMinWidth(
   const family = getComputedStyle(trigger).fontFamily.trim() || "sans-serif";
 
   const labelFont = `13px ${family}`;
-  const descFont = `12px ${family}`;
+  const descFont = `11px `;
   const badgeFont = `10px ${family}`;
 
   const ctx = document.createElement("canvas").getContext("2d");
@@ -139,7 +139,7 @@ function resolveNextopSelectSplitMenuContentWidth(
   const family = getComputedStyle(trigger).fontFamily.trim() || "sans-serif";
 
   const labelFont = `13px ${family}`;
-  const descFont = `12px ${family}`;
+  const descFont = `11px `;
 
   const ctx = document.createElement("canvas").getContext("2d");
   if (!ctx) {
@@ -208,7 +208,7 @@ const nextopFieldClassName = cn(
 );
 
 const nextopFieldCompactClassName = cn(
-  "min-h-9 rounded-[var(--nextop-radius-lg)] px-[10px] py-[7px] text-[12px]"
+  "min-h-9 rounded-[var(--nextop-radius-lg)] px-[10px] py-[7px] text-[11px]"
 );
 
 export function NextopSelect({
@@ -941,7 +941,7 @@ export function NextopSelect({
                 }
               >
                 {menuOptions.length === 0 ? (
-                  <div className="px-3 py-2 text-[12px] text-muted-foreground">
+                  <div className="px-3 py-2 text-[11px] text-muted-foreground">
                     {emptySearchText ?? ""}
                   </div>
                 ) : menuLayout === "split" ? (
@@ -951,7 +951,7 @@ export function NextopSelect({
                   >
                     <div className="flex h-full min-h-0 min-w-0 flex-col">
                       {splitMenuColumnLabels?.left ? (
-                        <div className="shrink-0 px-2 pb-2 pt-1 text-[12px] leading-[18px] text-[var(--text-tertiary)]">
+                        <div className="shrink-0 px-2 pb-2 pt-1 text-[11px] leading-[18px] text-[var(--text-tertiary)]">
                           {splitMenuColumnLabels.left}
                         </div>
                       ) : null}
@@ -970,7 +970,7 @@ export function NextopSelect({
                     />
                     <div className="flex h-full min-h-0 min-w-0 flex-col">
                       {splitMenuColumnLabels?.right ? (
-                        <div className="shrink-0 px-2 pb-2 pt-1 text-[12px] leading-[18px] text-[var(--text-tertiary)]">
+                        <div className="shrink-0 px-2 pb-2 pt-1 text-[11px] leading-[18px] text-[var(--text-tertiary)]">
                           {splitMenuColumnLabels.right}
                         </div>
                       ) : null}

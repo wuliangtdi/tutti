@@ -418,10 +418,10 @@ function WorkspaceAgentMessageCenterPanelContent({
           <div className="flex-none border-b border-[var(--border-1)] px-3.5 pt-3 pb-3">
             <div className="flex min-w-0 items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold leading-5 text-[var(--text-primary)]">
+                <div className="truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
                   {t("agentHost.workspaceAgentMessageCenterTitle")}
                 </div>
-                <div className="truncate text-xs leading-4 text-[var(--text-tertiary)]">
+                <div className="truncate text-[11px] leading-4 text-[var(--text-tertiary)]">
                   {headerSummary}
                 </div>
               </div>
@@ -455,7 +455,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                     aria-label={`${group.label} ${group.items.length}`}
                   >
                     <div className="flex min-w-0 items-center justify-between gap-3 px-0.5">
-                      <h3 className="truncate text-xs font-bold leading-4 text-[var(--text-tertiary)]">
+                      <h3 className="truncate text-[11px] font-normal leading-4 text-[var(--text-tertiary)]">
                         {group.label} · {group.items.length}
                       </h3>
                     </div>
@@ -528,7 +528,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                 ))}
               </div>
             ) : model.items.length > 0 ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-6 py-8 text-center text-sm text-[var(--text-tertiary)]">
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2.5 px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
                 <span>
                   {t("agentHost.workspaceAgentMessageCenterFilteredEmpty")}
                 </span>
@@ -543,7 +543,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                 </Button>
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-[var(--text-tertiary)]">
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-[13px] text-[var(--text-tertiary)]">
                 {t("agentHost.workspaceAgentMessageCenterEmpty")}
               </div>
             )}

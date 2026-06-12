@@ -999,6 +999,19 @@ describe("AgentComposer", () => {
     expect(css).toMatch(
       /\.agent-gui-node__composer-input-group-hero\s*{[^}]*border:\s*1px solid var\(--agent-gui-border-focus\)[^}]*background:\s*var\(--agent-gui-accent-bg\)/s
     );
+    expect(css).toMatch(/--agent-gui-package-accent:\s*var\(--accent-codex\)/);
+    expect(css).toMatch(
+      /--agent-gui-package-border-focus:\s*var\(--accent-codex-border\)/
+    );
+    expect(css).toMatch(
+      /html\[data-theme="light"\][\s\S]*?\.agent-gui-node__composer-input-group\[data-edge-glow="true"\]\s*{[^}]*--agent-gui-star-border-color:\s*color-mix\(\s*in srgb,\s*var\(--accent-codex\) 90%,\s*transparent\s*\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\],[\s\S]*?\.agent-gui-node__composer-menu-trigger\[data-permission-tone="accent"\]\s*>\s*svg\s*{[^}]*color:\s*var\(--tutti-purple\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-menu-content\s*{[^}]*--accent:\s*var\(--tutti-purple\)[^}]*--agent-gui-package-accent:\s*var\(--tutti-purple\)/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__composer-input-shell-hero\s*{[^}]*border-color:\s*transparent[^}]*border-radius:\s*14px[^}]*box-shadow:\s*none/s
     );
@@ -1211,6 +1224,17 @@ describe("AgentComposer", () => {
       'textarea[placeholder="placeholder"]'
     );
     expect(editor?.parentElement?.className).toContain("self-start");
+
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea p\s*{[^}]*font-size:\s*13px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea[\s\S]*?\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*font-size:\s*13px/s
+    );
   });
 
   it("adds dropped system images on the AgentGUI detail panel to draft images", async () => {

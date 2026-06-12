@@ -191,10 +191,10 @@ function IssueManagerShellEmptyState({
         {emptyIllustration ? (
           <div className="mb-4">{emptyIllustration}</div>
         ) : null}
-        <h2 className="text-[14px] font-semibold leading-5 text-[var(--text-primary)]">
+        <h2 className="text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {controller.copy.t("messages.noIssues")}
         </h2>
-        <p className="max-w-[420px] text-[14px] leading-5 text-[var(--text-secondary)]">
+        <p className="max-w-[420px] text-[13px] leading-5 text-[var(--text-secondary)]">
           {controller.copy.t("emptyState")}
         </p>
         <Button

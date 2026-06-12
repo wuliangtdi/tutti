@@ -46,12 +46,12 @@ export function AgentTurnSummaryRow({
         <div className="flex items-start gap-3 px-4 py-3">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="min-w-0 text-[16px] font-semibold leading-5 tracking-[0] text-[var(--text-primary)]">
+              <div className="min-w-0 text-[15px] font-semibold leading-5 tracking-[0] text-[var(--text-primary)]">
                 {translate("agentHost.agentGui.turnSummaryFilesChanged", {
                   count: row.fileCount
                 })}
               </div>
-              <div className="inline-flex shrink-0 items-center gap-2.5 text-[12px] font-semibold">
+              <div className="inline-flex shrink-0 items-center gap-2.5 text-[11px] font-semibold">
                 {aggregateStats.added > 0 ? (
                   <span className="workspace-agents-status-panel__detail-tool-diff-added">
                     +{aggregateStats.added}
@@ -115,7 +115,7 @@ export function AgentTurnSummaryRow({
           {hiddenFileCount > 0 && !showAllFiles ? (
             <button
               type="button"
-              className="agent-turn-summary-card__toggle-more flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12px] font-semibold transition-colors"
+              className="agent-turn-summary-card__toggle-more flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] font-semibold transition-colors"
               onClick={() => setShowAllFiles(true)}
             >
               <span>
@@ -128,7 +128,7 @@ export function AgentTurnSummaryRow({
           ) : hiddenFileCount > 0 ? (
             <button
               type="button"
-              className="agent-turn-summary-card__toggle-more flex w-full items-center gap-2 px-4 py-2.5 text-left text-[12px] font-semibold transition-colors"
+              className="agent-turn-summary-card__toggle-more flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] font-semibold transition-colors"
               onClick={() => setShowAllFiles(false)}
             >
               <span>

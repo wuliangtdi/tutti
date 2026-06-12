@@ -65,7 +65,7 @@ function formatToastText(children: React.ReactNode): React.ReactNode {
 }
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex min-h-8 min-w-0 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-sm font-normal leading-normal shadow-none transition-all data-closed:fade-out-80 data-closed:slide-out-to-top-full data-open:slide-in-from-top-full data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none",
+  "group pointer-events-auto relative flex min-h-8 min-w-0 max-w-[min(92vw,420px)] items-center justify-center rounded-[8px] px-3 py-1.5 text-center text-[13px] font-normal leading-normal shadow-none transition-all data-closed:fade-out-80 data-closed:slide-out-to-top-full data-open:slide-in-from-top-full data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none",
   {
     variants: {
       variant: {
@@ -140,7 +140,7 @@ function ToastTitle({
     <ToastPrimitive.Title
       data-slot="toast-title"
       className={cn(
-        "inline-flex max-w-full items-center justify-center gap-[6px] text-center text-sm font-normal leading-normal",
+        "inline-flex max-w-full items-center justify-center gap-[6px] text-center text-[13px] font-normal leading-normal",
         className
       )}
       {...props}
@@ -168,7 +168,7 @@ function ToastDescription({
     <ToastPrimitive.Description
       data-slot="toast-description"
       className={cn(
-        "box-border w-full px-2 text-xs font-normal leading-[1.3] text-current opacity-75 [overflow-wrap:anywhere]",
+        "box-border w-full px-2 text-[11px] font-normal leading-[1.3] text-current opacity-75 [overflow-wrap:anywhere]",
         className
       )}
       {...props}

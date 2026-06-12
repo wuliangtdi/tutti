@@ -319,7 +319,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
           disabled={disabled}
           type="button"
           className={cn(
-            "inline-flex h-8 min-h-8 w-full items-center justify-start rounded-md border border-transparent bg-[var(--workbench-field-bg)] px-3 text-left text-sm text-foreground transition-[background-color,border-color,box-shadow,color] outline-none hover:bg-muted/60 focus-visible:border-border focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
+            "inline-flex h-8 min-h-8 w-full items-center justify-start rounded-md border border-transparent bg-[var(--workbench-field-bg)] px-3 text-left text-[13px] text-foreground transition-[background-color,border-color,box-shadow,color] outline-none hover:bg-muted/60 focus-visible:border-border focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
             !selectedDate && "text-muted-foreground",
             className
           )}
@@ -353,7 +353,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
                 }}
               >
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="text-sm font-semibold text-foreground">
+                  <div className="text-[13px] font-semibold text-foreground">
                     {formatMonthLabel(visibleMonth)}
                   </div>
                   <div className="flex items-center gap-1">
@@ -393,7 +393,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-muted-foreground">
+                <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-muted-foreground">
                   {resolvedLabels.weekdayLabels.map((day) => (
                     <div key={day} className="py-1">
                       {day}
@@ -415,7 +415,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
                         key={formatDateValue(date)}
                         aria-pressed={isSelected}
                         className={cn(
-                          "inline-flex h-8 w-8 items-center justify-center rounded-sm text-sm transition-[background-color,color,box-shadow] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
+                          "inline-flex h-8 w-8 items-center justify-center rounded-sm text-[13px] transition-[background-color,color,box-shadow] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30",
                           inCurrentMonth
                             ? "text-foreground"
                             : "text-muted-foreground",
@@ -435,7 +435,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/70 pt-3">
                   <button
-                    className="inline-flex min-h-8 items-center justify-center rounded-sm px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="inline-flex min-h-8 items-center justify-center rounded-sm px-3 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     type="button"
                     onClick={() => {
                       onValueChange?.("");
@@ -446,7 +446,7 @@ const DatePicker = React.forwardRef<HTMLButtonElement, DatePickerProps>(
                     {resolvedLabels.clear}
                   </button>
                   <button
-                    className="inline-flex min-h-8 items-center justify-center rounded-sm bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                    className="inline-flex min-h-8 items-center justify-center rounded-sm bg-primary px-3 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
                     type="button"
                     onClick={() => selectDate(today)}
                   >

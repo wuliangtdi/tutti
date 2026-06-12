@@ -176,7 +176,7 @@ function BreadcrumbButton({
       ) : null}
       <button
         className={cn(
-          "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap border-0 bg-transparent text-sm font-normal transition-colors",
+          "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap border-0 bg-transparent text-[13px] font-normal transition-colors",
           active
             ? "font-semibold text-[var(--text-primary)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

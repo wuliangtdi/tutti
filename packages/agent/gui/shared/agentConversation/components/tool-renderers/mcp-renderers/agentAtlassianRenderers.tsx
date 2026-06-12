@@ -19,7 +19,7 @@ export function renderAtlassianMcp(
             key={`${itemPrimaryText(item) ?? "item"}::${itemSecondaryText(item) ?? ""}`}
             className={`px-3 py-2 ${index > 0 ? "border-t border-[var(--line-2)]" : ""}`}
           >
-            <div className="text-[12px] font-semibold text-[var(--text-primary)]">
+            <div className="text-[11px] font-semibold text-[var(--text-primary)]">
               {itemPrimaryText(item) ?? `Item ${index + 1}`}
             </div>
             {itemSecondaryText(item) ? (

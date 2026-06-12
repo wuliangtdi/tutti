@@ -1143,7 +1143,7 @@ describe("AgentGUINode", () => {
     );
 
     expect(css).toMatch(
-      /\.agent-gui-node__new-conversation-icon-button\s+svg\s*\{[\s\S]{0,120}width:\s*18px;[\s\S]{0,120}height:\s*18px;/
+      /\.agent-gui-node__new-conversation-icon-button\s+svg\s*\{[\s\S]{0,120}width:\s*16px;[\s\S]{0,120}height:\s*16px;/
     );
   });
 
@@ -4488,7 +4488,7 @@ describe("AgentGUINode", () => {
     const mySessionTitle = within(mySessionOption as HTMLElement).getByText(
       "看看项目有什么文件"
     );
-    expect(mySessionTitle).toHaveClass("text-[14px]");
+    expect(mySessionTitle).toHaveClass("text-[13px]");
     expect(mySessionOption).not.toHaveTextContent("已读取 workspace 结构");
     const mySessionStatusTag = mySessionOption?.querySelector(
       '[data-agent-mention-status-tag="true"]'

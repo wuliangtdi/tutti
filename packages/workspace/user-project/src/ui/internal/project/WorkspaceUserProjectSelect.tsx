@@ -578,7 +578,7 @@ export function WorkspaceUserProjectSelect({
                 />
               </label>
               {projectCreationError ? (
-                <p className="text-sm text-[var(--state-danger)]">
+                <p className="text-[13px] text-[var(--state-danger)]">
                   {projectCreationError}
                 </p>
               ) : null}

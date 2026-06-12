@@ -37,7 +37,7 @@ export function AgentWebSearchContent({
             {queries.map((candidate, index) => (
               <div
                 key={`${candidate}:${queries.length}`}
-                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[12px] text-[var(--text-primary)] ${
+                className={`px-3 py-2 font-[var(--tsh-font-mono)] text-[11px] text-[var(--text-primary)] ${
                   index > 0 ? "border-t border-[var(--line-2)]" : ""
                 }`}
               >
@@ -56,7 +56,7 @@ export function AgentWebSearchContent({
                 href={link.url}
                 target="_blank"
                 rel="noreferrer"
-                className={`flex items-center gap-3 px-3 py-2 text-[12px] ${
+                className={`flex items-center gap-3 px-3 py-2 text-[11px] ${
                   index > 0 ? "border-t border-[var(--line-2)]" : ""
                 }`}
               >
