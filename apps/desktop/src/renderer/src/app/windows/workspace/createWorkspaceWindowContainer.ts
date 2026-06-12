@@ -157,6 +157,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     dockPreviewCacheApi: desktopApi.dockPreviewCache,
     eventStreamClient: nextopdEventStreamClient,
     hostFilesApi: desktopApi.host.files,
+    hostNotificationsApi: desktopApi.host.notifications,
     hostWindowApi: desktopApi.host.window,
     hostWorkspaceApi: desktopApi.host.workspace,
     nextopdClient,

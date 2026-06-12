@@ -13,10 +13,17 @@ export interface BackgroundNotificationPresenter {
   show(input: NotificationMessage): Promise<void> | void;
 }
 
+export interface CompositeNotificationNavigation {
+  agentSessionId: string;
+  provider: string;
+  workspaceId: string;
+}
+
 export interface HostBackgroundNotificationsApi {
   show(input: {
     body?: string;
     level: NotificationLevel;
+    navigation?: CompositeNotificationNavigation;
     title: string;
   }): Promise<unknown> | void;
 }
@@ -46,6 +53,11 @@ export type CompositeNotificationPresentation =
  * the OS (a richer scenario-specific message owns the OS face).
  */
 export interface CompositeNotificationMessage extends NotificationMessage {
+  /**
+   * Clicking the OS notification focuses the window and opens this agent
+   * session. Forwarded over IPC as an optional payload field.
+   */
+  navigation?: CompositeNotificationNavigation;
   presentation?: CompositeNotificationPresentation;
 }
 
@@ -62,10 +74,12 @@ export function createHostBackgroundNotificationPresenter(
 ): BackgroundNotificationPresenter {
   return {
     async show(input) {
+      const navigation = (input as CompositeNotificationMessage).navigation;
       await hostNotificationsApi.show({
         body: input.description,
         level: input.level,
-        title: input.title
+        title: input.title,
+        ...(navigation ? { navigation } : {})
       });
     }
   };

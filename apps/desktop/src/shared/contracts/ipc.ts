@@ -119,6 +119,7 @@ export const desktopIpcChannels = {
       showWorkspace: "host:workspace:showWorkspace"
     },
     notifications: {
+      navigate: "host:notifications:navigate",
       show: "host:notifications:show"
     }
   }
@@ -189,9 +190,21 @@ export type DesktopHostNotificationLevel =
   | "success"
   | "warning";
 
+export interface DesktopHostNotificationNavigationPayload {
+  agentSessionId: string;
+  provider: string;
+  workspaceId: string;
+}
+
 export interface DesktopHostNotificationPayload {
   body?: string;
   level: DesktopHostNotificationLevel;
+  /**
+   * When present, clicking the OS notification focuses the originating
+   * window and emits this payload on the host notifications navigate
+   * channel. Optional for backward compatibility.
+   */
+  navigation?: DesktopHostNotificationNavigationPayload;
   title: string;
 }
 

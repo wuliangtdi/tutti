@@ -29,7 +29,10 @@ import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
 } from "./workspaceWallpaper";
-import type { DesktopWorkspaceOpenSettingsRequest } from "@shared/contracts/ipc";
+import type {
+  DesktopHostNotificationNavigationPayload,
+  DesktopWorkspaceOpenSettingsRequest
+} from "@shared/contracts/ipc";
 
 export type WorkspaceCustomWallpaperStatus = "idle" | "saving" | "removing";
 
@@ -100,6 +103,9 @@ export interface IWorkspaceWorkbenchHostService {
     workspaceId: string;
   }): WorkspaceWorkbenchHostInput;
   onWindowCloseRequest(listener: () => void): () => void;
+  onNotificationNavigate(
+    listener: (payload: DesktopHostNotificationNavigationPayload) => void
+  ): () => void;
   onOpenSettingsRequest(
     listener: (request: DesktopWorkspaceOpenSettingsRequest) => void
   ): () => void;

@@ -3,6 +3,11 @@ export interface DesktopNotificationShowInput {
   title: string;
 }
 
+export interface DesktopNotificationShowOptions extends DesktopNotificationShowInput {
+  /** Invoked in addition to the access-wide onClick dependency. */
+  onClick?: () => void;
+}
+
 export interface DesktopNotificationShowResult {
   reason?: "unsupported";
   shown: boolean;
@@ -30,7 +35,7 @@ export interface DesktopNotificationAccessDependencies {
 }
 
 export interface DesktopNotificationAccess {
-  show(input: DesktopNotificationShowInput): DesktopNotificationShowResult;
+  show(input: DesktopNotificationShowOptions): DesktopNotificationShowResult;
 }
 
 export function createDesktopNotificationAccess(
@@ -45,14 +50,16 @@ export function createDesktopNotificationAccess(
         };
       }
 
+      const { onClick, ...notificationInput } = input;
       const notification = dependencies.createNotification({
-        ...input
+        ...notificationInput
       });
       notification.on("failed", (_event, error) => {
         dependencies.onFailed?.(error);
       });
       notification.on("click", () => {
         dependencies.onClick?.();
+        onClick?.();
       });
       notification.show();
       return { shown: true };

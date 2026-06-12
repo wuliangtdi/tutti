@@ -8,6 +8,7 @@ import type {
   DesktopDeveloperApi,
   DesktopDockPreviewCacheApi,
   DesktopHostFilesApi,
+  DesktopHostNotificationsApi,
   DesktopHostWindowApi,
   DesktopHostWorkspaceApi,
   DesktopPlatformApi,
@@ -27,6 +28,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: NextopdEventStreamClient;
   hostFilesApi: DesktopHostFilesApi;
+  hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   nextopdClient: NextopdClient;
@@ -51,6 +53,7 @@ export function registerWorkspaceWorkbenchServices(
         dockPreviewCacheApi: input.dockPreviewCacheApi,
         eventStreamClient: input.eventStreamClient,
         hostFilesApi: input.hostFilesApi,
+        hostNotificationsApi: input.hostNotificationsApi,
         hostWindowApi: input.hostWindowApi,
         hostWorkspaceApi: input.hostWorkspaceApi,
         nextopdClient: input.nextopdClient,

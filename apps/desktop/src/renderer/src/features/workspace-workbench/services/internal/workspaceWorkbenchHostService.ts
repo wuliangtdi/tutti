@@ -23,6 +23,7 @@ import type {
   DesktopBrowserApi,
   DesktopDockPreviewCacheApi,
   DesktopHostFilesApi,
+  DesktopHostNotificationsApi,
   DesktopHostWindowApi,
   DesktopHostWorkspaceApi,
   DesktopPlatformApi,
@@ -74,7 +75,10 @@ import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSigna
 import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
 import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
-import type { DesktopWorkspaceOpenSettingsRequest } from "@shared/contracts/ipc";
+import type {
+  DesktopHostNotificationNavigationPayload,
+  DesktopWorkspaceOpenSettingsRequest
+} from "@shared/contracts/ipc";
 import { SettingsCustomWallpaperClearedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-cleared/settingsCustomWallpaperClearedReporter.ts";
 import { SettingsCustomWallpaperUploadedReporter } from "../../../analytics/reporters/settings-custom-wallpaper-uploaded/settingsCustomWallpaperUploadedReporter.ts";
 import {
@@ -94,6 +98,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   browserService: WorkspaceBrowserService;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   hostFilesApi: DesktopHostFilesApi;
+  hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   workspaceFileManagerService: IWorkspaceFileManagerService;
@@ -117,6 +122,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: NextopdEventStreamClient;
   hostFilesApi: DesktopHostFilesApi;
+  hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<DesktopHostWorkspaceApi, "onOpenSettingsRequest">;
   nextopdClient: NextopdClient;
@@ -181,6 +187,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       dockPreviewCacheApi: externalDependencies.dockPreviewCacheApi,
       eventStreamClient: externalDependencies.eventStreamClient,
       hostFilesApi: externalDependencies.hostFilesApi,
+      hostNotificationsApi: externalDependencies.hostNotificationsApi,
       hostWindowApi: externalDependencies.hostWindowApi,
       hostWorkspaceApi: externalDependencies.hostWorkspaceApi,
       workspaceFileManagerService,
@@ -206,6 +213,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   onWindowCloseRequest(listener: () => void): () => void {
     return this.dependencies.hostWindowApi.onCloseRequest(listener);
+  }
+
+  onNotificationNavigate(
+    listener: (payload: DesktopHostNotificationNavigationPayload) => void
+  ): () => void {
+    return this.dependencies.hostNotificationsApi.onNavigate(listener);
   }
 
   onOpenSettingsRequest(

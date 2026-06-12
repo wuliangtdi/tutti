@@ -386,6 +386,11 @@ function WorkspaceAgentMessageCenterAction({
       const message: CompositeNotificationMessage = {
         description: notification.body,
         level: notification.level,
+        navigation: {
+          agentSessionId: notification.agentSessionId,
+          provider: item.provider,
+          workspaceId: workspace.id
+        },
         // The message center panel and trigger badge already surface
         // outcomes in-app; only the OS face should notify, and only while
         // the window is in the background (composite checks visibility).
@@ -427,9 +432,6 @@ function WorkspaceAgentMessageCenterAction({
       nextSeenKeys.add(key);
     }
     seenWaitingNotificationKeysRef.current = nextSeenKeys;
-    if (open) {
-      return;
-    }
     const newWaitingEntries = waitingEntries.filter(
       ([key]) => !seenKeys.has(key)
     );
@@ -461,6 +463,25 @@ function WorkspaceAgentMessageCenterAction({
         ]
       });
       if (!notification || notification.options.length === 0) {
+        continue;
+      }
+      const osMessage: CompositeNotificationMessage = {
+        description: notification.description,
+        level: "warning",
+        navigation: {
+          agentSessionId: item.agentSessionId,
+          provider: item.provider,
+          workspaceId: workspace.id
+        },
+        // The decision toast below already covers the in-app face; only
+        // raise the OS notification while the window is in the background.
+        presentation: "background-only",
+        title: t("workspace.agentMessageCenter.waitingNotificationTitle", {
+          title: notification.conversationTitle || notification.agentName
+        })
+      };
+      notifications.notify(osMessage);
+      if (open) {
         continue;
       }
       const toastId = `workspace-agent-waiting:${workspace.id}:${notificationKey}`;
@@ -514,7 +535,14 @@ function WorkspaceAgentMessageCenterAction({
         }
       );
     }
-  }, [open, t, waitingItems, workspace.id, workspaceAgentActivityService]);
+  }, [
+    notifications,
+    open,
+    t,
+    waitingItems,
+    workspace.id,
+    workspaceAgentActivityService
+  ]);
 
   useEffect(() => {
     if (!open) {
@@ -583,6 +611,19 @@ function WorkspaceAgentMessageCenterAction({
       });
     },
     [launchNode]
+  );
+  useEffect(
+    () =>
+      workbenchHostService.onNotificationNavigate((payload) => {
+        if (payload.workspaceId !== workspace.id) {
+          return;
+        }
+        openMessageCenterChat({
+          agentSessionId: payload.agentSessionId,
+          provider: payload.provider
+        });
+      }),
+    [openMessageCenterChat, workbenchHostService, workspace.id]
   );
   const handleLinkAction = useCallback(
     (action: Parameters<typeof runDesktopAgentGUILinkAction>[0]) => {

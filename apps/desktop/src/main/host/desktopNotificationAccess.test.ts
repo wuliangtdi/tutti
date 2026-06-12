@@ -68,6 +68,48 @@ test("desktop notification access shows supported notifications", () => {
   assert.deepEqual(failed, ["denied"]);
 });
 
+test("desktop notification access invokes per-notification click callbacks", () => {
+  const created: unknown[] = [];
+  let activated = 0;
+  let navigated = 0;
+  const access = createDesktopNotificationAccess({
+    isSupported: () => true,
+    createNotification(options) {
+      created.push(options);
+      return {
+        on(event, listener) {
+          if (event === "click") {
+            (listener as (event: unknown) => void)({});
+          }
+          return this;
+        },
+        show() {}
+      };
+    },
+    onClick() {
+      activated += 1;
+    }
+  });
+
+  const result = access.show({
+    body: "Approve the command",
+    title: "Build feature needs your decision",
+    onClick() {
+      navigated += 1;
+    }
+  });
+
+  assert.deepEqual(result, { shown: true });
+  assert.equal(activated, 1);
+  assert.equal(navigated, 1);
+  assert.deepEqual(created, [
+    {
+      body: "Approve the command",
+      title: "Build feature needs your decision"
+    }
+  ]);
+});
+
 test("desktop notification access invokes click callback", () => {
   let clicked = 0;
   const access = createDesktopNotificationAccess({

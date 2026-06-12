@@ -55,7 +55,7 @@ export function buildWorkspaceAgentOutcomeNotification(
 - Modify: OS 通知點擊跳轉:勘察 `desktopNotificationAccess` 的 onClick 如何從 renderer 傳遞（`hostNotifications.ts` IPC）;點擊後聚焦窗口（main process `BrowserWindow.focus()`——勘察既有 IPC 是否已做）並導航到對應會話(復用消息中心條目點擊的跳轉動作——grep `WorkspaceAgentMessageCenterCard` 的 onClick/onNavigate 去向)。若現有 IPC 通道不傳 payload,擴展 NotificationMessage/show 輸入帶 `onClickNavigate: { agentSessionId }` 並沿 IPC 透傳——保持向後兼容（可選字段）。
 - Test: vitest——waiting 條目在未聚焦態觸發 background show 調用（mock notificationService/visibility）;聚焦態不觸發。
 
-- [ ] **Step 1: 勘察並記錄（IPC 形態、跳轉動作）** → **Step 2: 失敗測試** → **Step 3: 實現** → **Step 4: 驗證（typecheck + vitest + check:i18n）** → **Step 5: Commit** `feat(desktop): OS notifications for pending agent decisions with session navigation`
+- [x] **Step 1: 勘察並記錄（IPC 形態、跳轉動作）** → **Step 2: 失敗測試** → **Step 3: 實現** → **Step 4: 驗證（typecheck + vitest + check:i18n）** → **Step 5: Commit** `feat(desktop): OS notifications for pending agent decisions with session navigation`
 
 ### Task C: 回歸驗證
 

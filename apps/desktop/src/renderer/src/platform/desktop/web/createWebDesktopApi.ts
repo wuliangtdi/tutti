@@ -262,6 +262,9 @@ function createWebHostApi(): DesktopHostApi {
           reason: "unsupported",
           shown: false
         });
+      },
+      onNavigate() {
+        return () => {};
       }
     },
     workspace: {

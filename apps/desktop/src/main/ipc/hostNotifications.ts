@@ -1,6 +1,7 @@
-import { BrowserWindow, Notification, app } from "electron";
+import { BrowserWindow, Notification, app, type WebContents } from "electron";
 import {
   desktopIpcChannels,
+  type DesktopHostNotificationNavigationPayload,
   type DesktopHostNotificationPayload
 } from "../../shared/contracts/ipc";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
@@ -52,10 +53,36 @@ export function registerHostNotificationsIpc(
 
   registerDesktopIpcHandler(
     desktopIpcChannels.host.notifications.show,
-    (_event, payload: DesktopHostNotificationPayload) =>
-      access.show({
+    (event, payload: DesktopHostNotificationPayload) => {
+      const navigation = payload.navigation;
+      const sender = event.sender;
+      return access.show({
         body: payload.body,
-        title: payload.title
-      })
+        title: payload.title,
+        onClick: navigation
+          ? () => {
+              sendNotificationNavigate(sender, navigation);
+            }
+          : undefined
+      });
+    }
   );
+}
+
+function sendNotificationNavigate(
+  sender: WebContents,
+  navigation: DesktopHostNotificationNavigationPayload
+): void {
+  if (sender.isDestroyed()) {
+    return;
+  }
+  const window = BrowserWindow.fromWebContents(sender);
+  if (window && !window.isDestroyed()) {
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
+  }
+  sender.send(desktopIpcChannels.host.notifications.navigate, navigation);
 }

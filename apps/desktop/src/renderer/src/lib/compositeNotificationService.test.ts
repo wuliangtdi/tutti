@@ -4,6 +4,7 @@ import type { NotificationMessage } from "@tutti-os/ui-notifications";
 import {
   createCompositeNotificationService,
   createDefaultBackgroundNotificationPolicy,
+  createHostBackgroundNotificationPresenter,
   type CompositeNotificationMessage
 } from "./compositeNotificationService.ts";
 
@@ -89,6 +90,59 @@ test("composite notification service suppresses background-only messages when fo
 
   assert.equal(harness.foregroundMessages.length, 0);
   assert.equal(harness.backgroundMessages.length, 0);
+});
+
+test("host background notification presenter forwards navigation to the host api", async () => {
+  const shown: unknown[] = [];
+  const presenter = createHostBackgroundNotificationPresenter({
+    show(input) {
+      shown.push(input);
+    }
+  });
+  const message: CompositeNotificationMessage = {
+    description: "Command: rm -rf dist",
+    level: "warning",
+    navigation: {
+      agentSessionId: "session-1",
+      provider: "codex",
+      workspaceId: "workspace-1"
+    },
+    presentation: "background-only",
+    title: "Build feature needs your decision"
+  };
+
+  await presenter.show(message);
+
+  assert.deepEqual(shown, [
+    {
+      body: "Command: rm -rf dist",
+      level: "warning",
+      navigation: {
+        agentSessionId: "session-1",
+        provider: "codex",
+        workspaceId: "workspace-1"
+      },
+      title: "Build feature needs your decision"
+    }
+  ]);
+});
+
+test("host background notification presenter omits navigation when absent", async () => {
+  const shown: Array<{ navigation?: unknown }> = [];
+  const presenter = createHostBackgroundNotificationPresenter({
+    show(input) {
+      shown.push(input);
+    }
+  });
+
+  await presenter.show({
+    description: "Summary",
+    level: "info",
+    title: "Conversation update"
+  });
+
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0]?.navigation, undefined);
 });
 
 test("composite notification service keeps foreground-only messages off the OS face", () => {

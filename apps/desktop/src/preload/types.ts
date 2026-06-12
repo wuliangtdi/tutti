@@ -7,6 +7,7 @@ import type {
   DesktopCreateUserDocumentsProjectDirectoryResult,
   DesktopCustomWallpaperImage,
   DesktopLocalFileTextResult,
+  DesktopHostNotificationNavigationPayload,
   DesktopHostNotificationPayload,
   DesktopHostNotificationResult,
   DesktopOpenWithApplication,
@@ -76,6 +77,9 @@ export interface DesktopHostNotificationsApi {
   show(
     input: DesktopHostNotificationPayload
   ): Promise<DesktopHostNotificationResult>;
+  onNavigate(
+    listener: (payload: DesktopHostNotificationNavigationPayload) => void
+  ): () => void;
 }
 
 export interface DesktopWorkspaceAppManagedCredentialsApi {
