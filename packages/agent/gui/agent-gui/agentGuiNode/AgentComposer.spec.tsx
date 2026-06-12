@@ -198,7 +198,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not render a plan mode pill while plan mode is off", () => {
+  it("renders the plan mode toggle in its off state so it can be enabled", () => {
     render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -232,9 +232,10 @@ describe("AgentComposer", () => {
       />
     );
 
-    expect(
-      screen.queryByRole("button", { name: "Plan: 关闭" })
-    ).not.toBeInTheDocument();
+    // The off-state toggle is the entry point for plan mode — without it
+    // there is no way to turn the mode on.
+    const toggle = screen.getByRole("button", { name: "Plan: 关闭" });
+    expect(toggle).toHaveAttribute("data-state", "off");
     expect(
       screen.queryByRole("button", { name: "Plan: 开启" })
     ).not.toBeInTheDocument();
