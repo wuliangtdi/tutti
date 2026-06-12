@@ -93,14 +93,16 @@ type codexAppServerSession struct {
 	serverInfo map[string]any
 	account    map[string]any
 	rateLimits map[string]any
-	// planCollaborationMode is the Plan preset payload from
-	// collaborationMode/list, sent verbatim on plan-mode turns; nil when the
-	// binary does not expose collaboration modes.
-	planCollaborationMode map[string]any
-	authState             string
-	authMessage           string
-	activeTurnID          string
-	activeTurn            *codexAppServerActiveTurn
+	// planModeMask is the Plan preset mask from collaborationMode/list
+	// (flat name/mode/model/reasoning_effort fields); nil when the binary
+	// does not expose collaboration modes. defaultModel backs the required
+	// CollaborationMode.settings.model when no session override is set.
+	planModeMask map[string]any
+	defaultModel string
+	authState    string
+	authMessage  string
+	activeTurnID string
+	activeTurn   *codexAppServerActiveTurn
 	acpLiveState
 	pendingRequests map[string]*pendingACPRequest
 }
@@ -213,7 +215,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 	}
 	models := a.fetchModels(ctx, client, session)
 	rateLimits := a.fetchRateLimits(ctx, client, session)
-	planCollaborationMode := a.fetchPlanCollaborationMode(ctx, client, session)
+	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session)
 
 	threadResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodThreadStart,
 		appServerThreadStartParams(session, a.sessionCWD(session)),
@@ -266,15 +268,16 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) ([]a
 	started = true
 	keepSession = true
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
-		client:                client,
-		threadID:              threadID,
-		serverInfo:            serverInfo,
-		account:               account,
-		rateLimits:            rateLimits,
-		planCollaborationMode: planCollaborationMode,
-		authState:             "authenticated",
-		acpLiveState:          liveState,
-		pendingRequests:       make(map[string]*pendingACPRequest),
+		client:          client,
+		threadID:        threadID,
+		serverInfo:      serverInfo,
+		account:         account,
+		rateLimits:      rateLimits,
+		planModeMask:    planModeMask,
+		defaultModel:    codexAppServerDefaultModel(models),
+		authState:       "authenticated",
+		acpLiveState:    liveState,
+		pendingRequests: make(map[string]*pendingACPRequest),
 	})
 	a.emitCommandSnapshot(AgentSessionCommandSnapshot{
 		AgentSessionID: strings.TrimSpace(session.AgentSessionID),
@@ -329,7 +332,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	}
 	models := a.fetchModels(ctx, client, session)
 	rateLimits := a.fetchRateLimits(ctx, client, session)
-	planCollaborationMode := a.fetchPlanCollaborationMode(ctx, client, session)
+	planModeMask := a.fetchPlanCollaborationMode(ctx, client, session)
 
 	params := appServerThreadStartParams(session, a.sessionCWD(session))
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
@@ -350,15 +353,16 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	started = true
 	keepSession = true
 	a.storeSession(session.AgentSessionID, &codexAppServerSession{
-		client:                client,
-		threadID:              strings.TrimSpace(session.ProviderSessionID),
-		serverInfo:            serverInfo,
-		account:               account,
-		rateLimits:            rateLimits,
-		planCollaborationMode: planCollaborationMode,
-		authState:             "authenticated",
-		acpLiveState:          liveState,
-		pendingRequests:       make(map[string]*pendingACPRequest),
+		client:          client,
+		threadID:        strings.TrimSpace(session.ProviderSessionID),
+		serverInfo:      serverInfo,
+		account:         account,
+		rateLimits:      rateLimits,
+		planModeMask:    planModeMask,
+		defaultModel:    codexAppServerDefaultModel(models),
+		authState:       "authenticated",
+		acpLiveState:    liveState,
+		pendingRequests: make(map[string]*pendingACPRequest),
 	})
 	return nil
 }
@@ -528,9 +532,10 @@ func (a *CodexAppServerAdapter) fetchRateLimits(
 }
 
 // fetchPlanCollaborationMode probes the experimental collaboration mode list
-// and returns the Plan preset prepared for turn/start (built-in developer
-// instructions requested via an explicit null). Best effort: any error means
-// the capability stays off.
+// and returns the Plan preset mask (flat CollaborationModeMask fields). The
+// turn/start payload is assembled per turn because the schema requires a
+// concrete settings.model. Best effort: any error means the capability stays
+// off.
 func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
 	ctx context.Context,
 	client *acpClient,
@@ -555,20 +560,27 @@ func (a *CodexAppServerAdapter) fetchPlanCollaborationMode(
 		if mode != "plan" {
 			continue
 		}
-		prepared := make(map[string]any, len(preset))
-		for key, value := range preset {
-			prepared[key] = value
-		}
-		settings, _ := prepared["settings"].(map[string]any)
-		preparedSettings := make(map[string]any, len(settings)+1)
-		for key, value := range settings {
-			preparedSettings[key] = value
-		}
-		preparedSettings["developer_instructions"] = nil
-		prepared["settings"] = preparedSettings
-		return prepared
+		return clonePayload(preset)
 	}
 	return nil
+}
+
+// codexAppServerDefaultModel resolves the default model id from model/list,
+// used to satisfy the required CollaborationMode.settings.model field.
+func codexAppServerDefaultModel(models []map[string]any) string {
+	for _, model := range models {
+		if isDefault, _ := model["isDefault"].(bool); isDefault {
+			if id := strings.TrimSpace(firstNonEmpty(asString(model["id"]), asString(model["model"]))); id != "" {
+				return id
+			}
+		}
+	}
+	for _, model := range models {
+		if id := strings.TrimSpace(firstNonEmpty(asString(model["id"]), asString(model["model"]))); id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 func (a *CodexAppServerAdapter) Exec(
@@ -667,7 +679,7 @@ func (a *CodexAppServerAdapter) Exec(
 		return snapshotEvents(), err
 	}
 
-	result, err := appSession.client.Call(ctx, appServerMethodTurnStart, appServerTurnStartParams(session, appSession.threadID, content, appSession.planCollaborationMode),
+	result, err := appSession.client.Call(ctx, appServerMethodTurnStart, appServerTurnStartParams(session, appSession.threadID, content, appSession.planModeMask, appSession.defaultModel),
 		func(ctx context.Context, message acpMessage) error {
 			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
 			emitEvents(next)
@@ -1091,7 +1103,7 @@ func (a *CodexAppServerAdapter) snapshotSessionState(agentSessionID string) (cod
 		rateLimits:           clonePayload(appSession.rateLimits),
 		authState:            strings.TrimSpace(appSession.authState),
 		authMessage:          strings.TrimSpace(appSession.authMessage),
-		planModeSupported:    appSession.planCollaborationMode != nil,
+		planModeSupported:    appSession.planModeMask != nil,
 		acpLiveStateSnapshot: snapshotACPLiveState(appSession.acpLiveState),
 		pendingPrompt:        prompt,
 	}, true

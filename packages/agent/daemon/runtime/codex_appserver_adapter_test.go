@@ -181,14 +181,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"result": map[string]any{
 					"data": []any{
 						map[string]any{
-							"name":     "Plan",
-							"mode":     "plan",
-							"settings": map[string]any{"reasoning_effort": "medium"},
+							"name":             "Plan",
+							"mode":             "plan",
+							"model":            nil,
+							"reasoning_effort": "medium",
 						},
 						map[string]any{
-							"name":     "Pair",
-							"mode":     "pair",
-							"settings": map[string]any{},
+							"name":             "Pair",
+							"mode":             "default",
+							"model":            nil,
+							"reasoning_effort": nil,
 						},
 					},
 				},
@@ -1431,6 +1433,14 @@ func TestCodexAppServerAdapterSendsCollaborationModeForPlanTurns(t *testing.T) {
 		t.Fatalf("turn/start collaborationMode = %#v, want plan preset", turnStart["collaborationMode"])
 	}
 	settings, _ := collaborationMode["settings"].(map[string]any)
+	// Settings.model is a required String in the app-server schema; the
+	// adapter fills it from the session default when no override is set.
+	if asString(settings["model"]) != "gpt-5.1-codex" {
+		t.Fatalf("collaborationMode settings = %#v, want default model", settings)
+	}
+	if asString(settings["reasoning_effort"]) != "medium" {
+		t.Fatalf("collaborationMode settings = %#v, want preset reasoning effort", settings)
+	}
 	if value, ok := settings["developer_instructions"]; !ok || value != nil {
 		t.Fatalf("collaborationMode settings = %#v, want explicit null developer_instructions", settings)
 	}
@@ -1445,5 +1455,19 @@ func TestCodexAppServerAdapterSendsCollaborationModeForPlanTurns(t *testing.T) {
 	last := turnStarts[len(turnStarts)-1]
 	if _, ok := last["collaborationMode"]; ok {
 		t.Fatalf("turn/start = %#v, want no collaborationMode when plan mode is off", last)
+	}
+
+	session.Settings = &SessionSettings{PlanMode: true, Model: "gpt-5.1-codex-mini", ReasoningEffort: "low"}
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "plan again",
+	}}, "", "turn-plan-3", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStarts = appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	last = turnStarts[len(turnStarts)-1]
+	overrideMode, _ := last["collaborationMode"].(map[string]any)
+	overrideSettings, _ := overrideMode["settings"].(map[string]any)
+	if asString(overrideSettings["model"]) != "gpt-5.1-codex-mini" || asString(overrideSettings["reasoning_effort"]) != "low" {
+		t.Fatalf("collaborationMode settings = %#v, want session overrides", overrideSettings)
 	}
 }

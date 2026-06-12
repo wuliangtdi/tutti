@@ -853,14 +853,14 @@ func appServerThreadStartParams(session Session, cwd string) map[string]any {
 	return params
 }
 
-func appServerTurnStartParams(session Session, threadID string, content []PromptContentBlock, planCollaborationMode map[string]any) map[string]any {
+func appServerTurnStartParams(session Session, threadID string, content []PromptContentBlock, planModeMask map[string]any, defaultModel string) map[string]any {
 	settings := session.SettingsValue()
 	params := map[string]any{
 		"threadId": threadID,
 		"input":    appServerUserInput(content),
 	}
-	if settings.PlanMode && planCollaborationMode != nil {
-		params["collaborationMode"] = planCollaborationMode
+	if collaborationMode := appServerPlanCollaborationMode(settings, planModeMask, defaultModel); collaborationMode != nil {
+		params["collaborationMode"] = collaborationMode
 	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		params["model"] = model
@@ -878,6 +878,37 @@ func appServerTurnStartParams(session Session, threadID string, content []Prompt
 		params["sandboxPolicy"] = sandboxPolicy
 	}
 	return params
+}
+
+// appServerPlanCollaborationMode assembles the turn/start collaborationMode
+// payload from the negotiated Plan preset mask. The schema requires a
+// concrete settings.model, so the session override wins, then the session
+// default model, then the mask's own model; without any model the mode is
+// omitted rather than sending an invalid request.
+func appServerPlanCollaborationMode(settings SessionSettings, planModeMask map[string]any, defaultModel string) map[string]any {
+	if !settings.PlanMode || planModeMask == nil {
+		return nil
+	}
+	model := strings.TrimSpace(firstNonEmpty(settings.Model, defaultModel, asString(planModeMask["model"])))
+	if model == "" {
+		return nil
+	}
+	collaborationSettings := map[string]any{
+		"model": model,
+		// null selects the built-in instructions for the mode.
+		"developer_instructions": nil,
+	}
+	if effort := codexACPReasoningEffortValue(settings.ReasoningEffort); effort != "" {
+		collaborationSettings["reasoning_effort"] = effort
+	} else if presetEffort := strings.TrimSpace(asString(planModeMask["reasoning_effort"])); presetEffort != "" {
+		collaborationSettings["reasoning_effort"] = presetEffort
+	} else {
+		collaborationSettings["reasoning_effort"] = nil
+	}
+	return map[string]any{
+		"mode":     strings.ToLower(strings.TrimSpace(firstNonEmpty(asString(planModeMask["mode"]), "plan"))),
+		"settings": collaborationSettings,
+	}
 }
 
 func appServerUserInput(content []PromptContentBlock) []map[string]any {
