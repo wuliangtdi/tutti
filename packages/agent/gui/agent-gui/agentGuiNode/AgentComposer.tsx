@@ -111,7 +111,7 @@ import {
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import { hasWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
-interface AgentComposerProps {
+export interface AgentComposerProps {
   workspaceId: string;
   workspacePath?: string | null;
   currentUserId?: string | null;

@@ -8,6 +8,7 @@ import type {
   NextopdClient,
   NextopdEventStreamClient
 } from "@tutti-os/client-nextopd-ts";
+import { createDesktopErrorI18nRuntime } from "../../../../../../shared/i18n/index.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import {
   getDesktopErrorCode,
@@ -1398,7 +1399,7 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
     error: unknown,
     details: WorkspaceAppCenterOperationDetails
   ): void {
-    const message = formatAppCenterError(error);
+    const message = formatAppCenterError(error, details);
     this.recordOperationFailure(error, message, details);
     this.store.error = message;
     this.bumpRevision();
@@ -2113,8 +2114,20 @@ function emptyFactoryProviderConfiguration(): WorkspaceAppFactoryProviderConfigu
   };
 }
 
-function formatAppCenterError(error: unknown): string {
-  return resolveDesktopErrorMessage(error, getActiveLocale());
+function formatAppCenterError(
+  error: unknown,
+  details?: WorkspaceAppCenterOperationDetails
+): string {
+  const locale = getActiveLocale();
+  const overrides =
+    details?.operation === "app_factory.publish"
+      ? {
+          workspace_operation_failed: createDesktopErrorI18nRuntime(locale).t(
+            "errors.workspace_app_factory_publish_failed"
+          )
+        }
+      : undefined;
+  return resolveDesktopErrorMessage(error, locale, overrides);
 }
 
 function noop(): void {}

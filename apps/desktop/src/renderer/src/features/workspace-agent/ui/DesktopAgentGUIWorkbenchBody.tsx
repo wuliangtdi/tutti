@@ -99,6 +99,11 @@ const EMPTY_AGENT_PROVIDER_STATUS_SNAPSHOT: AgentProviderStatusSnapshot = {
   pendingActions: [],
   statuses: []
 };
+const DESKTOP_AGENT_GUI_AGENT_SETTINGS = {
+  avoidGroupingEdits: false
+} satisfies NonNullable<AgentGUIProps["agentSettings"]>;
+const DESKTOP_AGENT_GUI_NOOP = (): void => {};
+const DESKTOP_AGENT_GUI_POSITION = { x: 0, y: 0 };
 
 type DesktopAgentProbeState = NonNullable<
   AgentGUIProps["workspaceAgentProbes"]
@@ -618,6 +623,13 @@ export function DesktopAgentGUIWorkbenchBody({
   }, [onStateChange, state, workbenchState]);
 
   const frame = context.node.frame;
+  const desktopSize = useMemo(
+    () => ({
+      height: Math.max(frame.height, frame.y + frame.height),
+      width: Math.max(frame.width, frame.x + frame.width)
+    }),
+    [frame.height, frame.width, frame.x, frame.y]
+  );
   const composerFocusRequestSequence =
     context.activation?.type === workbenchFocusInputActivationType
       ? context.activation.sequence
@@ -629,12 +641,9 @@ export function DesktopAgentGUIWorkbenchBody({
       agentHostApi={agentHostApi}
       i18n={i18n}
       locale={locale}
-      agentSettings={{ avoidGroupingEdits: false }}
+      agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
       currentUserId="local"
-      desktopSize={{
-        height: Math.max(frame.height, frame.y + frame.height),
-        width: Math.max(frame.width, frame.x + frame.width)
-      }}
+      desktopSize={desktopSize}
       embedded
       height={frame.height}
       isMaximized={context.displayMode === "fullscreen"}
@@ -647,13 +656,13 @@ export function DesktopAgentGUIWorkbenchBody({
       onAgentProviderLogin={
         agentProviderStatusService ? handleAgentProviderLogin : undefined
       }
-      onClose={() => {}}
+      onClose={DESKTOP_AGENT_GUI_NOOP}
       onLinkAction={onLinkAction}
-      onResize={() => {}}
-      onShowMessage={() => {}}
+      onResize={DESKTOP_AGENT_GUI_NOOP}
+      onShowMessage={DESKTOP_AGENT_GUI_NOOP}
       onUpdateNode={handleUpdateNode}
       onWorkspaceFileReferencesAdded={trackWorkspaceFileReferences}
-      position={{ x: 0, y: 0 }}
+      position={DESKTOP_AGENT_GUI_POSITION}
       richTextAtProviders={effectiveRichTextAtProviders}
       state={state}
       title={context.node.title}

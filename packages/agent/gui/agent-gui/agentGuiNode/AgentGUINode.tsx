@@ -494,6 +494,15 @@ export const AgentGUINode = memo(function AgentGUINode({
     },
     [onAgentProviderLogin, state.provider]
   );
+  const handleWorkspaceFileReferencesAdded = useCallback(
+    (references: readonly WorkspaceFileReference[]) => {
+      onWorkspaceFileReferencesAdded?.({
+        provider: state.provider,
+        references
+      });
+    },
+    [onWorkspaceFileReferencesAdded, state.provider]
+  );
   const handleDataChange = useCallback(
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => {
       onUpdateNode(updater);
@@ -1092,11 +1101,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             uiLanguage={locale}
             onWorkspaceFileReferencesAdded={
               onWorkspaceFileReferencesAdded
-                ? (references) =>
-                    onWorkspaceFileReferencesAdded({
-                      provider: state.provider,
-                      references
-                    })
+                ? handleWorkspaceFileReferencesAdded
                 : undefined
             }
             onConversationRailWidthChanged={handleConversationRailWidthChanged}

@@ -1597,6 +1597,135 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
   assert.deepEqual(messageRequests, [0, 0]);
 });
 
+test("desktop agent host api batches inline streaming message updates", async () => {
+  type AgentActivityDirtySignalListener = (event: {
+    payload: {
+      agentSessionId: string;
+      data?: unknown;
+      eventType: string;
+      workspaceId: string;
+    };
+  }) => void;
+  const eventHubListenerRef: {
+    current: AgentActivityDirtySignalListener | null;
+  } = { current: null };
+  const eventStreamClient: NextopdEventStreamClient = {
+    async connect() {},
+    dispose() {},
+    async publishIntent() {},
+    subscribe(topic, listener) {
+      if (topic === "agent.activity.updated") {
+        eventHubListenerRef.current =
+          listener as AgentActivityDirtySignalListener;
+      }
+      return () => {};
+    },
+    subscribeConnectionState() {
+      return () => {};
+    }
+  };
+  let messageRequestCount = 0;
+  const nextopdClient = createNextopdClient({
+    async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
+      messageRequestCount += 1;
+      return {
+        agentSessionId,
+        hasMore: false,
+        latestVersion: 0,
+        messages: []
+      };
+    },
+    async listWorkspaceAgentSessions() {
+      return {
+        sessions: [createSession({ id: "agent-session-1" })],
+        workspaceId
+      };
+    }
+  });
+  const api = createAgentHostApi({
+    nextopdClient,
+    workspaceAgentActivityService: new WorkspaceAgentActivityService({
+      eventStreamClient,
+      nextopdClient,
+      runtimeApi: createRuntimeApi()
+    })
+  });
+  const receivedEvents: unknown[] = [];
+  const unsubscribe = api.agentSessions.onEvent((event) =>
+    receivedEvents.push(event)
+  );
+
+  await api.workspaceAgents.list();
+  await waitFor(() => eventHubListenerRef.current !== null);
+  const publishDirtySignal = eventHubListenerRef.current;
+  if (!publishDirtySignal) {
+    throw new Error("Event hub listener was not registered.");
+  }
+  publishDirtySignal({
+    payload: {
+      agentSessionId: "agent-session-1",
+      data: {
+        messages: [
+          inlineActivityMessage({
+            messageId: "message-1",
+            text: "Hel",
+            version: 1
+          })
+        ]
+      },
+      eventType: "message_update",
+      workspaceId
+    }
+  });
+  publishDirtySignal({
+    payload: {
+      agentSessionId: "agent-session-1",
+      data: {
+        messages: [
+          inlineActivityMessage({
+            messageId: "message-1",
+            text: "Hello",
+            version: 2
+          })
+        ]
+      },
+      eventType: "message_update",
+      workspaceId
+    }
+  });
+
+  assert.equal(receivedEvents.length, 0);
+  await waitFor(() =>
+    receivedEvents.some((event) => {
+      const data = (event as { data?: { payload?: { text?: string } } }).data;
+      return data?.payload?.text === "Hello";
+    })
+  );
+  unsubscribe();
+
+  const messageEvents = receivedEvents.filter(
+    (event) => (event as { eventType?: string }).eventType === "message_update"
+  );
+  assert.equal(messageEvents.length, 1);
+  assert.equal(
+    (
+      messageEvents[0] as {
+        data?: { payload?: { text?: string }; seq?: number };
+      }
+    ).data?.payload?.text,
+    "Hello"
+  );
+  assert.equal(
+    (
+      messageEvents[0] as {
+        data?: { payload?: { text?: string }; seq?: number };
+      }
+    ).data?.seq,
+    2
+  );
+  assert.equal(messageRequestCount, 0);
+});
+
 test("desktop agent host api preserves working state for user-only reconciled turns", async () => {
   type AgentActivityDirtySignalListener = (event: {
     payload: {
@@ -2672,6 +2801,26 @@ function createNextopdClient(
     },
     ...overrides
   } as unknown as NextopdClient;
+}
+
+function inlineActivityMessage(input: {
+  messageId: string;
+  text: string;
+  version: number;
+}): Record<string, unknown> {
+  return {
+    agentSessionId: "agent-session-1",
+    kind: "text",
+    messageId: input.messageId,
+    occurredAtUnixMs: 1717200000000 + input.version,
+    payload: {
+      text: input.text
+    },
+    role: "assistant",
+    status: "streaming",
+    version: input.version,
+    workspaceId
+  };
 }
 
 async function waitFor(predicate: () => boolean): Promise<void> {

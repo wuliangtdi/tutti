@@ -657,6 +657,48 @@ test("WorkspaceAppCenterService consumes operation errors once", async () => {
   assert.equal(service.consumeError(), secondError);
 });
 
+test("WorkspaceAppCenterService uses publish-specific workspace operation error copy", async () => {
+  const diagnostics: unknown[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway({
+      publishWorkspaceAppFactoryJob: async () => {
+        throw Object.assign(new Error("workspace operation failed"), {
+          code: "workspace_operation_failed",
+          developerMessage: "read AGENTS.md: no such file or directory",
+          reason: "workspace_operation_failed"
+        });
+      }
+    }),
+    hostFilesApi: createHostFilesApi(),
+    hostWorkspaceApi: createHostWorkspaceApi(),
+    runtimeApi: {
+      async logRendererDiagnostic(input) {
+        diagnostics.push(input);
+      }
+    }
+  });
+
+  await service.publishFactoryJob({
+    jobId: "job-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(
+    service.store.error,
+    "The app draft did not pass its pre-publish check. Fix it from App Center before publishing."
+  );
+  assert.deepEqual(
+    diagnostics.map(
+      (entry) =>
+        (entry as { details: { toastMessage: string } }).details.toastMessage
+    ),
+    [
+      "The app draft did not pass its pre-publish check. Fix it from App Center before publishing."
+    ]
+  );
+});
+
 test("WorkspaceAppCenterService tracks import failure and catalog refresh result", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const service = new WorkspaceAppCenterService({
