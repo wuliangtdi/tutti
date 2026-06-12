@@ -1085,25 +1085,23 @@
 }
 
 .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"] {
-  animation: desktop-dock-minimized-slot-promote 520ms
-    cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: none;
 }
 
 .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"]
   .desktop-dock__minimized-preview {
-  animation: desktop-dock-minimized-preview-promote 520ms
-    cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: none;
 }
 
 .desktop-dock[data-dock-placement="left"]
   .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"] {
-  animation-name: desktop-dock-minimized-slot-promote-left;
+  animation: none;
 }
 
 .desktop-dock[data-dock-placement="left"]
   .desktop-dock__slot--minimized[data-promoted-from-stack="true"][data-presence="entering"]
   .desktop-dock__minimized-preview {
-  animation-name: desktop-dock-minimized-preview-promote-left;
+  animation: none;
 }
 
 .desktop-dock__slot--minimized[data-stack-dispatching="true"]
@@ -1111,8 +1109,7 @@
   .desktop-dock__minimized-stack-layer--0:not(
     .desktop-dock__minimized-stack-layer-back
   ) {
-  animation: desktop-dock-stack-layer-reveal 520ms cubic-bezier(0.16, 1, 0.3, 1)
-    both;
+  animation: none;
 }
 
 .desktop-dock[data-dock-placement="left"]
@@ -1121,7 +1118,7 @@
   .desktop-dock__minimized-stack-layer--0:not(
     .desktop-dock__minimized-stack-layer-back
   ) {
-  animation-name: desktop-dock-stack-layer-reveal-left;
+  animation: none;
 }
 
 .desktop-dock[data-dock-placement="left"]

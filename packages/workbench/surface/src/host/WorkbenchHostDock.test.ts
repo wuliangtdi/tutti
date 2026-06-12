@@ -71,6 +71,8 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
     source,
     /function isDockVisualMutationActive[\s\S]*?data-stack-dispatching="true"[\s\S]*?data-promoted-from-stack="true"/
   );
+  assert.match(source, /function resolveNextDockItemPresence/);
+  assert.match(source, /shouldAnimateMinimizedDockEnter/);
   assert.match(source, /useMinimizedDockStackPromotion\(minimizedDockSlots\)/);
   assert.match(source, /data-stack-dispatching=\{/);
   assert.match(source, /data-promoted-from-stack=\{/);

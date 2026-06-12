@@ -314,7 +314,10 @@ export function WorkbenchHostDock({
       }),
     [minimizedDockSlots, resolvedEntries]
   );
-  const presentDockItems = useDockPresenceItems(dockItems);
+  const presentDockItems = useDockPresenceItems(
+    dockItems,
+    context.genie.shouldAnimateMinimizedDockEnter
+  );
   const dockWidth = useMemo(
     () => resolveWorkbenchHostDockItemsWidth(dockItems),
     [dockItems]
@@ -1874,8 +1877,50 @@ function createWorkbenchHostDockItems({
   return items;
 }
 
+function resolveMinimizedDockItemNodeId(
+  item: WorkbenchHostDockItem
+): string | null {
+  if (item.kind !== "minimized" || item.slot.kind !== "node") {
+    return null;
+  }
+  return item.slot.node.id;
+}
+
+function resolveNextDockItemPresence(
+  item: WorkbenchHostDockItem,
+  initialized: boolean,
+  previousPresence: WorkbenchHostDockPresence | undefined,
+  shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
+): WorkbenchHostDockPresence {
+  if (!initialized) {
+    return "present";
+  }
+
+  if (item.key === "separator:minimized") {
+    return "present";
+  }
+
+  if (item.kind === "minimized") {
+    const nodeId = resolveMinimizedDockItemNodeId(item);
+    if (nodeId && shouldAnimateMinimizedDockEnter(nodeId)) {
+      if (previousPresence === "exiting") {
+        return "entering";
+      }
+      return previousPresence ?? "entering";
+    }
+    return "present";
+  }
+
+  if (previousPresence === "exiting") {
+    return "entering";
+  }
+
+  return previousPresence ?? "entering";
+}
+
 function useDockPresenceItems(
-  items: readonly WorkbenchHostDockItem[]
+  items: readonly WorkbenchHostDockItem[],
+  shouldAnimateMinimizedDockEnter: (nodeId: string) => boolean
 ): WorkbenchHostPresentDockItem[] {
   const latestItemsByKey = useRef(new Map<string, WorkbenchHostDockItem>());
   latestItemsByKey.current = new Map(items.map((item) => [item.key, item]));
@@ -1892,6 +1937,8 @@ function useDockPresenceItems(
   const initialized = useRef(false);
 
   useEffect(() => {
+    let nextSettleMs = dockPresenceAnimationMs;
+
     setPresentItems((current) => {
       const nextSourceItems = [...latestItemsByKey.current.values()];
       const currentByKey = new Map(current.map((item) => [item.key, item]));
@@ -1940,11 +1987,12 @@ function useDockPresenceItems(
         nextItems.push({
           item,
           key: item.key,
-          presence: initialized.current
-            ? currentByKey.get(item.key)?.presence === "exiting"
-              ? "entering"
-              : (currentByKey.get(item.key)?.presence ?? "entering")
-            : "present"
+          presence: resolveNextDockItemPresence(
+            item,
+            initialized.current,
+            currentByKey.get(item.key)?.presence,
+            shouldAnimateMinimizedDockEnter
+          )
         });
       }
 
@@ -1961,9 +2009,18 @@ function useDockPresenceItems(
         }
       }
 
-      return nextItems.filter(
+      const filteredItems = nextItems.filter(
         (item) => nextByKey.has(item.key) || item.presence === "exiting"
       );
+      if (
+        filteredItems.some(
+          (item) =>
+            item.item.kind === "minimized" && item.presence === "entering"
+        )
+      ) {
+        nextSettleMs = minimizedDockSlotEnterAnimationMs;
+      }
+      return filteredItems;
     });
     initialized.current = true;
 
@@ -1977,10 +2034,10 @@ function useDockPresenceItems(
               : item
           )
       );
-    }, dockPresenceAnimationMs);
+    }, nextSettleMs);
 
     return () => globalThis.clearTimeout(timeout);
-  }, [itemKeys]);
+  }, [itemKeys, shouldAnimateMinimizedDockEnter]);
 
   return presentItems.map((presentItem) => {
     const latestItem = latestItemsByKey.current.get(presentItem.key);
@@ -2067,6 +2124,7 @@ const dockHoverPanelOpenDelayMs = 450;
 const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelPointerRestTolerancePx = 4;
 const dockPresenceAnimationMs = 300;
+const minimizedDockSlotEnterAnimationMs = 720;
 const dockItemsGapPx = 10.8;
 const dockItemsHorizontalPaddingPx = 12.6;
 const dockSeparatorOuterWidthPx = 8.1;
