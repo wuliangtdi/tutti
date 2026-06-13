@@ -5,7 +5,7 @@ import type {
   WorkspaceAppFactoryProviderConfiguration,
   WorkspaceAppCenterReadableStoreState,
   WorkspaceAppCenterViewState
-} from "./workspaceAppCenterTypes";
+} from "@tutti-os/workspace-app-center";
 
 export interface IWorkspaceAppCenterService {
   readonly _serviceBrand: undefined;

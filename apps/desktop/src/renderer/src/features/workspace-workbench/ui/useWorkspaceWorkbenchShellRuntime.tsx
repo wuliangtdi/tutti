@@ -16,11 +16,11 @@ import type {
   WorkbenchMissionControlAdapter,
   WorkbenchMissionControlMode
 } from "@tutti-os/workbench-surface";
+import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
   resolveWorkspaceAppDisplayName,
   resolveWorkspaceAppSizeConstraints,
   useWorkspaceAppCenterService,
-  type WorkspaceAppCenterApp,
   workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "@renderer/features/workspace-app-center";
