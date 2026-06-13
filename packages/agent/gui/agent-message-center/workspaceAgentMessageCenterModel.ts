@@ -9,10 +9,6 @@ import {
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
-import {
-  latestPlanTurnId,
-  planImplementationPromptFromPlanTurn
-} from "../agent-gui/agentGuiNode/model/planImplementation";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../shared/workspaceAgentSessionSortTime";
 
 export interface WorkspaceAgentMessageCenterModel {
@@ -43,7 +39,14 @@ export interface WorkspaceAgentMessageCenterItem {
   pendingPrompt: AgentConversationPromptVM | null;
   needsAttentionKind: AgentActivityNeedsAttentionItem["kind"] | null;
   needsAttentionSummary: string | null;
+  latestTurnOutcome?: WorkspaceAgentMessageCenterTurnOutcome | null;
   sortTimeUnixMs: number;
+}
+
+export interface WorkspaceAgentMessageCenterTurnOutcome {
+  notificationKey: string;
+  status: "completed" | "failed";
+  turnId: string | null;
 }
 
 export interface BuildWorkspaceAgentMessageCenterOptions {
@@ -94,12 +97,6 @@ export function buildWorkspaceAgentMessageCenterModel(
       const title = resolveSessionTitle(session, messages);
       const pendingPrompt =
         pendingPromptFromMessages(messages) ??
-        planImplementationPromptFromMessages(
-          messages,
-          session.provider,
-          status,
-          title
-        ) ??
         fallbackPromptFromNeedsAttention(
           needsAttention,
           options.promptFallbackLabels
@@ -129,6 +126,7 @@ export function buildWorkspaceAgentMessageCenterModel(
         pendingPrompt,
         needsAttentionKind: needsAttention?.kind ?? null,
         needsAttentionSummary: needsAttention?.summary ?? null,
+        latestTurnOutcome: latestTurnOutcome(session.agentSessionId, messages),
         sortTimeUnixMs
       } satisfies WorkspaceAgentMessageCenterItem;
     });
@@ -268,26 +266,6 @@ function pendingPromptFromMessages(
     }
   }
   return null;
-}
-
-// Codex has no provider-driven exit-plan approval, so the "implement this plan?"
-// decision is derived from the timeline: the latest turn produced a plan item
-// and the session has settled (no longer working). Mirrors the in-conversation
-// controller derivation so the same card renders in the message center.
-function planImplementationPromptFromMessages(
-  messages: readonly AgentActivityMessage[],
-  provider: AgentActivitySession["provider"],
-  status: WorkspaceAgentActivityStatus,
-  title: string
-): AgentConversationPromptVM | null {
-  if (provider !== "codex" || status === "working") {
-    return null;
-  }
-  const planTurnId = latestPlanTurnId(messages);
-  if (!planTurnId) {
-    return null;
-  }
-  return planImplementationPromptFromPlanTurn(planTurnId, title);
 }
 
 function approvalPromptFromMessage(
@@ -435,6 +413,68 @@ function latestAgentMessage(
     },
     null
   );
+}
+
+function latestTurnOutcome(
+  agentSessionId: string,
+  messages: readonly AgentActivityMessage[]
+): WorkspaceAgentMessageCenterTurnOutcome | null {
+  const latest = messages
+    .flatMap((message) => {
+      const status = outcomeStatusFromMessage(message);
+      if (!status) {
+        return [];
+      }
+      const turnId = message.turnId?.trim() || null;
+      const messageId = message.messageId.trim();
+      const notificationSubject = turnId
+        ? `turn:${turnId}`
+        : `message:${messageId}`;
+      return [
+        {
+          notificationKey: `${agentSessionId}:${notificationSubject}:${status}`,
+          status,
+          turnId,
+          sortMessage: message
+        }
+      ];
+    })
+    .sort((left, right) =>
+      compareMessagesByRecentTime(left.sortMessage, right.sortMessage)
+    )[0];
+
+  if (!latest) {
+    return null;
+  }
+  return {
+    notificationKey: latest.notificationKey,
+    status: latest.status,
+    turnId: latest.turnId
+  };
+}
+
+function outcomeStatusFromMessage(
+  message: AgentActivityMessage
+): WorkspaceAgentMessageCenterTurnOutcome["status"] | null {
+  if (!isAgentMessageRole(message.role)) {
+    return null;
+  }
+  const payload = recordValue(message.payload);
+  const status = (message.status ?? stringValue(payload.status) ?? "")
+    .trim()
+    .toLowerCase();
+  switch (status) {
+    case "completed":
+    case "done":
+    case "success":
+    case "succeeded":
+      return "completed";
+    case "error":
+    case "failed":
+      return "failed";
+    default:
+      return null;
+  }
 }
 
 function fallbackPromptFromNeedsAttention(

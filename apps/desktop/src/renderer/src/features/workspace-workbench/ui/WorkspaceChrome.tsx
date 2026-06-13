@@ -56,7 +56,10 @@ import {
   buildWorkspaceAgentDecisionNotification,
   type WorkspaceAgentDecisionSubmitInput
 } from "../services/workspaceAgentDecisionNotification";
-import { buildWorkspaceAgentOutcomeNotification } from "../services/workspaceAgentOutcomeNotification";
+import {
+  buildWorkspaceAgentOutcomeNotification,
+  workspaceAgentOutcomeNotificationKey
+} from "../services/workspaceAgentOutcomeNotification";
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
 import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspaceAgentGuiLaunch";
@@ -314,8 +317,13 @@ function WorkspaceAgentMessageCenterAction({
 
   useEffect(() => {
     const outcomeEntries = model.items
-      .filter((item) => item.status === "completed" || item.status === "failed")
-      .map((item) => [`${item.agentSessionId}:${item.status}`, item] as const);
+      .map(
+        (item) => [workspaceAgentOutcomeNotificationKey(item), item] as const
+      )
+      .filter(
+        (entry): entry is readonly [string, WorkspaceAgentMessageCenterItem] =>
+          entry[0] !== null
+      );
     const currentKeys = new Set(outcomeEntries.map(([key]) => key));
     const seenKeys = seenOutcomeNotificationKeysRef.current;
     if (!seenKeys) {

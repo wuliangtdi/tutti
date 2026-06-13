@@ -286,6 +286,45 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     expect(model.counts.waiting).toBe(0);
   });
 
+  it("records the latest completed turn outcome when the session has returned to idle", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "assistant-1",
+            role: "assistant",
+            kind: "message.assistant",
+            status: "completed",
+            turnId: "turn-1",
+            payload: { text: "Done with the first turn" },
+            occurredAtUnixMs: 10
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "assistant-2",
+            role: "assistant",
+            kind: "message.assistant",
+            status: "completed",
+            turnId: "turn-2",
+            payload: { text: "Done with the second turn" },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1", status: "ready" })]
+      })
+    );
+
+    expect(model.items[0]).toMatchObject({
+      status: "idle",
+      latestTurnOutcome: {
+        notificationKey: "session-1:turn:turn-2:completed",
+        status: "completed",
+        turnId: "turn-2"
+      }
+    });
+  });
+
   it("counts error message-center sessions as failed, not completed", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
@@ -473,7 +512,7 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
-  it("offers a plan-implementation decision for a settled codex plan turn", () => {
+  it("does not synthesize a plan-implementation decision from codex plan messages", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
         messages: [
@@ -497,11 +536,8 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
       })
     );
 
-    expect(model.items[0]?.pendingPrompt).toMatchObject({
-      kind: "plan-implementation",
-      requestId: "turn-plan"
-    });
-    expect(model.waitingCount).toBe(1);
+    expect(model.items[0]?.pendingPrompt).toBeNull();
+    expect(model.waitingCount).toBe(0);
   });
 
   it("does not offer a plan decision while the codex session is still working", () => {

@@ -168,8 +168,8 @@ function WorkspaceAgentMessageCenterPanelContent({
     [model.items, providerFilters, statusFilters]
   );
   const deckItems = useMemo(
-    () => selectMessageCenterAttentionDeckItems(model.items),
-    [model.items]
+    () => selectMessageCenterAttentionDeckItems(visibleItems),
+    [visibleItems]
   );
   const listItems = useMemo(
     () => visibleItems.filter((item) => !isInteractiveMessageCenterItem(item)),

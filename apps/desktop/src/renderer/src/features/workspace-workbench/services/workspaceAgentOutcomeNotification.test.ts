@@ -3,6 +3,7 @@ import test from "node:test";
 import type { WorkspaceAgentMessageCenterItem } from "@tutti-os/agent-gui/agent-message-center";
 import {
   buildWorkspaceAgentOutcomeNotification,
+  workspaceAgentOutcomeNotificationKey,
   type WorkspaceAgentOutcomeNotificationLabels
 } from "./workspaceAgentOutcomeNotification.ts";
 
@@ -18,6 +19,32 @@ test("outcome notification builder reports completed turns as success", () => {
       item({ status: "completed" }),
       labels
     ),
+    {
+      agentName: "Codex",
+      agentSessionId: "session-1",
+      body: "The agent finished this run.",
+      conversationTitle: "Build feature",
+      level: "success"
+    }
+  );
+});
+
+test("outcome notification builder reports latest completed turn outcomes while the session is idle", () => {
+  const completedTurn = item({
+    status: "idle",
+    latestTurnOutcome: {
+      notificationKey: "session-1:turn:turn-2:completed",
+      status: "completed",
+      turnId: "turn-2"
+    }
+  });
+
+  assert.equal(
+    workspaceAgentOutcomeNotificationKey(completedTurn),
+    "session-1:turn:turn-2:completed"
+  );
+  assert.deepEqual(
+    buildWorkspaceAgentOutcomeNotification(completedTurn, labels),
     {
       agentName: "Codex",
       agentSessionId: "session-1",

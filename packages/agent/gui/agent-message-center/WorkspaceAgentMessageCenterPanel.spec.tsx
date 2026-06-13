@@ -844,6 +844,36 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.queryByText("Running task")).toBeNull();
   });
 
+  it("filters attention deck items by status from the view menu", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createWaitingItem({
+            agentSessionId: "waiting-session",
+            title: "Needs approval"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "completed-session",
+            title: "Done task",
+            status: "completed"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    openViewOptions();
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Waiting 1" })
+    );
+
+    expect(screen.queryByText("Needs approval")).toBeNull();
+    expect(screen.getByText("Done task")).toBeTruthy();
+  });
+
   it("filters message center items by agent from view options", () => {
     render(
       <WorkspaceAgentMessageCenterPanel
@@ -1452,7 +1482,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.getByText("Running task")).toBeTruthy();
   });
 
-  it("keeps the deck visible even when filters would hide the interactive item", () => {
+  it("hides the deck when filters hide the interactive item", () => {
     render(
       <WorkspaceAgentMessageCenterPanel
         open
@@ -1473,7 +1503,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
       />
     );
 
-    // Filter to only "Completed" — removes working item from the list, deck must remain.
+    // Filter to only statuses with no matching items.
     openViewOptions();
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Waiting 1" })
@@ -1484,11 +1514,11 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
 
     expect(
-      screen.getByTestId("workspace-agent-message-center-attention-deck")
-    ).toHaveAttribute(
-      "data-deck-top-item-id",
-      "message-center-waiting-session"
-    );
+      screen.queryByTestId("workspace-agent-message-center-attention-deck")
+    ).toBeNull();
+    expect(
+      screen.getByText("No messages match the current filters")
+    ).toBeTruthy();
   });
 
   it("advances to the next interactive card after the top one is answered", () => {

@@ -18,7 +18,8 @@ export function buildWorkspaceAgentOutcomeNotification(
   item: WorkspaceAgentMessageCenterItem,
   labels: WorkspaceAgentOutcomeNotificationLabels
 ): WorkspaceAgentOutcomeNotification | null {
-  const level = outcomeNotificationLevel(item.status);
+  const status = workspaceAgentOutcomeNotificationStatus(item);
+  const level = outcomeNotificationLevel(status);
   if (!level) {
     return null;
   }
@@ -33,8 +34,27 @@ export function buildWorkspaceAgentOutcomeNotification(
   };
 }
 
+export function workspaceAgentOutcomeNotificationKey(
+  item: WorkspaceAgentMessageCenterItem
+): string | null {
+  if (item.latestTurnOutcome) {
+    return item.latestTurnOutcome.notificationKey;
+  }
+  const status = workspaceAgentOutcomeNotificationStatus(item);
+  if (!status) {
+    return null;
+  }
+  return `${item.agentSessionId}:session:${status}`;
+}
+
+function workspaceAgentOutcomeNotificationStatus(
+  item: WorkspaceAgentMessageCenterItem
+): WorkspaceAgentMessageCenterItem["status"] | null {
+  return item.latestTurnOutcome?.status ?? item.status;
+}
+
 function outcomeNotificationLevel(
-  status: WorkspaceAgentMessageCenterItem["status"]
+  status: WorkspaceAgentMessageCenterItem["status"] | null
 ): WorkspaceAgentOutcomeNotification["level"] | null {
   switch (status) {
     case "completed":
