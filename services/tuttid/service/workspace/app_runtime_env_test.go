@@ -3,6 +3,8 @@ package workspace
 import (
 	"archive/zip"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,6 +83,15 @@ func TestDefaultManagedAppRuntimeResolverUsesDefaultCatalogWhenUnset(t *testing.
 	if source != defaultTuttiAppRuntimeCatalogURL {
 		t.Fatalf("runtimeCatalogSource() = %q, want %q", source, defaultTuttiAppRuntimeCatalogURL)
 	}
+
+	sources := DefaultManagedAppRuntimeResolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+	}.runtimeCatalogSources()
+	if len(sources) != 2 || sources[0] != defaultTuttiAppRuntimeCatalogURL || sources[1] != legacyDefaultAppRuntimeCatalogURL {
+		t.Fatalf("runtimeCatalogSources() = %#v, want Tutti default followed by legacy fallback", sources)
+	}
 }
 
 func TestDefaultManagedAppRuntimeResolverAllowsEmptyCatalogOverride(t *testing.T) {
@@ -95,6 +106,74 @@ func TestDefaultManagedAppRuntimeResolverAllowsEmptyCatalogOverride(t *testing.T
 
 	if source != "" {
 		t.Fatalf("runtimeCatalogSource() = %q, want empty override", source)
+	}
+}
+
+func TestDefaultManagedAppRuntimeResolverFallsBackToLegacyDefaultCatalog(t *testing.T) {
+	cacheRoot := t.TempDir()
+	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")
+	pythonSHA256, _, err := fileSHA256AndSize(pythonArtifactPath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	nodeArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "node")
+	nodeSHA256, _, err := fileSHA256AndSize(nodeArtifactPath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	legacyCatalogJSON := `{
+  "schemaVersion": "tutti.app.runtimes.v2",
+  "runtimes": {
+    "` + appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH) + `": {
+      "version": "test",
+      "components": {
+        "python": {
+          "version": "test-python",
+          "artifactUrl": "` + filepath.ToSlash(pythonArtifactPath) + `",
+          "artifactSha256": "` + pythonSHA256 + `"
+        },
+        "node": {
+          "version": "test-node",
+          "artifactUrl": "` + filepath.ToSlash(nodeArtifactPath) + `",
+          "artifactSha256": "` + nodeSHA256 + `"
+        }
+      },
+      "profiles": {
+        "baseline": ["python", "node"]
+      }
+    }
+  }
+}`
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/tutti/catalog.json":
+			http.Error(writer, "not migrated yet", http.StatusForbidden)
+		case "/nextop/catalog.json":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = writer.Write([]byte(legacyCatalogJSON))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	resolver := DefaultManagedAppRuntimeResolver{
+		Environ: func() []string {
+			return []string{
+				tuttiAppRuntimeCacheRootEnv + "=" + cacheRoot,
+				"PATH=/usr/bin:/bin",
+			}
+		},
+	}
+	catalog, err := resolver.loadCatalogWithFallbacks(
+		context.Background(),
+		[]string{server.URL + "/tutti/catalog.json", server.URL + "/nextop/catalog.json"},
+	)
+	if err != nil {
+		t.Fatalf("loadCatalogWithFallbacks() error = %v", err)
+	}
+	if _, ok := catalog.Runtimes[appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH)]; !ok {
+		t.Fatalf("fallback catalog runtimes = %#v, want current platform", catalog.Runtimes)
 	}
 }
 

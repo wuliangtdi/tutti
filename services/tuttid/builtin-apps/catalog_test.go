@@ -167,6 +167,58 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 	}
 }
 
+func TestCatalogFallsBackToLegacyDefaultURL(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		switch request.URL.Path {
+		case "/tutti/catalog.json":
+			http.Error(writer, "not migrated yet", http.StatusForbidden)
+		case "/nextop/catalog.json":
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = writer.Write([]byte(`{
+				"schemaVersion": "tutti.app.catalog.v1",
+				"apps": [
+					{
+						"manifest": {
+							"schemaVersion": "tutti.app.manifest.v1",
+							"appId": "legacy-fallback-tool",
+							"version": "1.2.3",
+							"name": "Legacy Fallback Tool",
+							"description": "Loaded from legacy catalog while Tutti prefix is empty",
+							"icon": {"type": "asset", "src": "icon.png"},
+							"runtime": {"bootstrap": "bootstrap.sh", "healthcheckPath": "/"}
+						},
+						"distribution": {
+							"kind": "remote",
+							"artifactUrl": "https://cdn.example.test/apps/legacy-fallback-tool/tool.zip",
+							"artifactSha256": "def456",
+							"iconUrl": "https://cdn.example.test/apps/legacy-fallback-tool/icon.png"
+						}
+					}
+				]
+			}`))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	apps, err := fetchRemoteCatalogWithFallbacks([]string{
+		server.URL + "/tutti/catalog.json",
+		server.URL + "/nextop/catalog.json",
+	})
+	if err != nil {
+		t.Fatalf("fetchRemoteCatalogWithFallbacks() error = %v", err)
+	}
+	if app := findCatalogAppForTest(apps, "legacy-fallback-tool"); app == nil {
+		t.Fatalf("legacy fallback app missing from catalog: %#v", apps)
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("catalog requests = %d, want 2", requests.Load())
+	}
+}
+
 func TestCatalogKeepsEmbeddedAppsWhenRemoteURLFails(t *testing.T) {
 	t.Setenv(remoteCatalogFileEnv, "")
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
