@@ -248,7 +248,18 @@ jobs:
 
           const raw = process.env.MACOS_CSC_LINK ?? "";
           const output = process.env.CERTIFICATE_PATH;
-          const base64 = raw.replace(/^data:.*;base64,/, "").replace(/\s+/g, "");
+          const normalized = raw
+            .replace(/\\n/g, "\n")
+            .replace(/^data:.*;base64,/, "")
+            .replace(/-----BEGIN [^-]+-----/g, "")
+            .replace(/-----END [^-]+-----/g, "")
+            .replace(/\s+/g, "")
+            .replace(/-/g, "+")
+            .replace(/_/g, "/");
+          const base64 = normalized.padEnd(
+            normalized.length + ((4 - (normalized.length % 4)) % 4),
+            "="
+          );
 
           if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
             throw new Error("MACOS_CSC_LINK must be a URL, path, or base64-encoded .p12 certificate.");
