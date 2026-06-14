@@ -1337,11 +1337,11 @@ describe("AgentModelReasoningDropdown", () => {
     const onSettingsChange = vi.fn();
     renderModelReasoning({}, onSettingsChange);
     openModelReasoningMenu();
-    const current = await screen.findByRole("menuitemradio", {
+    const current = await screen.findByRole("menuitem", {
       name: /Gpt-5\.5/
     });
-    expect(current).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Gpt-5\.4/ }));
+    expect(current).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Gpt-5\.4/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ model: "gpt-5.4" });
   });
 
@@ -1365,9 +1365,9 @@ describe("AgentModelReasoningDropdown", () => {
     );
     openModelReasoningMenu();
     expect(
-      await screen.findByRole("menuitemradio", { name: /Sonnet\[1m\]/ })
-    ).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /Default/ }));
+      await screen.findByRole("menuitem", { name: /Sonnet\[1m\]/ })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Default/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ model: "default" });
   });
 
@@ -1380,7 +1380,7 @@ describe("AgentModelReasoningDropdown", () => {
     });
     expect(reasoningTrigger).toHaveTextContent("High");
     openComposerSubmenu(reasoningTrigger);
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Low" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Low" }));
     expect(onSettingsChange).toHaveBeenCalledWith({ reasoningEffort: "low" });
   });
 
@@ -1391,7 +1391,7 @@ describe("AgentModelReasoningDropdown", () => {
     const speedTrigger = await screen.findByRole("menuitem", { name: /Speed/ });
     expect(speedTrigger).toHaveTextContent("Standard");
     openComposerSubmenu(speedTrigger);
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: /Fast/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Fast/ }));
     expect(onSettingsChange).toHaveBeenCalledWith({ speed: "fast" });
   });
 

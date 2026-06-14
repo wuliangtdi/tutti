@@ -8,12 +8,12 @@ import { prepareWorkspaceUserProjectSelection } from "@tutti-os/workspace-user-p
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { useAgentHostApi } from "../../agentActivityHost";
 import {
+  CheckIcon,
   ChevronDownIcon,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -39,39 +39,14 @@ import {
   composerModeSelectedValue,
   composerModeSelectionPatch
 } from "./model/composerModeCycle";
+import {
+  buildComposerModelMenuModel,
+  type AgentComposerSettingsMenuLabels,
+  type ComposerMenuOption
+} from "./model/composerSettingsMenuModel";
 import styles from "./AgentGUINode.styles";
 
-export type AgentComposerSettingsMenuLabels = {
-  modelLabel: string;
-  modelSelectionLabel: string;
-  defaultModel: string;
-  inheritedUnavailable: string;
-  loadingSettings: string;
-  reasoningLabel: string;
-  reasoningDegreeLabel: string;
-  reasoningOptionMinimal: string;
-  reasoningOptionLow: string;
-  reasoningOptionMedium: string;
-  reasoningOptionHigh: string;
-  reasoningOptionXHigh: string;
-  speedLabel: string;
-  speedSelectionLabel: string;
-  speedOptionStandard: string;
-  speedOptionFast: string;
-  permissionLabel: string;
-  planModeLabel: string;
-  permissionModeReadOnly?: string;
-  permissionModeAuto?: string;
-  permissionModeFullAccess?: string;
-  modelDescriptions: {
-    frontierComplexCoding: string;
-    everydayCoding: string;
-    smallFastCostEfficient: string;
-    codingOptimized: string;
-    ultraFastCoding: string;
-    professionalLongRunning: string;
-  };
-};
+export type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
 
 export type AgentProjectDropdownLabels = Pick<
   WorkspaceUserProjectSelectLabelOverrides,
@@ -377,215 +352,6 @@ function PermissionModeOptionInfo({
   );
 }
 
-function resolveSelectedModelLabel(
-  composerSettings: AgentGUIComposerSettingsVM,
-  labels: Pick<
-    AgentComposerSettingsMenuLabels,
-    "defaultModel" | "inheritedUnavailable" | "loadingSettings"
-  >
-): string {
-  const selectedValue = selectedComposerModelValue(composerSettings);
-  const selected = modelOptionsWithSelectedValue(composerSettings).find(
-    (option) => option.value === selectedValue
-  );
-  if (selected) {
-    return formatModelDisplayLabel(selected.label);
-  }
-  if (composerSettings.modelUnavailable) {
-    return labels.inheritedUnavailable;
-  }
-  if (composerSettings.isSettingsLoading) {
-    return labels.loadingSettings;
-  }
-  const firstAvailableModel = composerSettings.availableModels[0]?.label;
-  if (firstAvailableModel) {
-    return formatModelDisplayLabel(firstAvailableModel);
-  }
-  return labels.defaultModel;
-}
-
-function resolveSelectedReasoningLabel(
-  composerSettings: AgentGUIComposerSettingsVM,
-  labels: Pick<
-    AgentComposerSettingsMenuLabels,
-    | "reasoningLabel"
-    | "inheritedUnavailable"
-    | "loadingSettings"
-    | "reasoningOptionMinimal"
-    | "reasoningOptionLow"
-    | "reasoningOptionMedium"
-    | "reasoningOptionHigh"
-    | "reasoningOptionXHigh"
-  >
-): string {
-  const selectedValue = selectedComposerReasoningValue(composerSettings);
-  const selected = reasoningOptionsWithSelectedValue(composerSettings).find(
-    (option) => option.value === selectedValue
-  );
-  if (selected) {
-    switch (selected.value) {
-      case "minimal":
-        return labels.reasoningOptionMinimal;
-      case "low":
-        return labels.reasoningOptionLow;
-      case "medium":
-        return labels.reasoningOptionMedium;
-      case "high":
-        return labels.reasoningOptionHigh;
-      case "xhigh":
-        return labels.reasoningOptionXHigh;
-      default:
-        return selected.label;
-    }
-  }
-  if (composerSettings.reasoningUnavailable) {
-    return labels.inheritedUnavailable;
-  }
-  if (composerSettings.isSettingsLoading) {
-    return "";
-  }
-  if (composerSettings.availableReasoningEfforts.length === 0) {
-    return "";
-  }
-  return labels.reasoningLabel;
-}
-
-function selectedComposerModelValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): string | null {
-  return (
-    composerSettings.selectedModelValue ??
-    composerSettings.draftSettings.model ??
-    null
-  );
-}
-
-function selectedComposerSpeedValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): string | null {
-  return (
-    composerSettings.selectedSpeedValue ??
-    composerSettings.draftSettings.speed ??
-    null
-  );
-}
-
-function speedOptionsWithSelectedValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): AgentGUIComposerSettingsVM["availableSpeeds"] {
-  const selectedValue = selectedComposerSpeedValue(composerSettings);
-  if (
-    !selectedValue ||
-    composerSettings.availableSpeeds.some(
-      (option) => option.value === selectedValue
-    )
-  ) {
-    return composerSettings.availableSpeeds;
-  }
-  return [
-    { value: selectedValue, label: selectedValue },
-    ...composerSettings.availableSpeeds
-  ];
-}
-
-function resolveSpeedOptionLabel(
-  value: string,
-  labels: Pick<
-    AgentComposerSettingsMenuLabels,
-    "speedOptionStandard" | "speedOptionFast"
-  >
-): string {
-  switch (value) {
-    case "standard":
-      return labels.speedOptionStandard;
-    case "fast":
-      return labels.speedOptionFast;
-    default:
-      return value;
-  }
-}
-
-function selectedComposerReasoningValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): string | null {
-  return (
-    composerSettings.selectedReasoningEffortValue ??
-    composerSettings.draftSettings.reasoningEffort ??
-    null
-  );
-}
-
-function modelOptionsWithSelectedValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): AgentGUIComposerSettingsVM["availableModels"] {
-  const selectedValue = selectedComposerModelValue(composerSettings);
-  if (
-    !selectedValue ||
-    composerSettings.availableModels.some(
-      (option) => option.value === selectedValue
-    )
-  ) {
-    return composerSettings.availableModels;
-  }
-  return [
-    { value: selectedValue, label: selectedValue },
-    ...composerSettings.availableModels
-  ];
-}
-
-function reasoningOptionsWithSelectedValue(
-  composerSettings: AgentGUIComposerSettingsVM
-): AgentGUIComposerSettingsVM["availableReasoningEfforts"] {
-  const selectedValue = selectedComposerReasoningValue(composerSettings);
-  if (
-    !selectedValue ||
-    composerSettings.availableReasoningEfforts.some(
-      (option) => option.value === selectedValue
-    )
-  ) {
-    return composerSettings.availableReasoningEfforts;
-  }
-  return [
-    { value: selectedValue, label: selectedValue },
-    ...composerSettings.availableReasoningEfforts
-  ];
-}
-
-function resolveReasoningOptionLabel(
-  value: string,
-  labels: Pick<
-    AgentComposerSettingsMenuLabels,
-    | "reasoningOptionMinimal"
-    | "reasoningOptionLow"
-    | "reasoningOptionMedium"
-    | "reasoningOptionHigh"
-    | "reasoningOptionXHigh"
-  >
-): string {
-  switch (value) {
-    case "minimal":
-      return labels.reasoningOptionMinimal;
-    case "low":
-      return labels.reasoningOptionLow;
-    case "medium":
-      return labels.reasoningOptionMedium;
-    case "high":
-      return labels.reasoningOptionHigh;
-    case "xhigh":
-      return labels.reasoningOptionXHigh;
-    default:
-      return value;
-  }
-}
-
-function formatModelDisplayLabel(label: string): string {
-  const trimmed = label.trim();
-  if (!trimmed) {
-    return label;
-  }
-  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
-}
-
 function resolvePermissionModeTriggerTone(
   value: string | null | undefined
 ): string | undefined {
@@ -614,28 +380,6 @@ function normalizePermissionModeValue(
   return normalized || undefined;
 }
 
-function resolveModelDescription(
-  description: string | undefined,
-  labels: Pick<AgentComposerSettingsMenuLabels, "modelDescriptions">
-): string | undefined {
-  switch (description) {
-    case "Frontier model for complex coding, research, and real-world work.":
-      return labels.modelDescriptions.frontierComplexCoding;
-    case "Strong model for everyday coding.":
-      return labels.modelDescriptions.everydayCoding;
-    case "Small, fast, and cost-efficient model for simpler coding tasks.":
-      return labels.modelDescriptions.smallFastCostEfficient;
-    case "Coding-optimized model.":
-      return labels.modelDescriptions.codingOptimized;
-    case "Ultra-fast coding model.":
-      return labels.modelDescriptions.ultraFastCoding;
-    case "Optimized for professional work and long-running agents.":
-      return labels.modelDescriptions.professionalLongRunning;
-    default:
-      return description;
-  }
-}
-
 export function AgentModelReasoningDropdown({
   composerSettings,
   disabled = false,
@@ -652,47 +396,8 @@ export function AgentModelReasoningDropdown({
   }) => void;
 }): React.JSX.Element {
   "use memo";
-  const selectedModelLabel = resolveSelectedModelLabel(
-    composerSettings,
-    labels
-  );
-  const selectedReasoningLabel = resolveSelectedReasoningLabel(
-    composerSettings,
-    labels
-  );
-  const triggerLabel =
-    selectedModelLabel === selectedReasoningLabel
-      ? selectedModelLabel
-      : `${selectedModelLabel} ${selectedReasoningLabel}`.trim();
-  const modelItems = modelOptionsWithSelectedValue(composerSettings);
-  const reasoningItems = reasoningOptionsWithSelectedValue(composerSettings);
-  const speedItems = speedOptionsWithSelectedValue(composerSettings);
-  const triggerDisabled =
-    disabled ||
-    composerSettings.isSettingsLoading ||
-    (!composerSettings.supportsModel &&
-      !composerSettings.supportsReasoningEffort &&
-      !composerSettings.supportsSpeed);
-  const showReasoningSection =
-    composerSettings.supportsReasoningEffort &&
-    reasoningItems.length > 0 &&
-    !composerSettings.reasoningUnavailable;
-  const showModelSection =
-    composerSettings.supportsModel &&
-    modelItems.length > 0 &&
-    !composerSettings.modelUnavailable;
-  const showSpeedSection =
-    composerSettings.supportsSpeed &&
-    speedItems.length > 0 &&
-    !composerSettings.speedUnavailable;
-  const selectedReasoningValue =
-    selectedComposerReasoningValue(composerSettings) ?? "";
-  const selectedModelValue = selectedComposerModelValue(composerSettings) ?? "";
-  const selectedSpeedValue = selectedComposerSpeedValue(composerSettings) ?? "";
-  const speedIsFast = selectedSpeedValue === "fast";
-  const menuDisabled =
-    triggerDisabled ||
-    (!showModelSection && !showReasoningSection && !showSpeedSection);
+  const menu = buildComposerModelMenuModel(composerSettings, labels);
+  const menuDisabled = disabled || menu.disabled;
 
   return (
     <DropdownMenu>
@@ -710,7 +415,7 @@ export function AgentModelReasoningDropdown({
           data-agent-model-reasoning-trigger="true"
         >
           <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-            {showSpeedSection && speedIsFast ? (
+            {menu.speed.show && menu.trigger.isFast ? (
               <span
                 aria-hidden
                 className="shrink-0"
@@ -719,13 +424,16 @@ export function AgentModelReasoningDropdown({
                 ⚡
               </span>
             ) : null}
-            {selectedModelLabel === selectedReasoningLabel ||
-            selectedReasoningLabel.length === 0 ? (
-              <span className="min-w-0 truncate">{triggerLabel}</span>
+            {menu.trigger.showCombined ? (
+              <span className="min-w-0 truncate">
+                {menu.trigger.combinedLabel}
+              </span>
             ) : (
               <>
-                <span className="min-w-0 truncate">{selectedModelLabel}</span>
-                <span className="shrink-0">{selectedReasoningLabel}</span>
+                <span className="min-w-0 truncate">
+                  {menu.trigger.modelLabel}
+                </span>
+                <span className="shrink-0">{menu.trigger.reasoningLabel}</span>
               </>
             )}
           </span>
@@ -743,21 +451,21 @@ export function AgentModelReasoningDropdown({
         )}
         data-agent-composer-settings-layout="model-primary"
       >
-        {showModelSection ? (
+        {menu.model.show ? (
           <>
             <DropdownMenuLabel>{labels.modelSelectionLabel}</DropdownMenuLabel>
-            <DropdownMenuRadioGroup
-              value={selectedModelValue}
-              onValueChange={(value) => onSettingsChange({ model: value })}
-            >
-              <ComposerModelRadioItems labels={labels} models={modelItems} />
-            </DropdownMenuRadioGroup>
+            <ComposerMenuOptionItems
+              options={menu.model.options}
+              selectedValue={menu.model.selectedValue}
+              withDescription
+              onSelect={(value) => onSettingsChange({ model: value })}
+            />
           </>
         ) : null}
-        {showModelSection && (showReasoningSection || showSpeedSection) ? (
+        {menu.model.show && (menu.reasoning.show || menu.speed.show) ? (
           <DropdownMenuSeparator />
         ) : null}
-        {showReasoningSection ? (
+        {menu.reasoning.show ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
               className={styles.composerMenuItem}
@@ -767,27 +475,23 @@ export function AgentModelReasoningDropdown({
                 {labels.reasoningLabel}
               </span>
               <span className="pl-3 text-[var(--text-tertiary)]">
-                {selectedReasoningLabel}
+                {menu.reasoning.selectedLabel}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
               className={cn(styles.composerMenuContent, "min-w-[160px]")}
             >
-              <DropdownMenuRadioGroup
-                value={selectedReasoningValue}
-                onValueChange={(value) =>
+              <ComposerMenuOptionItems
+                options={menu.reasoning.options}
+                selectedValue={menu.reasoning.selectedValue}
+                onSelect={(value) =>
                   onSettingsChange({ reasoningEffort: value })
                 }
-              >
-                <ComposerReasoningRadioItems
-                  labels={labels}
-                  reasoningEfforts={reasoningItems}
-                />
-              </DropdownMenuRadioGroup>
+              />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
-        {showSpeedSection ? (
+        {menu.speed.show ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger
               className={styles.composerMenuItem}
@@ -797,18 +501,18 @@ export function AgentModelReasoningDropdown({
                 {labels.speedLabel}
               </span>
               <span className="pl-3 text-[var(--text-tertiary)]">
-                {resolveSpeedOptionLabel(selectedSpeedValue, labels)}
+                {menu.speed.selectedLabel}
               </span>
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent
               className={cn(styles.composerMenuContent, "min-w-[200px]")}
             >
-              <DropdownMenuRadioGroup
-                value={selectedSpeedValue}
-                onValueChange={(value) => onSettingsChange({ speed: value })}
-              >
-                <ComposerSpeedRadioItems labels={labels} speeds={speedItems} />
-              </DropdownMenuRadioGroup>
+              <ComposerMenuOptionItems
+                options={menu.speed.options}
+                selectedValue={menu.speed.selectedValue}
+                withDescription
+                onSelect={(value) => onSettingsChange({ speed: value })}
+              />
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         ) : null}
@@ -817,87 +521,41 @@ export function AgentModelReasoningDropdown({
   );
 }
 
-function ComposerModelRadioItems({
-  labels,
-  models
+// Renders a list of pick-to-apply menu items. Uses DropdownMenuItem + onSelect
+// (the canonical radix menu action that fires on every activation) rather than
+// a RadioGroup, so selecting always applies — independent of the current value
+// or any mid-interaction re-render. The check marks the active option.
+function ComposerMenuOptionItems({
+  options,
+  selectedValue,
+  withDescription = false,
+  onSelect
 }: {
-  labels: AgentComposerSettingsMenuLabels;
-  models: AgentGUIComposerSettingsVM["availableModels"];
+  options: ComposerMenuOption[];
+  selectedValue: string;
+  withDescription?: boolean;
+  onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
     <>
-      {models.map((model) => (
-        <DropdownMenuRadioItem
-          key={model.value}
-          value={model.value}
+      {options.map((option) => (
+        <DropdownMenuItem
+          key={option.value}
           className={styles.composerMenuItem}
+          onSelect={() => onSelect(option.value)}
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="min-w-0 truncate">
-              {formatModelDisplayLabel(model.label)}
-            </span>
-            {model.description ? (
-              <span className="whitespace-normal text-[11px] leading-[1.3] text-[var(--text-tertiary)]">
-                {resolveModelDescription(model.description, labels)}
-              </span>
-            ) : null}
-          </span>
-        </DropdownMenuRadioItem>
-      ))}
-    </>
-  );
-}
-
-function ComposerReasoningRadioItems({
-  labels,
-  reasoningEfforts
-}: {
-  labels: AgentComposerSettingsMenuLabels;
-  reasoningEfforts: AgentGUIComposerSettingsVM["availableReasoningEfforts"];
-}): React.JSX.Element {
-  return (
-    <>
-      {reasoningEfforts.map((option) => (
-        <DropdownMenuRadioItem
-          key={option.value}
-          value={option.value}
-          className={styles.composerMenuItem}
-        >
-          <span className="min-w-0 truncate">
-            {resolveReasoningOptionLabel(option.value, labels)}
-          </span>
-        </DropdownMenuRadioItem>
-      ))}
-    </>
-  );
-}
-
-function ComposerSpeedRadioItems({
-  labels,
-  speeds
-}: {
-  labels: AgentComposerSettingsMenuLabels;
-  speeds: AgentGUIComposerSettingsVM["availableSpeeds"];
-}): React.JSX.Element {
-  return (
-    <>
-      {speeds.map((option) => (
-        <DropdownMenuRadioItem
-          key={option.value}
-          value={option.value}
-          className={styles.composerMenuItem}
-        >
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="min-w-0 truncate">
-              {resolveSpeedOptionLabel(option.value, labels)}
-            </span>
-            {option.description ? (
+            <span className="min-w-0 truncate">{option.label}</span>
+            {withDescription && option.description ? (
               <span className="whitespace-normal text-[11px] leading-[1.3] text-[var(--text-tertiary)]">
                 {option.description}
               </span>
             ) : null}
           </span>
-        </DropdownMenuRadioItem>
+          {option.value === selectedValue ? (
+            <CheckIcon className="ml-2 size-3.5 shrink-0 text-[var(--tutti-purple)]" />
+          ) : null}
+        </DropdownMenuItem>
       ))}
     </>
   );

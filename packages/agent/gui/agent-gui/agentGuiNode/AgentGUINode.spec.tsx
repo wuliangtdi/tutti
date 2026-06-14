@@ -2247,7 +2247,7 @@ describe("AgentGUINode", () => {
     // AgentComposerSettingsMenus spec; here we only assert the controls
     // render and that permission selection still drives updateComposerSettings.)
     expect(
-      await screen.findByRole("menuitemradio", { name: /GPT-5\.5/ })
+      await screen.findByRole("menuitem", { name: /GPT-5\.5/ })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", {
@@ -2651,7 +2651,7 @@ describe("AgentGUINode", () => {
       pointerType: "mouse"
     });
     expect(
-      await screen.findByRole("menuitemradio", { name: /GPT-5\.5/ })
+      await screen.findByRole("menuitem", { name: /GPT-5\.5/ })
     ).toBeInTheDocument();
   });
 
