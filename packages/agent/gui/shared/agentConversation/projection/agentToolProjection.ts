@@ -1,4 +1,5 @@
 import type { WorkspaceAgentSessionDetailToolCall } from "../../workspaceAgentSessionDetailViewModel";
+import { extractAgentMcpToolTarget } from "../../agentMcpToolTarget";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { projectAgentApprovalItem } from "./agentApprovalProjection";
 import {
@@ -25,6 +26,13 @@ export function projectAgentToolCall(
   const askUserQuestion = projectAgentAskUserQuestionItem(call, input, output);
   const planMode = projectAgentPlanModeItem(call, input);
   const task = projectAgentTaskItem(call, input, output, metadata);
+  const mcpTarget = extractAgentMcpToolTarget({
+    input,
+    metadata,
+    payload: call.payload,
+    toolName: call.toolName,
+    name: call.name
+  });
   const rendererKind = resolveAgentToolRendererKind(
     {
       toolName: call.toolName,
@@ -44,6 +52,7 @@ export function projectAgentToolCall(
     kind: "tool-call",
     ...call,
     turnId: call.turnId ?? "turn:unknown",
+    name: mcpTarget?.displayName ?? call.name,
     compactSummary: call.compactSummary ?? call.summary,
     payload: call.payload ?? null,
     toolState,

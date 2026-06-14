@@ -764,6 +764,62 @@ describe("AgentInteractivePromptSurface", () => {
     expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeTruthy();
   });
 
+  it("shows explicit MCP server, tool, and argument details for approval prompts", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:request-approval",
+          turnId: "turn-1",
+          requestId: "request-approval",
+          callId: "request-approval",
+          title: "Approval",
+          status: "waiting_approval",
+          toolName: "Approval",
+          input: {
+            requestId: "request-approval",
+            arguments: {
+              url: "file:///workspace/index.html"
+            },
+            server: "playwright",
+            tool: "browser_navigate",
+            request: {
+              _meta: {
+                tool_params_display: [
+                  {
+                    display_name: "url",
+                    name: "url",
+                    value: "file:///workspace/index.html"
+                  }
+                ]
+              },
+              message:
+                'Allow the playwright MCP server to run tool "browser_navigate"?'
+            }
+          },
+          options: [
+            {
+              id: "allow_once",
+              label: "Yes",
+              kind: "allow_once",
+              description: ""
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={{ ...labels, approvalLead: "Codex needs your choice." }}
+      />
+    );
+
+    expect(screen.getByText("MCP")).toBeTruthy();
+    expect(screen.getByText("playwright / browser_navigate")).toBeTruthy();
+    expect(screen.getByText("url: file:///workspace/index.html")).toBeTruthy();
+    expect(screen.queryByText("Navigate to a URL")).toBeNull();
+  });
+
   it("localizes known approval option labels in the active UI language", () => {
     setAgentGuiI18nTestLocale("zh-CN");
 
@@ -1111,9 +1167,7 @@ describe("AgentInteractivePromptSurface", () => {
         answersByQuestionId: { "plan-kind": "Health check" }
       }
     });
-    expect(
-      screen.queryByPlaceholderText(labels.answerPlaceholder)
-    ).toBeNull();
+    expect(screen.queryByPlaceholderText(labels.answerPlaceholder)).toBeNull();
     expect(
       screen.queryByRole("button", { name: labels.submitAnswers })
     ).toBeNull();

@@ -154,6 +154,13 @@ function item(
     identity: null,
     cwd: "/workspace",
     status: "working",
+    digest: {
+      primary: {
+        kind: "progress",
+        summary: `${agentSessionId} summary`,
+        occurredAtUnixMs: 1
+      }
+    },
     lastAgentMessageSummary: `${agentSessionId} summary`,
     lastAgentMessageAtUnixMs: 1,
     pendingPrompt: null,

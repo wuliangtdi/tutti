@@ -84,6 +84,7 @@ export function WorkspaceAgentMessageCenterCard({
         highlighted && "outline-2 outline-[var(--accent)]"
       )}
       data-highlighted={highlighted ? "true" : undefined}
+      data-message-center-digest-kind={item.digest.primary.kind}
       data-message-center-item-id={item.id}
       data-waiting={isWaitingMessageCenterItem(item) ? "true" : undefined}
       data-status={displayStatus}
@@ -404,7 +405,9 @@ function messageCenterStackPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
   return (
-    item.lastAgentMessageSummary.trim() || normalizeAgentTitleText(item.title)
+    item.digest.primary.summary.trim() ||
+    item.lastAgentMessageSummary.trim() ||
+    normalizeAgentTitleText(item.title)
   );
 }
 
@@ -504,7 +507,7 @@ function normalizeMessageCenterNotificationAction(action: string): string {
 function messageCenterVisibleSummary(
   item: WorkspaceAgentMessageCenterItem
 ): string {
-  const summary = item.lastAgentMessageSummary.trim();
+  const summary = item.digest.primary.summary.trim();
   if (
     item.pendingPrompt?.kind === "approval" &&
     isGenericApprovalSummary(summary)

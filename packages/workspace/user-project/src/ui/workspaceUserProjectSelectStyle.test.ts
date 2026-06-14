@@ -9,15 +9,21 @@ const source = readFileSync(
 
 test("workspace user project labels marquee overflowing text on hover", () => {
   assert.match(source, /@keyframes workspace-user-project-label-marquee/);
-  assert.match(source, /container-type:\s*inline-size;/);
+  assert.match(source, /container-type:\s*normal;/);
+  assert.doesNotMatch(source, /container-type:\s*inline-size;/);
   assert.match(
     source,
-    /\.workspace-user-project-overflow-label:hover\s+\.workspace-user-project-overflow-label__content\s*{[^}]*animation:\s*workspace-user-project-label-marquee 14s linear infinite;/s
+    /--workspace-user-project-label-marquee-distance:\s*0px;/
   );
   assert.match(
     source,
-    /transform:\s*translateX\(min\(0px,\s*calc\(100cqw - 100%\)\)\);/
+    /transform:\s*translateX\(var\(--workspace-user-project-label-marquee-distance,\s*0px\)\);/
   );
+  assert.match(
+    source,
+    /\.workspace-user-project-overflow-label\[data-overflow="true"\]:hover\s+\.workspace-user-project-overflow-label__content\s*{[^}]*animation:\s*workspace-user-project-label-marquee 14s linear infinite;/s
+  );
+  assert.match(source, /content\.scrollWidth - root\.clientWidth/);
   assert.match(
     source,
     /@media \(prefers-reduced-motion:\s*reduce\)\s*{[\s\S]*animation:\s*none;[\s\S]*}/

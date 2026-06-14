@@ -22,6 +22,11 @@ export {
   isWaitingMessageCenterItem
 } from "./workspaceAgentMessageCenterModel";
 export type {
+  WorkspaceAgentMessageCenterDigest,
+  WorkspaceAgentMessageCenterDigestPrimary,
+  WorkspaceAgentMessageCenterDigestPrimaryKind
+} from "./workspaceAgentMessageCenterDigest";
+export type {
   BuildWorkspaceAgentMessageCenterOptions,
   WorkspaceAgentMessageCenterCounts,
   WorkspaceAgentMessageCenterIdentity,

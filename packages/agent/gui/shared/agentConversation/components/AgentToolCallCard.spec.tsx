@@ -252,6 +252,38 @@ describe("Agent specialized tool cards", () => {
     expect(icon).toHaveAttribute("height", "16");
   });
 
+  it("uses explicit MCP target fields as the approval-wrapped tool title", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentToolCallCard
+        call={projectAgentToolCall(
+          toolCall({
+            name: "Approval",
+            toolName: "Approval",
+            callType: "tool",
+            status: "Failed",
+            statusKind: "failed",
+            payload: {
+              input: {
+                requestId: "request-1",
+                server: "playwright",
+                tool: "browser_close",
+                options: [{ optionId: "approved", name: "Allow" }]
+              },
+              error: {
+                stdout: "Browser is already in use"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("playwright / browser_close")).toBeTruthy();
+    expect(screen.queryByText("Approval")).toBeNull();
+  });
+
   it("uses the shared tools icon for completed tool calls", async () => {
     setAgentGuiI18nTestLocale("en");
 

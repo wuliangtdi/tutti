@@ -20,6 +20,13 @@ const baseItem: WorkspaceAgentMessageCenterItem = {
   identity: null,
   cwd: "/workspace",
   status: "completed",
+  digest: {
+    primary: {
+      kind: "outcome",
+      summary: "已完成。",
+      occurredAtUnixMs: 1
+    }
+  },
   lastAgentMessageSummary: "已完成。",
   lastAgentMessageAtUnixMs: 1,
   pendingPrompt: null,
@@ -46,13 +53,73 @@ function createMessageCenterItem(
     title: string;
   }
 ): WorkspaceAgentMessageCenterItem {
-  return {
+  const item = {
     ...baseItem,
     id: `message-center-${overrides.agentSessionId}`,
     lastAgentMessageSummary: `${overrides.title} summary`,
     sortTimeUnixMs: 1,
     ...overrides
   };
+  return withTestDigest(item, overrides.digest);
+}
+
+function createTestCardItem(
+  overrides: Partial<WorkspaceAgentMessageCenterItem> = {}
+): WorkspaceAgentMessageCenterItem {
+  const item = {
+    ...baseItem,
+    ...overrides
+  };
+  return withTestDigest(item, overrides.digest);
+}
+
+function withTestDigest(
+  item: WorkspaceAgentMessageCenterItem,
+  digest: WorkspaceAgentMessageCenterItem["digest"] | undefined
+): WorkspaceAgentMessageCenterItem {
+  return {
+    ...item,
+    digest: digest ?? createTestDigest(item)
+  };
+}
+
+function createTestDigest(
+  item: WorkspaceAgentMessageCenterItem
+): WorkspaceAgentMessageCenterItem["digest"] {
+  const summary =
+    item.lastAgentMessageSummary.trim() ||
+    item.needsAttentionSummary?.trim() ||
+    item.pendingPrompt?.title.trim() ||
+    item.title;
+  return {
+    primary: {
+      kind: testDigestKind(item),
+      summary,
+      occurredAtUnixMs: item.lastAgentMessageAtUnixMs ?? null
+    }
+  };
+}
+
+function testDigestKind(
+  item: WorkspaceAgentMessageCenterItem
+): WorkspaceAgentMessageCenterItem["digest"]["primary"]["kind"] {
+  if (item.pendingPrompt || item.needsAttentionKind) {
+    return "input-required";
+  }
+  if (item.status === "failed") {
+    return "error";
+  }
+  if (
+    item.status === "completed" ||
+    item.status === "canceled" ||
+    item.status === "idle"
+  ) {
+    return "outcome";
+  }
+  if (item.status === "working") {
+    return "progress";
+  }
+  return "summary";
 }
 
 function createWaitingItem(
@@ -139,8 +206,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     const { container, rerender } = render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             pendingPrompt: {
               kind: "approval",
               id: "approval:request-1",
@@ -155,7 +221,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
               output: null,
               occurredAtUnixMs: 1
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -182,7 +248,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     rerender(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={baseItem}
+          item={createTestCardItem()}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -205,8 +271,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
         model={{
           waitingCount: 1,
           items: [
-            {
-              ...baseItem,
+            createTestCardItem({
               status: "waiting",
               pendingPrompt: {
                 kind: "approval",
@@ -229,7 +294,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
                 output: null,
                 occurredAtUnixMs: 1
               }
-            }
+            })
           ],
           counts: {
             all: 1,
@@ -258,8 +323,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             status: "waiting",
             pendingPrompt: {
               kind: "approval",
@@ -288,7 +352,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
               output: null,
               occurredAtUnixMs: 1
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -305,8 +369,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     const { container } = render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             status: "completed",
             pendingPrompt: {
               kind: "approval",
@@ -322,7 +385,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
               output: null,
               occurredAtUnixMs: 1
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -342,11 +405,10 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     const { container } = render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             status: "canceled",
             lastAgentMessageSummary: "Stopped by user."
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -362,12 +424,41 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     expect(screen.queryByText("Completed")).toBeNull();
   });
 
+  it("renders the card body from the message center digest", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={createTestCardItem({
+            digest: {
+              primary: {
+                kind: "progress",
+                summary: "Digest progress summary",
+                occurredAtUnixMs: 30
+              }
+            },
+            lastAgentMessageSummary: "Legacy summary"
+          })}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Digest progress summary")).toBeTruthy();
+    expect(screen.queryByText("Legacy summary")).toBeNull();
+    expect(
+      container.querySelector(
+        '[data-message-center-item-id="message-center-session-1"]'
+      )
+    ).toHaveAttribute("data-message-center-digest-kind", "progress");
+  });
+
   it("hides generic approval summaries when the prompt has structured details", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             status: "waiting",
             lastAgentMessageSummary: "Approval",
             pendingPrompt: {
@@ -397,7 +488,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
               output: null,
               occurredAtUnixMs: 1
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -414,8 +505,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             provider: "codex",
             status: "waiting",
             pendingPrompt: {
@@ -439,7 +529,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
               output: null,
               occurredAtUnixMs: 1
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -466,15 +556,14 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     const { container } = render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             identity: {
               userName: "Jessica",
               userAvatarUrl: "https://cdn.example.com/jessica.png",
               agentName: "Codex",
               agentAvatarUrl: "https://cdn.example.com/codex.png"
             }
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -510,12 +599,11 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             cwd: "/Users/local/.tutti/sessions/2026-06-05-001",
             lastAgentMessageSummary:
               "已完成项目文件总结，并新增文档：[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)"
-          }}
+          })}
           isSubmitting={false}
           onLinkAction={onLinkAction}
           onOpenChat={vi.fn()}
@@ -544,12 +632,11 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             title: "看看我最新改了哪些代码",
             status: "failed",
             lastAgentMessageSummary: "Codex request failed."
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -571,7 +658,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     const { container } = render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={baseItem}
+          item={createTestCardItem()}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -602,10 +689,9 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             title: "请基于下面这个 Issue 帮我做一个非常长的设计资讯整理任务标题"
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -643,12 +729,11 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             cwd: "/Users/local/.tutti/sessions/2026-06-05-001",
             lastAgentMessageSummary:
               "![generated image](/Users/local/.tutti/sessions/2026-06-05-001/output/imagegen/sheep.png)"
-          }}
+          })}
           isSubmitting={false}
           onOpenChat={vi.fn()}
           onSubmitPrompt={vi.fn()}
@@ -673,12 +758,11 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
-          item={{
-            ...baseItem,
+          item={createTestCardItem({
             provider: "claude-code",
             lastAgentMessageSummary:
               "继续 [Claude 会话](mention://agent-session?workspaceId=workspace-1&id=session-2)"
-          }}
+          })}
           isSubmitting={false}
           onLinkAction={onLinkAction}
           onOpenChat={vi.fn()}

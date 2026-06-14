@@ -169,6 +169,26 @@ describe("projectAgentToolCall", () => {
     expect(projected.output?.stdout).toBe("/workspace\n");
   });
 
+  it("uses explicit MCP target fields for approval-wrapped tool names", () => {
+    const projected = projectAgentToolCall({
+      ...baseCall(),
+      name: "Approval",
+      toolName: "Approval",
+      callType: "tool",
+      payload: {
+        input: {
+          requestId: "request-1",
+          server: "playwright",
+          tool: "browser_close",
+          options: [{ optionId: "approved", name: "Allow" }]
+        }
+      }
+    });
+
+    expect(projected.name).toBe("playwright / browser_close");
+    expect(projected.approval?.title).toBe("playwright / browser_close");
+  });
+
   it("projects canonical top-level content and locations into the tool vm", () => {
     const projected = projectAgentToolCall({
       ...baseCall(),

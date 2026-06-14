@@ -88,6 +88,53 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
       requestId: "permission-1",
       options: [{ id: "allow_once", kind: "allow_once" }]
     });
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "input-required",
+      summary: "Approval"
+    });
+  });
+
+  it("uses explicit MCP targets for pending approval prompts when available", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "approval-tool",
+            kind: "tool_call",
+            status: "waiting_approval",
+            payload: {
+              callType: "approval",
+              toolName: "Approval",
+              title: "Approval",
+              input: {
+                requestId: "permission-1",
+                server: "playwright",
+                tool: "browser_close",
+                options: [
+                  {
+                    optionId: "allow_once",
+                    label: "Allow once",
+                    kind: "allow_once"
+                  }
+                ]
+              }
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1", status: "working" })]
+      })
+    );
+
+    expect(model.items[0]?.pendingPrompt).toMatchObject({
+      kind: "approval",
+      title: "playwright / browser_close"
+    });
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "input-required",
+      summary: "playwright / browser_close"
+    });
   });
 
   it("uses the latest agent message summary instead of a newer user message", () => {
@@ -116,6 +163,10 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     );
 
     expect(model.items[0]?.lastAgentMessageSummary).toBe("Agent summary wins");
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "progress",
+      summary: "Agent summary wins"
+    });
   });
 
   it("preserves the session user id for message-center stacking", () => {
@@ -512,6 +563,64 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("falls back to the session title when no agent summary exists", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-1",
+            role: "user",
+            payload: { text: "User-only message" },
+            occurredAtUnixMs: 10
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            status: "completed",
+            title: "Completed fallback title"
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "outcome",
+      summary: "Completed fallback title"
+    });
+  });
+
+  it("does not use a user-only title fallback as the digest body", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "user-1",
+            role: "user",
+            payload: { text: "User-only prompt" },
+            occurredAtUnixMs: 10
+          })
+        ],
+        sessions: [
+          session({
+            agentSessionId: "session-1",
+            provider: "codex",
+            status: "completed",
+            title: ""
+          })
+        ]
+      })
+    );
+
+    expect(model.items[0]?.title).toBe("User-only prompt");
+    expect(model.items[0]?.digest.primary).toMatchObject({
+      kind: "outcome",
+      summary: "codex"
+    });
+  });
+
   it("synthesizes a plan-implementation decision from a settled codex plan turn", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
@@ -699,6 +808,13 @@ describe("message center attention deck selection", () => {
       identity: null,
       cwd: "/w",
       status: "waiting",
+      digest: {
+        primary: {
+          kind: "input-required",
+          summary: "t",
+          occurredAtUnixMs: 1
+        }
+      },
       lastAgentMessageSummary: "",
       lastAgentMessageAtUnixMs: 1,
       pendingPrompt: null,

@@ -1,4 +1,5 @@
 import type { AgentToolCallVM } from "../../../contracts/agentToolCallVM";
+import { extractAgentMcpToolTarget } from "../../../../agentMcpToolTarget";
 import {
   arrayValue,
   objectValue,
@@ -16,17 +17,23 @@ export interface AgentMcpNormalizedPayload {
 export function normalizeMcpPayload(
   call: AgentToolCallVM
 ): AgentMcpNormalizedPayload {
-  const parsedTool = parseMcpToolName(call.toolName);
+  const target = extractAgentMcpToolTarget({
+    input: call.input,
+    metadata: call.metadata,
+    payload: call.payload,
+    toolName: call.toolName,
+    name: call.name
+  });
   const server =
+    target?.server ??
     stringValue(call.metadata?.server) ??
     stringValue(call.metadata?.serverName) ??
     stringValue(call.metadata?.mcpServer) ??
-    parsedTool?.server ??
     null;
   const tool =
+    target?.tool ??
     stringValue(call.metadata?.tool) ??
     stringValue(call.metadata?.toolName) ??
-    parsedTool?.tool ??
     call.toolName;
 
   const structured = firstStructuredValue(
@@ -107,24 +114,6 @@ export function itemSecondaryText(
     stringValue(item.status),
     stringValue(item.type)
   );
-}
-
-function parseMcpToolName(
-  value: string | null
-): { server: string; tool: string } | null {
-  const match = value?.match(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/i);
-  if (!match) {
-    return null;
-  }
-  const server = match[1];
-  const tool = match[2];
-  if (!server || !tool) {
-    return null;
-  }
-  return {
-    server: server.replace(/_/g, "-"),
-    tool
-  };
 }
 
 function firstStructuredValue(...values: unknown[]): unknown {

@@ -5,6 +5,7 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { useSnapshot } from "valtio";
@@ -120,7 +121,7 @@ const workspaceUserProjectOverflowLabelStyle = `
 
   44%,
   56% {
-    transform: translateX(min(0px, calc(100cqw - 100%)));
+    transform: translateX(var(--workspace-user-project-label-marquee-distance, 0px));
   }
 
   88%,
@@ -130,7 +131,8 @@ const workspaceUserProjectOverflowLabelStyle = `
 }
 
 .workspace-user-project-overflow-label {
-  container-type: inline-size;
+  --workspace-user-project-label-marquee-distance: 0px;
+  container-type: normal;
   display: block;
   flex: 1 1 auto;
   min-width: 0;
@@ -157,7 +159,7 @@ const workspaceUserProjectOverflowLabelStyle = `
   width: max-content;
 }
 
-.workspace-user-project-overflow-label:hover
+.workspace-user-project-overflow-label[data-overflow="true"]:hover
   .workspace-user-project-overflow-label__content {
   animation: workspace-user-project-label-marquee 14s linear infinite;
   max-width: none;
@@ -166,7 +168,7 @@ const workspaceUserProjectOverflowLabelStyle = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-user-project-overflow-label:hover
+  .workspace-user-project-overflow-label[data-overflow="true"]:hover
     .workspace-user-project-overflow-label__content {
     animation: none;
   }
@@ -690,12 +692,42 @@ function WorkspaceUserProjectOverflowLabel({
   className?: string;
   label: string;
 }): React.JSX.Element {
+  const rootRef = useRef<HTMLSpanElement | null>(null);
+  const contentRef = useRef<HTMLSpanElement | null>(null);
+  const updateMarqueeDistance = useCallback(() => {
+    const root = rootRef.current;
+    const content = contentRef.current;
+    if (!root || !content) {
+      return;
+    }
+    const overflowDistance = content.scrollWidth - root.clientWidth;
+    if (overflowDistance <= 1) {
+      root.style.setProperty(
+        "--workspace-user-project-label-marquee-distance",
+        "0px"
+      );
+      root.removeAttribute("data-overflow");
+      return;
+    }
+    root.style.setProperty(
+      "--workspace-user-project-label-marquee-distance",
+      `${-overflowDistance}px`
+    );
+    root.setAttribute("data-overflow", "true");
+  }, []);
+
   return (
     <span
+      ref={rootRef}
       className={cn("workspace-user-project-overflow-label", className)}
       data-workspace-user-project-overflow-label="true"
+      onFocus={updateMarqueeDistance}
+      onPointerEnter={updateMarqueeDistance}
     >
-      <span className="workspace-user-project-overflow-label__content">
+      <span
+        ref={contentRef}
+        className="workspace-user-project-overflow-label__content"
+      >
         {label}
       </span>
     </span>

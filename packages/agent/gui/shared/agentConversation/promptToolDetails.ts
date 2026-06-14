@@ -1,5 +1,7 @@
+import { extractAgentMcpToolTarget } from "../agentMcpToolTarget";
+
 export interface PromptToolDetail {
-  kind: "command" | "path" | "query";
+  kind: "command" | "mcp" | "path" | "query";
   value: string;
   meta?: string;
 }
@@ -10,12 +12,23 @@ export function getPromptToolDetails(
   if (!input) {
     return [];
   }
+  const mcpTarget = extractAgentMcpToolTarget({ input });
+  const mcpDetails: PromptToolDetail[] = mcpTarget
+    ? [
+        {
+          kind: "mcp",
+          value: mcpTarget.displayName,
+          ...(mcpTarget.instruction ? { meta: mcpTarget.instruction } : {})
+        }
+      ]
+    : [];
   const detailInput = resolveToolDetailInput(input);
   const command =
     commandStringValue(detailInput.command) ??
     commandStringValue(detailInput.cmd);
   if (command) {
     return [
+      ...mcpDetails,
       {
         kind: "command",
         value: command,
@@ -33,6 +46,7 @@ export function getPromptToolDetails(
   if (filePath) {
     const lineRange = formatLineRange(detailInput);
     return [
+      ...mcpDetails,
       {
         kind: "path",
         value: filePath,
@@ -47,13 +61,14 @@ export function getPromptToolDetails(
     stringValue(detailInput.pattern);
   if (query) {
     return [
+      ...mcpDetails,
       {
         kind: "query",
         value: query
       }
     ];
   }
-  return [];
+  return mcpDetails;
 }
 
 export function isPromptRequestIdTitle(value: string): boolean {

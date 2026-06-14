@@ -8,12 +8,17 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { normalizeAskUserQuestions } from "../shared/agentConversation/askUserQuestions";
+import { extractAgentMcpToolTarget } from "../shared/agentMcpToolTarget";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../shared/workspaceAgentSessionSortTime";
 import {
   latestPlanTurnId,
   planImplementationPromptFromPlanTurn
 } from "../shared/agentConversation/planImplementation";
+import {
+  buildWorkspaceAgentMessageCenterDigest,
+  type WorkspaceAgentMessageCenterDigest
+} from "./workspaceAgentMessageCenterDigest";
 
 export interface WorkspaceAgentMessageCenterModel {
   waitingCount: number;
@@ -38,6 +43,7 @@ export interface WorkspaceAgentMessageCenterItem {
   identity: WorkspaceAgentMessageCenterIdentity | null;
   cwd: string;
   status: WorkspaceAgentActivityStatus;
+  digest: WorkspaceAgentMessageCenterDigest;
   lastAgentMessageSummary: string;
   lastAgentMessageAtUnixMs: number | null;
   pendingPrompt: AgentConversationPromptVM | null;
@@ -106,6 +112,13 @@ export function buildWorkspaceAgentMessageCenterModel(
           needsAttention,
           options.promptFallbackLabels
         );
+      const digest = buildWorkspaceAgentMessageCenterDigest({
+        fallbackTitle: resolveDigestFallbackTitle(session),
+        messages,
+        needsAttention,
+        pendingPrompt,
+        status
+      });
       const sortTimeUnixMs = resolveWorkspaceAgentSessionSortTimeUnixMs(
         session,
         {
@@ -125,6 +138,7 @@ export function buildWorkspaceAgentMessageCenterModel(
         ),
         cwd: session.cwd,
         status,
+        digest,
         lastAgentMessageSummary:
           lastAgentMessage?.summary ?? needsAttention?.summary ?? title,
         lastAgentMessageAtUnixMs: lastAgentMessage?.occurredAtUnixMs ?? null,
@@ -235,6 +249,10 @@ function resolveSessionTitle(
   );
 }
 
+function resolveDigestFallbackTitle(session: AgentActivitySession): string {
+  return session.title.trim() || session.provider || session.agentSessionId;
+}
+
 function firstUserMessageText(
   messages: readonly AgentActivityMessage[]
 ): string {
@@ -316,6 +334,7 @@ function approvalPromptFromMessage(
   if (options.length === 0) {
     return null;
   }
+  const mcpTarget = extractAgentMcpToolTarget({ payload });
   return {
     kind: "approval",
     id: `approval:${requestId}`,
@@ -323,6 +342,7 @@ function approvalPromptFromMessage(
     requestId,
     callId: stringValue(payload.callId) ?? message.messageId,
     title: firstNonEmptyString(
+      mcpTarget?.displayName ?? null,
       stringValue(payload.summary),
       stringValue(payload.title),
       stringValue(input.title),

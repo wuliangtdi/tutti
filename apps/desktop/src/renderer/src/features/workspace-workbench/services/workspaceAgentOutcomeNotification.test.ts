@@ -149,6 +149,13 @@ function item(
     cwd: "/workspace",
     id: "message-center-session-1",
     identity: null,
+    digest: {
+      primary: {
+        kind: "progress",
+        summary: "Summarized progress",
+        occurredAtUnixMs: 100
+      }
+    },
     lastAgentMessageAtUnixMs: 100,
     lastAgentMessageSummary: "Summarized progress",
     needsAttentionKind: null,

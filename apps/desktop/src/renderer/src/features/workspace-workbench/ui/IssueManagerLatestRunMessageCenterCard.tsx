@@ -325,6 +325,8 @@ function createIssueManagerFallbackMessageCenterItem({
       latestRun.startedAtUnix ??
       latestRun.createdAtUnix
   );
+  const status = issueManagerRunStatusToMessageCenterStatus(latestRun.status);
+  const digestSummary = summary || input.title || agentSessionId;
 
   return {
     agentSessionId,
@@ -333,12 +335,19 @@ function createIssueManagerFallbackMessageCenterItem({
     identity: null,
     lastAgentMessageAtUnixMs: sortTimeUnixMs || null,
     lastAgentMessageSummary: summary,
+    digest: {
+      primary: {
+        kind: issueManagerRunStatusToDigestKind(status),
+        summary: digestSummary,
+        occurredAtUnixMs: sortTimeUnixMs || null
+      }
+    },
     needsAttentionKind: null,
     needsAttentionSummary: null,
     pendingPrompt: null,
     provider,
     sortTimeUnixMs,
-    status: issueManagerRunStatusToMessageCenterStatus(latestRun.status),
+    status,
     title: input.title || agentSessionId,
     userId: null
   };
@@ -360,6 +369,23 @@ function issueManagerRunStatusToMessageCenterStatus(
       return "canceled";
     default:
       return "idle";
+  }
+}
+
+function issueManagerRunStatusToDigestKind(
+  status: WorkspaceAgentMessageCenterItem["status"]
+): WorkspaceAgentMessageCenterItem["digest"]["primary"]["kind"] {
+  switch (status) {
+    case "failed":
+      return "error";
+    case "completed":
+    case "canceled":
+    case "idle":
+      return "outcome";
+    case "working":
+      return "progress";
+    default:
+      return "summary";
   }
 }
 

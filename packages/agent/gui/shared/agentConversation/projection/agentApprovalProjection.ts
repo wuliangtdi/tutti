@@ -1,4 +1,5 @@
 import type { WorkspaceAgentSessionDetailToolCall } from "../../workspaceAgentSessionDetailViewModel";
+import { extractAgentMcpToolTarget } from "../../agentMcpToolTarget";
 import type {
   AgentApprovalItemVM,
   AgentApprovalOptionVM
@@ -27,13 +28,19 @@ export function projectAgentApprovalItem(
   if (isExitPlanApprovalInput(input, options)) {
     return null;
   }
+  const mcpTarget = extractAgentMcpToolTarget({
+    input,
+    payload: call.payload,
+    toolName: call.toolName,
+    name: call.name
+  });
   return {
     kind: "approval",
     id: call.id,
     turnId: call.turnId ?? "turn:unknown",
     requestId,
     callId: call.id.replace(/^call:/, ""),
-    title: call.summary.trim() || call.name,
+    title: mcpTarget?.displayName ?? (call.summary.trim() || call.name),
     toolName: call.toolName,
     status: stringValue(call.payload?.status) ?? call.status,
     input,

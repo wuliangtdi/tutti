@@ -18,6 +18,13 @@ function promptItem(
     identity: null,
     cwd: "/workspace",
     status: "waiting",
+    digest: {
+      primary: {
+        kind: "input-required",
+        summary: "Approval",
+        occurredAtUnixMs: 1
+      }
+    },
     lastAgentMessageSummary: "",
     lastAgentMessageAtUnixMs: 1,
     needsAttentionKind: null,

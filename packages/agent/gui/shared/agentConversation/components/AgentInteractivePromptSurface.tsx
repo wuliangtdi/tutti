@@ -1079,6 +1079,8 @@ function promptToolDetailLabel(kind: PromptToolDetail["kind"]): string {
   switch (kind) {
     case "command":
       return translate("agentHost.agentTool.details.command");
+    case "mcp":
+      return translate("agentHost.agentTool.details.mcp");
     case "path":
       return translate("agentHost.agentTool.details.path");
     case "query":
