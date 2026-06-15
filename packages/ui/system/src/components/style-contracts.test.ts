@@ -88,6 +88,8 @@ test("field controls use the shared transparency field surface", () => {
 
   const menuSurfaceSource = readComponentSource("menu-surface.tsx");
   assert.match(menuSurfaceSource, /menuItemWithIndicatorClassName/);
+  assert.match(menuSurfaceSource, /\*:\[span\]:last:min-w-0/);
+  assert.match(menuSurfaceSource, /\*:\[span\]:last:flex-1/);
   assert.match(menuSurfaceSource, /bg-\[var\(--transparency-hover\)\]/);
   assert.match(menuSurfaceSource, /text-\[var\(--text-primary\)\]/);
   assert.match(

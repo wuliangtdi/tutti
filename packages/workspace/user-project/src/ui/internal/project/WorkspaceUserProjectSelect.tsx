@@ -160,6 +160,9 @@ const workspaceUserProjectOverflowLabelStyle = `
 }
 
 .workspace-user-project-overflow-label[data-overflow="true"]:hover
+  .workspace-user-project-overflow-label__content,
+[data-slot="select-item"]:hover
+  .workspace-user-project-overflow-label[data-overflow="true"]
   .workspace-user-project-overflow-label__content {
   animation: workspace-user-project-label-marquee 14s linear infinite;
   max-width: none;
@@ -169,6 +172,9 @@ const workspaceUserProjectOverflowLabelStyle = `
 
 @media (prefers-reduced-motion: reduce) {
   .workspace-user-project-overflow-label[data-overflow="true"]:hover
+    .workspace-user-project-overflow-label__content,
+  [data-slot="select-item"]:hover
+    .workspace-user-project-overflow-label[data-overflow="true"]
     .workspace-user-project-overflow-label__content {
     animation: none;
   }
@@ -715,6 +721,21 @@ function WorkspaceUserProjectOverflowLabel({
     );
     root.setAttribute("data-overflow", "true");
   }, []);
+
+  useEffect(() => {
+    updateMarqueeDistance();
+
+    const root = rootRef.current;
+    const content = contentRef.current;
+    if (!root || !content || typeof globalThis.ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new globalThis.ResizeObserver(updateMarqueeDistance);
+    observer.observe(root);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [label, updateMarqueeDistance]);
 
   return (
     <span

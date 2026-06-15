@@ -203,6 +203,8 @@ test("promoted base primitive sources stay on the shared workbench contract", ()
   assert.match(menuSurfaceSource, /menuItemWithIndicatorClassName/);
   assert.match(menuSurfaceSource, /menuItemIndicatorClassName/);
   assert.match(menuSurfaceSource, /cursor-pointer/);
+  assert.match(menuSurfaceSource, /\*:\[span\]:last:min-w-0/);
+  assert.match(menuSurfaceSource, /\*:\[span\]:last:flex-1/);
   assert.match(menuSurfaceSource, /--transparency-hover/);
   assert.match(menuSurfaceSource, /--text-primary/);
   const baseStylesSource = readFileSync(

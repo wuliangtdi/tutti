@@ -21,9 +21,18 @@ test("workspace user project labels marquee overflowing text on hover", () => {
   );
   assert.match(
     source,
-    /\.workspace-user-project-overflow-label\[data-overflow="true"\]:hover\s+\.workspace-user-project-overflow-label__content\s*{[^}]*animation:\s*workspace-user-project-label-marquee 14s linear infinite;/s
+    /\.workspace-user-project-overflow-label\[data-overflow="true"\]:hover\s+\.workspace-user-project-overflow-label__content,\s+\[data-slot="select-item"\]:hover[\s\S]*?\{\s*animation:\s*workspace-user-project-label-marquee 14s linear infinite;/s
+  );
+  assert.match(
+    source,
+    /\[data-slot="select-item"\]:hover\s+\.workspace-user-project-overflow-label\[data-overflow="true"\]\s+\.workspace-user-project-overflow-label__content/
+  );
+  assert.doesNotMatch(
+    source,
+    /\[data-slot="select-item"\]\[data-highlighted\][\s\S]*workspace-user-project-label-marquee/
   );
   assert.match(source, /content\.scrollWidth - root\.clientWidth/);
+  assert.match(source, /ResizeObserver/);
   assert.match(
     source,
     /@media \(prefers-reduced-motion:\s*reduce\)\s*{[\s\S]*animation:\s*none;[\s\S]*}/
