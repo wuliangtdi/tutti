@@ -18,5 +18,5 @@
   - `pnpm --filter @tutti-os/workspace-issue-manager typecheck`
 - Browser verification: not run; this is Electron task-center state and was verified through the package logic tests that own the display decision.
 - Status: fixed locally
-- Commit: 待提交后回填
+- Commit: `7dc986b8`
 - Feishu status update: not performed because Base token/table id/status-field configuration was not available in this task input.
