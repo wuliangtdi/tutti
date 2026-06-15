@@ -7,7 +7,7 @@ import {
   buildUpdatedReleaseBody
 } from "../../apps/desktop/scripts/upsert-release-download-links.mjs";
 
-test("desktop release notes append direct download links for mirrored assets", () => {
+test("desktop release notes append only macOS direct download links for mirrored assets", () => {
   const nextBody = buildUpdatedReleaseBody({
     assetNames: [
       "Tutti-0.1.0-rc.2-linux-x86_64.AppImage",
@@ -29,14 +29,8 @@ test("desktop release notes append direct download links for mirrored assets", (
     nextBody,
     /\[macOS\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-mac-arm64\.dmg\)/
   );
-  assert.match(
-    nextBody,
-    /\[Windows\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
-  );
-  assert.match(
-    nextBody,
-    /\[Linux\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-linux-x86_64\.AppImage\)/
-  );
+  assert.doesNotMatch(nextBody, /\[Windows\]/);
+  assert.doesNotMatch(nextBody, /\[Linux\]/);
 });
 
 test("desktop release notes replace the managed direct download section in place", () => {
