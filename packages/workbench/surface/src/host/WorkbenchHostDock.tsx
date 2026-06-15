@@ -44,12 +44,15 @@ import {
 } from "./dockScrollState.ts";
 import { readWorkbenchHostExternalState } from "./externalState.ts";
 import {
-  resolveWorkbenchMinimizedDockAnchorKeyForNode,
   resolveWorkbenchMinimizedDockSlots,
   type WorkbenchMinimizedDockNode,
   type WorkbenchMinimizedDockSlot
 } from "./minimizedDockSlots.ts";
 import { useMinimizedDockStackPromotion } from "./minimizedDockStackPromotion.ts";
+import {
+  resolveWorkbenchMinimizedDockRestoreIntent,
+  type WorkbenchMinimizedDockRestoreIntent
+} from "./minimizedDockRestoreIntent.ts";
 import {
   WorkbenchHostDockPopup,
   type WorkbenchHostDockPopupAnchorRect,
@@ -71,6 +74,16 @@ import type {
   WorkbenchHostProps
 } from "./types.ts";
 import type { createWorkbenchHostI18nRuntime } from "./workbenchHostI18n.ts";
+
+type WorkbenchMinimizedDockNodeSlotRestoreIntent = Extract<
+  WorkbenchMinimizedDockRestoreIntent,
+  { kind: "node-slot" }
+>;
+
+type WorkbenchMinimizedDockStackPopupCardRestoreIntent = Extract<
+  WorkbenchMinimizedDockRestoreIntent,
+  { kind: "stack-popup-card" }
+>;
 
 function stripDockDescriptionTerminalPunctuation(value: string): string {
   const trimmed = value.trim();
@@ -231,6 +244,10 @@ export function WorkbenchHostDock({
       clearTimeout(timer);
       collapsingMinimizedLaunchTimerRef.current.delete(anchorKey);
     }
+    const slotElement = slotRefs.current.get(anchorKey);
+    slotElement?.removeAttribute("data-collapsing");
+    slotElement?.style.removeProperty("--desktop-dock-collapse-inline-size");
+    slotElement?.style.removeProperty("--desktop-dock-collapse-block-size");
     setCollapsingMinimizedLaunchAnchorKeys((current) => {
       if (!current.has(anchorKey)) {
         return current;
@@ -662,7 +679,11 @@ export function WorkbenchHostDock({
   );
 
   const runDockMinimizedLaunchAfterCollapse = useCallback(
-    (anchorKey: string, launch: () => void) => {
+    (
+      intent: WorkbenchMinimizedDockNodeSlotRestoreIntent,
+      launch: (intent: WorkbenchMinimizedDockNodeSlotRestoreIntent) => void
+    ) => {
+      const { anchorKey } = intent;
       beginDockMinimizedInteraction(anchorKey);
       setCollapsingMinimizedLaunchAnchorKeys((current) => {
         const next = new Set(current);
@@ -670,9 +691,22 @@ export function WorkbenchHostDock({
         return next;
       });
       scheduleCollapsingMinimizedLaunchClear(anchorKey);
-      launch();
+      launch(intent);
     },
     [beginDockMinimizedInteraction, scheduleCollapsingMinimizedLaunchClear]
+  );
+
+  const runDockMinimizedStackLaunch = useCallback(
+    (
+      intent: WorkbenchMinimizedDockStackPopupCardRestoreIntent,
+      launch: (
+        intent: WorkbenchMinimizedDockStackPopupCardRestoreIntent
+      ) => void
+    ) => {
+      beginDockMinimizedInteraction();
+      launch(intent);
+    },
+    [beginDockMinimizedInteraction]
   );
 
   const handleDockPointerTravel = useCallback(
@@ -1420,18 +1454,44 @@ export function WorkbenchHostDock({
                     title={node.title}
                     type="button"
                     onPointerDown={() => {
-                      beginDockMinimizedInteraction(slot.anchorKey);
+                      const restoreIntent =
+                        resolveWorkbenchMinimizedDockRestoreIntent({
+                          nodeId: node.id,
+                          slots: minimizedDockSlots,
+                          source: {
+                            anchorKey: slot.anchorKey,
+                            kind: "node-slot"
+                          }
+                        });
+                      if (restoreIntent?.kind !== "node-slot") {
+                        clearCollapsingMinimizedLaunch(slot.anchorKey);
+                        return;
+                      }
+                      beginDockMinimizedInteraction();
                     }}
                     onClick={() => {
+                      const restoreIntent =
+                        resolveWorkbenchMinimizedDockRestoreIntent({
+                          nodeId: node.id,
+                          slots: minimizedDockSlots,
+                          source: {
+                            anchorKey: slot.anchorKey,
+                            kind: "node-slot"
+                          }
+                        });
+                      if (restoreIntent?.kind !== "node-slot") {
+                        clearCollapsingMinimizedLaunch(slot.anchorKey);
+                        return;
+                      }
                       closePopup();
                       runDockMinimizedLaunchAfterCollapse(
-                        slot.anchorKey,
-                        () => {
+                        restoreIntent,
+                        (intent) => {
                           context.genie.launchNodeFromAnchor(
-                            slot.anchorKey,
-                            node.id,
+                            intent.anchorKey,
+                            intent.nodeId,
                             () => {
-                              host.focusNode(node.id);
+                              host.focusNode(intent.nodeId);
                             }
                           );
                         }
@@ -1738,16 +1798,26 @@ export function WorkbenchHostDock({
           }}
           onCreateNew={() => undefined}
           onSelectNode={(nodeId) => {
+            const restoreIntent = resolveWorkbenchMinimizedDockRestoreIntent({
+              nodeId,
+              slots: minimizedDockSlots,
+              source: {
+                kind: "stack-popup-card",
+                stackAnchorKey: activeMinimizedStackSlot.anchorKey
+              }
+            });
+            if (restoreIntent?.kind !== "stack-popup-card") {
+              return;
+            }
             closePopup();
-            const anchorKey =
-              resolveWorkbenchMinimizedDockAnchorKeyForNode({
-                nodeId,
-                slots: minimizedDockSlots
-              }) ?? activeMinimizedStackSlot.anchorKey;
-            runDockMinimizedLaunchAfterCollapse(anchorKey, () => {
-              context.genie.launchNodeFromAnchor(anchorKey, nodeId, () => {
-                host.focusNode(nodeId);
-              });
+            runDockMinimizedStackLaunch(restoreIntent, (intent) => {
+              context.genie.launchNodeFromAnchor(
+                intent.anchorKey,
+                intent.nodeId,
+                () => {
+                  host.focusNode(intent.nodeId);
+                }
+              );
             });
           }}
           showCreateNew={false}

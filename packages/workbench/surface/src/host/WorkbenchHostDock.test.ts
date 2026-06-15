@@ -81,7 +81,10 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
   assert.doesNotMatch(beginDockIconInteractionSource, /resetDockMagnification/);
   assert.match(source, /const beginDockMinimizedInteraction = useCallback/);
   assert.match(source, /beginDockMinimizedInteraction\(\);/);
-  assert.match(source, /beginDockMinimizedInteraction\(slot\.anchorKey\);/);
+  assert.doesNotMatch(
+    source,
+    /beginDockMinimizedInteraction\(restoreIntent\.anchorKey\);/
+  );
   assert.match(
     source,
     /const beginDockMinimizedInteraction = useCallback\([\s\S]*?pauseDockMagnification\(\);[\s\S]*?clearSlotMagnification\(anchorKey\);/
@@ -110,9 +113,26 @@ test("dock hover panels survive pointer travel from slot to panel", () => {
   );
   assert.match(
     source,
-    /const runDockMinimizedLaunchAfterCollapse = useCallback\([\s\S]*?beginDockMinimizedInteraction\(anchorKey\);[\s\S]*?scheduleCollapsingMinimizedLaunchClear\(anchorKey\);[\s\S]*?launch\(\);/
+    /const runDockMinimizedLaunchAfterCollapse = useCallback\([\s\S]*?intent: WorkbenchMinimizedDockNodeSlotRestoreIntent[\s\S]*?const \{ anchorKey \} = intent;[\s\S]*?beginDockMinimizedInteraction\(anchorKey\);[\s\S]*?scheduleCollapsingMinimizedLaunchClear\(anchorKey\);[\s\S]*?launch\(intent\);/
+  );
+  assert.match(source, /const runDockMinimizedStackLaunch = useCallback/);
+  assert.match(
+    source,
+    /const runDockMinimizedStackLaunch = useCallback\([\s\S]*?intent: WorkbenchMinimizedDockStackPopupCardRestoreIntent[\s\S]*?beginDockMinimizedInteraction\(\);[\s\S]*?launch\(intent\);/
+  );
+  assert.match(source, /resolveWorkbenchMinimizedDockRestoreIntent/);
+  assert.match(source, /if \(restoreIntent\?\.kind !== "node-slot"\)/);
+  assert.match(source, /if \(restoreIntent\?\.kind !== "stack-popup-card"\)/);
+  assert.match(
+    source,
+    /stackAnchorKey: activeMinimizedStackSlot\.anchorKey[\s\S]*?runDockMinimizedStackLaunch\(restoreIntent, \(intent\) => \{[\s\S]*?context\.genie\.launchNodeFromAnchor\(\s*intent\.anchorKey,\s*intent\.nodeId,/
+  );
+  assert.doesNotMatch(
+    source,
+    /stackAnchorKey: activeMinimizedStackSlot\.anchorKey[\s\S]*?runDockMinimizedLaunchAfterCollapse\(restoreIntent/
   );
   assert.match(source, /collapsingMinimizedLaunchAnchorKeys/);
+  assert.match(source, /slotElement\?\.removeAttribute\("data-collapsing"\)/);
   assert.match(source, /minimizedDockSlotLayoutAnimationMs = 720;/);
   assert.doesNotMatch(source, /dockMinimizedSlotCollapseLaunchDelayMs/);
   assert.doesNotMatch(
