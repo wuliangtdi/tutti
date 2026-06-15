@@ -21,8 +21,12 @@ export interface ParsedDesktopVersion {
 }
 
 const desktopReleaseTagPrefix = "tutti-desktop-v";
-const desktopGithubReleasesUrl =
-  "https://api.github.com/repos/tutti-os/tutti/releases?per_page=30";
+const desktopGithubReleasesAtomUrl =
+  "https://github.com/tutti-os/tutti/releases.atom";
+
+interface PrefixedDesktopReleaseResolverOptions {
+  fetch?: typeof fetch;
+}
 
 export function stripDesktopReleaseTagPrefix(value: string): string {
   const trimmed = value.trim();
@@ -89,44 +93,36 @@ export function compareDesktopVersions(
   return 0;
 }
 
-export function createGitHubPrefixedDesktopReleaseResolver(): PrefixedDesktopReleaseResolver {
+export function createGitHubPrefixedDesktopReleaseResolver(
+  options: PrefixedDesktopReleaseResolverOptions = {}
+): PrefixedDesktopReleaseResolver {
   return async ({ channel, currentVersion }) => {
     const current = parseDesktopVersion(currentVersion);
-    const response = await fetch(desktopGithubReleasesUrl, {
+    const fetchImpl = options.fetch ?? fetch;
+    const response = await fetchImpl(desktopGithubReleasesAtomUrl, {
       headers: {
-        Accept: "application/vnd.github+json",
+        Accept: "application/atom+xml, application/xml, text/xml",
         "User-Agent": "Tutti Desktop Updater"
       }
     });
     if (!response.ok) {
-      throw new Error(`GitHub releases request failed: ${response.status}`);
+      throw new Error(
+        `GitHub releases feed request failed: ${response.status}`
+      );
     }
 
-    const releases: unknown = await response.json();
-    if (!Array.isArray(releases)) {
-      return null;
-    }
-
+    const releases = parseGitHubReleasesAtom(await response.text());
     let selected: {
       parsedVersion: ParsedDesktopVersion;
       release: PrefixedDesktopRelease;
     } | null = null;
 
-    for (const value of releases) {
-      if (typeof value !== "object" || value === null) {
-        continue;
-      }
-      const record = value as Record<string, unknown>;
-      if (record.draft === true) {
+    for (const release of releases) {
+      if (!release.tagName.startsWith(desktopReleaseTagPrefix)) {
         continue;
       }
 
-      const tagName = readStringField(record, "tag_name");
-      if (!tagName?.startsWith(desktopReleaseTagPrefix)) {
-        continue;
-      }
-
-      const parsedVersion = parseDesktopVersion(tagName);
+      const parsedVersion = parseDesktopVersion(release.tagName);
       if (!parsedVersion || !isReleaseInChannel(parsedVersion, channel)) {
         continue;
       }
@@ -142,18 +138,34 @@ export function createGitHubPrefixedDesktopReleaseResolver(): PrefixedDesktopRel
 
       selected = {
         parsedVersion,
-        release: {
-          htmlUrl: readStringField(record, "html_url"),
-          name: readStringField(record, "name"),
-          publishedAt: readStringField(record, "published_at"),
-          tagName,
-          version: stripDesktopReleaseTagPrefix(tagName)
-        }
+        release
       };
     }
 
     return selected?.release ?? null;
   };
+}
+
+function parseGitHubReleasesAtom(feedXml: string): PrefixedDesktopRelease[] {
+  const releases: PrefixedDesktopRelease[] = [];
+  for (const entry of feedXml.matchAll(/<entry\b[\s\S]*?<\/entry>/g)) {
+    const entryXml = entry[0];
+    const htmlUrl = readXmlAttribute(entryXml, "link", "href");
+    const tagName = htmlUrl ? readReleaseTagFromUrl(htmlUrl) : null;
+    if (!tagName) {
+      continue;
+    }
+
+    releases.push({
+      htmlUrl,
+      name: readXmlElementText(entryXml, "title"),
+      publishedAt: readXmlElementText(entryXml, "updated"),
+      tagName,
+      version: stripDesktopReleaseTagPrefix(tagName)
+    });
+  }
+
+  return releases;
 }
 
 function comparePrereleaseIdentifier(
@@ -186,10 +198,35 @@ function isReleaseInChannel(
   return version.prerelease[0] === channel;
 }
 
-function readStringField(
-  record: Record<string, unknown>,
-  key: string
+function readReleaseTagFromUrl(value: string): string | null {
+  const match = value.match(/\/releases\/tag\/([^/?#]+)$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function readXmlAttribute(
+  xml: string,
+  elementName: string,
+  attributeName: string
 ): string | null {
-  const value = record[key];
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
+  const elementMatch = xml.match(
+    new RegExp(`<${elementName}\\b[^>]*\\b${attributeName}="([^"]+)"[^>]*>`)
+  );
+  return elementMatch?.[1] ? decodeXmlText(elementMatch[1]) : null;
+}
+
+function readXmlElementText(xml: string, elementName: string): string | null {
+  const match = xml.match(
+    new RegExp(`<${elementName}\\b[^>]*>([\\s\\S]*?)<\\/${elementName}>`)
+  );
+  const text = match?.[1] ? decodeXmlText(match[1]).trim() : "";
+  return text.length > 0 ? text : null;
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
