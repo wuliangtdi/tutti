@@ -164,11 +164,9 @@ async function openBrowserNodeExternalUrl(
     try {
       filePath = fileURLToPath(trimmedUrl);
     } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Browser Node rejected external file URL"
-      );
+      throw new Error("Browser Node rejected external file URL", {
+        cause: error
+      });
     }
 
     if (process.platform === "darwin") {
@@ -196,12 +194,7 @@ async function openBrowserNodeExternalUrl(
     });
   }
 
-  const opened = await shell.openExternal(trimmedUrl);
-  if (!opened) {
-    throw new Error(
-      `Browser Node openExternal returned false for ${trimmedUrl}`
-    );
-  }
+  await shell.openExternal(trimmedUrl);
 }
 
 function logRejectedGuest(
