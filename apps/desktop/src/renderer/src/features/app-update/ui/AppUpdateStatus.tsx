@@ -3,7 +3,9 @@ import {
   Button,
   DownloadIcon,
   LaunchIcon,
-  LoadingIcon
+  LoadingIcon,
+  RefreshIcon,
+  WarningFilledIcon
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -43,7 +45,27 @@ export function AppUpdateStatus({
           : "border-border/70 bg-[var(--background-fronted)] text-foreground"
       )}
     >
-      <div className="flex min-w-0 items-center">
+      <div className="flex min-w-0 items-center gap-3">
+        <div
+          aria-hidden="true"
+          className={cn(
+            "grid shrink-0 place-items-center rounded-md",
+            compact ? "size-7" : "size-9",
+            isError
+              ? "bg-[var(--state-danger)]/15 text-[var(--state-danger)]"
+              : "bg-background text-primary"
+          )}
+        >
+          {view.icon === "loading" ? (
+            <LoadingIcon
+              className={cn("animate-spin", compact ? "size-3.5" : "size-4")}
+            />
+          ) : view.icon === "alert" ? (
+            <WarningFilledIcon className={compact ? "size-3.5" : "size-4"} />
+          ) : (
+            <RefreshIcon className={compact ? "size-3.5" : "size-4"} />
+          )}
+        </div>
         <div className="min-w-0">
           <p className="truncate font-medium">{label}</p>
           {view.progressPercent !== null ? (
