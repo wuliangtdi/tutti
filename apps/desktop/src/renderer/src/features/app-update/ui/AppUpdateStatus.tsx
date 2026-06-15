@@ -4,7 +4,7 @@ import {
   DownloadIcon,
   LaunchIcon,
   LoadingIcon,
-  RefreshIcon,
+  UpgradeArrowIcon,
   WarningFilledIcon
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
@@ -53,7 +53,7 @@ export function AppUpdateStatus({
             compact ? "size-7" : "size-9",
             isError
               ? "bg-[var(--state-danger)]/15 text-[var(--state-danger)]"
-              : "bg-background text-primary"
+              : "bg-[color-mix(in_srgb,var(--state-success)_12%,transparent)] text-[var(--state-success)]"
           )}
         >
           {view.icon === "loading" ? (
@@ -63,7 +63,7 @@ export function AppUpdateStatus({
           ) : view.icon === "alert" ? (
             <WarningFilledIcon className={compact ? "size-3.5" : "size-4"} />
           ) : (
-            <RefreshIcon className={compact ? "size-3.5" : "size-4"} />
+            <UpgradeArrowIcon className={compact ? "size-4" : "size-5"} />
           )}
         </div>
         <div className="min-w-0">

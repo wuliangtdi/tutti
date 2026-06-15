@@ -53,7 +53,7 @@ test("resolveAppUpdateViewState maps available updates to download action", () =
   assert.equal(view.busy, false);
   assert.equal(view.icon, "spark");
   assert.equal(view.titleKey, "updates.availableTitle");
-  assert.deepEqual(view.titleParams, { version: "1.2.0" });
+  assert.equal(view.titleParams, undefined);
   assert.equal(view.action, "download");
   assert.equal(view.actionKey, "updates.downloadAction");
 });
@@ -73,8 +73,7 @@ test("resolveAppUpdateViewState normalizes downloading progress", () => {
   assert.equal(view.progressPercent, 100);
   assert.equal(view.titleKey, "updates.downloadingTitle");
   assert.deepEqual(view.titleParams, {
-    percent: "100%",
-    version: "1.2.0"
+    percent: "100%"
   });
   assert.equal(view.action, null);
 });
@@ -89,6 +88,7 @@ test("resolveAppUpdateViewState maps downloaded updates to install action", () =
 
   assert.equal(view.visible, true);
   assert.equal(view.titleKey, "updates.downloadedTitle");
+  assert.equal(view.titleParams, undefined);
   assert.equal(view.action, "install");
   assert.equal(view.actionKey, "updates.restartAction");
 });

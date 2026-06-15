@@ -58,12 +58,12 @@ export const zhCN = {
     workspaceCountNote: "当前记录了 {{count}} 个最近工作区"
   },
   updates: {
-    availableTitle: "发现新版本 {{version}}",
+    availableTitle: "新版本就绪",
     badge: "更新",
     checkingTitle: "正在检查更新",
     downloadAction: "下载",
-    downloadedTitle: "版本 {{version}} 已准备好安装",
-    downloadingTitle: "正在下载 {{version}} {{percent}}",
+    downloadedTitle: "更新已准备好安装",
+    downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
     restartAction: "重启",
     retryAction: "重试"

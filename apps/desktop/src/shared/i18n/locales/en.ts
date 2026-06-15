@@ -58,12 +58,12 @@ export const en = {
     workspaceCountNote: "{{count}} recent workspaces are currently available"
   },
   updates: {
-    availableTitle: "Version {{version}} is available",
+    availableTitle: "Update ready",
     badge: "update",
     checkingTitle: "Checking for updates",
     downloadAction: "Download",
-    downloadedTitle: "Version {{version}} is ready to install",
-    downloadingTitle: "Downloading {{version}} {{percent}}",
+    downloadedTitle: "Update ready to install",
+    downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
     restartAction: "Restart",
     retryAction: "Retry"
