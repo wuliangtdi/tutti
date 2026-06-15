@@ -212,24 +212,6 @@ export const en = {
     },
     settings: {
       close: "Close settings",
-      agent: {
-        skills: {
-          empty: "No skills found",
-          loadFailed: "We couldn't load skills for this provider right now.",
-          projectScopeNote:
-            "Project-level skills are resolved inside each session.",
-          sourceKinds: {
-            bundled: "Bundled",
-            tuttiInjected: "Tutti",
-            personal: "Personal",
-            plugin: "Plugin",
-            project: "Project",
-            system: "System"
-          },
-          sourceLabel: "Source",
-          title: "Skills (read-only)"
-        }
-      },
       appearance: {
         dockPlacementDescription:
           "Controls where the workspace dock is anchored.",
@@ -296,7 +278,6 @@ export const en = {
           "We couldn't update the sleep prevention setting right now."
       },
       nav: {
-        agent: "Agent",
         apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",

@@ -208,23 +208,6 @@ export const zhCN = {
     },
     settings: {
       close: "关闭设置",
-      agent: {
-        skills: {
-          empty: "未发现技能",
-          loadFailed: "暂时无法加载该 provider 的技能。",
-          projectScopeNote: "项目级技能以会话内为准。",
-          sourceKinds: {
-            bundled: "内置",
-            tuttiInjected: "Tutti",
-            personal: "个人",
-            plugin: "插件",
-            project: "项目",
-            system: "系统"
-          },
-          sourceLabel: "来源",
-          title: "技能（只读）"
-        }
-      },
       appearance: {
         dockPlacementDescription: "控制工作区 dock 栏停靠的位置。",
         dockPlacementLabel: "Dock 布局",
@@ -280,7 +263,6 @@ export const zhCN = {
         preventSleepSaveFailed: "暂时无法更新防止休眠设置。"
       },
       nav: {
-        agent: "Agent",
         apps: "应用",
         sectionsLabel: "设置分区",
         appearance: "外观",
