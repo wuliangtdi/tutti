@@ -293,6 +293,7 @@ export interface TuttidClient {
     workspaceID: string,
     appID: string
   ): Promise<DeleteWorkspaceAppResponse>;
+  launchWorkspaceApp(workspaceID: string, appID: string): Promise<WorkspaceApp>;
   retryWorkspaceApp(workspaceID: string, appID: string): Promise<WorkspaceApp>;
   rollbackWorkspaceApp(
     workspaceID: string,

@@ -2818,6 +2818,56 @@ export type DeleteWorkspaceAppResponses = {
 export type DeleteWorkspaceAppResponse2 =
   DeleteWorkspaceAppResponses[keyof DeleteWorkspaceAppResponses];
 
+export type LaunchWorkspaceAppData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    appID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/apps/{appID}/launch";
+};
+
+export type LaunchWorkspaceAppErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace app was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type LaunchWorkspaceAppError =
+  LaunchWorkspaceAppErrors[keyof LaunchWorkspaceAppErrors];
+
+export type LaunchWorkspaceAppResponses = {
+  /**
+   * Workspace app launch prepared
+   */
+  200: WorkspaceAppResponse;
+};
+
+export type LaunchWorkspaceAppResponse =
+  LaunchWorkspaceAppResponses[keyof LaunchWorkspaceAppResponses];
+
 export type RetryWorkspaceAppData = {
   body?: never;
   path: {
@@ -2860,7 +2910,7 @@ export type RetryWorkspaceAppError =
 
 export type RetryWorkspaceAppResponses = {
   /**
-   * Workspace app start retried
+   * Workspace app failure retried
    */
   200: WorkspaceAppResponse;
 };

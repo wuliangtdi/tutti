@@ -23,6 +23,7 @@ export type WorkspaceAppCenterOperation =
   | "workspace_app.refresh_install_state"
   | "workspace_app.refresh_launch_wait_state"
   | "workspace_app.replace_icon"
+  | "workspace_app.retry"
   | "workspace_app.start_enabled"
   | "workspace_app.update";
 
@@ -37,6 +38,7 @@ export type WorkspaceAppCenterUiAction =
   | "refresh_install_state"
   | "refresh_launch_wait_state"
   | "replace_app_icon"
+  | "retry_app"
   | "update_app";
 
 export interface WorkspaceAppCenterOperationDetails {

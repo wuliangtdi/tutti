@@ -3,6 +3,7 @@ package workspace
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -195,8 +196,19 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		t.Fatalf("first Port = nil")
 	}
 
-	input.Restart = true
 	state, err := runner.Start(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Start(no restart) error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("Start(no restart) status = %q, want running", state.Status)
+	}
+	if state.Port == nil || *state.Port != *first.Port {
+		t.Fatalf("Start(no restart) port = %v, want %d", state.Port, *first.Port)
+	}
+
+	input.Restart = true
+	state, err = runner.Start(context.Background(), input)
 	if err != nil {
 		t.Fatalf("Start(Restart) error = %v", err)
 	}
@@ -214,6 +226,139 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	}
 	if got := strings.Count(string(logData), "tutti workspace app startup"); got != 2 {
 		t.Fatalf("startup diagnostics = %d, want 2; runtime.log=%q", got, string(logData))
+	}
+}
+
+func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(packageDir) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+	}
+
+	var eventsMu sync.Mutex
+	var events []workspacebiz.AppRuntimeState
+	runner := &AppRunner{
+		RuntimeResolver: &appRuntimeResolverStub{called: make(chan struct{}), err: errors.New("skip runtime")},
+		OnStateChanged: func(_ string, _ string, state workspacebiz.AppRuntimeState) {
+			eventsMu.Lock()
+			events = append(events, state)
+			eventsMu.Unlock()
+		},
+		queue: make(chan struct{}, 1),
+	}
+	runner.queue <- struct{}{}
+	input := AppStartInput{
+		WorkspaceID:     "ws-runner",
+		AppID:           "queued",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/ready",
+		RuntimeDir:      filepath.Join(root, "runtime"),
+		DataDir:         filepath.Join(root, "data"),
+		LogDir:          filepath.Join(root, "logs"),
+	}
+	state, err := runner.Start(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Start() status = %q, want preparing", state.Status)
+	}
+
+	state, err = runner.Start(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Start(no restart) error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Start(no restart) status = %q, want preparing", state.Status)
+	}
+	eventsMu.Lock()
+	eventCount := len(events)
+	eventsMu.Unlock()
+	if eventCount != 1 {
+		t.Fatalf("state change events = %d, want 1", eventCount)
+	}
+
+	<-runner.queue
+	waitForRunnerStatus(t, runner, "ws-runner", "queued", workspacebiz.AppRuntimeStatusFailed)
+}
+
+func TestAppRunnerFinishStartIgnoresReplacedStart(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "queued")
+	oldStart := &appStart{cancel: func() {}}
+	newStart := &appStart{cancel: func() {}}
+	cancelledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	runner.mu.Lock()
+	runner.starts[key] = newStart
+	runner.states[key] = workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusPreparing}
+	runner.mu.Unlock()
+
+	runner.finishStart(key, cancelledCtx, oldStart)
+
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if runner.starts[key] != newStart {
+		t.Fatalf("finishStart() replaced start = %v, want still active", runner.starts[key])
+	}
+	if state := runner.states[key]; state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("finishStart() status = %q, want preparing", state.Status)
+	}
+}
+
+func TestAppRunnerStartWithoutRestartReusesStartingProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bootstrap.sh runner test is POSIX-only")
+	}
+
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "package")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(packageDir) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+	}
+
+	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, root))
+	runner := &AppRunner{HealthcheckTimeout: 3 * time.Second}
+	input := AppStartInput{
+		WorkspaceID:     "ws-runner",
+		AppID:           "starting",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/ready",
+		RuntimeDir:      filepath.Join(root, "runtime"),
+		DataDir:         filepath.Join(root, "data"),
+		LogDir:          filepath.Join(root, "logs"),
+	}
+	if _, err := runner.Start(context.Background(), input); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = runner.Stop(context.Background(), "ws-runner", "starting")
+	})
+	starting := waitForRunnerStatus(t, runner, "ws-runner", "starting", workspacebiz.AppRuntimeStatusStarting)
+	if starting.Port == nil {
+		t.Fatalf("starting Port = nil")
+	}
+
+	state, err := runner.Start(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Start(no restart) error = %v", err)
+	}
+	if state.Status != workspacebiz.AppRuntimeStatusStarting {
+		t.Fatalf("Start(no restart) status = %q, want starting", state.Status)
+	}
+	if state.Port == nil || *state.Port != *starting.Port {
+		t.Fatalf("Start(no restart) port = %v, want %d", state.Port, *starting.Port)
 	}
 }
 

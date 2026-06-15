@@ -159,6 +159,10 @@ func (stubWorkspaceAppCenterService) Install(context.Context, string, string) (w
 	return workspacebiz.WorkspaceApp{}, nil
 }
 
+func (stubWorkspaceAppCenterService) Launch(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
 func (stubWorkspaceAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
 	return nil, nil
 }

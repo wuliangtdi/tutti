@@ -829,6 +829,34 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/apps/{appID}/launch:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/WorkspaceAppID"
+    post:
+      operationId: launchWorkspaceApp
+      tags:
+        - app-center
+      summary: Launch one installed workspace app
+      responses:
+        "200":
+          description: Workspace app launch prepared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAppResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceAppNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/apps/{appID}/retry:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -837,10 +865,10 @@ paths:
       operationId: retryWorkspaceApp
       tags:
         - app-center
-      summary: Retry starting one installed workspace app
+      summary: Retry one failed installed workspace app
       responses:
         "200":
-          description: Workspace app start retried
+          description: Workspace app failure retried
           content:
             application/json:
               schema:

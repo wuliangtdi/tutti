@@ -221,6 +221,14 @@ test("Workspace App Center service ignores stale app update events", async () =>
           })
         );
       },
+      async launchWorkspaceApp() {
+        return normalizeWorkspaceAppCenterSnapshot(
+          createWorkspaceAppListResponse({
+            apps: [app],
+            workspaceId: "workspace-1"
+          })
+        );
+      },
       async retryWorkspaceApp() {
         return normalizeWorkspaceAppCenterSnapshot(
           createWorkspaceAppListResponse({
@@ -533,7 +541,7 @@ test("Workspace App Center service refreshes stuck startup state after timeout",
           })
         );
       },
-      async retryWorkspaceApp() {
+      async launchWorkspaceApp() {
         return normalizeWorkspaceAppCenterSnapshot(
           createWorkspaceAppListResponse({
             apps: [startingApp],
@@ -592,7 +600,7 @@ test("Workspace App Center service marks startup failed when timeout refresh is 
           })
         );
       },
-      async retryWorkspaceApp() {
+      async launchWorkspaceApp() {
         return normalizeWorkspaceAppCenterSnapshot(
           createWorkspaceAppListResponse({
             apps: [startingApp],
@@ -997,6 +1005,7 @@ test("Workspace App Center service launches already-running apps without restart
     stateRevision: 1,
     status: "running"
   });
+  let gatewayLaunchCalls = 0;
   let retryCalls = 0;
   const launchCalls: Array<{
     appId: string;
@@ -1008,13 +1017,22 @@ test("Workspace App Center service launches already-running apps without restart
     eventStreamClient: createFakeEventStreamClient(),
     gateway: {
       ...createFakeWorkspaceAppCenterGateway(() => app),
-      async retryWorkspaceApp() {
-        retryCalls += 1;
+      async launchWorkspaceApp() {
+        gatewayLaunchCalls += 1;
         app = createWorkspaceApp({
           launchUrl: null,
           stateRevision: 2,
           status: "preparing"
         });
+        return normalizeWorkspaceAppCenterSnapshot(
+          createWorkspaceAppListResponse({
+            apps: [app],
+            workspaceId: "workspace-1"
+          })
+        );
+      },
+      async retryWorkspaceApp() {
+        retryCalls += 1;
         return normalizeWorkspaceAppCenterSnapshot(
           createWorkspaceAppListResponse({
             apps: [app],
@@ -1039,6 +1057,7 @@ test("Workspace App Center service launches already-running apps without restart
   });
 
   assert.equal(retryCalls, 0);
+  assert.equal(gatewayLaunchCalls, 0);
   assert.deepEqual(launchCalls, [
     {
       appId: "ready",
@@ -1056,6 +1075,7 @@ test("Workspace App Center service starts non-running apps before launching them
     stateRevision: 1,
     status: "idle"
   });
+  let gatewayLaunchCalls = 0;
   let retryCalls = 0;
   const launchCalls: Array<{
     appId: string;
@@ -1067,14 +1087,23 @@ test("Workspace App Center service starts non-running apps before launching them
     eventStreamClient: createFakeEventStreamClient(),
     gateway: {
       ...createFakeWorkspaceAppCenterGateway(() => app),
-      async retryWorkspaceApp() {
-        retryCalls += 1;
+      async launchWorkspaceApp() {
+        gatewayLaunchCalls += 1;
         app = createWorkspaceApp({
           launchUrl: null,
           port: null,
           stateRevision: 2,
           status: "preparing"
         });
+        return normalizeWorkspaceAppCenterSnapshot(
+          createWorkspaceAppListResponse({
+            apps: [app],
+            workspaceId: "workspace-1"
+          })
+        );
+      },
+      async retryWorkspaceApp() {
+        retryCalls += 1;
         return normalizeWorkspaceAppCenterSnapshot(
           createWorkspaceAppListResponse({
             apps: [app],
@@ -1099,7 +1128,8 @@ test("Workspace App Center service starts non-running apps before launching them
   });
   await settle();
 
-  assert.equal(retryCalls, 1);
+  assert.equal(gatewayLaunchCalls, 1);
+  assert.equal(retryCalls, 0);
   assert.equal(launchCalls.length, 0);
 
   app = createWorkspaceApp({
@@ -1277,6 +1307,9 @@ function createFakeWorkspaceAppCenterGateway(
     },
     async deleteWorkspaceApp() {
       return snapshot(getDeletedApps());
+    },
+    async launchWorkspaceApp() {
+      return snapshot();
     },
     async retryWorkspaceApp() {
       return snapshot();

@@ -8,6 +8,7 @@ import {
   getWorkspaceAppFactoryJob,
   importWorkspaceApp,
   installWorkspaceApp,
+  launchWorkspaceApp,
   listWorkspaceAppFactoryJobs,
   listWorkspaceApps,
   prepareWorkspaceAppFactoryJobModification,
@@ -37,6 +38,7 @@ type WorkspaceAppsClient = Pick<
   | "getWorkspaceAppFactoryJob"
   | "importWorkspaceApp"
   | "installWorkspaceApp"
+  | "launchWorkspaceApp"
   | "listWorkspaceAppFactoryJobs"
   | "listWorkspaceApps"
   | "prepareWorkspaceAppFactoryJobModification"
@@ -119,6 +121,13 @@ export function createWorkspaceAppsClient(client: Client): WorkspaceAppsClient {
         path: { appID, workspaceID }
       });
       return unwrapData(response, "Delete workspace app request failed.");
+    },
+    async launchWorkspaceApp(workspaceID, appID) {
+      const response = await launchWorkspaceApp({
+        client,
+        path: { appID, workspaceID }
+      });
+      return unwrapData(response, "Launch workspace app request failed.").app;
     },
     async retryWorkspaceApp(workspaceID, appID) {
       const response = await retryWorkspaceApp({

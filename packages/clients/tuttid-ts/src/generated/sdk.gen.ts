@@ -160,6 +160,9 @@ import type {
   InvokeCliCommandData,
   InvokeCliCommandErrors,
   InvokeCliCommandResponses,
+  LaunchWorkspaceAppData,
+  LaunchWorkspaceAppErrors,
+  LaunchWorkspaceAppResponses,
   ListCliCapabilitiesData,
   ListCliCapabilitiesErrors,
   ListCliCapabilitiesResponses,
@@ -882,7 +885,23 @@ export const deleteWorkspaceApp = <ThrowOnError extends boolean = false>(
   });
 
 /**
- * Retry starting one installed workspace app
+ * Launch one installed workspace app
+ */
+export const launchWorkspaceApp = <ThrowOnError extends boolean = false>(
+  options: Options<LaunchWorkspaceAppData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    LaunchWorkspaceAppResponses,
+    LaunchWorkspaceAppErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/apps/{appID}/launch",
+    ...options
+  });
+
+/**
+ * Retry one failed installed workspace app
  */
 export const retryWorkspaceApp = <ThrowOnError extends boolean = false>(
   options: Options<RetryWorkspaceAppData, ThrowOnError>

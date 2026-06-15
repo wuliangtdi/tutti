@@ -2176,6 +2176,134 @@ func TestAppCenterServiceRemoveDeletesWorkspaceAppState(t *testing.T) {
 	}
 }
 
+func TestAppCenterServiceLaunchStartsIdleInstalledApp(t *testing.T) {
+	ctx := context.Background()
+	service, runner := newLaunchTestAppCenterService(t)
+	defer func() {
+		_, _ = runner.Stop(context.Background(), "ws-1", "local-app")
+	}()
+
+	app, err := service.Launch(ctx, "ws-1", "local-app")
+	if err != nil {
+		t.Fatalf("Launch() error = %v", err)
+	}
+	if app.Runtime.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Launch() status = %q, want preparing", app.Runtime.Status)
+	}
+	waitForRunnerStatus(t, runner, "ws-1", "local-app", workspacebiz.AppRuntimeStatusFailed)
+}
+
+func TestAppCenterServiceLaunchReturnsActiveRuntimeWithoutRestart(t *testing.T) {
+	for _, status := range []workspacebiz.AppRuntimeStatus{
+		workspacebiz.AppRuntimeStatusPreparing,
+		workspacebiz.AppRuntimeStatusStarting,
+		workspacebiz.AppRuntimeStatusRunning,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			ctx := context.Background()
+			service, runner := newLaunchTestAppCenterService(t)
+			state := workspacebiz.AppRuntimeState{
+				Status:    status,
+				LaunchURL: stringPtr("http://127.0.0.1:43210"),
+				Port:      intPtr(43210),
+			}
+			runner.setState(appRuntimeKey("ws-1", "local-app"), state)
+
+			app, err := service.Launch(ctx, "ws-1", "local-app")
+			if err != nil {
+				t.Fatalf("Launch() error = %v", err)
+			}
+			if app.Runtime.Status != status {
+				t.Fatalf("Launch() status = %q, want %q", app.Runtime.Status, status)
+			}
+			if app.Runtime.Port == nil || *app.Runtime.Port != 43210 {
+				t.Fatalf("Launch() port = %v, want 43210", app.Runtime.Port)
+			}
+		})
+	}
+}
+
+func TestAppCenterServiceLaunchRejectsFailedAndStoppingApps(t *testing.T) {
+	for _, status := range []workspacebiz.AppRuntimeStatus{
+		workspacebiz.AppRuntimeStatusFailed,
+		workspacebiz.AppRuntimeStatusStopping,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			service, runner := newLaunchTestAppCenterService(t)
+			runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{Status: status})
+
+			if _, err := service.Launch(context.Background(), "ws-1", "local-app"); !errors.Is(err, ErrInvalidWorkspaceAppRuntimeState) {
+				t.Fatalf("Launch() error = %v, want ErrInvalidWorkspaceAppRuntimeState", err)
+			}
+		})
+	}
+}
+
+func TestAppCenterServiceRetryRestartsFailedApp(t *testing.T) {
+	ctx := context.Background()
+	service, runner := newLaunchTestAppCenterService(t)
+	defer func() {
+		_, _ = runner.Stop(context.Background(), "ws-1", "local-app")
+	}()
+	runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{
+		Status:        workspacebiz.AppRuntimeStatusFailed,
+		FailureReason: stringPtr("healthcheck"),
+		LastError:     stringPtr("app healthcheck timed out"),
+	})
+
+	app, err := service.Retry(ctx, "ws-1", "local-app")
+	if err != nil {
+		t.Fatalf("Retry() error = %v", err)
+	}
+	if app.Runtime.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Retry() status = %q, want preparing", app.Runtime.Status)
+	}
+	waitForRunnerStatus(t, runner, "ws-1", "local-app", workspacebiz.AppRuntimeStatusFailed)
+}
+
+func TestAppCenterServiceRetryRejectsNonFailedApps(t *testing.T) {
+	for _, status := range []workspacebiz.AppRuntimeStatus{
+		workspacebiz.AppRuntimeStatusIdle,
+		workspacebiz.AppRuntimeStatusPreparing,
+		workspacebiz.AppRuntimeStatusStarting,
+		workspacebiz.AppRuntimeStatusRunning,
+		workspacebiz.AppRuntimeStatusStopping,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			service, runner := newLaunchTestAppCenterService(t)
+			runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{Status: status})
+
+			if _, err := service.Retry(context.Background(), "ws-1", "local-app"); !errors.Is(err, ErrInvalidWorkspaceAppRuntimeState) {
+				t.Fatalf("Retry() error = %v, want ErrInvalidWorkspaceAppRuntimeState", err)
+			}
+		})
+	}
+}
+
+func TestAppCenterServiceStartEnabledSkipsFailedAndStoppingApps(t *testing.T) {
+	for _, status := range []workspacebiz.AppRuntimeStatus{
+		workspacebiz.AppRuntimeStatusFailed,
+		workspacebiz.AppRuntimeStatusStopping,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			service, runner := newLaunchTestAppCenterService(t)
+			runner.setState(appRuntimeKey("ws-1", "local-app"), workspacebiz.AppRuntimeState{Status: status})
+
+			apps, err := service.StartEnabled(context.Background(), "ws-1")
+			if err != nil {
+				t.Fatalf("StartEnabled() error = %v", err)
+			}
+			app := findWorkspaceAppForTest(apps, "local-app")
+			if app == nil {
+				t.Fatal("StartEnabled() did not return local-app")
+			}
+			if app.Runtime.Status != status {
+				t.Fatalf("StartEnabled() status = %q, want %q", app.Runtime.Status, status)
+			}
+		})
+	}
+}
+
 func TestAppCenterServiceDeletePackageRemovesLocalApp(t *testing.T) {
 	t.Parallel()
 
@@ -2757,6 +2885,57 @@ func findWorkspaceAppForTest(apps []workspacebiz.WorkspaceApp, appID string) *wo
 		}
 	}
 	return nil
+}
+
+func newLaunchTestAppCenterService(t *testing.T) (AppCenterService, *AppRunner) {
+	t.Helper()
+
+	ctx := context.Background()
+	packageDir := createWorkspaceAppPackageForTest(t, t.TempDir(), workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "local-app",
+		Version:       "0.1.0",
+		Name:          "Local App",
+		Description:   "Local app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "bootstrap.sh",
+			HealthcheckPath: "/ready",
+		},
+	})
+	appPackage := workspacebiz.AppPackage{
+		AppID:      "local-app",
+		Version:    "0.1.0",
+		PackageDir: packageDir,
+		Manifest:   mustReadManifestForTest(t, packageDir),
+		Source:     workspacebiz.AppPackageSourceImported,
+	}
+	store := newAppStoreStub()
+	if err := store.PutAppPackage(ctx, appPackage); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	if err := store.PutWorkspaceAppInstallation(ctx, workspacebiz.AppInstallation{
+		WorkspaceID: "ws-1",
+		AppID:       "local-app",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("PutWorkspaceAppInstallation() error = %v", err)
+	}
+	runner := &AppRunner{
+		RuntimeResolver: &appRuntimeResolverStub{
+			called: make(chan struct{}),
+			err:    errors.New("skip runtime"),
+		},
+	}
+	return AppCenterService{
+		Store:          store,
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         runner,
+		StateDir:       t.TempDir(),
+	}, runner
+}
+
+func intPtr(value int) *int {
+	return &value
 }
 
 func waitForActiveAppPackageVersionForTest(t *testing.T, store *appStoreStub, appID string, version string) workspacebiz.AppPackage {

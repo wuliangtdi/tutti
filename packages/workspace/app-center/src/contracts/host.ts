@@ -166,6 +166,10 @@ export interface WorkspaceAppCenterGateway {
     workspaceId: string,
     appId: string
   ): Promise<WorkspaceAppCenterSnapshot>;
+  launchWorkspaceApp(
+    workspaceId: string,
+    appId: string
+  ): Promise<WorkspaceAppCenterSnapshot>;
   deleteWorkspaceApp(
     workspaceId: string,
     appId: string

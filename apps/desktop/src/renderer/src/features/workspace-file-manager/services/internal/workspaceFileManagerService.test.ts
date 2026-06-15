@@ -516,6 +516,7 @@ function createDependenciesStub(): {
       listWorkspaceAppFactoryJobs: fail,
       listWorkspaceTerminals: fail,
       listWorkspaces: fail,
+      launchWorkspaceApp: fail,
       moveWorkspaceFileEntry: fail,
       renameWorkspaceFileEntry: fail,
       copyWorkspaceFileEntry: fail,

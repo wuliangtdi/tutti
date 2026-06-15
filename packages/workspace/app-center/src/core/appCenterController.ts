@@ -87,14 +87,18 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
     if (currentLaunchableApp) {
       return currentLaunchableApp;
     }
+    const previousApps = this.store.apps;
     this.markAppStarting(input.appId);
     try {
-      const snapshot = await this.dependencies.gateway.retryWorkspaceApp(
+      const snapshot = await this.dependencies.gateway.launchWorkspaceApp(
         input.workspaceId,
         input.appId
       );
       this.applySnapshot(input.workspaceId, snapshot);
     } catch (error) {
+      if (this.store.workspaceId === input.workspaceId) {
+        this.store.apps = previousApps;
+      }
       this.setOperationError(error, {
         appId: input.appId,
         operation: "workspace_app.prepare_launch",
@@ -502,12 +506,35 @@ export class WorkspaceAppCenterController extends WorkspaceAppCenterControllerSt
   }
 
   async retryApp(input: { appId: string; workspaceId: string }): Promise<void> {
-    this.markAppStarting(input.appId);
-    const snapshot = await this.dependencies.gateway.retryWorkspaceApp(
-      input.workspaceId,
-      input.appId
+    const app = this.store.apps.find(
+      (candidate) => candidate.appId === input.appId
     );
-    this.applySnapshot(input.workspaceId, snapshot);
+    if (
+      this.store.workspaceId !== input.workspaceId ||
+      !app?.installed ||
+      app.runtimeStatus !== "failed"
+    ) {
+      return;
+    }
+    const previousApps = this.store.apps;
+    this.markAppStarting(input.appId);
+    try {
+      const snapshot = await this.dependencies.gateway.retryWorkspaceApp(
+        input.workspaceId,
+        input.appId
+      );
+      this.applySnapshot(input.workspaceId, snapshot);
+    } catch (error) {
+      if (this.store.workspaceId === input.workspaceId) {
+        this.store.apps = previousApps;
+      }
+      this.setOperationError(error, {
+        appId: input.appId,
+        operation: "workspace_app.retry",
+        uiAction: "retry_app",
+        workspaceId: input.workspaceId
+      });
+    }
   }
 
   private waitForLaunchableApp(input: {

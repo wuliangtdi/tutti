@@ -308,6 +308,29 @@ func (api DaemonAPI) DeleteWorkspaceApp(ctx context.Context, request tuttigenera
 	}, nil
 }
 
+func (api DaemonAPI) LaunchWorkspaceApp(ctx context.Context, request tuttigenerated.LaunchWorkspaceAppRequestObject) (tuttigenerated.LaunchWorkspaceAppResponseObject, error) {
+	if api.AppCenterService == nil {
+		return tuttigenerated.LaunchWorkspaceApp503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: workspaceAppServiceUnavailableError(),
+		}, nil
+	}
+
+	workspaceID, appID, errResponse := validateWorkspaceAppPath(request.WorkspaceID, request.AppID)
+	if errResponse != nil {
+		return tuttigenerated.LaunchWorkspaceApp400JSONResponse{InvalidRequestErrorJSONResponse: *errResponse}, nil
+	}
+
+	app, err := api.AppCenterService.Launch(ctx, workspaceID, appID)
+	if err != nil {
+		return writeLaunchWorkspaceAppError(err), nil
+	}
+
+	return tuttigenerated.LaunchWorkspaceApp200JSONResponse{
+		WorkspaceId: workspaceID,
+		App:         workspaceapi.GeneratedAppFromBiz(app),
+	}, nil
+}
+
 func (api DaemonAPI) RetryWorkspaceApp(ctx context.Context, request tuttigenerated.RetryWorkspaceAppRequestObject) (tuttigenerated.RetryWorkspaceAppResponseObject, error) {
 	if api.AppCenterService == nil {
 		return tuttigenerated.RetryWorkspaceApp503JSONResponse{
@@ -710,6 +733,24 @@ func writeDeleteWorkspaceAppError(err error) tuttigenerated.DeleteWorkspaceAppRe
 		}
 	default:
 		return tuttigenerated.DeleteWorkspaceApp502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
+func writeLaunchWorkspaceAppError(err error) tuttigenerated.LaunchWorkspaceAppResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound, tuttigenerated.WorkspaceAppNotFound:
+		return tuttigenerated.LaunchWorkspaceApp404JSONResponse{
+			WorkspaceAppNotFoundErrorJSONResponse: workspaceAppNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.LaunchWorkspaceApp400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.LaunchWorkspaceApp502JSONResponse{
 			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	}

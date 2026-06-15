@@ -530,6 +530,9 @@ export function createDesktopTuttidClient(
         request
       );
     },
+    async launchWorkspaceApp(workspaceID, appID) {
+      return (await resolveClient()).launchWorkspaceApp(workspaceID, appID);
+    },
     async retryWorkspaceApp(workspaceID, appID) {
       return (await resolveClient()).retryWorkspaceApp(workspaceID, appID);
     },

@@ -307,13 +307,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
   protected markEnabledAppsStarting(): void {
     let changed = false;
     this.store.apps = this.store.apps.map((app) => {
-      if (
-        !app.enabled ||
-        !app.installed ||
-        app.runtimeStatus === "running" ||
-        app.runtimeStatus === "preparing" ||
-        app.runtimeStatus === "starting"
-      ) {
+      if (!app.enabled || !app.installed || app.runtimeStatus !== "idle") {
         return app;
       }
       changed = true;

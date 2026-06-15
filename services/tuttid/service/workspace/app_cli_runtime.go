@@ -71,7 +71,7 @@ func (s *AppCenterService) EnsureAppRunningForCLI(ctx context.Context, workspace
 	}
 	state := s.runner().State(workspaceID, appPackage.AppID)
 	if state.Status != workspacebiz.AppRuntimeStatusRunning || state.LaunchURL == nil {
-		if _, err := s.startPackage(ctx, workspaceID, appPackage, false); err != nil {
+		if _, err := s.Launch(ctx, workspaceID, appID); err != nil {
 			return "", err
 		}
 		state, err = s.waitForAppRunning(ctx, workspaceID, appPackage.AppID)

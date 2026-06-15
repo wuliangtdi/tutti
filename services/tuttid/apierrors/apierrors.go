@@ -330,6 +330,8 @@ func Classify(err error) *ProtocolError {
 		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueTopicExists, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrTopicNotEmpty):
 		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueTopicNotEmpty, WithCause(err))
+	case errors.Is(err, workspaceservice.ErrInvalidWorkspaceAppRuntimeState):
+		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, workspaceservice.ErrInvalidAppFactoryJobState):
 		return InvalidRequest(ReasonMalformedRequest, WithCause(err))
 	case errors.Is(err, workspaceservice.ErrAppPackageAlreadyExists):

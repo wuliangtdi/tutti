@@ -57,7 +57,7 @@ test("WorkspaceAppCenterService tracks app install and forwards app open status"
             })
           ]
         }),
-      retryWorkspaceApp: async () =>
+      launchWorkspaceApp: async () =>
         createSnapshot({
           apps: [
             createApp({
@@ -1180,6 +1180,9 @@ function createGateway(
       return createSnapshot();
     },
     async installWorkspaceApp() {
+      return createSnapshot();
+    },
+    async launchWorkspaceApp() {
       return createSnapshot();
     },
     async listWorkspaceAppFactoryJobs() {

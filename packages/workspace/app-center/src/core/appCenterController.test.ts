@@ -154,6 +154,185 @@ test("WorkspaceAppCenterController sorts factory jobs and reports snapshot appli
   );
 });
 
+test("WorkspaceAppCenterController prepares app launch through launch gateway", async () => {
+  const launchCalls: Array<{ appId: string; workspaceId: string }> = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async launchWorkspaceApp(workspaceId, appId) {
+        launchCalls.push({ appId, workspaceId });
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId,
+              launchUrl: "http://127.0.0.1:3000",
+              runtimeStatus: "running",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({ apps: [createApp({ appId: "app-1" })] })
+  );
+
+  const app = await controller.prepareAppLaunch({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(launchCalls, [
+    { appId: "app-1", workspaceId: "workspace-1" }
+  ]);
+  assert.equal(app?.runtimeStatus, "running");
+  assert.equal(app?.launchUrl, "http://127.0.0.1:3000");
+});
+
+test("WorkspaceAppCenterController restores app state when launch preparation fails", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async launchWorkspaceApp() {
+        throw new Error("launch rejected");
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", runtimeStatus: "idle" })]
+    })
+  );
+
+  const app = await controller.prepareAppLaunch({
+    appId: "app-1",
+    workspaceId: "workspace-1"
+  });
+
+  assert.equal(app, null);
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
+  assert.equal(controller.store.error, "launch rejected");
+});
+
+test("WorkspaceAppCenterController retries failed apps through retry gateway", async () => {
+  const retryCalls: Array<{ appId: string; workspaceId: string }> = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async retryWorkspaceApp(workspaceId, appId) {
+        retryCalls.push({ appId, workspaceId });
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId,
+              launchUrl: "http://127.0.0.1:3000",
+              runtimeStatus: "running",
+              stateRevision: 2
+            })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", runtimeStatus: "failed" })]
+    })
+  );
+
+  await controller.retryApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  assert.deepEqual(retryCalls, [
+    { appId: "app-1", workspaceId: "workspace-1" }
+  ]);
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+});
+
+test("WorkspaceAppCenterController restores failed app state when retry fails", async () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async retryWorkspaceApp() {
+        throw new Error("retry rejected");
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", runtimeStatus: "failed" })]
+    })
+  );
+
+  await controller.retryApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "failed");
+  assert.equal(controller.store.error, "retry rejected");
+});
+
+test("WorkspaceAppCenterController ignores retry for non-failed apps", async () => {
+  let retryCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async retryWorkspaceApp() {
+        retryCalls += 1;
+        return createSnapshot();
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [createApp({ appId: "app-1", runtimeStatus: "idle" })]
+    })
+  );
+
+  await controller.retryApp({ appId: "app-1", workspaceId: "workspace-1" });
+
+  assert.equal(retryCalls, 0);
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "idle");
+});
+
+test("WorkspaceAppCenterController only marks idle enabled apps as starting", async () => {
+  let optimisticStatuses: string[] = [];
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async startEnabledWorkspaceApps() {
+        optimisticStatuses = controller.store.apps.map(
+          (app) => app.runtimeStatus
+        );
+        return createSnapshot({
+          apps: [
+            createApp({ appId: "app-idle", runtimeStatus: "preparing" }),
+            createApp({ appId: "app-failed", runtimeStatus: "failed" }),
+            createApp({ appId: "app-stopping", runtimeStatus: "stopping" })
+          ]
+        });
+      }
+    })
+  });
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({ appId: "app-idle", runtimeStatus: "idle" }),
+        createApp({ appId: "app-failed", runtimeStatus: "failed" }),
+        createApp({ appId: "app-stopping", runtimeStatus: "stopping" })
+      ]
+    })
+  );
+
+  await controller.startEnabledApps("workspace-1");
+
+  assert.deepEqual(optimisticStatuses, ["preparing", "failed", "stopping"]);
+});
+
 function createApp(
   overrides: Partial<WorkspaceAppCenterApp> = {}
 ): WorkspaceAppCenterApp {
@@ -232,6 +411,9 @@ function createGateway(
       return createFactorySnapshot();
     },
     async installWorkspaceApp() {
+      return createSnapshot();
+    },
+    async launchWorkspaceApp() {
       return createSnapshot();
     },
     async listWorkspaceAppFactoryJobs() {

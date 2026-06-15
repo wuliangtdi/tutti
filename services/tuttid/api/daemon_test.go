@@ -57,6 +57,11 @@ type stubPreferencesService struct {
 	putFn func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error)
 }
 
+type stubAppCenterService struct {
+	launchFn func(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
+	retryFn  func(context.Context, string, string) (workspacebiz.WorkspaceApp, error)
+}
+
 type stubAgentSessionService struct {
 	composerOptionsFn func(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
 	createFn          func(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
@@ -66,6 +71,80 @@ type stubAgentSessionService struct {
 	readAttachmentFn  func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	updatePinFn       func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn  func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
+}
+
+func (stubAppCenterService) Add(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (stubAppCenterService) DeletePackage(context.Context, string, string) error {
+	return nil
+}
+
+func (stubAppCenterService) ExportPackage(context.Context, string, string, string) (workspaceservice.AppPackageArchiveResult, error) {
+	return workspaceservice.AppPackageArchiveResult{}, nil
+}
+
+func (stubAppCenterService) ImportPackage(context.Context, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (stubAppCenterService) Install(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (s stubAppCenterService) Launch(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+	if s.launchFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.launchFn(ctx, workspaceID, appID)
+}
+
+func (stubAppCenterService) List(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
+	return nil, nil
+}
+
+func (stubAppCenterService) CatalogLoadState() workspacebiz.AppCatalogLoadState {
+	return workspacebiz.AppCatalogLoadState{}
+}
+
+func (stubAppCenterService) RefreshCatalog(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
+	return nil, nil
+}
+
+func (stubAppCenterService) Remove(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (stubAppCenterService) ReplaceIcon(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (s stubAppCenterService) Retry(ctx context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+	if s.retryFn == nil {
+		return workspacebiz.WorkspaceApp{}, nil
+	}
+	return s.retryFn(ctx, workspaceID, appID)
+}
+
+func (stubAppCenterService) Rollback(context.Context, string, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
+}
+
+func (stubAppCenterService) SearchReferences(context.Context, string, string, workspacebiz.AppReferenceSearchInput) (workspacebiz.AppReferenceSearchResult, error) {
+	return workspacebiz.AppReferenceSearchResult{}, nil
+}
+
+func (stubAppCenterService) StartEnabled(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
+	return nil, nil
+}
+
+func (stubAppCenterService) StopAll(context.Context, string) ([]workspacebiz.WorkspaceApp, error) {
+	return nil, nil
+}
+
+func (stubAppCenterService) Uninstall(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+	return workspacebiz.WorkspaceApp{}, nil
 }
 
 func (stubAgentSessionService) List(context.Context, string) ([]agentservice.Session, error) {
@@ -501,6 +580,69 @@ func TestDaemonAPIGeneratedRoutesReplaceWorkspaceAppIconReturnServiceUnavailable
 		tuttigenerated.ServiceUnavailable,
 		apierrors.ReasonWorkspaceAppUnavailable,
 		"workspace app service is unavailable",
+	)
+}
+
+func TestDaemonAPIGeneratedRoutesLaunchWorkspaceApp(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AppCenterService: stubAppCenterService{
+			launchFn: func(_ context.Context, workspaceID string, appID string) (workspacebiz.WorkspaceApp, error) {
+				if workspaceID != "ws-1" {
+					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+				}
+				if appID != "app-1" {
+					t.Fatalf("appID = %q, want app-1", appID)
+				}
+				return workspaceAppForRouteTest(appID, workspacebiz.AppRuntimeStatusRunning), nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/apps/app-1/launch",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAppResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.App.AppId != "app-1" || response.App.Status != tuttigenerated.WorkspaceAppRuntimeStatusRunning {
+		t.Fatalf("response app = %#v", response.App)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRetryWorkspaceAppMapsInvalidRuntimeState(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AppCenterService: stubAppCenterService{
+			retryFn: func(context.Context, string, string) (workspacebiz.WorkspaceApp, error) {
+				return workspacebiz.WorkspaceApp{}, workspaceservice.ErrInvalidWorkspaceAppRuntimeState
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/apps/app-1/retry",
+		nil,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
+		apierrors.ReasonMalformedRequest,
+		workspaceservice.ErrInvalidWorkspaceAppRuntimeState.Error(),
 	)
 }
 
@@ -2031,6 +2173,33 @@ func generatedRouteHandler(service stubCatalogService) http.Handler {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{WorkspaceService: service}))
 	return mux
+}
+
+func workspaceAppForRouteTest(appID string, status workspacebiz.AppRuntimeStatus) workspacebiz.WorkspaceApp {
+	launchURL := "http://127.0.0.1:3000"
+	port := 3000
+	return workspacebiz.WorkspaceApp{
+		Package: workspacebiz.AppPackage{
+			AppID:   appID,
+			Version: "0.1.0",
+			Manifest: workspacebiz.AppManifest{
+				AppID:       appID,
+				Name:        "Test App",
+				Description: "Test app",
+			},
+			Source: workspacebiz.AppPackageSourceImported,
+		},
+		Installation: &workspacebiz.AppInstallation{
+			WorkspaceID: "ws-1",
+			AppID:       appID,
+			Enabled:     true,
+		},
+		Runtime: workspacebiz.AppRuntimeState{
+			Status:    status,
+			LaunchURL: &launchURL,
+			Port:      &port,
+		},
+	}
 }
 
 func openIssueRouteSQLiteStore(t *testing.T) *workspacedata.SQLiteStore {

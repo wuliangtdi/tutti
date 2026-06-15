@@ -403,6 +403,9 @@ function createTransportClient(
     async submitWorkspaceAgentInteractive() {
       throw new Error("not used");
     },
+    async launchWorkspaceApp() {
+      throw new Error("not used");
+    },
     async retryWorkspaceApp() {
       throw new Error("not used");
     },

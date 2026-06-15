@@ -309,6 +309,14 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.DeleteWorkspaceApp(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/launch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.LaunchWorkspaceApp(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/apps/{appID}/retry", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

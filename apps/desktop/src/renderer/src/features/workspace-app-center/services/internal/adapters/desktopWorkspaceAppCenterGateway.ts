@@ -134,6 +134,12 @@ export function createDesktopWorkspaceAppCenterGateway(
         await tuttidClient.listWorkspaceApps(workspaceId)
       );
     },
+    async launchWorkspaceApp(workspaceId, appId) {
+      await tuttidClient.launchWorkspaceApp(workspaceId, appId);
+      return normalizeWorkspaceAppCenterSnapshot(
+        await tuttidClient.listWorkspaceApps(workspaceId)
+      );
+    },
     async retryWorkspaceApp(workspaceId, appId) {
       await tuttidClient.retryWorkspaceApp(workspaceId, appId);
       return normalizeWorkspaceAppCenterSnapshot(

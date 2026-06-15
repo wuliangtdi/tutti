@@ -33,7 +33,7 @@ type AppRunner struct {
 	mu        sync.Mutex
 	processes map[string]*appProcess
 	states    map[string]workspacebiz.AppRuntimeState
-	starts    map[string]context.CancelFunc
+	starts    map[string]*appStart
 	queue     chan struct{}
 }
 
@@ -58,6 +58,10 @@ type appProcess struct {
 	done          chan error
 	stopRequested bool
 	logFile       *os.File
+}
+
+type appStart struct {
+	cancel context.CancelFunc
 }
 
 func (r *AppRunner) State(workspaceID string, appID string) workspacebiz.AppRuntimeState {
@@ -86,8 +90,14 @@ func (r *AppRunner) Start(ctx context.Context, input AppStartInput) (workspacebi
 		r.mu.Unlock()
 		return existingState, nil
 	}
-	if cancel := r.starts[key]; cancel != nil {
-		cancel()
+	if r.starts[key] != nil &&
+		!input.Restart &&
+		(existingState.Status == workspacebiz.AppRuntimeStatusPreparing || existingState.Status == workspacebiz.AppRuntimeStatusStarting) {
+		r.mu.Unlock()
+		return existingState, nil
+	}
+	if start := r.starts[key]; start != nil {
+		start.cancel()
 		delete(r.starts, key)
 	}
 	r.mu.Unlock()
@@ -95,14 +105,15 @@ func (r *AppRunner) Start(ctx context.Context, input AppStartInput) (workspacebi
 		_, _ = r.Stop(ctx, input.WorkspaceID, input.AppID)
 	}
 	startCtx, cancel := context.WithCancel(context.Background())
+	start := &appStart{cancel: cancel}
 	r.mu.Lock()
-	r.starts[key] = cancel
+	r.starts[key] = start
 	r.mu.Unlock()
 
 	state := r.setState(key, workspacebiz.AppRuntimeState{
 		Status: workspacebiz.AppRuntimeStatusPreparing,
 	})
-	go r.startQueued(startCtx, key, input)
+	go r.startQueued(startCtx, key, input, start)
 	return state, nil
 }
 
@@ -112,20 +123,20 @@ func (r *AppRunner) PreloadRuntime(ctx context.Context) error {
 	return err
 }
 
-func (r *AppRunner) startQueued(ctx context.Context, key string, input AppStartInput) {
+func (r *AppRunner) startQueued(ctx context.Context, key string, input AppStartInput, start *appStart) {
 	select {
 	case r.queue <- struct{}{}:
 		defer func() { <-r.queue }()
 	case <-ctx.Done():
-		r.finishStart(key, ctx)
+		r.finishStart(key, ctx, start)
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		r.finishStart(key, ctx)
+		r.finishStart(key, ctx, start)
 		return
 	}
 	r.startProcess(ctx, key, input)
-	r.finishStart(key, ctx)
+	r.finishStart(key, ctx, start)
 }
 
 func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStartInput) {
@@ -292,8 +303,8 @@ func (r *AppRunner) Stop(ctx context.Context, workspaceID string, appID string) 
 
 	key := appRuntimeKey(workspaceID, appID)
 	r.mu.Lock()
-	if cancel := r.starts[key]; cancel != nil {
-		cancel()
+	if start := r.starts[key]; start != nil {
+		start.cancel()
 		delete(r.starts, key)
 	}
 	process := r.processes[key]
@@ -513,11 +524,11 @@ func logAppRuntimeControl(event string, input AppStartInput, port int, failureRe
 	slog.Info(event, fields...)
 }
 
-func (r *AppRunner) finishStart(key string, ctx context.Context) {
+func (r *AppRunner) finishStart(key string, ctx context.Context, start *appStart) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cancel := r.starts[key]
-	if cancel == nil {
+	currentStart := r.starts[key]
+	if currentStart == nil || currentStart != start {
 		return
 	}
 	delete(r.starts, key)
@@ -624,7 +635,7 @@ func (r *AppRunner) ensure() {
 		r.states = make(map[string]workspacebiz.AppRuntimeState)
 	}
 	if r.starts == nil {
-		r.starts = make(map[string]context.CancelFunc)
+		r.starts = make(map[string]*appStart)
 	}
 	if r.queue == nil {
 		r.queue = make(chan struct{}, 2)
