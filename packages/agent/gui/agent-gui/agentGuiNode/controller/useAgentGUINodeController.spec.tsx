@@ -3881,6 +3881,79 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not mark a completed conversation unread when another controller has it active", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1"),
+          workspaceAgentSession("session-2")
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() => ({
+      first: useAgentGUINodeController({
+        nodeId: "node-active-session-1",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      }),
+      second: useAgentGUINodeController({
+        nodeId: "node-active-session-2",
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-2"),
+        onDataChange: vi.fn()
+      })
+    }));
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.activeConversationId).toBe(
+        "session-1"
+      );
+      expect(result.current.second.viewModel.activeConversationId).toBe(
+        "session-2"
+      );
+      expect(
+        result.current.first.viewModel.conversations.some(
+          (conversation) => conversation.id === "session-2"
+        )
+      ).toBe(true);
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          lifecycleStatus: "completed",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.first.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "session-2",
+            status: "completed",
+            hasUnreadCompletion: false
+          })
+        ])
+      );
+    });
+  });
+
   it("keeps a busy inactive conversation subscribed so its final state can settle in the list", async () => {
     const retainEventStream = vi
       .fn()
@@ -5260,7 +5333,7 @@ describe("useAgentGUINodeController", () => {
         "request-1"
       );
     });
-    expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
 
     act(() => {
       result.current.actions.interruptCurrentTurn("No running response");
@@ -10063,10 +10136,111 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("does not queue when activity-core is idle but stale control state is working", async () => {
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-1",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", { status: "working" })
+      ),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("send immediately"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        ...promptContent("send immediately")
+      });
+    });
+    expect(result.current.viewModel.queuedPrompts).toEqual([]);
+  });
+
+  it("does not enable local queue from a pending prompt when activity-core is idle", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getState: vi.fn(async () =>
+        agentSessionState("session-1", {
+          pendingInteractive: {
+            kind: "interactive",
+            requestId: "request-ask",
+            toolName: "AskUserQuestion",
+            status: "waiting",
+            input: {
+              questions: [
+                {
+                  id: "scope",
+                  header: "Scope",
+                  question: "Which scope should we use?",
+                  options: [{ label: "Small", description: "Minimal change" }]
+                }
+              ]
+            }
+          }
+        })
+      )
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.pendingInteractivePrompt?.requestId).toBe(
+        "request-ask"
+      );
+    });
+    expect(result.current.viewModel.canQueueWhileBusy).toBe(false);
+  });
+
   it("queues busy prompts locally without sending them through backend exec", async () => {
     const list = vi.fn(async () => ({
       presences: [],
-      sessions: [workspaceAgentSession("session-1")]
+      sessions: [
+        workspaceAgentSession("session-1", {
+          effectiveStatus: "waiting",
+          turnPhase: "waiting"
+        })
+      ]
     }));
     const exec = vi.fn();
     installAgentHostApi({
@@ -10127,6 +10301,90 @@ describe("useAgentGUINodeController", () => {
       ).toEqual(["first queued prompt", "second queued prompt"]);
     });
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("queues image prompts locally while busy and drains them with image content", async () => {
+    const imagePromptContent: AgentPromptContentBlock[] = [
+      { type: "text", text: "describe this" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "panel.png"
+      }
+    ];
+    const exec = vi.fn(async () => ({
+      agentSessionId: "session-1",
+      turnId: "turn-2",
+      accepted: true,
+      sessionStatus: "working" as const,
+      events: []
+    }));
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          effectiveStatus: "working",
+          turnPhase: "working"
+        })
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.canQueueWhileBusy).toBe(true);
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(imagePromptContent);
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.queuedPrompts).toEqual([
+        expect.objectContaining({
+          prompt: "describe this",
+          content: imagePromptContent
+        })
+      ]);
+    });
+    expect(result.current.viewModel.detailError).toBeNull();
+    expect(exec).not.toHaveBeenCalled();
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "state_patch",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-1",
+          lifecycleStatus: "active",
+          currentPhase: "idle",
+          occurredAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: imagePromptContent
+      });
+    });
   });
 
   it("preserves draft text entered while a prompt submission is in flight", async () => {
@@ -10202,7 +10460,7 @@ describe("useAgentGUINodeController", () => {
 
   it("edits a local queued prompt back into the draft", async () => {
     installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
+      list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       getState: vi.fn(async () =>
@@ -10278,12 +10536,82 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("edits a local queued image prompt back into the draft content restore", async () => {
+    const imagePromptContent: AgentPromptContentBlock[] = [
+      { type: "text", text: "describe this" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "panel.png"
+      }
+    ];
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(imagePromptContent);
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.queuedPrompts).toEqual([
+        expect.objectContaining({
+          prompt: "describe this",
+          content: imagePromptContent
+        })
+      ]);
+    });
+    const queuedPromptId = result.current.viewModel.queuedPrompts[0]?.id;
+    expect(queuedPromptId).toBeTruthy();
+
+    act(() => {
+      result.current.actions.editQueuedPrompt(queuedPromptId!);
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.queuedPrompts).toEqual([]);
+      expect(result.current.viewModel.draftPrompt).toBe("describe this");
+      expect(result.current.viewModel.draftContentRestore).toEqual({
+        id: `restore-${queuedPromptId}`,
+        content: imagePromptContent
+      });
+    });
+
+    act(() => {
+      result.current.actions.consumeDraftContentRestore(
+        `restore-${queuedPromptId}`
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.draftContentRestore).toBeNull();
+    });
+  });
+
   it("queues prompts locally during a pending interactive prompt without calling backend exec", async () => {
     const exec = vi.fn(async () => {
       throw new Error("upstream unavailable");
     });
     installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
+      list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       getState: vi.fn(async () =>
@@ -10350,7 +10678,12 @@ describe("useAgentGUINodeController", () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
-        sessions: [workspaceAgentSession("session-1")]
+        sessions: [
+          workspaceAgentSession("session-1", {
+            effectiveStatus: "waiting",
+            turnPhase: "waiting"
+          })
+        ]
       })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
@@ -10414,7 +10747,7 @@ describe("useAgentGUINodeController", () => {
   it("promotes a local queued prompt while an interactive prompt is pending", async () => {
     const cancel = vi.fn(async () => ({ canceled: true }));
     installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
+      list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       getState: vi.fn(async () =>
@@ -10487,7 +10820,7 @@ describe("useAgentGUINodeController", () => {
   it("does not interrupt immediately when send next is requested during an interactive prompt", async () => {
     const cancel = vi.fn(async () => ({ canceled: true }));
     installAgentHostApi({
-      list: vi.fn(async () => snapshotWithSession("session-1")),
+      list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
       subscribeEvents: vi.fn(() => vi.fn()),
       getState: vi.fn(async () =>
@@ -12198,12 +12531,22 @@ function agentGuiData(
 }
 
 function snapshotWithSession(
-  agentSessionId: string
+  agentSessionId: string,
+  overrides: Partial<AgentHostWorkspaceAgentSession> = {}
 ): AgentHostWorkspaceAgentSnapshot {
   return {
     presences: [],
-    sessions: [workspaceAgentSession(agentSessionId)]
+    sessions: [workspaceAgentSession(agentSessionId, overrides)]
   };
+}
+
+function snapshotWithWaitingSession(
+  agentSessionId: string
+): AgentHostWorkspaceAgentSnapshot {
+  return snapshotWithSession(agentSessionId, {
+    effectiveStatus: "waiting",
+    turnPhase: "waiting"
+  });
 }
 
 function workspaceAgentSession(

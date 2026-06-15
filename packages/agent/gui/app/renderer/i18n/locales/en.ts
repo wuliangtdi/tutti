@@ -704,8 +704,6 @@ export const en = {
       retryActivation: "Retry",
       continueInNewConversation: "New session",
       processing: "Planning next moves",
-      promptImagesCannotQueue:
-        "Images can only be sent when the agent is ready for your next message.",
       promptImagesUnsupported:
         "This agent does not support image input with the current model.",
       visibleErrorStartFailed: "{{provider}} failed to start",

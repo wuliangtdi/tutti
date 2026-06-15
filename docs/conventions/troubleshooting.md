@@ -43,6 +43,36 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Malformed user skill frontmatter breaks skill discovery
+
+- Symptom:
+  Agent logs include `failed to load skill ... missing YAML frontmatter
+delimited by ---`, and the composer skill picker may show partial or
+  confusing skill results.
+- Quick checks:
+  Search daemon logs for `skill_frontmatter_invalid`, then inspect the logged
+  `skillPath`. User-owned `~/.codex/skills/*/SKILL.md` and
+  `~/.agents/skills/*/SKILL.md` files must start with a `---` line and include
+  a closing `---` line before the body.
+- Root cause:
+  Provider-native skill loaders expect delimited YAML frontmatter. If Tuttid
+  exposes a malformed user skill into provider runtime state, or includes it in
+  composer skill options, one bad local skill can pollute diagnostics around
+  otherwise valid skills.
+- Fix:
+  Skip user Codex skill folders with malformed frontmatter before exposing them
+  under the session `CODEX_HOME/skills`, and skip malformed provider skills
+  during composer skill option discovery so valid sibling skills continue to be
+  recognized. Emit a structured warning with
+  `error_code=skill_frontmatter_invalid` whenever a malformed skill is skipped.
+- Validation:
+  Add tests with malformed personal `.codex` and `.agents` skills beside valid
+  skills, then run `pnpm lint:go` and
+  `cd services/tuttid && go test ./... && go build ./...`.
+- References:
+  [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
+  [skill_options.go](../../services/tuttid/service/agent/skill_options.go)
+
 ### Browser Node failed navigation renders a blank panel
 
 - Symptom:

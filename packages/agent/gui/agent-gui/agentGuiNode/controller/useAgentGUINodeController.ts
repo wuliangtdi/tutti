@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { toast } from "@tutti-os/ui-system";
 import { translate } from "../../../i18n/index";
 import {
@@ -9,11 +16,13 @@ import {
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
   resolveAgentActivityCapability,
-  resolveAgentActivityUsage
+  resolveAgentActivityUsage,
+  selectSessionDisplayStatuses
 } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityCancelSessionResult,
   AgentActivityComposerOptions,
+  AgentActivityDisplayStatus,
   AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import type {
@@ -56,6 +65,7 @@ import type { AgentHostUserProject } from "../../../host/agentHostApi";
 import type {
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM,
+  AgentGUIDraftContentRestoreVM,
   AgentGUIProviderSkillOption,
   AgentGUIProjectConversationDeleteTarget,
   AgentGUIQueuedPromptVM,
@@ -99,14 +109,17 @@ import {
 import {
   clearAgentGUIConversationCreatePending,
   clearAgentGUIConversationSubmitPending,
+  clearAgentGUIConversationUnreadCompletion,
   createAgentGUIConversationListQueryKey,
   ensureAgentGUIConversationListQuery,
   getAgentGUIConversationCreatePending,
   getAgentGUIConversationSubmitPending,
+  markAgentGUIConversationCompletionObserved,
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
   scheduleAgentGUIConversationListProjection,
+  setAgentGUIConversationListActiveConversation,
   subscribeAgentGUIConversationListStore,
   upsertLocalCreatedAgentGUIConversation,
   updateAgentGUIConversationListConversations,
@@ -1083,6 +1096,14 @@ function promptContentHasImage(
   return content.some((block) => block.type === "image");
 }
 
+function queuedPromptContent(
+  queuedPrompt: AgentGUIQueuedPromptVM
+): AgentPromptContentBlock[] {
+  return normalizePromptContentBlocks(
+    queuedPrompt.content ?? textPromptContent(queuedPrompt.prompt)
+  );
+}
+
 function recordValue(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1423,25 +1444,6 @@ function useStableControllerEventCallback<Args extends unknown[], Result>(
   return useCallback((...args: Args) => callbackRef.current(...args), []);
 }
 
-function pendingApprovalFromState(
-  state: AgentSessionState | null
-): AgentSessionState["pendingInteractive"] | null {
-  return state?.pendingInteractive?.kind === "approval"
-    ? state.pendingInteractive
-    : null;
-}
-
-function pendingInteractiveFromState(
-  state: AgentSessionState | null
-): AgentSessionState["pendingInteractive"] | null {
-  if (!state?.pendingInteractive) {
-    return null;
-  }
-  return state.pendingInteractive.kind === "approval"
-    ? null
-    : state.pendingInteractive;
-}
-
 function promptRequestId(
   prompt: { requestId?: string | null } | null | undefined
 ): string | null {
@@ -1455,6 +1457,29 @@ function conversationBusyStatus(
   return status === "working" || status === "waiting";
 }
 
+function stringArraysEqual(
+  first: string[] | null | undefined,
+  second: string[] | null | undefined
+): boolean {
+  if (!first || !second) {
+    return first === second;
+  }
+  return (
+    first.length === second.length &&
+    first.every((value, index) => value === second[index])
+  );
+}
+
+function useStableStringArrayByValue(values: string[]): string[] {
+  const valuesRef = useRef<string[] | null>(null);
+  const currentValues = valuesRef.current;
+  if (!stringArraysEqual(currentValues, values)) {
+    valuesRef.current = values;
+    return values;
+  }
+  return currentValues ?? values;
+}
+
 function agentSessionStatusBusy(input: {
   lifecycleStatus?: string;
   effectiveStatus?: string;
@@ -1466,30 +1491,10 @@ function agentSessionStatusBusy(input: {
   return normalized?.kind === "working" || normalized?.kind === "waiting";
 }
 
-function conversationHasActiveWork(
-  conversation: AgentConversationVM | null | undefined
+function agentActivityDisplayStatusBusy(
+  status: AgentActivityDisplayStatus | null | undefined
 ): boolean {
-  return (
-    conversation?.rows.some((row) => {
-      switch (row.kind) {
-        case "processing":
-          return true;
-        case "tool-group":
-          return row.calls.some(
-            (call) =>
-              call.statusKind === "working" || call.statusKind === "waiting"
-          );
-        case "message":
-          return row.thinking.some(
-            (thinking) =>
-              thinking.statusKind === "working" ||
-              thinking.statusKind === "waiting"
-          );
-        default:
-          return false;
-      }
-    }) ?? false
-  );
+  return status === "working" || status === "waiting";
 }
 
 function buildNodeDefaultComposerSettings(
@@ -2072,6 +2077,11 @@ export function useAgentGUINodeController({
   const agentActivityRuntime = useAgentActivityRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
+  const agentActivityDisplayStatuses = useMemo(
+    () => selectSessionDisplayStatuses(agentActivitySnapshot),
+    [agentActivitySnapshot]
+  );
+  const generatedControllerOwnerKey = useId();
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -2090,6 +2100,8 @@ export function useAgentGUINodeController({
     conversationListQuery
   );
   const pendingCreateOwnerKey = nodeId?.trim() ?? "";
+  const conversationListActiveOwnerKey =
+    pendingCreateOwnerKey || generatedControllerOwnerKey;
   const resolvePendingCreateConversationId = useCallback(
     () =>
       conversationListQuery && pendingCreateOwnerKey
@@ -2117,6 +2129,8 @@ export function useAgentGUINodeController({
   const [draftBySessionId, setDraftBySessionId] = useState<
     Record<string, string>
   >({});
+  const [draftContentRestoreBySessionId, setDraftContentRestoreBySessionId] =
+    useState<Record<string, AgentGUIDraftContentRestoreVM | null>>({});
   const [draftSettingsBySessionId, setDraftSettingsBySessionId] = useState<
     Record<string, AgentSessionComposerSettings>
   >({});
@@ -2427,7 +2441,7 @@ export function useAgentGUINodeController({
     },
     []
   );
-  const backgroundBusyConversationIds = useMemo(
+  const projectedBackgroundBusyConversationIds = useMemo(
     () =>
       conversations
         .filter(
@@ -2435,8 +2449,29 @@ export function useAgentGUINodeController({
             conversation.id !== activeConversationId &&
             conversationBusyStatus(conversation.status)
         )
-        .map((conversation) => conversation.id),
+        .map((conversation) => conversation.id)
+        .sort(),
     [activeConversationId, conversations]
+  );
+  const backgroundBusyConversationIds = useStableStringArrayByValue(
+    projectedBackgroundBusyConversationIds
+  );
+  const projectedReleasedBackgroundConversationIds = useMemo(
+    () =>
+      conversations
+        .filter(
+          (conversation) =>
+            conversation.id === activeConversationId ||
+            conversation.status === "completed" ||
+            conversation.status === "failed" ||
+            conversation.status === "canceled"
+        )
+        .map((conversation) => conversation.id)
+        .sort(),
+    [activeConversationId, conversations]
+  );
+  const releasedBackgroundConversationIds = useStableStringArrayByValue(
+    projectedReleasedBackgroundConversationIds
   );
   const [
     retainedBackgroundConversationIds,
@@ -2446,34 +2481,27 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
+    if (
+      backgroundBusyConversationIds.length === 0 &&
+      releasedBackgroundConversationIds.length === 0
+    ) {
+      return;
+    }
     setRetainedBackgroundConversationIds((current) => {
       const next = new Set(current);
       for (const conversationId of backgroundBusyConversationIds) {
         next.add(conversationId);
       }
-      for (const conversation of conversations) {
-        if (
-          conversation.id === activeConversationId ||
-          conversation.status === "completed" ||
-          conversation.status === "failed" ||
-          conversation.status === "canceled"
-        ) {
-          next.delete(conversation.id);
-        }
+      for (const conversationId of releasedBackgroundConversationIds) {
+        next.delete(conversationId);
       }
       const nextIds = [...next].sort();
-      return nextIds.length === current.length &&
-        nextIds.every(
-          (conversationId, index) => conversationId === current[index]
-        )
-        ? current
-        : nextIds;
+      return stringArraysEqual(nextIds, current) ? current : nextIds;
     });
   }, [
-    activeConversationId,
     backgroundBusyConversationIds,
-    conversations,
-    previewMode
+    previewMode,
+    releasedBackgroundConversationIds
   ]);
   const backgroundWatchedConversationIds = useMemo(
     () =>
@@ -2685,6 +2713,7 @@ export function useAgentGUINodeController({
     if (snapshotConversations.length === 0) {
       return;
     }
+    const completedConversationIds = new Set<string>();
     updateConversationList((current) => {
       const currentById = new Map(
         current.map((conversation) => [conversation.id, conversation])
@@ -2698,10 +2727,7 @@ export function useAgentGUINodeController({
           if (!existing) {
             return {
               ...conversation,
-              hasUnreadCompletion:
-                conversation.hasUnreadCompletion ??
-                (conversation.status === "completed" &&
-                  activeConversationIdRef.current !== conversation.id)
+              hasUnreadCompletion: conversation.hasUnreadCompletion ?? false
             };
           }
           const titleFields =
@@ -2724,6 +2750,9 @@ export function useAgentGUINodeController({
           const status = shouldKeepExistingStatus
             ? existing.status
             : conversation.status;
+          if (status === "completed" && existing.status !== "completed") {
+            completedConversationIds.add(conversation.id);
+          }
           const syncState =
             conversation.syncState &&
             shouldApplySyncState(existing.syncState, conversation.syncState) &&
@@ -2735,8 +2764,10 @@ export function useAgentGUINodeController({
               : existing.syncState;
           const hasUnreadCompletion =
             conversation.status === "completed"
-              ? activeConversationIdRef.current !== conversation.id
-              : (existing.hasUnreadCompletion ?? false);
+              ? (existing.hasUnreadCompletion ??
+                conversation.hasUnreadCompletion ??
+                false)
+              : false;
           return {
             ...existing,
             ...conversation,
@@ -2764,6 +2795,12 @@ export function useAgentGUINodeController({
         isNoProjectPath
       });
     });
+    for (const conversationId of completedConversationIds) {
+      markAgentGUIConversationCompletionObserved({
+        query: conversationListQuery,
+        conversationId
+      });
+    }
   }, [
     agentActivitySnapshot,
     conversationListQuery,
@@ -2817,7 +2854,6 @@ export function useAgentGUINodeController({
         : current
     );
   }, [
-    conversations,
     isNoProjectPath,
     previewMode,
     setTransientConversation,
@@ -2952,6 +2988,29 @@ export function useAgentGUINodeController({
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    if (previewMode || !conversationListQuery) {
+      return undefined;
+    }
+    setAgentGUIConversationListActiveConversation({
+      query: conversationListQuery,
+      ownerKey: conversationListActiveOwnerKey,
+      conversationId: activeConversationId
+    });
+    return () => {
+      setAgentGUIConversationListActiveConversation({
+        query: conversationListQuery,
+        ownerKey: conversationListActiveOwnerKey,
+        conversationId: null
+      });
+    };
+  }, [
+    activeConversationId,
+    conversationListActiveOwnerKey,
+    conversationListQuery,
+    previewMode
+  ]);
 
   useEffect(() => {
     selectedProjectPathRef.current = selectedProjectPath;
@@ -3190,13 +3249,12 @@ export function useAgentGUINodeController({
           reloadDetail: true
         });
       }
-      updateConversationList((current) =>
-        current.map((conversation) =>
-          conversation.id === normalized
-            ? { ...conversation, hasUnreadCompletion: false }
-            : conversation
-        )
-      );
+      if (conversationListQuery) {
+        clearAgentGUIConversationUnreadCompletion({
+          query: conversationListQuery,
+          conversationId: normalized
+        });
+      }
       if (transientConversationRef.current?.id === normalized) {
         setTransientConversation((current) =>
           current?.id === normalized
@@ -3208,6 +3266,7 @@ export function useAgentGUINodeController({
     },
     [
       activation,
+      conversationListQuery,
       markSelectedConversationDetailPending,
       persistActiveConversation
     ]
@@ -3562,12 +3621,19 @@ export function useAgentGUINodeController({
               }
             ),
             hasUnreadCompletion:
-              status === "completed" &&
-              activeConversationIdRef.current !== agentSessionId
+              status === "completed"
+                ? (conversation.hasUnreadCompletion ?? false)
+                : false
           };
           return nextConversation;
         })
       );
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const timelineItems = projectAgentGUIMessagesToTimelineItems(
@@ -3612,7 +3678,7 @@ export function useAgentGUINodeController({
         });
       }
     },
-    [sessionViewRef, setTransientConversation]
+    [conversationListQuery, sessionViewRef, setTransientConversation]
   );
 
   useEffect(() => {
@@ -4386,8 +4452,9 @@ export function useAgentGUINodeController({
             timelineItems
           });
           const hasUnreadCompletion =
-            status === "completed" &&
-            activeConversationIdRef.current !== agentSessionId;
+            status === "completed"
+              ? (conversation.hasUnreadCompletion ?? false)
+              : false;
           if (
             titleFields.title === conversation.title &&
             titleFields.titleFallback === conversation.titleFallback &&
@@ -4407,6 +4474,12 @@ export function useAgentGUINodeController({
         });
         return changed ? next : current;
       });
+      if (nextStatus === "completed" && conversationListQuery) {
+        markAgentGUIConversationCompletionObserved({
+          query: conversationListQuery,
+          conversationId: agentSessionId
+        });
+      }
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
         const transientTitleFields = mergeConversationTitleUpdateFields(
@@ -4436,6 +4509,7 @@ export function useAgentGUINodeController({
       setTransientConversation,
       statePatchErrorBySessionId,
       agentActivityRuntime,
+      conversationListQuery,
       workspaceId
     ]
   );
@@ -5304,14 +5378,16 @@ export function useAgentGUINodeController({
   }, [executePrompt]);
 
   const queuePromptLocally = useCallback(
-    (agentSessionId: string, prompt: string) => {
-      const trimmed = prompt.trim();
-      if (!agentSessionId || !trimmed) {
+    (agentSessionId: string, content: readonly AgentPromptContentBlock[]) => {
+      const normalizedContent = normalizePromptContentBlocks(content);
+      const prompt = promptContentDisplayText(normalizedContent);
+      if (!agentSessionId || normalizedContent.length === 0) {
         return;
       }
       const queuedPrompt: AgentGUIQueuedPromptVM = {
         id: `local-${createAgentGUIConversationId()}`,
-        prompt: trimmed,
+        prompt,
+        content: normalizedContent,
         createdAtUnixMs: Date.now()
       };
       setQueuedPromptsBySessionId((current) => ({
@@ -5332,54 +5408,24 @@ export function useAgentGUINodeController({
       if (isSubmitting || isRespondingApproval) {
         return true;
       }
-      const sessionView = getAgentSessionView(sessionViewRef(agentSessionId));
-      const sessionState = sessionView?.controlState ?? null;
-      if (
-        agentSessionStatusBusy({
-          status: sessionState?.status
-        }) ||
-        pendingApprovalFromState(sessionState) !== null ||
-        pendingInteractiveFromState(sessionState) !== null
-      ) {
-        return true;
-      }
-      const summary = resolveConversationSummaryById(
-        conversationsRef.current,
-        agentSessionId,
-        transientConversationRef.current
-      );
-      if (conversationBusyStatus(summary?.status ?? null)) {
-        return true;
-      }
-      if (!summary) {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId) {
         return false;
       }
-      const timelineItems = projectAgentGUIMessagesToTimelineItems(
-        resolveSessionMessages(agentSessionId)
+      if (pendingTurnIdBySessionIdRef.current[normalizedAgentSessionId]) {
+        return true;
+      }
+      return agentActivityDisplayStatusBusy(
+        agentActivityDisplayStatuses.get(normalizedAgentSessionId)
       );
-      const conversationVM = buildAgentGUIConversationVM({
-        timelineItems,
-        conversation: summary,
-        workspaceRoot: workspacePath,
-        avoidGroupingEdits
-      });
-      return conversationHasActiveWork(conversationVM);
     },
-    [
-      avoidGroupingEdits,
-      isRespondingApproval,
-      isSubmitting,
-      resolveSessionMessages,
-      sessionViewRef,
-      workspacePath
-    ]
+    [agentActivityDisplayStatuses, isRespondingApproval, isSubmitting]
   );
 
   const submitPrompt = useCallback(
     (content: AgentPromptContentBlock[]) => {
       const agentSessionId = activeConversationIdRef.current;
       const normalizedContent = normalizePromptContentBlocks(content);
-      const textPrompt = promptContentDisplayText(normalizedContent);
       if (normalizedContent.length === 0) {
         return;
       }
@@ -5416,13 +5462,7 @@ export function useAgentGUINodeController({
         return;
       }
       if (shouldQueuePromptLocally(agentSessionId)) {
-        if (promptContentHasImage(normalizedContent)) {
-          setDetailError(
-            translate("agentHost.agentGui.promptImagesCannotQueue")
-          );
-          return;
-        }
-        queuePromptLocally(agentSessionId, textPrompt);
+        queuePromptLocally(agentSessionId, normalizedContent);
         return;
       }
       executePrompt(agentSessionId, normalizedContent);
@@ -6106,20 +6146,21 @@ export function useAgentGUINodeController({
       drainingQueuedPromptSessionId === null &&
       !isSubmitting &&
       !isRespondingApproval &&
-      pendingApprovalFromState(activeSessionState) === null &&
-      pendingInteractiveFromState(activeSessionState) === null &&
-      !conversationBusyStatus(activeConversationSummary?.status ?? null);
+      !agentActivityDisplayStatusBusy(
+        agentActivityDisplayStatuses.get(activeConversationId)
+      );
     if (!canDrainQueuedPrompt) {
       return;
     }
     setDrainingQueuedPromptSessionId(activeConversationId);
     executePrompt(
       activeConversationId,
-      textPromptContent(queuedPrompt.prompt),
+      queuedPromptContent(queuedPrompt),
       queuedPrompt.id
     );
   }, [
     activeConversationId,
+    agentActivityDisplayStatuses,
     conversations,
     drainingQueuedPromptSessionId,
     executePrompt,
@@ -6150,21 +6191,17 @@ export function useAgentGUINodeController({
     const activeSessionState =
       getAgentSessionView(sessionViewRef(activeConversationId))?.controlState ??
       null;
-    if (
-      pendingApprovalFromState(activeSessionState) !== null ||
-      pendingInteractiveFromState(activeSessionState) !== null
-    ) {
-      return;
-    }
     const activeConversationSummary = resolveConversationSummaryById(
       conversations,
       activeConversationId,
       transientConversationRef.current
     );
+    const activeActivityDisplayStatus =
+      agentActivityDisplayStatuses.get(activeConversationId) ?? null;
     const shouldInterrupt =
       drainingQueuedPromptSessionId === null &&
       !isSubmitting &&
-      conversationBusyStatus(activeConversationSummary?.status ?? null);
+      activeActivityDisplayStatus === "working";
     if (!shouldInterrupt || interruptingSessionIds[activeConversationId]) {
       return;
     }
@@ -6234,6 +6271,7 @@ export function useAgentGUINodeController({
       });
   }, [
     activeConversationId,
+    agentActivityDisplayStatuses,
     conversations,
     drainingQueuedPromptSessionId,
     interruptingSessionIds,
@@ -6332,6 +6370,7 @@ export function useAgentGUINodeController({
       if (!queuedPrompt) {
         return;
       }
+      const content = queuedPromptContent(queuedPrompt);
       setQueuedPromptsBySessionId((current) => ({
         ...current,
         [agentSessionId]: removeQueuedPromptById(
@@ -6341,7 +6380,14 @@ export function useAgentGUINodeController({
       }));
       setDraftBySessionId((current) => ({
         ...current,
-        [agentSessionId]: queuedPrompt.prompt
+        [agentSessionId]: promptContentDisplayText(content)
+      }));
+      setDraftContentRestoreBySessionId((current) => ({
+        ...current,
+        [agentSessionId]: {
+          id: `restore-${queuedPrompt.id}`,
+          content
+        }
       }));
       setSendNextQueuedPromptIdBySessionId((current) => {
         if (current[agentSessionId] !== normalizedQueuedPromptId) {
@@ -6366,6 +6412,20 @@ export function useAgentGUINodeController({
     },
     [queuedPromptsBySessionId]
   );
+
+  const consumeDraftContentRestore = useCallback((restoreId: string) => {
+    const agentSessionId = activeConversationIdRef.current;
+    const normalizedRestoreId = restoreId.trim();
+    if (!agentSessionId || !normalizedRestoreId) {
+      return;
+    }
+    setDraftContentRestoreBySessionId((current) => {
+      if (current[agentSessionId]?.id !== normalizedRestoreId) {
+        return current;
+      }
+      return { ...current, [agentSessionId]: null };
+    });
+  }, []);
 
   const sendQueuedPromptNext = useCallback(
     (queuedPromptId: string) => {
@@ -7012,6 +7072,9 @@ export function useAgentGUINodeController({
         data,
         drafts: draftBySessionId
       });
+  const draftContentRestore = activeConversationId
+    ? (draftContentRestoreBySessionId[activeConversationId] ?? null)
+    : null;
   const availableCommands =
     activeSessionView?.controlCommands ?? EMPTY_AGENT_GUI_AVAILABLE_COMMANDS;
   const timelinePlanModeState = useMemo(
@@ -7230,13 +7293,15 @@ export function useAgentGUINodeController({
     serverInteractivePrompt ?? planImplementationPromptVM;
   const activeRuntimeSession =
     runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
+  const activeActivityDisplayStatus = activeConversationId
+    ? (agentActivityDisplayStatuses.get(activeConversationId) ?? null)
+    : null;
+  const activeHasPendingSubmittedTurn = activeConversationId
+    ? Boolean(pendingTurnIdBySessionIdRef.current[activeConversationId])
+    : false;
   const activeConversationBusy =
-    conversationBusyStatus(activeConversation?.status ?? null) ||
-    agentSessionStatusBusy({
-      status: activeRuntimeSession?.status ?? activeSessionState?.status
-    }) ||
-    conversationHasActiveWork(conversation) ||
-    pendingApproval !== null;
+    agentActivityDisplayStatusBusy(activeActivityDisplayStatus) ||
+    activeHasPendingSubmittedTurn;
   const activeSessionResumable =
     activeRuntimeSession?.resumable ??
     activeConversation?.resumable ??
@@ -7328,10 +7393,7 @@ export function useAgentGUINodeController({
     !isSubmitting &&
     !isInterrupting;
   const canQueueWhileBusy =
-    Boolean(activeConversationId) &&
-    (activeConversationBusy ||
-      isSubmitting ||
-      pendingInteractivePrompt !== null);
+    Boolean(activeConversationId) && (activeConversationBusy || isSubmitting);
   const activeSessionReasoningSelection = useMemo(
     () =>
       reasoningSelectionFromComposerOptions(
@@ -7503,6 +7565,9 @@ export function useAgentGUINodeController({
     useStableControllerEventCallback(removeQueuedPrompt);
   const stableEditQueuedPrompt =
     useStableControllerEventCallback(editQueuedPrompt);
+  const stableConsumeDraftContentRestore = useStableControllerEventCallback(
+    consumeDraftContentRestore
+  );
   const stableRemoveProject = useStableControllerEventCallback(removeProject);
   const stableRequestDeleteProjectConversations =
     useStableControllerEventCallback(requestDeleteProjectConversations);
@@ -7550,6 +7615,7 @@ export function useAgentGUINodeController({
       sendQueuedPromptNext: stableSendQueuedPromptNext,
       removeQueuedPrompt: stableRemoveQueuedPrompt,
       editQueuedPrompt: stableEditQueuedPrompt,
+      consumeDraftContentRestore: stableConsumeDraftContentRestore,
       removeProject: stableRemoveProject,
       requestDeleteProjectConversations:
         stableRequestDeleteProjectConversations,
@@ -7567,6 +7633,7 @@ export function useAgentGUINodeController({
     [
       stableCancelDeleteConversation,
       stableCancelDeleteProjectConversations,
+      stableConsumeDraftContentRestore,
       stableConfirmDeleteConversation,
       stableConfirmDeleteProjectConversations,
       stableContinueInNewConversation,
@@ -7608,6 +7675,7 @@ export function useAgentGUINodeController({
         availableCommands,
         availableSkills,
         draftPrompt,
+        draftContentRestore,
         isLoadingConversations,
         isLoadingMessages,
         isCreatingConversation,
@@ -7666,6 +7734,7 @@ export function useAgentGUINodeController({
       controllerActions,
       data,
       detailError,
+      draftContentRestore,
       draftPrompt,
       isCreatingConversation,
       openclawGateway,

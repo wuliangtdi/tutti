@@ -218,6 +218,7 @@ function createViewModel(
     conversation: null,
     conversationDetail: null,
     draftPrompt: "",
+    draftContentRestore: null,
     draftPromptValue: "",
     draftSettings: null,
     sessionSettings: null,

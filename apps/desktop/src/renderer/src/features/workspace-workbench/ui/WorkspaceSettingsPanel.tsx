@@ -367,7 +367,7 @@ const managedModelProviderPresets: readonly ManagedModelProviderPreset[] = [
     provider: "anthropic",
     labelKey:
       "workspace.settings.apps.managedModels.presetLabels.anthropicClaude",
-    baseUrl: "https://api.anthropic.com",
+    baseUrl: "https://api.anthropic.com/v1",
     apiKeyUrl: ANTHROPIC_API_KEYS_URL,
     models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
   },
@@ -549,6 +549,10 @@ const managedModelFeedbackConfig: Record<
   deleteFailed: {
     className: "text-[var(--state-danger)]",
     messageKey: "workspace.settings.apps.managedModels.deleteFailed"
+  },
+  requiredFields: {
+    className: "text-[var(--state-danger)]",
+    messageKey: "workspace.settings.apps.managedModels.requiredFieldsMissing"
   }
 };
 

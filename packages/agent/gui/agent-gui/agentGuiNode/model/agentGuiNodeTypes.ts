@@ -17,6 +17,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
+import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -107,7 +108,13 @@ export interface AgentGUIComposerSettingsVM {
 export interface AgentGUIQueuedPromptVM {
   id: string;
   prompt: string;
+  content?: AgentPromptContentBlock[];
   createdAtUnixMs: number;
+}
+
+export interface AgentGUIDraftContentRestoreVM {
+  id: string;
+  content: AgentPromptContentBlock[];
 }
 
 export interface AgentGUINodeViewModel {
@@ -122,6 +129,7 @@ export interface AgentGUINodeViewModel {
   availableCommands: AgentSessionCommand[];
   availableSkills: AgentGUIProviderSkillOption[];
   draftPrompt: string;
+  draftContentRestore: AgentGUIDraftContentRestoreVM | null;
   isLoadingConversations: boolean;
   isLoadingMessages: boolean;
   isCreatingConversation: boolean;

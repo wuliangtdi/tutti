@@ -2671,7 +2671,7 @@ describe("AgentGUINode", () => {
     const modelButton = screen.getByRole("button", {
       name: "agentHost.agentGui.modelLabel / agentHost.agentGui.reasoningLabel"
     });
-    expect(modelButton).toHaveTextContent("Gpt-5");
+    expect(modelButton).toHaveTextContent("GPT-5");
     expect(modelButton).toHaveTextContent(
       "agentHost.agentGui.reasoningOptionHigh"
     );
@@ -6745,6 +6745,7 @@ function createViewModel(
     availableCommands: [],
     availableSkills: [],
     draftPrompt: "",
+    draftContentRestore: null,
     isLoadingConversations: false,
     isLoadingMessages: false,
     isCreatingConversation: false,

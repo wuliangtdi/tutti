@@ -39,6 +39,8 @@ const styles = {
   composerQueuedPromptPanel: "agent-gui-node__composer-queued-prompt-panel",
   composerQueuedPromptRow: "agent-gui-node__composer-queued-prompt-row",
   composerQueuedPromptBody: "agent-gui-node__composer-queued-prompt-body",
+  composerQueuedPromptImages: "agent-gui-node__composer-queued-prompt-images",
+  composerQueuedPromptImage: "agent-gui-node__composer-queued-prompt-image",
   composerQueuedPromptLabel: "agent-gui-node__composer-queued-prompt-label",
   composerQueuedPromptCount: "agent-gui-node__composer-queued-prompt-count",
   composerQueuedPromptText: "agent-gui-node__composer-queued-prompt-text",

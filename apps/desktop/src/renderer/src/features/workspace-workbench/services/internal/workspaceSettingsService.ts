@@ -4,7 +4,9 @@ import type {
   DesktopAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
-  DesktopSleepPreventionMode
+  DesktopSleepPreventionMode,
+  DesktopUpdateChannel,
+  DesktopUpdatePolicy
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
@@ -275,6 +277,44 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void> {
+    if (
+      this.desktopPreferences.store.updatePolicy === policy ||
+      this.desktopPreferences.store.changingUpdatePolicy === policy
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdatePolicy(policy);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updatePolicySaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void> {
+    if (
+      this.desktopPreferences.store.updateChannel === channel ||
+      this.desktopPreferences.store.changingUpdateChannel === channel
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setUpdateChannel(channel);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.updateChannelSaveFailed"
+        )
+      });
+    }
+  }
+
   async clearDeveloperLogs(): Promise<void> {
     if (this.store.developerLogs.clearing) {
       return;
@@ -430,6 +470,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!workspaceID || !draft || this.store.managedModels.savingProvider) {
       return;
     }
+    if (!hasRequiredManagedModelProviderFields(draft)) {
+      this.setManagedModelFeedback(draft.provider, "requiredFields");
+      return;
+    }
     this.store.managedModels.savingProvider = draft.provider;
     try {
       const saved = await this.dependencies.client.putManagedModelProvider(
@@ -500,6 +544,10 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
   ): Promise<void> {
     const workspaceID = this.store.workspaceID;
     if (!workspaceID || this.store.managedModels.savingProvider) {
+      return;
+    }
+    if (!hasRequiredManagedModelProviderFields(provider)) {
+      this.setManagedModelFeedback(provider.provider, "requiredFields");
       return;
     }
     this.store.managedModels.savingProvider = provider.provider;
@@ -577,13 +625,27 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     if (!workspaceID || this.store.managedModels.detectingProvider) {
       return;
     }
+    const provider = this.store.managedModels.providers.find(
+      (item) => item.provider === providerID
+    );
+    if (!provider) {
+      return;
+    }
     this.clearManagedModelFeedback(providerID);
+    if (!hasRequiredManagedModelProviderFields(provider)) {
+      this.setManagedModelFeedback(providerID, "requiredFields");
+      return;
+    }
     this.store.managedModels.detectingProvider = providerID;
     try {
       const models =
         await this.dependencies.client.listManagedModelProviderModels(
           workspaceID,
-          providerID
+          providerID,
+          {
+            ...(provider.apiKey.trim() ? { apiKey: provider.apiKey } : {}),
+            baseUrl: provider.baseUrl
+          }
         );
       this.updateManagedModelProviderDraft(providerID, {
         models: normalizeManagedModels(providerID, models)
@@ -721,14 +783,10 @@ function createActiveTranslator() {
 function createManagedModelProviderDraft(
   provider: WorkspaceManagedModelProviderID
 ): WorkspaceManagedModelProviderDraft {
-  return {
-    apiKey: "",
-    baseUrl: "",
-    enabled: true,
-    hasApiKey: false,
-    models: [],
-    provider
-  };
+  return toManagedModelProviderDraft({
+    ...createDefaultManagedModelProviderConfig(provider),
+    enabled: true
+  });
 }
 
 function isManagedModelProviderID(
@@ -737,6 +795,41 @@ function isManagedModelProviderID(
   return managedModelProviderIDs.includes(
     value as WorkspaceManagedModelProviderID
   );
+}
+
+function createDefaultManagedModelProviderConfig(
+  provider: WorkspaceManagedModelProviderID
+): WorkspaceManagedModelProviderConfig {
+  const officialDefaults: Record<
+    WorkspaceManagedModelProviderID,
+    { baseUrl: string; models: readonly string[] }
+  > = {
+    agnes: {
+      baseUrl: "https://apihub.agnes-ai.com/v1",
+      models: ["agnes-2.0-flash", "agnes-1.5-flash"]
+    },
+    anthropic: {
+      baseUrl: "https://api.anthropic.com/v1",
+      models: ["claude-sonnet-4-6", "claude-opus-4-8", "claude-haiku-4-5"]
+    },
+    openai: {
+      baseUrl: "https://api.openai.com/v1",
+      models: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"]
+    }
+  };
+  const defaults = officialDefaults[provider];
+
+  return {
+    baseUrl: defaults.baseUrl,
+    enabled: false,
+    hasApiKey: false,
+    models: defaults.models.map((id) => ({
+      id,
+      name: id,
+      provider
+    })),
+    provider
+  };
 }
 
 function toManagedModelProviderDraft(
@@ -754,6 +847,15 @@ function toManagedModelProviderDraft(
     baseUrl: provider.baseUrl ?? "",
     models: normalizeManagedModels(provider.provider, models)
   };
+}
+
+function hasRequiredManagedModelProviderFields(
+  provider: WorkspaceManagedModelProviderDraft
+): boolean {
+  return (
+    (provider.hasApiKey || provider.apiKey.trim().length > 0) &&
+    (provider.baseUrl?.trim().length ?? 0) > 0
+  );
 }
 
 function normalizeManagedModels(
@@ -790,12 +892,16 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingLocale: null,
   changingSleepPreventionMode: null,
   changingThemeSource: null,
+  changingUpdateChannel: null,
+  changingUpdatePolicy: null,
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
   locale: "en",
   sleepPreventionMode: "never",
-  theme: createNoopTheme("dark")
+  theme: createNoopTheme("dark"),
+  updateChannel: "rc",
+  updatePolicy: "prompt"
 };
 
 const noopDesktopPreferences: DesktopPreferencesService = {
@@ -818,6 +924,12 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));
+  },
+  setUpdateChannel(channel) {
+    return Promise.resolve(channel);
+  },
+  setUpdatePolicy(policy) {
+    return Promise.resolve(policy);
   },
   rememberAgentComposerDefaults() {
     return Promise.resolve();

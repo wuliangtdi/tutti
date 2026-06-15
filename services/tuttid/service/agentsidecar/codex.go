@@ -3,6 +3,7 @@ package agentsidecar
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -262,8 +263,19 @@ func exposeUserCodexSkillFolders(targetRoot string) error {
 		if err != nil || !sourceInfo.IsDir() {
 			continue
 		}
-		skillInfo, err := os.Stat(filepath.Join(source, "SKILL.md"))
+		skillPath := filepath.Join(source, "SKILL.md")
+		skillInfo, err := os.Stat(skillPath)
 		if err != nil || skillInfo.IsDir() {
+			continue
+		}
+		if !hasDelimitedSkillFrontmatter(skillPath) {
+			slog.Warn(
+				"user codex skill skipped; invalid frontmatter",
+				"error_code", "skill_frontmatter_invalid",
+				"skillName", name,
+				"skillPath", skillPath,
+				"reason", "missing_delimited_yaml_frontmatter",
+			)
 			continue
 		}
 		target := filepath.Join(targetRoot, name)
@@ -277,6 +289,23 @@ func exposeUserCodexSkillFolders(targetRoot string) error {
 		}
 	}
 	return nil
+}
+
+func hasDelimitedSkillFrontmatter(path string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimSpace(strings.TrimPrefix(lines[0], "\ufeff")) != "---" {
+		return false
+	}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "---" {
+			return true
+		}
+	}
+	return false
 }
 
 func copyFile(source string, target string, mode os.FileMode) error {

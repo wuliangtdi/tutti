@@ -6076,9 +6076,29 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-body {
-  display: grid;
+  display: flex;
+  align-items: center;
   min-width: 0;
   gap: 6px;
+}
+
+.agent-gui-node__composer-queued-prompt-images {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-gui-node__composer-queued-prompt-image {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid var(--agent-gui-border-subtle, var(--line-2));
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--agent-gui-surface-muted);
 }
 
 .agent-gui-node__composer-queued-prompt-label {

@@ -38,7 +38,8 @@ export type WorkspaceManagedModelProviderFeedbackKind =
   | "detectEmpty"
   | "detectFailed"
   | "saveFailed"
-  | "deleteFailed";
+  | "deleteFailed"
+  | "requiredFields";
 
 export interface WorkspaceManagedModelProviderFeedback {
   kind: WorkspaceManagedModelProviderFeedbackKind;

@@ -153,6 +153,7 @@ test("WorkspaceSettingsService echoes saved managed provider API keys", async ()
       listManagedModelProviders: async () => [
         {
           apiKey: "agnes-secret",
+          baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
           models: [],
@@ -177,6 +178,7 @@ test("WorkspaceSettingsService fills detected managed provider models", async ()
       listManagedModelProviders: async () => [
         {
           apiKey: "agnes-secret",
+          baseUrl: "https://apihub.agnes-ai.com/v1",
           enabled: true,
           hasApiKey: true,
           models: [],
@@ -355,7 +357,13 @@ test("WorkspaceSettingsService records an inline test result without a toast", a
     {
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
-          { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+          {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
         ]
       })
     },
@@ -375,7 +383,13 @@ test("WorkspaceSettingsService records an inline test failure", async () => {
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
-        { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+        {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
       ],
       testManagedModelProvider: async () => {
         throw new Error("nope");
@@ -394,7 +408,13 @@ test("WorkspaceSettingsService flags an empty model detection inline", async () 
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
-        { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+        {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
       ],
       listManagedModelProviderModels: async () => []
     })
@@ -414,7 +434,13 @@ test("WorkspaceSettingsService clears feedback when a provider is edited", async
   const service = new WorkspaceSettingsService({
     client: createWorkspaceSettingsClient({
       listManagedModelProviders: async () => [
-        { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+        {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
       ],
       testManagedModelProvider: async () => {
         throw new Error("nope");
@@ -432,13 +458,50 @@ test("WorkspaceSettingsService clears feedback when a provider is edited", async
   assert.equal(service.store.managedModels.feedback.openai, undefined);
 });
 
+test("WorkspaceSettingsService blocks a draft save without required fields", async () => {
+  let putCalls = 0;
+  const service = new WorkspaceSettingsService({
+    client: createWorkspaceSettingsClient({
+      putManagedModelProvider: async (_workspaceID, providerID, input) => {
+        putCalls += 1;
+        return {
+          baseUrl: input.baseUrl,
+          enabled: input.enabled,
+          hasApiKey: Boolean(input.apiKey),
+          models: input.models,
+          provider: providerID
+        };
+      }
+    })
+  });
+
+  service.openPanel({ id: "workspace-1" });
+  await waitFor(() => service.store.managedModels.loading === false);
+  service.beginManagedModelProviderDraft("openai");
+  service.updateManagedModelDraft({ baseUrl: "" });
+  await service.saveManagedModelDraft();
+
+  assert.equal(putCalls, 0);
+  assert.equal(
+    service.store.managedModels.feedback.openai?.kind,
+    "requiredFields"
+  );
+  assert.notEqual(service.store.managedModels.draft, null);
+});
+
 test("WorkspaceSettingsService records a save failure inline without a toast", async () => {
   const notifications = createNotificationRecorder();
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
-          { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+          {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
         ],
         putManagedModelProvider: async () => {
           throw new Error("nope");
@@ -467,7 +530,13 @@ test("WorkspaceSettingsService still toasts when a provider toggle fails", async
     {
       client: createWorkspaceSettingsClient({
         listManagedModelProviders: async () => [
-          { enabled: true, hasApiKey: true, models: [], provider: "openai" }
+          {
+          baseUrl: "https://api.openai.com/v1",
+          enabled: true,
+          hasApiKey: true,
+          models: [],
+          provider: "openai"
+        }
         ],
         putManagedModelProvider: async () => {
           throw new Error("nope");
@@ -827,6 +896,8 @@ function createDesktopPreferencesService(input: {
   onSetLocale?: IDesktopPreferencesService["setLocale"];
   onSetSleepPreventionMode?: IDesktopPreferencesService["setSleepPreventionMode"];
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
+  onSetUpdateChannel?: IDesktopPreferencesService["setUpdateChannel"];
+  onSetUpdatePolicy?: IDesktopPreferencesService["setUpdatePolicy"];
   state: DesktopPreferencesReadableStoreState;
 }): IDesktopPreferencesService {
   return {
@@ -842,7 +913,9 @@ function createDesktopPreferencesService(input: {
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setThemeSource:
-      input.onSetThemeSource ?? (async (source) => createTheme(source))
+      input.onSetThemeSource ?? (async (source) => createTheme(source)),
+    setUpdateChannel: input.onSetUpdateChannel ?? (async (channel) => channel),
+    setUpdatePolicy: input.onSetUpdatePolicy ?? (async (policy) => policy)
   };
 }
 
@@ -857,12 +930,16 @@ function createPreferencesState(
     changingLocale: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
+    changingUpdateChannel: null,
+    changingUpdatePolicy: null,
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
     locale: "en",
     sleepPreventionMode: "never",
     theme: createTheme("system"),
+    updateChannel: "stable",
+    updatePolicy: "prompt",
     ...overrides
   };
 }
