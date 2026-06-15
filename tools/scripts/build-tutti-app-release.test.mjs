@@ -214,6 +214,41 @@ test("validateManifest accepts managed runtime manifests without launch metadata
   assert.doesNotThrow(() => validateManifest(manifestForTest("managed-app")));
 });
 
+test("validateManifest accepts references list endpoints", () => {
+  const manifest = manifestForTest("references-app");
+  manifest.references = { listEndpoint: "/references/list" };
+
+  assert.doesNotThrow(() => validateManifest(manifest));
+});
+
+test("validateManifest rejects unsupported references fields", () => {
+  const manifest = manifestForTest("references-app");
+  manifest.references = { searchEndpoint: "/references/search" };
+
+  assert.throws(
+    () => validateManifest(manifest),
+    /references\.searchEndpoint is unsupported/
+  );
+});
+
+test("validateManifest rejects invalid references list endpoints", () => {
+  for (const listEndpoint of [
+    "references/list",
+    "//example.test/references",
+    "https://example.test/references",
+    "/references?query=1",
+    "/references#section"
+  ]) {
+    const manifest = manifestForTest("references-app");
+    manifest.references = { listEndpoint };
+
+    assert.throws(
+      () => validateManifest(manifest),
+      /references\.listEndpoint must be a relative URL path/
+    );
+  }
+});
+
 test("validateCLIManifest accepts the app CLI HTTP bridge contract", () => {
   assert.doesNotThrow(() =>
     validateCLIManifest(cliManifestForTest(), "tutti.cli.json")
