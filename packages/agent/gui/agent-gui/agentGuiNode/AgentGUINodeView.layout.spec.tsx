@@ -1135,6 +1135,7 @@ function createViewModel(): AgentGUINodeViewModel {
     availableCommands: [],
     availableSkills: [],
     draftPrompt: "",
+    draftContentRestore: null,
     isLoadingConversations: false,
     isLoadingMessages: false,
     isCreatingConversation: false,

@@ -6745,6 +6745,7 @@ function createViewModel(
     availableCommands: [],
     availableSkills: [],
     draftPrompt: "",
+    draftContentRestore: null,
     isLoadingConversations: false,
     isLoadingMessages: false,
     isCreatingConversation: false,

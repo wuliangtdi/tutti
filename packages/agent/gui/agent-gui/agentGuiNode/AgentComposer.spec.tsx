@@ -1522,6 +1522,121 @@ describe("AgentComposer", () => {
     ]);
   });
 
+  it("lets a busy composer queue an image-only draft instead of showing stop", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftPrompt=""
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={true}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+
+    const sendButton = screen.getByRole("button", { name: "发送" });
+    expect(sendButton).not.toBeDisabled();
+    expect(sendButton).toHaveAttribute("data-state", "queue");
+    expect(screen.queryByRole("button", { name: "停止" })).toBeNull();
+    fireEvent.click(sendButton);
+    expect(onSubmit).toHaveBeenCalledWith([
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "screen.png"
+      }
+    ]);
+    expect(
+      screen.queryByTestId("agent-gui-composer-image-drafts")
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores queued text and image content into the draft", async () => {
+    const onSubmit = vi.fn();
+    const onDraftContentRestoreConsumed = vi.fn();
+    const content = [
+      { type: "text" as const, text: "describe this" },
+      {
+        type: "image" as const,
+        mimeType: "image/png" as const,
+        data: "aW1hZ2U=",
+        name: "panel.png"
+      }
+    ];
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftPrompt="describe this"
+        draftContentRestore={{ id: "restore-queued-1", content }}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftChange={vi.fn()}
+        onDraftContentRestoreConsumed={onDraftContentRestoreConsumed}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onDraftContentRestoreConsumed).toHaveBeenCalledWith(
+        "restore-queued-1"
+      );
+      expect(screen.getByDisplayValue("describe this")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "panel.png" })).toHaveAttribute(
+        "src",
+        "data:image/png;base64,aW1hZ2U="
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(onSubmit).toHaveBeenCalledWith(content);
+  });
+
   it("keeps pasted image previews visible while the prompt is submitting", () => {
     const onSubmit = vi.fn();
     const { container, rerender } = render(

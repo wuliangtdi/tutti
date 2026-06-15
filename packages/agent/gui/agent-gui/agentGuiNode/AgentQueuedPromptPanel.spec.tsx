@@ -166,6 +166,48 @@ describe("AgentQueuedPromptPanel", () => {
     expect(screen.queryByText(/mention:\/\/workspace-app/)).toBeNull();
   });
 
+  it("renders queued image prompt previews and routes edit", async () => {
+    const onEditQueuedPrompt = vi.fn();
+    const { container } = render(
+      <AgentQueuedPromptPanel
+        queuedPrompts={[
+          {
+            id: "queued-1",
+            prompt: "describe this",
+            content: [
+              { type: "text", text: "describe this" },
+              {
+                type: "image",
+                mimeType: "image/png",
+                data: "aW1hZ2U=",
+                name: "panel.png"
+              }
+            ],
+            createdAtUnixMs: 1
+          }
+        ]}
+        drainingQueuedPromptId={null}
+        labels={labels}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={onEditQueuedPrompt}
+      />
+    );
+
+    expect(screen.getByText("describe this")).toBeInTheDocument();
+    expect(
+      container.querySelector(".agent-gui-node__composer-queued-prompt-image")
+    ).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
+
+    const moreButton = screen.getByRole("button", { name: "More" });
+    fireEvent.pointerDown(moreButton, { button: 0, ctrlKey: false });
+    fireEvent.click(moreButton);
+    const editItem = await screen.findByRole("menuitem", { name: "Edit" });
+    expect(editItem).not.toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(editItem);
+    expect(onEditQueuedPrompt).toHaveBeenCalledWith("queued-1");
+  });
+
   it("emits queued mention link clicks without toggling the queue panel", () => {
     const onLinkClick = vi.fn();
     const { container } = render(

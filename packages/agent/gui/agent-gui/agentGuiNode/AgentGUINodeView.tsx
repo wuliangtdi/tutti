@@ -357,6 +357,7 @@ interface AgentGUINodeViewProps {
     }) => void;
     interruptCurrentTurn: (noRunningResponseMessage: string) => void;
     updateDraftPrompt: (prompt: string) => void;
+    consumeDraftContentRestore?: (restoreId: string) => void;
     updateSelectedProjectPath?: AgentComposerProps["onProjectPathChange"];
     updateComposerSettings: (settings: {
       model?: string | null;
@@ -1259,8 +1260,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const submitDisabled =
     isCollaboratorConversation ||
     !isAgentProviderReady ||
-    (!viewModel.canSubmit && !canQueueWhileBusy) ||
-    viewModel.draftPrompt.trim() === "";
+    (!viewModel.canSubmit && !canQueueWhileBusy);
   const hasNonRetryableRecoveryFailure =
     sessionChrome.recovery?.kind === "failed" &&
     sessionChrome.recovery.canRetry === false;
@@ -1281,8 +1281,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     (activeConversationTurnBusy ||
       viewModel.pendingApproval !== null ||
       viewModel.pendingInteractivePrompt !== null ||
-      viewModel.isInterrupting) &&
-    !(canQueueWhileBusy && viewModel.draftPrompt.trim() !== "");
+      viewModel.isInterrupting);
   const syncStatus = resolveSyncIndicatorStatus(
     viewModel.activeConversation?.syncState?.status
   );
@@ -1559,6 +1558,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       provider: viewModel.data.provider,
       slashStatus,
       draftPrompt: viewModel.draftPrompt,
+      draftContentRestore: viewModel.draftContentRestore,
       availableCommands: viewModel.availableCommands,
       hasCompactableContext: viewModel.hasSentUserMessage,
       availableSkills: viewModel.availableSkills,
@@ -1589,6 +1589,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels: composerLabels,
       workspaceUserProjectI18n,
       onDraftChange: updateDraftPrompt,
+      onDraftContentRestoreConsumed: actions.consumeDraftContentRestore,
       onProjectPathChange: updateSelectedProjectPath,
       onSettingsChange: updateComposerSettings,
       onSubmit: submitPrompt,
@@ -1603,6 +1604,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       richTextAtProviders
     }),
     [
+      actions.consumeDraftContentRestore,
       canQueueWhileBusy,
       composerDisabled,
       composerDisabledReason,
@@ -1636,6 +1638,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composerSettings,
       viewModel.currentUserId,
       viewModel.data.provider,
+      viewModel.draftContentRestore,
       viewModel.draftPrompt,
       viewModel.drainingQueuedPromptId,
       viewModel.hasSentUserMessage,
@@ -1861,6 +1864,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               provider: viewModel.data.provider,
               slashStatus,
               draftPrompt: viewModel.draftPrompt,
+              draftContentRestore: viewModel.draftContentRestore,
               availableCommands: viewModel.availableCommands,
               hasCompactableContext: viewModel.hasSentUserMessage,
               compactSupported: viewModel.compactSupported,
@@ -1890,6 +1894,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               labels: composerLabels,
               workspaceUserProjectI18n,
               onDraftChange: updateDraftPrompt,
+              onDraftContentRestoreConsumed: actions.consumeDraftContentRestore,
               onProjectPathChange: updateSelectedProjectPath,
               onSettingsChange: updateComposerSettings,
               onSubmit: submitPrompt,
