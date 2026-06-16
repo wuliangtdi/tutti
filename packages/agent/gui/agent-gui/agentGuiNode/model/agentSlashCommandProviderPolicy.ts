@@ -66,7 +66,8 @@ const ACP_LOCAL_TOGGLE_SPEED_COMMANDS = new Set(["fast"]);
 const ACP_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   { name: "compact" },
   { name: "status" },
-  { name: "fast" }
+  { name: "fast" },
+  { name: "goal" }
 ];
 const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   ...ACP_FALLBACK_COMMANDS,

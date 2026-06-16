@@ -461,6 +461,54 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("submits goal slash commands to Codex and Claude Code runtimes", () => {
+    for (const provider of ["codex", "claude-code"] as const) {
+      const onDraftContentChange = vi.fn();
+      const onSubmit = vi.fn();
+      const { container, unmount } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          draftContent={createDraft("/goal ship the review picker")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={onDraftContentChange}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
+
+      fireEvent.submit(container.querySelector("form")!);
+
+      expect(onSubmit).toHaveBeenCalledWith([
+        { type: "text", text: "/goal ship the review picker" }
+      ]);
+      expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+      unmount();
+    }
+  });
+
   it("clears the visible draft immediately after a normal prompt submit", () => {
     let draftContent = createDraft("run the tests");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {

@@ -144,6 +144,12 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", title, asString(params["reason"]))}
 	case appServerNotifyThreadCompacted:
 		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
+	case appServerNotifyThreadGoalUpdated:
+		a.applyGoalUpdate(session.AgentSessionID, payloadObject(params["goal"]))
+		return nil
+	case appServerNotifyThreadGoalCleared:
+		a.applyGoalClear(session.AgentSessionID)
+		return nil
 	case appServerNotifyThreadStarted:
 		return nil
 	default:
@@ -474,6 +480,29 @@ func (a *CodexAppServerAdapter) applyAccountUpdate(agentSessionID string, params
 	if planType := asString(params["planType"]); planType != "" {
 		appSession.account["planType"] = planType
 	}
+}
+
+func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[string]any) {
+	if len(goal) == 0 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	appSession.goal = clonePayload(goal)
+}
+
+func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	appSession.goal = nil
 }
 
 func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
@@ -1014,6 +1043,89 @@ func appServerUserInput(content []PromptContentBlock) []map[string]any {
 	return out
 }
 
+func appServerGoalSlashRequest(args string, threadID string) (string, map[string]any) {
+	params := map[string]any{"threadId": threadID}
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return appServerMethodThreadGoalGet, params
+	}
+	if strings.EqualFold(args, "clear") {
+		return appServerMethodThreadGoalClear, params
+	}
+	if status := appServerGoalStatus(args); status != "" {
+		params["status"] = status
+		return appServerMethodThreadGoalSet, params
+	}
+	params["objective"] = args
+	params["status"] = "active"
+	return appServerMethodThreadGoalSet, params
+}
+
+func appServerGoalStatus(value string) string {
+	normalized := strings.ToLower(strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.TrimSpace(value)))
+	switch normalized {
+	case "active":
+		return "active"
+	case "pause", "paused":
+		return "paused"
+	case "block", "blocked":
+		return "blocked"
+	case "usagelimited":
+		return "usageLimited"
+	case "budgetlimited":
+		return "budgetLimited"
+	case "done", "complete", "completed":
+		return "complete"
+	default:
+		return ""
+	}
+}
+
+func appServerGoalFromResult(result json.RawMessage) map[string]any {
+	if len(result) == 0 {
+		return nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(result, &payload); err != nil {
+		return nil
+	}
+	return payloadObject(payload["goal"])
+}
+
+func appServerGoalNoticeEvent(session Session, turnID string, method string, result json.RawMessage) *activityshared.Event {
+	switch method {
+	case appServerMethodThreadGoalClear:
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Goal cleared.", "")
+		return &event
+	case appServerMethodThreadGoalGet:
+		goal := appServerGoalFromResult(result)
+		if len(goal) == 0 {
+			event := appServerSystemNoticeEvent(session, turnID, "system_notice", "No active goal.", "")
+			return &event
+		}
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Current goal: "+asStringRaw(goal["objective"]), appServerGoalStatusDetail(goal))
+		return &event
+	case appServerMethodThreadGoalSet:
+		goal := appServerGoalFromResult(result)
+		detail := appServerGoalStatusDetail(goal)
+		event := appServerSystemNoticeEvent(session, turnID, "system_notice", "Goal updated.", detail)
+		return &event
+	default:
+		return nil
+	}
+}
+
+func appServerGoalStatusDetail(goal map[string]any) string {
+	status := strings.TrimSpace(asString(goal["status"]))
+	if status == "" {
+		return ""
+	}
+	if objective := strings.TrimSpace(asStringRaw(goal["objective"])); objective != "" {
+		return "status: " + status + "\nobjective: " + objective
+	}
+	return "status: " + status
+}
+
 func splitSlashCommand(prompt string) (string, string) {
 	trimmed := strings.TrimSpace(prompt)
 	if !strings.HasPrefix(trimmed, "/") {
@@ -1176,6 +1288,7 @@ func appServerTurnTerminalEvents(
 func codexAppServerCommands() []AgentSessionCommand {
 	return []AgentSessionCommand{
 		{Name: "review", Description: "Review code changes", InputHint: "instructions (optional)"},
+		{Name: "goal", Description: "Show or update the thread goal", InputHint: "objective, status, or clear"},
 		{Name: "compact", Description: "Compact the conversation context"},
 		{Name: "undo", Description: "Drop the last turn from the conversation"},
 	}
@@ -1191,6 +1304,7 @@ func codexAppServerCapabilities(planMode bool) []string {
 		CapabilityTokenUsage,
 		"steer",
 		"review",
+		"goal",
 		"rollback",
 		"fork",
 		"perTurnModelOverride",

@@ -39,8 +39,7 @@ const RESOLVERS = {
 
 test("agent session mention provider enriches meta with avatars, participant, and status", () => {
   const provider = createDesktopAgentSessionMentionProvider({
-    baseProvider:
-      createBaseSessionProvider(),
+    baseProvider: createBaseSessionProvider(),
     ...RESOLVERS
   });
 
@@ -76,8 +75,7 @@ test("agent session mention provider enriches meta with avatars, participant, an
 
 test("agent session mention provider omits status fields when status is absent", () => {
   const provider = createDesktopAgentSessionMentionProvider({
-    baseProvider:
-      createBaseSessionProvider(),
+    baseProvider: createBaseSessionProvider(),
     ...RESOLVERS
   });
 

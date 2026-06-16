@@ -69,6 +69,9 @@ type scriptedAppServerConnection struct {
 	reviewHang                   bool          // respond to review/start but never complete the turn
 	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
+	goal                         map[string]any
+	goalStartsTurn               bool
+	goalCleared                  bool
 	closeOnce                    sync.Once
 }
 
@@ -130,6 +133,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		var message struct {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
+			Params map[string]any  `json:"params"`
 			Result json.RawMessage `json:"result"`
 			Error  json.RawMessage `json:"error"`
 		}
@@ -394,6 +398,64 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.sendJSON(map[string]any{
 				"id":     message.ID,
 				"result": map[string]any{"thread": map[string]any{"id": "codex-thread-1"}},
+			})
+		case appServerMethodThreadGoalSet:
+			c.mu.Lock()
+			previousGoal := clonePayload(c.goal)
+			goalStartsTurn := c.goalStartsTurn
+			goal := map[string]any{
+				"threadId":        "codex-thread-1",
+				"objective":       firstNonEmpty(asString(message.Params["objective"]), asString(previousGoal["objective"])),
+				"status":          firstNonEmpty(asString(message.Params["status"]), "active"),
+				"tokensUsed":      int64(0),
+				"timeUsedSeconds": int64(0),
+				"createdAt":       int64(1750000000),
+				"updatedAt":       int64(1750000001),
+			}
+			if tokenBudget, ok := acpInt64Value(message.Params["tokenBudget"]); ok {
+				goal["tokenBudget"] = tokenBudget
+			}
+			c.goal = clonePayload(goal)
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"goal": goal},
+			})
+			if goalStartsTurn && strings.TrimSpace(asString(message.Params["objective"])) != "" {
+				c.notify(appServerNotifyTurnStarted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn":     map[string]any{"id": "turn-goal", "status": "inProgress", "items": []any{}},
+				})
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-goal", "itemId": "item-goal", "delta": "I'll work on the goal.",
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "codex-thread-1",
+					"turn": map[string]any{
+						"id":     "turn-goal",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "item-goal", "text": "I'll work on the goal."},
+						},
+					},
+				})
+			}
+		case appServerMethodThreadGoalGet:
+			c.mu.Lock()
+			goal := clonePayload(c.goal)
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"goal": goal},
+			})
+		case appServerMethodThreadGoalClear:
+			c.mu.Lock()
+			c.goal = nil
+			c.goalCleared = true
+			c.mu.Unlock()
+			c.sendJSON(map[string]any{
+				"id":     message.ID,
+				"result": map[string]any{"cleared": true},
 			})
 		case appServerMethodReviewStart:
 			c.mu.Lock()
@@ -1386,6 +1448,9 @@ func TestAppServerReasoningDeltaTextPreservesWhitespace(t *testing.T) {
 	if got := appServerReasoningDeltaText(map[string]any{"delta": "Need "}); got != "Need " {
 		t.Fatalf("delta text = %q, want trailing space preserved", got)
 	}
+	if got := appServerReasoningDeltaText(map[string]any{"text": "still "}); got != "still " {
+		t.Fatalf("fallback text = %q, want trailing space preserved", got)
+	}
 	if got := appServerReasoningDeltaText(map[string]any{"text": " more"}); got != " more" {
 		t.Fatalf("text fallback = %q, want leading space preserved", got)
 	}
@@ -1481,6 +1546,129 @@ func TestCodexAppServerAdapterSlashReviewDefaultsToUncommitted(t *testing.T) {
 	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
 	if asString(payloadObject(review["target"])["type"]) != "uncommittedChanges" {
 		t.Fatalf("review target = %#v, want uncommittedChanges", review["target"])
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal ship the review picker",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/set params = %#v", goalSet)
+	}
+	if asString(goalSet["objective"]) != "ship the review picker" {
+		t.Fatalf("goal objective = %#v", goalSet)
+	}
+	if asString(goalSet["status"]) != "active" {
+		t.Fatalf("goal status = %#v, want active", goalSet)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
+		t.Fatalf("turn/start should not run for /goal")
+	}
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+		if event.Payload.Metadata["kind"] == "agent_system_notice" {
+			t.Fatalf("goal objective should stream app-server turn instead of local-only notice: %#v", event)
+		}
+	}
+	if assistantText != "I'll work on the goal." {
+		t.Fatalf("goal assistant message = %q", assistantText)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("goal turn completed events = %d, want 1", len(completed))
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalReadsCurrentGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":        "codex-thread-1",
+		"objective":       "finish tests",
+		"status":          "active",
+		"tokensUsed":      int64(12),
+		"timeUsedSeconds": int64(3),
+		"createdAt":       int64(1750000000),
+		"updatedAt":       int64(1750000001),
+	}
+	transport.conn.mu.Unlock()
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(requests) != 0 {
+		t.Fatalf("turn/start should not run for bare /goal")
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalObjectiveMayStartWithStatusWord(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.goalStartsTurn = true
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal complete support for goal commands",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["objective"]) != "complete support for goal commands" {
+		t.Fatalf("goal objective = %#v", goalSet)
+	}
+	if asString(goalSet["status"]) != "active" {
+		t.Fatalf("goal status = %#v, want active", goalSet)
+	}
+}
+
+func TestCodexAppServerAdapterSlashGoalStatusAndClear(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal blocked",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec blocked: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["status"]) != "blocked" {
+		t.Fatalf("goal status params = %#v, want blocked", goalSet)
+	}
+	if _, hasObjective := goalSet["objective"]; hasObjective {
+		t.Fatalf("status-only goal update should omit objective: %#v", goalSet)
+	}
+
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal clear",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec clear: %v", err)
+	}
+	goalClear := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalClear)
+	if asString(goalClear["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/clear params = %#v", goalClear)
+	}
+	transport.conn.mu.Lock()
+	cleared := transport.conn.goalCleared
+	transport.conn.mu.Unlock()
+	if !cleared {
+		t.Fatalf("scripted app-server goal was not cleared")
 	}
 }
 
@@ -1637,7 +1825,7 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 	commands, _ := state.RuntimeContext["commands"].([]string)
-	if !containsString(commands, "review") || !containsString(commands, "compact") || !containsString(commands, "undo") {
+	if !containsString(commands, "review") || !containsString(commands, "compact") || !containsString(commands, "undo") || !containsString(commands, "goal") {
 		t.Fatalf("commands = %#v", commands)
 	}
 }
@@ -1651,7 +1839,7 @@ func TestCodexAppServerAdapterSessionCommandSnapshot(t *testing.T) {
 		t.Fatalf("SessionCommandSnapshot not available")
 	}
 	names := agentSessionCommandNames(snapshot.Commands)
-	for _, want := range []string{"review", "compact", "undo"} {
+	for _, want := range []string{"review", "compact", "undo", "goal"} {
 		if !containsString(names, want) {
 			t.Fatalf("commands = %#v, want %q", names, want)
 		}
