@@ -11,11 +11,7 @@ import {
   FolderFailedFilledIcon,
   KeyboardFilledIcon
 } from "@tutti-os/ui-system/icons";
-import {
-  Spinner,
-  UnderlineTabs,
-  menuItemClassName
-} from "@tutti-os/ui-system/components";
+import { Spinner, UnderlineTabs } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
 import { MentionPaletteScrollbar } from "./mentionPaletteScrollbar.tsx";
@@ -79,14 +75,12 @@ const paletteStyles = {
   scrollShell: "relative min-h-0 overflow-hidden",
   scrollBody:
     "h-full min-h-0 overflow-y-auto overscroll-contain px-1 pb-1 pt-2",
-  rowButton: cn(
-    menuItemClassName,
-    "nodrag min-h-9 w-full min-w-0 justify-start overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left hover:bg-[var(--transparency-block)] focus:bg-[var(--transparency-block)] data-[highlighted]:bg-[var(--transparency-block)] active:bg-[var(--transparency-active)]"
-  ),
+  rowButton:
+    "nodrag relative flex min-h-9 w-full min-w-0 cursor-pointer select-none items-center gap-1.5 overflow-hidden rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-[13px] text-[var(--text-primary)] outline-hidden transition-colors duration-200 [-webkit-app-region:no-drag] active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:min-w-0 *:[span]:last:flex-1 *:[span]:last:items-center *:[span]:last:gap-2",
   categoryButton:
     "nodrag flex min-h-[72px] w-full items-center gap-3.5 rounded-[6px] border-0 bg-transparent px-2.5 py-2.5 text-left text-[var(--text-primary)] transition-[background-color,color] hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)]",
   expandButton:
-    "nodrag flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition hover:bg-[var(--transparency-block)] focus-visible:bg-[var(--transparency-block)] focus-visible:outline-none active:bg-[var(--transparency-active)]"
+    "nodrag flex w-full items-center justify-center rounded-[6px] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition focus-visible:outline-none active:bg-[var(--transparency-active)] data-[highlighted]:bg-[var(--transparency-block)] data-[highlighted]:text-[var(--text-primary)]"
 } as const;
 
 const MENTION_PALETTE_LOADING_MIN_VISIBLE_MS = 320;
@@ -392,6 +386,7 @@ function MentionPaletteGroups<TItem>({
                     )}
                     role="option"
                     aria-selected={isHighlighted}
+                    data-highlighted={isHighlighted ? "" : undefined}
                     onMouseEnter={() => onHighlightChange(entryKey)}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onSelectItem(item, group)}
@@ -414,6 +409,9 @@ function MentionPaletteGroups<TItem>({
                     `expand:${group.id}` === highlightedKey &&
                       "bg-[var(--transparency-block)] text-[var(--text-primary)]"
                   )}
+                  data-highlighted={
+                    `expand:${group.id}` === highlightedKey ? "" : undefined
+                  }
                   onMouseEnter={() => onHighlightChange(`expand:${group.id}`)}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => onExpandGroup(group.id)}

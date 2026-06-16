@@ -40,6 +40,18 @@ import {
   resolveRichTextAtText,
   type RichTextAtTextOverrides
 } from "./richTextAtText.ts";
+import {
+  createRichTextAtEditorMatchEntries,
+  createRichTextAtEditorMatchEntry,
+  findRichTextAtEditorEntryKeyForMatch,
+  findRichTextAtEditorNavigationEntry,
+  haveSameRichTextAtEditorNavigationEntries,
+  isSameRichTextAtEditorMatch,
+  moveRichTextAtEditorActiveEntryKey,
+  resolveRichTextAtEditorActiveEntryKey,
+  richTextAtEditorMatchEntryKey,
+  type RichTextAtEditorNavigationEntry
+} from "./richTextAtEditorNavigation.ts";
 import type { RichTextI18nRuntime } from "../i18n/richTextI18n.ts";
 import { MentionReference } from "../extensions/mentionReference.ts";
 import { WorkspaceReference } from "../extensions/workspaceReference.ts";
@@ -77,13 +89,19 @@ type RichTextEditorAtQueryState = {
 };
 
 export interface RichTextAtEditorPanelContext {
+  activeEntryKey: string | null;
   activeIndex: number;
   activeMatch: RichTextAtQueryMatch | null;
   isLoading: boolean;
   matches: readonly RichTextAtQueryMatch[];
   maxResults: number;
+  navigationEntries: readonly RichTextAtEditorNavigationEntry[];
+  onActiveEntryKeyChange: (key: string | null) => void;
   onActiveIndexChange: (index: number) => void;
   onActiveMatchChange: (match: RichTextAtQueryMatch | null) => void;
+  onNavigationEntriesChange: (
+    entries: readonly RichTextAtEditorNavigationEntry[] | null
+  ) => void;
   onNavigationMatchesChange: (
     matches: readonly RichTextAtQueryMatch[] | null
   ) => void;
@@ -132,13 +150,11 @@ export function RichTextAtEditor({
   const [isFocused, setIsFocused] = useState(false);
   const [query, setQuery] = useState<RichTextEditorAtQueryState | null>(null);
   const [matches, setMatches] = useState<readonly RichTextAtQueryMatch[]>([]);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [navigationMatches, setNavigationMatches] = useState<
-    readonly RichTextAtQueryMatch[] | null
+  const [activeEntryKey, setActiveEntryKey] = useState<string | null>(null);
+  const [panelNavigationEntries, setPanelNavigationEntries] = useState<
+    readonly RichTextAtEditorNavigationEntry[] | null
   >(null);
-  const [activeNavigationMatch, setActiveNavigationMatch] =
-    useState<RichTextAtQueryMatch | null>(null);
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(
     null
   );
@@ -171,8 +187,9 @@ export function RichTextAtEditor({
       window.setTimeout(() => {
         setIsFocused(false);
         setMatches([]);
-        setActiveIndex(0);
         setIsLoading(false);
+        setActiveEntryKey(null);
+        setPanelNavigationEntries(null);
         setMenuPoint(null);
       }, 100);
     },
@@ -267,19 +284,17 @@ export function RichTextAtEditor({
   useEffect(() => {
     if (!editor || !query || !isFocused || providers.length === 0) {
       setMatches([]);
-      setActiveIndex(0);
       setIsLoading(false);
-      setNavigationMatches(null);
-      setActiveNavigationMatch(null);
+      setActiveEntryKey(null);
+      setPanelNavigationEntries(null);
       return;
     }
 
     if (query.keyword.length < minQueryLength) {
       setMatches([]);
-      setActiveIndex(0);
       setIsLoading(false);
-      setNavigationMatches(null);
-      setActiveNavigationMatch(null);
+      setActiveEntryKey(null);
+      setPanelNavigationEntries(null);
       return;
     }
 
@@ -297,12 +312,12 @@ export function RichTextAtEditor({
           return;
         }
         setMatches(nextMatches);
-        setNavigationMatches(null);
-        setActiveNavigationMatch(null);
-        setActiveIndex((current) =>
-          nextMatches.length === 0
-            ? 0
-            : Math.max(0, Math.min(current, nextMatches.length - 1))
+        setPanelNavigationEntries(null);
+        setActiveEntryKey((current) =>
+          resolveRichTextAtEditorActiveEntryKey({
+            activeEntryKey: current,
+            entries: createRichTextAtEditorMatchEntries(nextMatches)
+          })
         );
       })
       .finally(() => {
@@ -354,94 +369,148 @@ export function RichTextAtEditor({
   const isEmpty =
     !editor ||
     serializeRichTextDocumentToContent(editor.getJSON()).trim().length === 0;
-  const updateNavigationMatches = useCallback(
-    (nextMatches: readonly RichTextAtQueryMatch[] | null) => {
-      setNavigationMatches((current) =>
-        haveSameRichTextAtMatches(current, nextMatches) ? current : nextMatches
-      );
-      setActiveNavigationMatch((current) => {
-        if (!nextMatches || !current) {
-          return null;
-        }
-        return nextMatches.some((match) =>
-          isSameRichTextAtMatch(match, current)
-        )
+  const defaultNavigationEntries = useMemo(
+    () => createRichTextAtEditorMatchEntries(matches),
+    [matches]
+  );
+  const navigationEntries = panelNavigationEntries ?? defaultNavigationEntries;
+  const resolvedActiveEntryKey = resolveRichTextAtEditorActiveEntryKey({
+    activeEntryKey,
+    entries: navigationEntries
+  });
+
+  useEffect(() => {
+    if (activeEntryKey !== resolvedActiveEntryKey) {
+      setActiveEntryKey(resolvedActiveEntryKey);
+    }
+  }, [activeEntryKey, resolvedActiveEntryKey]);
+
+  const updateNavigationEntries = useCallback(
+    (nextEntries: readonly RichTextAtEditorNavigationEntry[] | null) => {
+      setPanelNavigationEntries((current) =>
+        haveSameRichTextAtEditorNavigationEntries(current, nextEntries)
           ? current
-          : null;
-      });
+          : nextEntries
+      );
     },
     []
   );
-  const activeMatch = activeNavigationMatch ?? matches[activeIndex] ?? null;
+  const updateNavigationMatches = useCallback(
+    (nextMatches: readonly RichTextAtQueryMatch[] | null) => {
+      updateNavigationEntries(
+        nextMatches
+          ? nextMatches.map((match) => createRichTextAtEditorMatchEntry(match))
+          : null
+      );
+    },
+    [updateNavigationEntries]
+  );
+  const activeEntry = findRichTextAtEditorNavigationEntry(
+    navigationEntries,
+    resolvedActiveEntryKey
+  );
+  const activeMatch = activeEntry?.type === "match" ? activeEntry.match : null;
+  const activeIndex = activeMatch
+    ? Math.max(
+        0,
+        matches.findIndex((match) =>
+          isSameRichTextAtEditorMatch(match, activeMatch)
+        )
+      )
+    : 0;
   const handleActiveIndexChange = useCallback(
     (index: number) => {
-      setActiveIndex(index);
-      setActiveNavigationMatch(matches[index] ?? null);
+      const match = matches[index];
+      setActiveEntryKey(
+        match
+          ? findRichTextAtEditorEntryKeyForMatch(navigationEntries, match)
+          : null
+      );
     },
-    [matches]
+    [matches, navigationEntries]
+  );
+  const handleActiveMatchChange = useCallback(
+    (match: RichTextAtQueryMatch | null) => {
+      setActiveEntryKey(
+        match
+          ? findRichTextAtEditorEntryKeyForMatch(navigationEntries, match)
+          : null
+      );
+    },
+    [navigationEntries]
   );
 
   const moveSelection = useCallback(
     (delta: 1 | -1) => {
-      const selectableMatches =
-        navigationMatches && navigationMatches.length > 0
-          ? navigationMatches
-          : matches;
-      if (selectableMatches.length === 0) {
-        return;
-      }
-      const currentMatch = activeNavigationMatch ?? matches[activeIndex];
-      const currentSelectableIndex = currentMatch
-        ? selectableMatches.findIndex((match) =>
-            isSameRichTextAtMatch(match, currentMatch)
+      setActiveEntryKey((current) =>
+        moveRichTextAtEditorActiveEntryKey({
+          activeEntryKey: findRichTextAtEditorNavigationEntry(
+            navigationEntries,
+            current
           )
-        : -1;
-      const selectedIndex =
-        currentSelectableIndex >= 0 ? currentSelectableIndex : 0;
-      const match =
-        selectableMatches[
-          (selectedIndex + delta + selectableMatches.length) %
-            selectableMatches.length
-        ];
-      if (!match) {
-        return;
-      }
-      const nextActiveIndex = matches.findIndex((candidate) =>
-        isSameRichTextAtMatch(candidate, match)
+            ? current
+            : resolvedActiveEntryKey,
+          delta,
+          entries: navigationEntries
+        })
       );
-      if (nextActiveIndex >= 0) {
-        setActiveIndex(nextActiveIndex);
-      }
-      setActiveNavigationMatch(match);
     },
-    [activeIndex, activeNavigationMatch, matches, navigationMatches]
+    [navigationEntries, resolvedActiveEntryKey]
   );
 
-  const applyMatch = (match: RichTextAtQueryMatch) => {
-    if (!editor || !query) {
-      return;
-    }
+  const applyMatch = useCallback(
+    (match: RichTextAtQueryMatch) => {
+      if (!editor || !query) {
+        return;
+      }
 
-    const content = renderInsertResultAsEditorContent(
-      match.providerId,
-      match.insertResult
-    );
-    if (!content) {
-      return;
-    }
+      const content = renderInsertResultAsEditorContent(
+        match.providerId,
+        match.insertResult
+      );
+      if (!content) {
+        return;
+      }
 
-    editor
-      .chain()
-      .focus()
-      .insertContentAt({ from: query.from, to: query.to }, content)
-      .run();
+      editor
+        .chain()
+        .focus()
+        .insertContentAt({ from: query.from, to: query.to }, content)
+        .run();
+      setMatches([]);
+      setPanelNavigationEntries(null);
+      setActiveEntryKey(null);
+      setIsLoading(false);
+      setMenuPoint(null);
+    },
+    [editor, query]
+  );
+
+  const closeMenu = useCallback(() => {
     setMatches([]);
-    setNavigationMatches(null);
-    setActiveNavigationMatch(null);
-    setActiveIndex(0);
+    setPanelNavigationEntries(null);
+    setActiveEntryKey(null);
     setIsLoading(false);
     setMenuPoint(null);
-  };
+  }, []);
+
+  const commitActiveEntry = useCallback(() => {
+    const entry =
+      findRichTextAtEditorNavigationEntry(
+        navigationEntries,
+        resolvedActiveEntryKey
+      ) ??
+      navigationEntries[0] ??
+      null;
+    if (!entry) {
+      return;
+    }
+    if (entry.type === "action") {
+      entry.onSelect();
+      return;
+    }
+    applyMatch(entry.match);
+  }, [resolvedActiveEntryKey, navigationEntries, applyMatch]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (isRichTextImeComposing(event)) {
@@ -460,68 +529,30 @@ export function RichTextAtEditor({
       return;
     }
 
-    const selectableMatches =
-      navigationMatches && navigationMatches.length > 0
-        ? navigationMatches
-        : matches;
-    if (selectableMatches.length === 0) {
-      return;
-    }
-    const currentMatch = activeNavigationMatch ?? matches[activeIndex];
-    const currentSelectableIndex = currentMatch
-      ? selectableMatches.findIndex((match) =>
-          isSameRichTextAtMatch(match, currentMatch)
-        )
-      : -1;
-    const selectedIndex =
-      currentSelectableIndex >= 0 ? currentSelectableIndex : 0;
-    const activateSelectableIndex = (nextSelectableIndex: number) => {
-      const match = selectableMatches[nextSelectableIndex];
-      if (!match) {
-        return;
-      }
-      const nextActiveIndex = matches.findIndex((candidate) =>
-        isSameRichTextAtMatch(candidate, match)
-      );
-      if (nextActiveIndex >= 0) {
-        setActiveIndex(nextActiveIndex);
-      }
-      setActiveNavigationMatch(match);
-    };
-
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      activateSelectableIndex((selectedIndex + 1) % selectableMatches.length);
+      moveSelection(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      activateSelectableIndex(
-        (selectedIndex - 1 + selectableMatches.length) %
-          selectableMatches.length
-      );
+      moveSelection(-1);
       return;
     }
 
     if (event.key === "Enter") {
-      const match = selectableMatches[selectedIndex];
-      if (!match) {
+      if (navigationEntries.length === 0) {
         return;
       }
       event.preventDefault();
-      applyMatch(match);
+      commitActiveEntry();
       return;
     }
 
     if (event.key === "Escape") {
       event.preventDefault();
-      setMatches([]);
-      setNavigationMatches(null);
-      setActiveNavigationMatch(null);
-      setActiveIndex(0);
-      setIsLoading(false);
-      setMenuPoint(null);
+      closeMenu();
     }
   };
 
@@ -564,13 +595,17 @@ export function RichTextAtEditor({
         >
           {renderPanel ? (
             renderPanel({
+              activeEntryKey: resolvedActiveEntryKey,
               activeIndex,
               activeMatch,
               isLoading,
               matches,
               maxResults,
+              navigationEntries,
+              onActiveEntryKeyChange: setActiveEntryKey,
               onActiveIndexChange: handleActiveIndexChange,
-              onActiveMatchChange: setActiveNavigationMatch,
+              onActiveMatchChange: handleActiveMatchChange,
+              onNavigationEntriesChange: updateNavigationEntries,
               onNavigationMatchesChange: updateNavigationMatches,
               onMoveSelection: moveSelection,
               onSelect: applyMatch,
@@ -585,32 +620,37 @@ export function RichTextAtEditor({
             <div className="flex max-h-64 min-h-0 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto p-1">
                 {matches.length > 0 ? (
-                  matches.map((match, index) => (
-                    <button
-                      key={`${match.providerId}:${match.key}`}
-                      aria-selected={index === activeIndex}
-                      className={cn(
-                        "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
-                        index === activeIndex
-                          ? "bg-transparency-block text-[var(--text-primary)]"
-                          : "text-[var(--text-primary)] hover:bg-transparency-block"
-                      )}
-                      type="button"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        applyMatch(match);
-                      }}
-                    >
-                      <div className="text-[13px] leading-5 font-medium">
-                        {match.label}
-                      </div>
-                      {match.subtitle ? (
-                        <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
-                          {match.subtitle}
+                  matches.map((match) => {
+                    const entryKey = richTextAtEditorMatchEntryKey(match);
+                    const isActive = resolvedActiveEntryKey === entryKey;
+                    return (
+                      <button
+                        key={entryKey}
+                        aria-selected={isActive}
+                        className={cn(
+                          "flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left outline-none transition-colors",
+                          isActive
+                            ? "bg-transparency-block text-[var(--text-primary)]"
+                            : "text-[var(--text-primary)] hover:bg-transparency-block"
+                        )}
+                        type="button"
+                        onMouseEnter={() => setActiveEntryKey(entryKey)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          applyMatch(match);
+                        }}
+                      >
+                        <div className="text-[13px] leading-5 font-medium">
+                          {match.label}
                         </div>
-                      ) : null}
-                    </button>
-                  ))
+                        {match.subtitle ? (
+                          <div className="text-[11px] leading-4 text-[var(--text-secondary)]">
+                            {match.subtitle}
+                          </div>
+                        ) : null}
+                      </button>
+                    );
+                  })
                 ) : (
                   <div className="px-3 py-2 text-[11px] leading-4 text-[var(--text-secondary)]">
                     {isLoading ? text.loadingLabel : text.noMatchesLabel}
@@ -697,27 +737,4 @@ function renderInsertResultAsEditorContent(
     default:
       return null;
   }
-}
-
-function isSameRichTextAtMatch(
-  left: RichTextAtQueryMatch,
-  right: RichTextAtQueryMatch
-): boolean {
-  return left.providerId === right.providerId && left.key === right.key;
-}
-
-function haveSameRichTextAtMatches(
-  left: readonly RichTextAtQueryMatch[] | null,
-  right: readonly RichTextAtQueryMatch[] | null
-): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (!left || !right || left.length !== right.length) {
-    return false;
-  }
-  return left.every((match, index) => {
-    const rightMatch = right[index];
-    return rightMatch ? isSameRichTextAtMatch(match, rightMatch) : false;
-  });
 }

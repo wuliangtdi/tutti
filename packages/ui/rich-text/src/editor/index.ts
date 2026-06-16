@@ -3,6 +3,11 @@ export {
   type RichTextAtEditorPanelContext,
   type RichTextAtEditorProps
 } from "./RichTextAtEditor.tsx";
+export type {
+  RichTextAtEditorNavigationActionEntry,
+  RichTextAtEditorNavigationEntry,
+  RichTextAtEditorNavigationMatchEntry
+} from "./richTextAtEditorNavigation.ts";
 export {
   RichTextAtTextarea,
   type RichTextAtTextareaProps

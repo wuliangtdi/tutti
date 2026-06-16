@@ -259,10 +259,10 @@ export function AgentFileMentionPalette({
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
       renderItem={(item) =>
-        renderMentionRow(
-          agentMentionItemToRowItem(item),
-          AGENT_MENTION_ROW_CLASS_NAMES
-        )
+        renderMentionRow(agentMentionItemToRowItem(item), {
+          classNames: AGENT_MENTION_ROW_CLASS_NAMES,
+          dataAttributeMode: "agent"
+        })
       }
       labels={{
         loading: loadingLabel,

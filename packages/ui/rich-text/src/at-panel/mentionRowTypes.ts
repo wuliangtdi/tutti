@@ -28,9 +28,9 @@ export interface MentionRowFileItem {
   visualKind: MentionFileVisualKind;
   thumbnailUrl?: string | null;
   childCountLabel?: string | null;
-  /** Optional file entry kind, surfaced as `data-agent-file-entry-kind`. */
+  /** Optional file entry kind surfaced as a row data attribute. */
   entryKind?: string | null;
-  /** Optional navigation marker, surfaced as `data-agent-mention-navigation`. */
+  /** Optional navigation marker surfaced as a row data attribute. */
   mentionNavigation?: string | null;
 }
 
@@ -67,8 +67,8 @@ export interface MentionRowIssueItem {
 /**
  * The kind-discriminated view-model the shared {@link MentionRow} renders.
  * Carries ONLY display-ready fields — no surface types, no i18n calls, no asset
- * imports. Every surface (agent composer, issue-manager) maps its own items
- * onto this so the rendered row is byte-identical across surfaces.
+ * imports. Every surface maps its own items onto this so the rendered row stays
+ * consistent across shared mention surfaces.
  */
 export type MentionRowItem =
   | MentionRowFileItem

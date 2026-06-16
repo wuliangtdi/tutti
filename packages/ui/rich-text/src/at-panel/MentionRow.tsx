@@ -12,6 +12,11 @@ import {
   type IconProps
 } from "@tutti-os/ui-system";
 import type { MentionFileVisualKind } from "./mentionFileVisualKind.ts";
+import {
+  mentionRowDataAttribute,
+  mentionRowRootDataAttributes,
+  type MentionRowDataAttributeMode
+} from "./mentionRowDataAttributes.ts";
 import type {
   MentionRowFileItem,
   MentionRowItem,
@@ -67,6 +72,16 @@ export interface MentionRowClassNames {
   avatarImgUserPlaceholder?: string;
 }
 
+export interface MentionRowRenderOptions {
+  classNames?: MentionRowClassNames;
+  dataAttributeMode?: MentionRowDataAttributeMode;
+}
+
+interface ResolvedMentionRowRenderOptions {
+  classNames?: MentionRowClassNames;
+  dataAttributeMode: MentionRowDataAttributeMode;
+}
+
 const DEFAULT_MENTION_ROW_CLASS_NAMES = {
   fileIcon: "rich-text-at-mention-file-icon",
   fileThumb: "rich-text-at-mention-file-thumb",
@@ -88,36 +103,74 @@ function resolveMentionRowClassNames(
   };
 }
 
+function resolveMentionRowRenderOptions(
+  options?: MentionRowClassNames | MentionRowRenderOptions
+): ResolvedMentionRowRenderOptions {
+  if (isMentionRowRenderOptions(options)) {
+    return {
+      classNames: options.classNames,
+      dataAttributeMode: options.dataAttributeMode ?? "shared"
+    };
+  }
+  return {
+    classNames: options,
+    dataAttributeMode: "shared"
+  };
+}
+
+function isMentionRowRenderOptions(
+  options: MentionRowClassNames | MentionRowRenderOptions | undefined
+): options is MentionRowRenderOptions {
+  return (
+    options !== undefined &&
+    ("classNames" in options || "dataAttributeMode" in options)
+  );
+}
+
 /**
  * Render the inner content of a single `@`-mention palette row from a
  * fully-resolved {@link MentionRowItem}. The surrounding option button / active
  * state is provided by the shared `MentionPalette` shell; this renders only the
- * row body. The markup is reproduced verbatim from the agent composer so the
- * DOM/classes stay byte-identical across every mention surface.
+ * row body.
  *
  * Pass {@link classNames} to override the package-owned structural class hooks
  * (e.g. so the agent composer keeps emitting its own stylesheet's class names).
  */
 export function renderMentionRow(
   item: MentionRowItem,
-  classNames?: MentionRowClassNames
+  options?: MentionRowClassNames | MentionRowRenderOptions
 ): React.ReactNode {
+  const { classNames, dataAttributeMode } =
+    resolveMentionRowRenderOptions(options);
   const resolved = resolveMentionRowClassNames(classNames);
   if (item.kind === "file") {
-    return <MentionFileRow item={item} classNames={resolved} />;
+    return (
+      <MentionFileRow
+        item={item}
+        classNames={resolved}
+        dataAttributeMode={dataAttributeMode}
+      />
+    );
   }
 
   if (item.kind === "session") {
     return (
       <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <MentionSessionAvatarStack item={item} classNames={resolved} />
+          <MentionSessionAvatarStack
+            item={item}
+            classNames={resolved}
+            dataAttributeMode={dataAttributeMode}
+          />
           <span className="min-w-0 truncate text-[13px] font-semibold leading-[16px] text-[var(--text-primary)]">
             <MentionSessionTitle item={item} />
           </span>
         </span>
         {item.statusTag ? (
-          <MentionStatusBadge statusTag={item.statusTag} />
+          <MentionStatusBadge
+            statusTag={item.statusTag}
+            dataAttributeMode={dataAttributeMode}
+          />
         ) : null}
       </span>
     );
@@ -129,6 +182,7 @@ export function renderMentionRow(
         <MentionWorkspaceAppIcon
           iconUrl={item.iconUrl}
           kindIconClassName={resolved.kindIcon}
+          dataAttributeMode={dataAttributeMode}
         />
         <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden">
           <span className="min-w-0 max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
@@ -161,7 +215,10 @@ export function renderMentionRow(
           {item.title}
         </span>
         {item.statusTag ? (
-          <MentionStatusBadge statusTag={item.statusTag} />
+          <MentionStatusBadge
+            statusTag={item.statusTag}
+            dataAttributeMode={dataAttributeMode}
+          />
         ) : null}
       </span>
       {item.creatorName ? (
@@ -175,25 +232,42 @@ export function renderMentionRow(
 
 function MentionFileRow({
   item,
-  classNames
+  classNames,
+  dataAttributeMode
 }: {
   item: MentionRowFileItem;
   classNames: Required<MentionRowClassNames>;
+  dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
   return (
     <span
       className="flex min-w-0 items-center gap-2"
-      data-agent-file-mention="true"
-      data-agent-mention-kind="file"
+      {...mentionRowRootDataAttributes(dataAttributeMode, "file")}
       {...(item.entryKind
-        ? { "data-agent-file-entry-kind": item.entryKind }
+        ? mentionRowDataAttribute(
+            dataAttributeMode,
+            "fileEntryKind",
+            item.entryKind
+          )
         : {})}
-      data-agent-file-visual-kind={item.visualKind}
+      {...mentionRowDataAttribute(
+        dataAttributeMode,
+        "fileVisualKind",
+        item.visualKind
+      )}
       {...(item.mentionNavigation
-        ? { "data-agent-mention-navigation": item.mentionNavigation }
+        ? mentionRowDataAttribute(
+            dataAttributeMode,
+            "navigation",
+            item.mentionNavigation
+          )
         : {})}
     >
-      <MentionFileIcon item={item} classNames={classNames} />
+      <MentionFileIcon
+        item={item}
+        classNames={classNames}
+        dataAttributeMode={dataAttributeMode}
+      />
       <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
         <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
           {item.name}
@@ -210,10 +284,12 @@ function MentionFileRow({
 
 function MentionFileIcon({
   item,
-  classNames
+  classNames,
+  dataAttributeMode
 }: {
   item: MentionRowFileItem;
   classNames: Required<MentionRowClassNames>;
+  dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
   const thumbnailUrl =
     item.visualKind === "image" ? item.thumbnailUrl?.trim() || "" : "";
@@ -221,7 +297,7 @@ function MentionFileIcon({
     return (
       <span
         className={classNames.fileThumb}
-        data-agent-mention-file-thumb="true"
+        {...mentionRowDataAttribute(dataAttributeMode, "fileThumb", "true")}
         aria-hidden="true"
       >
         <img
@@ -250,7 +326,11 @@ function MentionFileIcon({
           classNames.fileIcon,
           "grid h-4 w-4 shrink-0 place-items-center text-[var(--text-secondary)]"
         )}
-        data-agent-file-visual-kind={item.visualKind}
+        {...mentionRowDataAttribute(
+          dataAttributeMode,
+          "fileVisualKind",
+          item.visualKind
+        )}
         aria-hidden="true"
       >
         <Icon size={16} />
@@ -261,7 +341,11 @@ function MentionFileIcon({
   return (
     <span
       className={classNames.fileIcon}
-      data-agent-file-visual-kind={item.visualKind}
+      {...mentionRowDataAttribute(
+        dataAttributeMode,
+        "fileVisualKind",
+        item.visualKind
+      )}
       aria-hidden="true"
     />
   );
@@ -269,16 +353,18 @@ function MentionFileIcon({
 
 function MentionWorkspaceAppIcon({
   iconUrl,
-  kindIconClassName
+  kindIconClassName,
+  dataAttributeMode
 }: {
   iconUrl?: string | null;
   kindIconClassName: string;
+  dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
   const normalizedIconUrl = iconUrl?.trim() ?? "";
   return (
     <span
       className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-[5px] bg-block text-[var(--text-secondary)]"
-      data-agent-mention-app-icon="true"
+      {...mentionRowDataAttribute(dataAttributeMode, "appIcon", "true")}
       data-workspace-app-icon="true"
       aria-hidden="true"
     >
@@ -300,10 +386,12 @@ function MentionWorkspaceAppIcon({
 
 function MentionSessionAvatarStack({
   item,
-  classNames
+  classNames,
+  dataAttributeMode
 }: {
   item: MentionRowSessionItem;
   classNames: Required<MentionRowClassNames>;
+  dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
   const userAvatarUrl = item.userAvatarUrl?.trim() ?? "";
   const placeholderUrl = item.userAvatarPlaceholderUrl;
@@ -315,7 +403,7 @@ function MentionSessionAvatarStack({
     >
       <span
         className="absolute left-0 top-0 z-0 grid h-5 w-5 overflow-hidden rounded-full bg-block"
-        data-agent-mention-user-avatar="true"
+        {...mentionRowDataAttribute(dataAttributeMode, "userAvatar", "true")}
       >
         <img
           src={userImageUrl}
@@ -342,7 +430,7 @@ function MentionSessionAvatarStack({
       </span>
       <span
         className="absolute left-4 top-0 z-10 grid h-5 w-5 overflow-hidden rounded-full bg-block"
-        data-agent-mention-agent-avatar="true"
+        {...mentionRowDataAttribute(dataAttributeMode, "agentAvatar", "true")}
       >
         <img
           src={item.agentIconUrl}
@@ -374,9 +462,11 @@ function MentionSessionTitle({
 }
 
 function MentionStatusBadge({
-  statusTag
+  statusTag,
+  dataAttributeMode
 }: {
   statusTag: MentionRowStatusTag;
+  dataAttributeMode: MentionRowDataAttributeMode;
 }): React.JSX.Element {
   if (statusTag.variant === "issue") {
     return (
@@ -389,7 +479,7 @@ function MentionStatusBadge({
             variant: "issue"
           })
         )}
-        data-agent-mention-status-tag="true"
+        {...mentionRowDataAttribute(dataAttributeMode, "statusTag", "true")}
         {...(statusTag.dataStatus
           ? { "data-status": statusTag.dataStatus }
           : {})}
@@ -409,7 +499,7 @@ function MentionStatusBadge({
           variant: "activity"
         })
       )}
-      data-agent-mention-status-tag="true"
+      {...mentionRowDataAttribute(dataAttributeMode, "statusTag", "true")}
       {...(statusTag.dataStatus ? { "data-status": statusTag.dataStatus } : {})}
       data-tone={statusTag.tone}
       title={statusTag.label}
