@@ -1209,6 +1209,94 @@ func TestCodexAppServerAdapterSlashReviewDefaultsToUncommitted(t *testing.T) {
 	}
 }
 
+func TestAppServerReviewTargetParsing(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		args string
+		want map[string]any
+	}{
+		{name: "empty", args: "", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "blank", args: "   ", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "base branch", args: "base:main", want: map[string]any{"type": "baseBranch", "branch": "main"}},
+		{name: "base branch slashes", args: "base:feature/x", want: map[string]any{"type": "baseBranch", "branch": "feature/x"}},
+		{name: "commit", args: "commit:abc123", want: map[string]any{"type": "commit", "sha": "abc123"}},
+		{name: "custom keyword", args: "custom:check the auth flow", want: map[string]any{"type": "custom", "instructions": "check the auth flow"}},
+		{name: "free text stays custom", args: "check the auth flow", want: map[string]any{"type": "custom", "instructions": "check the auth flow"}},
+		// Collision guard: free text starting with a keyword but no colon must
+		// not be parsed as a structured target.
+		{name: "base no colon", args: "base our error handling", want: map[string]any{"type": "custom", "instructions": "base our error handling"}},
+		// Unknown keyword before a colon falls back to a full custom prompt.
+		{name: "unknown keyword colon", args: "fix the bug: it crashes", want: map[string]any{"type": "custom", "instructions": "fix the bug: it crashes"}},
+		// Empty payload after a keyword falls back to custom.
+		{name: "base empty", args: "base:", want: map[string]any{"type": "custom", "instructions": "base:"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := appServerReviewTarget(tc.args)
+			if len(got) != len(tc.want) {
+				t.Fatalf("target = %#v, want %#v", got, tc.want)
+			}
+			for key, want := range tc.want {
+				if asString(got[key]) != want {
+					t.Fatalf("target[%q] = %v, want %v", key, got[key], want)
+				}
+			}
+		})
+	}
+}
+
+func TestCodexAppServerAdapterReviewBannersEmitOnce(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-review", RoomID: "room-review"}
+
+	countNotice := func(itemType, wantTitle string) int {
+		// Real app-server streams both item/started and item/completed for
+		// review/compaction items; the banner must appear exactly once.
+		normalizer := newACPTurnNormalizer()
+		item := map[string]any{"type": itemType, "id": "item-1"}
+		events := adapter.appServerItemEvents(session, "turn-review", item, false, normalizer)
+		events = append(events, adapter.appServerItemEvents(session, "turn-review", item, true, normalizer)...)
+		count := 0
+		for _, event := range events {
+			if event.Payload.Content == wantTitle {
+				count++
+			}
+		}
+		return count
+	}
+
+	if got := countNotice("enteredReviewMode", "Code review started."); got != 1 {
+		t.Fatalf("entered review banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("exitedReviewMode", "Code review finished."); got != 1 {
+		t.Fatalf("exited review banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("contextCompaction", "Context compacted."); got != 1 {
+		t.Fatalf("context compaction banners = %d, want exactly 1", got)
+	}
+}
+
+func TestCodexAppServerAdapterSlashReviewBaseBranch(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review base:main",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
+	target := payloadObject(review["target"])
+	if asString(target["type"]) != "baseBranch" || asString(target["branch"]) != "main" {
+		t.Fatalf("review target = %#v, want baseBranch main", target)
+	}
+}
+
 func TestCodexAppServerAdapterSlashUndo(t *testing.T) {
 	t.Parallel()
 

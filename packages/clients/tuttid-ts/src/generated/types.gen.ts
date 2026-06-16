@@ -832,6 +832,11 @@ export type WorkspaceAgentSessionAttachmentResponse = {
   data: string;
 };
 
+export type WorkspaceAgentSessionGitBranchesResponse = {
+  branches: Array<string>;
+  currentBranch?: string;
+};
+
 export type UserProject = {
   id: string;
   path: string;
@@ -3904,6 +3909,56 @@ export type ReadWorkspaceAgentSessionAttachmentResponses = {
 
 export type ReadWorkspaceAgentSessionAttachmentResponse =
   ReadWorkspaceAgentSessionAttachmentResponses[keyof ReadWorkspaceAgentSessionAttachmentResponses];
+
+export type ListWorkspaceAgentSessionGitBranchesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches";
+};
+
+export type ListWorkspaceAgentSessionGitBranchesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentSessionGitBranchesError =
+  ListWorkspaceAgentSessionGitBranchesErrors[keyof ListWorkspaceAgentSessionGitBranchesErrors];
+
+export type ListWorkspaceAgentSessionGitBranchesResponses = {
+  /**
+   * Git branches for the agent session working directory
+   */
+  200: WorkspaceAgentSessionGitBranchesResponse;
+};
+
+export type ListWorkspaceAgentSessionGitBranchesResponse =
+  ListWorkspaceAgentSessionGitBranchesResponses[keyof ListWorkspaceAgentSessionGitBranchesResponses];
 
 export type CancelWorkspaceAgentSessionData = {
   body?: never;

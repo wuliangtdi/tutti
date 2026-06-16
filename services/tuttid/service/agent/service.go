@@ -263,6 +263,19 @@ func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentS
 	return store.ReadAttachment(workspaceID, agentSessionID, attachmentID)
 }
 
+func (s *Service) ListGitBranches(ctx context.Context, workspaceID string, agentSessionID string) (GitBranches, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return GitBranches{}, ErrInvalidArgument
+	}
+	session, err := s.get(ctx, workspaceID, agentSessionID, false)
+	if err != nil {
+		return GitBranches{}, err
+	}
+	return listGitBranches(ctx, session.Cwd)
+}
+
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {

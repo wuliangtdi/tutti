@@ -488,6 +488,22 @@ export const zhCN = {
       copyMessage: "复制消息",
       messageCopied: "已复制",
       promptTipsPrefix: "Tips：",
+      reviewPicker: {
+        title: "代码审查",
+        targetLabel: "审查范围",
+        uncommitted: "未提交的更改",
+        baseBranch: "与分支比较",
+        commit: "指定提交",
+        custom: "自定义说明",
+        branchLabel: "基准分支",
+        branchPlaceholder: "选择分支",
+        branchLoading: "正在加载分支…",
+        branchEmpty: "未找到分支",
+        commitPlaceholder: "提交 SHA",
+        customPlaceholder: "描述要审查的内容",
+        submit: "开始审查",
+        cancel: "取消"
+      },
       promptTips: {
         setWorkspace: {
           label: "指定工作区",

@@ -299,6 +299,24 @@ func writeReadWorkspaceAgentSessionAttachmentError(err error) tuttigenerated.Rea
 	}
 }
 
+func writeListWorkspaceAgentSessionGitBranchesError(err error) tuttigenerated.ListWorkspaceAgentSessionGitBranchesResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.ListWorkspaceAgentSessionGitBranches404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.ListWorkspaceAgentSessionGitBranches400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.ListWorkspaceAgentSessionGitBranches502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writeUpdateWorkspaceAgentSessionSettingsError(err error) tuttigenerated.UpdateWorkspaceAgentSessionSettingsResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

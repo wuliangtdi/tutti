@@ -30,6 +30,7 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
   >;
+  onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
 }
 
 export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
@@ -123,6 +124,16 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       hostFilesApi,
       tuttidClient,
       workspaceId
-    })
+    }),
+    onRequestGitBranches: async ({ agentSessionId }) => {
+      const result = await tuttidClient.listWorkspaceAgentSessionGitBranches(
+        workspaceId,
+        agentSessionId
+      );
+      return {
+        branches: result.branches,
+        currentBranch: result.currentBranch ?? null
+      };
+    }
   };
 }

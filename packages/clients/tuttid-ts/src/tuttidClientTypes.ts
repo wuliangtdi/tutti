@@ -71,6 +71,7 @@ import type {
   WorkspaceAgentSession,
   WorkspaceAgentProvider,
   WorkspaceAgentSessionAttachmentResponse,
+  WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceAgentSessionMessagesResponse,
   WorkspaceAgentSessionListResponse,
   WorkspaceFileDirectoryResponse,
@@ -484,6 +485,10 @@ export interface TuttidClient {
     agentSessionID: string,
     attachmentID: string
   ): Promise<WorkspaceAgentSessionAttachmentResponse>;
+  listWorkspaceAgentSessionGitBranches(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<WorkspaceAgentSessionGitBranchesResponse>;
   updateWorkspaceAgentSessionSettings(
     workspaceID: string,
     agentSessionID: string,

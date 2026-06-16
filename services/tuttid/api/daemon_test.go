@@ -69,6 +69,7 @@ type stubAgentSessionService struct {
 	listFn            func(context.Context, string, agentservice.ListSessionsInput) ([]agentservice.Session, error)
 	listMessagesFn    func(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	readAttachmentFn  func(context.Context, string, string, string) (agentservice.PromptAttachment, error)
+	listGitBranchesFn func(context.Context, string, string) (agentservice.GitBranches, error)
 	updatePinFn       func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateSettingsFn  func(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 }
@@ -191,6 +192,13 @@ func (s stubAgentSessionService) ReadAttachment(ctx context.Context, workspaceID
 		return s.readAttachmentFn(ctx, workspaceID, agentSessionID, attachmentID)
 	}
 	return agentservice.PromptAttachment{}, nil
+}
+
+func (s stubAgentSessionService) ListGitBranches(ctx context.Context, workspaceID string, agentSessionID string) (agentservice.GitBranches, error) {
+	if s.listGitBranchesFn != nil {
+		return s.listGitBranchesFn(ctx, workspaceID, agentSessionID)
+	}
+	return agentservice.GitBranches{}, nil
 }
 
 func (s stubAgentSessionService) Delete(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {

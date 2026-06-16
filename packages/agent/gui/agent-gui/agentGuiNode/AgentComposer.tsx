@@ -31,6 +31,8 @@ import type { AgentConversationPromptVM } from "../../shared/agentConversation/c
 import { cn } from "../../app/renderer/lib/utils";
 import {
   AddIcon,
+  Button,
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -229,6 +231,22 @@ export interface AgentComposerProps {
     projectLocked: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
+    reviewPicker: {
+      title: string;
+      targetLabel: string;
+      uncommitted: string;
+      baseBranch: string;
+      commit: string;
+      custom: string;
+      branchLabel: string;
+      branchPlaceholder: string;
+      branchLoading: string;
+      branchEmpty: string;
+      commitPlaceholder: string;
+      customPlaceholder: string;
+      submit: string;
+      cancel: string;
+    };
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
   onDraftChange: (prompt: string) => void;
@@ -258,8 +276,18 @@ export interface AgentComposerProps {
   onRequestWorkspaceReferences?:
     | (() => Promise<WorkspaceFileReference[]>)
     | null;
+  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
 }
+
+export interface AgentComposerGitBranches {
+  branches: readonly string[];
+  currentBranch?: string | null;
+}
+
+export type AgentComposerGitBranchLoader = (input: {
+  agentSessionId: string;
+}) => Promise<AgentComposerGitBranches>;
 
 export interface AgentComposerPromptTip {
   id: string;
@@ -528,6 +556,201 @@ function AgentSlashStatusPanel({
   );
 }
 
+type ReviewTargetKind = "uncommitted" | "base" | "commit" | "custom";
+
+function AgentReviewPickerPanel({
+  labels,
+  onRequestGitBranches,
+  onSubmitReview,
+  onClose
+}: {
+  labels: AgentComposerProps["labels"]["reviewPicker"];
+  onRequestGitBranches?: (() => Promise<AgentComposerGitBranches>) | null;
+  onSubmitReview: (command: string) => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const [target, setTarget] = useState<ReviewTargetKind>("uncommitted");
+  const [branch, setBranch] = useState("");
+  const [commit, setCommit] = useState("");
+  const [instructions, setInstructions] = useState("");
+  const [branches, setBranches] = useState<readonly string[] | null>(null);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+
+  // Invalidate any cached branches when the bound loader changes (i.e. the
+  // active session changed) so we refetch for the new working directory
+  // instead of offering the previous repo's branches.
+  useEffect(() => {
+    setBranches(null);
+    setBranch("");
+  }, [onRequestGitBranches]);
+
+  // Load branches lazily the first time the base-branch option is chosen.
+  useEffect(() => {
+    if (
+      target !== "base" ||
+      branches !== null ||
+      branchesLoading ||
+      !onRequestGitBranches
+    ) {
+      return;
+    }
+    let cancelled = false;
+    setBranchesLoading(true);
+    void onRequestGitBranches()
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setBranches(result.branches);
+        if (result.currentBranch) {
+          setBranch((current) => current || (result.currentBranch ?? ""));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBranches([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBranchesLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [target, branches, branchesLoading, onRequestGitBranches]);
+
+  const targetOptions: Array<{ value: ReviewTargetKind; label: string }> = [
+    { value: "uncommitted", label: labels.uncommitted },
+    { value: "base", label: labels.baseBranch },
+    { value: "commit", label: labels.commit },
+    { value: "custom", label: labels.custom }
+  ];
+  const targetLabel =
+    targetOptions.find((option) => option.value === target)?.label ?? "";
+  const branchList = branches ?? [];
+  const canSubmit =
+    target === "uncommitted" ||
+    (target === "base" && branch.trim() !== "") ||
+    (target === "commit" && commit.trim() !== "") ||
+    (target === "custom" && instructions.trim() !== "");
+
+  const submit = useCallback((): void => {
+    if (target === "base") {
+      onSubmitReview(`/review base:${branch.trim()}`);
+      return;
+    }
+    if (target === "commit") {
+      onSubmitReview(`/review commit:${commit.trim()}`);
+      return;
+    }
+    if (target === "custom") {
+      onSubmitReview(`/review custom:${instructions.trim()}`);
+      return;
+    }
+    onSubmitReview("/review");
+  }, [target, branch, commit, instructions, onSubmitReview]);
+
+  return (
+    <section
+      className="agent-gui-node__slash-status-panel"
+      data-testid="agent-gui-review-picker-panel"
+      role="dialog"
+      aria-label={labels.title}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="truncate text-[11px] font-semibold leading-4">
+          {labels.title}
+        </h3>
+        <button
+          className="nodrag shrink-0 rounded-[5px] px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-background-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [-webkit-app-region:no-drag]"
+          type="button"
+          onClick={onClose}
+        >
+          {labels.cancel}
+        </button>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="text-[11px] leading-4 text-muted-foreground">
+          {labels.targetLabel}
+        </label>
+        <Select
+          value={target}
+          onValueChange={(value) => setTarget(value as ReviewTargetKind)}
+        >
+          <SelectTrigger className="w-full" aria-label={labels.targetLabel}>
+            <span className="truncate">{targetLabel}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {targetOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {target === "base" ? (
+          <>
+            <label className="text-[11px] leading-4 text-muted-foreground">
+              {labels.branchLabel}
+            </label>
+            <Select
+              value={branch || undefined}
+              onValueChange={setBranch}
+              disabled={branchesLoading || branchList.length === 0}
+            >
+              <SelectTrigger className="w-full" aria-label={labels.branchLabel}>
+                <span className="truncate">
+                  {branchesLoading
+                    ? labels.branchLoading
+                    : branch ||
+                      (branchList.length === 0
+                        ? labels.branchEmpty
+                        : labels.branchPlaceholder)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {branchList.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        ) : null}
+        {target === "commit" ? (
+          <Input
+            value={commit}
+            onChange={(event) => setCommit(event.target.value)}
+            placeholder={labels.commitPlaceholder}
+            aria-label={labels.commit}
+          />
+        ) : null}
+        {target === "custom" ? (
+          <Input
+            value={instructions}
+            onChange={(event) => setInstructions(event.target.value)}
+            placeholder={labels.customPlaceholder}
+            aria-label={labels.custom}
+          />
+        ) : null}
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canSubmit}
+            onClick={submit}
+          >
+            {labels.submit}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
@@ -574,10 +797,12 @@ export function AgentComposer({
   onSubmitInteractivePrompt,
   onLinkAction,
   onRequestWorkspaceReferences = null,
+  onRequestGitBranches = null,
   richTextAtProviders = EMPTY_RICH_TEXT_AT_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
+  const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -793,6 +1018,30 @@ export function AgentComposer({
     setIsSlashStatusPanelOpen(false);
   }, []);
 
+  const closeReviewPicker = useCallback((): void => {
+    setIsReviewPickerOpen(false);
+  }, []);
+
+  const submitReviewCommand = useCallback(
+    (command: string): void => {
+      setIsReviewPickerOpen(false);
+      clearSlashCommandDraft();
+      onSubmit(textPromptContent(command));
+    },
+    [clearSlashCommandDraft, onSubmit]
+  );
+
+  // Bind the branch loader to this composer's session so the picker can fetch
+  // branches without the caller having to know the active agent session id.
+  const reviewBranchLoader = useMemo(
+    () =>
+      onRequestGitBranches && slashStatusAgentSessionId
+        ? () =>
+            onRequestGitBranches({ agentSessionId: slashStatusAgentSessionId })
+        : null,
+    [onRequestGitBranches, slashStatusAgentSessionId]
+  );
+
   const executeSlashCommandEffect = useCallback(
     (effect: SlashCommandSelectionEffect): void => {
       if (effect.kind === "submitPrompt") {
@@ -803,6 +1052,11 @@ export function AgentComposer({
       if (effect.kind === "showStatus") {
         clearSlashCommandDraft();
         setIsSlashStatusPanelOpen((current) => !current);
+        return;
+      }
+      if (effect.kind === "showReviewPicker") {
+        clearSlashCommandDraft();
+        setIsReviewPickerOpen(true);
         return;
       }
       if (effect.kind === "blockCommand") {
@@ -1944,6 +2198,14 @@ export function AgentComposer({
               slashStatusLimitsUnavailable: labels.slashStatusLimitsUnavailable
             }}
             onClose={closeSlashStatusPanel}
+          />
+        ) : null}
+        {isReviewPickerOpen ? (
+          <AgentReviewPickerPanel
+            labels={labels.reviewPicker}
+            onRequestGitBranches={reviewBranchLoader}
+            onSubmitReview={submitReviewCommand}
+            onClose={closeReviewPicker}
           />
         ) : null}
         <div

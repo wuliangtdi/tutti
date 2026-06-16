@@ -2236,6 +2236,12 @@ type WorkspaceAgentSessionEventEnvelope struct {
 	Type           string                 `json:"type"`
 }
 
+// WorkspaceAgentSessionGitBranchesResponse defines model for WorkspaceAgentSessionGitBranchesResponse.
+type WorkspaceAgentSessionGitBranchesResponse struct {
+	Branches      []string `json:"branches"`
+	CurrentBranch *string  `json:"currentBranch,omitempty"`
+}
+
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
 	Sessions    []WorkspaceAgentSession `json:"sessions"`

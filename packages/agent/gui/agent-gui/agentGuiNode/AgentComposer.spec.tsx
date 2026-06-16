@@ -1696,6 +1696,101 @@ describe("AgentComposer", () => {
     fireEvent.submit(container.querySelector("form")!);
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it("opens the codex review picker and submits the chosen target", () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+        draftPrompt="/review"
+        availableCommands={
+          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.getByTestId("agent-gui-review-picker-panel")
+    ).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    // Default target is uncommitted changes; confirming submits a bare /review.
+    fireEvent.click(screen.getByText("开始审查"));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual([
+      { type: "text", text: "/review" }
+    ]);
+  });
+
+  it("submits /review <text> as a custom review without opening the picker", () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+        draftPrompt="/review check the auth flow"
+        availableCommands={
+          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(
+      screen.queryByTestId("agent-gui-review-picker-panel")
+    ).not.toBeInTheDocument();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createComposerSettings(
@@ -1800,6 +1895,22 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     fileMentionTabHint: "Tab 提示",
     removeMention: "移除引用",
     addReference: "添加引用",
-    referenceWorkspaceFiles: "引用空间文件"
+    referenceWorkspaceFiles: "引用空间文件",
+    reviewPicker: {
+      title: "代码审查",
+      targetLabel: "审查范围",
+      uncommitted: "未提交的更改",
+      baseBranch: "与分支比较",
+      commit: "指定提交",
+      custom: "自定义说明",
+      branchLabel: "基准分支",
+      branchPlaceholder: "选择分支",
+      branchLoading: "正在加载分支…",
+      branchEmpty: "未找到分支",
+      commitPlaceholder: "提交 SHA",
+      customPlaceholder: "描述要审查的内容",
+      submit: "开始审查",
+      cancel: "取消"
+    }
   };
 }

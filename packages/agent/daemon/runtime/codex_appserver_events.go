@@ -150,6 +150,19 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 	}
 }
 
+// appServerNoticeItems maps review/compaction thread items to a one-line
+// system-notice banner. emitOnCompleted selects which lifecycle event carries
+// the banner: enteredReviewMode rides item/started (it always fires), while
+// exitedReviewMode and contextCompaction ride the authoritative item/completed.
+var appServerNoticeItems = map[string]struct {
+	message         string
+	emitOnCompleted bool
+}{
+	"enteredReviewMode": {message: "Code review started.", emitOnCompleted: false},
+	"exitedReviewMode":  {message: "Code review finished.", emitOnCompleted: true},
+	"contextCompaction": {message: "Context compacted.", emitOnCompleted: true},
+}
+
 func (a *CodexAppServerAdapter) appServerItemEvents(
 	session Session,
 	turnID string,
@@ -160,7 +173,16 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 	if len(item) == 0 || normalizer == nil {
 		return nil
 	}
-	switch asString(item["type"]) {
+	itemType := asString(item["type"])
+	// Review/compaction items stream both item/started and item/completed.
+	// Gate each banner to a single lifecycle event so the GUI shows it once.
+	if notice, ok := appServerNoticeItems[itemType]; ok {
+		if notice.emitOnCompleted != completed {
+			return nil
+		}
+		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", notice.message, "")}
+	}
+	switch itemType {
 	case "agentMessage":
 		if !completed {
 			return nil
@@ -194,12 +216,6 @@ func (a *CodexAppServerAdapter) appServerItemEvents(
 		return events
 	case "reasoning", "userMessage", "hookPrompt":
 		return nil
-	case "enteredReviewMode":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Code review started.", "")}
-	case "exitedReviewMode":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Code review finished.", "")}
-	case "contextCompaction":
-		return []activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")}
 	default:
 		update, ok := appServerItemToolCallUpdate(item, completed)
 		if !ok {
@@ -971,17 +987,6 @@ func appServerUserInput(content []PromptContentBlock) []map[string]any {
 		}
 	}
 	return out
-}
-
-func appServerReviewTarget(args string) map[string]any {
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return map[string]any{"type": "uncommittedChanges"}
-	}
-	return map[string]any{
-		"type":         "custom",
-		"instructions": args,
-	}
 }
 
 func splitSlashCommand(prompt string) (string, string) {

@@ -845,11 +845,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 	case appServerSlashCompact:
 		_, err := appSession.client.Call(ctx, appServerMethodThreadCompact, map[string]any{
 			"threadId": appSession.threadID,
-		}, func(ctx context.Context, message acpMessage) error {
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil
@@ -863,44 +859,12 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		))
 		return true, nil
 	case appServerSlashReview:
-		params := map[string]any{
-			"threadId": appSession.threadID,
-			"target":   appServerReviewTarget(args),
-			"delivery": "inline",
-		}
-		result, err := appSession.client.Call(ctx, appServerMethodReviewStart, params,
-			func(ctx context.Context, message acpMessage) error {
-				next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-				emitEvents(next)
-				return err
-			})
-		if err != nil {
-			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
-			return true, nil
-		}
-		initialTurn := appServerTurnFromResult(result)
-		if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
-			a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID)
-		}
-		finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
-		if finishErr != nil {
-			terminalEvents := normalizer.FinishFailed(session, turnID)
-			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(finishErr)))
-			emitTerminal(terminalEvents)
-			return true, nil
-		}
-		normalizer.ApplyAssistantFinalText(appServerTurnFinalAssistantText(finalTurn))
-		emitTerminal(appServerTurnTerminalEvents(session, turnID, finalTurn, normalizer))
-		return true, nil
+		return a.execReviewSlashCommand(ctx, appSession, session, args, turnID, appTurn, normalizer, emitEvents, emitTerminal, emitCommands)
 	case appServerSlashUndo:
 		_, err := appSession.client.Call(ctx, appServerMethodThreadRollback, map[string]any{
 			"threadId": appSession.threadID,
 			"numTurns": 1,
-		}, func(ctx context.Context, message acpMessage) error {
-			next, err := a.handleAppServerMessage(ctx, appSession.client, session, turnID, message, normalizer, emitEvents, emitCommands)
-			emitEvents(next)
-			return err
-		})
+		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
 			emitTerminal([]activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err))})
 			return true, nil

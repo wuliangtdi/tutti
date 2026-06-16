@@ -56,7 +56,10 @@ import {
 } from "./model/agentGuiRailLayout";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
-import type { AgentComposerSlashStatusLimit } from "./AgentComposer";
+import type {
+  AgentComposerGitBranchLoader,
+  AgentComposerSlashStatusLimit
+} from "./AgentComposer";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -97,6 +100,7 @@ export interface AgentGUINodeProps {
   currentUserId?: string | null;
   workspacePath: string;
   workspaceFileReferenceAdapter?: WorkspaceFileReferenceAdapter | null;
+  onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
   title: string;
   state: AgentGUINodeData;
@@ -436,6 +440,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   currentUserId,
   workspacePath,
   workspaceFileReferenceAdapter = null,
+  onRequestGitBranches = null,
   agentSettings,
   title,
   state,
@@ -863,6 +868,28 @@ export const AgentGUINode = memo(function AgentGUINode({
       openclawGatewayFailed: t("agentHost.agentGui.openclawGatewayFailed"),
       openclawGatewayRetry: t("agentHost.agentGui.openclawGatewayRetry"),
       promptTipsPrefix: t("agentHost.agentGui.promptTipsPrefix"),
+      reviewPicker: {
+        title: t("agentHost.agentGui.reviewPicker.title"),
+        targetLabel: t("agentHost.agentGui.reviewPicker.targetLabel"),
+        uncommitted: t("agentHost.agentGui.reviewPicker.uncommitted"),
+        baseBranch: t("agentHost.agentGui.reviewPicker.baseBranch"),
+        commit: t("agentHost.agentGui.reviewPicker.commit"),
+        custom: t("agentHost.agentGui.reviewPicker.custom"),
+        branchLabel: t("agentHost.agentGui.reviewPicker.branchLabel"),
+        branchPlaceholder: t(
+          "agentHost.agentGui.reviewPicker.branchPlaceholder"
+        ),
+        branchLoading: t("agentHost.agentGui.reviewPicker.branchLoading"),
+        branchEmpty: t("agentHost.agentGui.reviewPicker.branchEmpty"),
+        commitPlaceholder: t(
+          "agentHost.agentGui.reviewPicker.commitPlaceholder"
+        ),
+        customPlaceholder: t(
+          "agentHost.agentGui.reviewPicker.customPlaceholder"
+        ),
+        submit: t("agentHost.agentGui.reviewPicker.submit"),
+        cancel: t("agentHost.agentGui.reviewPicker.cancel")
+      },
       promptTips: [
         {
           id: "set-workspace",
@@ -1138,6 +1165,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+            onRequestGitBranches={onRequestGitBranches}
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
             richTextAtProviders={richTextAtProviders}
             workspaceAppIcons={workspaceAppIcons}

@@ -169,6 +169,9 @@ import type {
   ListUserProjectsData,
   ListUserProjectsErrors,
   ListUserProjectsResponses,
+  ListWorkspaceAgentSessionGitBranchesData,
+  ListWorkspaceAgentSessionGitBranchesErrors,
+  ListWorkspaceAgentSessionGitBranchesResponses,
   ListWorkspaceAgentSessionMessagesData,
   ListWorkspaceAgentSessionMessagesErrors,
   ListWorkspaceAgentSessionMessagesResponses,
@@ -1279,6 +1282,24 @@ export const readWorkspaceAgentSessionAttachment = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/attachments/{attachmentID}",
+    ...options
+  });
+
+/**
+ * List git branches for the agent session working directory
+ */
+export const listWorkspaceAgentSessionGitBranches = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceAgentSessionGitBranchesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceAgentSessionGitBranchesResponses,
+    ListWorkspaceAgentSessionGitBranchesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/git-branches",
     ...options
   });
 
