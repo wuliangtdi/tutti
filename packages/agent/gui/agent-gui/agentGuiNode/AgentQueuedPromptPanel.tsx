@@ -11,7 +11,12 @@ import {
   AgentMessageMarkdown,
   type AgentMessageMarkdownWorkspaceAppIcon
 } from "../../shared/AgentMessageMarkdown";
+import type { AgentPromptContentBlock } from "../../shared/contracts/dto/agentSession";
 import type { AgentGUIQueuedPromptVM } from "./model/agentGuiNodeTypes";
+import {
+  agentPromptContentDisplayText,
+  agentPromptContentImageBlocks
+} from "./model/agentComposerDraft";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +34,12 @@ import styles from "./AgentGUINode.styles";
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
 
+type QueuedPromptImageBlock = AgentPromptContentBlock & {
+  type: "image";
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  data: string;
+};
+
 interface AgentQueuedPromptPanelProps {
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
@@ -44,6 +55,25 @@ interface AgentQueuedPromptPanelProps {
   onEditQueuedPrompt: (queuedPromptId: string) => void;
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+}
+
+function queuedPromptImages(
+  queuedPrompt: AgentGUIQueuedPromptVM
+): QueuedPromptImageBlock[] {
+  return agentPromptContentImageBlocks(
+    queuedPrompt.content
+  ) as QueuedPromptImageBlock[];
+}
+
+function queuedPromptTitle(queuedPrompt: AgentGUIQueuedPromptVM): string {
+  const prompt = agentPromptContentDisplayText(queuedPrompt.content);
+  if (prompt) {
+    return prompt;
+  }
+  return queuedPromptImages(queuedPrompt)
+    .map((image) => image.name?.trim() ?? "")
+    .filter(Boolean)
+    .join(", ");
 }
 
 export function AgentQueuedPromptPanel({
@@ -64,7 +94,13 @@ export function AgentQueuedPromptPanel({
   const [isSinglePromptOverflowing, setIsSinglePromptOverflowing] =
     useState(false);
   const [expandedListMaxHeightPx, setExpandedListMaxHeightPx] = useState(280);
-  const canExpand = queuedPrompts.length > 1 || isSinglePromptOverflowing;
+  const singlePromptHasImages =
+    queuedPrompts.length === 1 &&
+    queuedPromptImages(queuedPrompts[0]!).length > 0;
+  const canExpand =
+    queuedPrompts.length > 1 ||
+    singlePromptHasImages ||
+    isSinglePromptOverflowing;
   const panelStyle = {
     "--agent-gui-queued-prompt-expanded-height": `${expandedListMaxHeightPx}px`
   } as CSSProperties &
@@ -204,6 +240,11 @@ export function AgentQueuedPromptPanel({
       >
         {queuedPrompts.map((queuedPrompt) => {
           const isDraining = queuedPrompt.id === drainingQueuedPromptId;
+          const images = queuedPromptImages(queuedPrompt);
+          const displayText = agentPromptContentDisplayText(
+            queuedPrompt.content
+          );
+          const title = queuedPromptTitle(queuedPrompt);
           return (
             <div
               key={queuedPrompt.id}
@@ -212,28 +253,45 @@ export function AgentQueuedPromptPanel({
               data-draining={isDraining ? "true" : "false"}
             >
               <div className={styles.composerQueuedPromptMain}>
-                <div
-                  ref={
-                    queuedPrompts.length === 1 ? singlePromptTextRef : undefined
-                  }
-                  className={styles.composerQueuedPromptText}
-                  title={queuedPrompt.prompt}
-                  onClick={(event) => {
-                    if (
-                      event.target instanceof Element &&
-                      event.target.closest("a")
-                    ) {
-                      event.stopPropagation();
-                    }
-                  }}
-                >
-                  <AgentMessageMarkdown
-                    content={queuedPrompt.prompt}
-                    className="agent-gui-node__composer-queued-prompt-markdown"
-                    inline
-                    onLinkClick={onLinkClick}
-                    workspaceAppIcons={workspaceAppIcons}
-                  />
+                <div className={styles.composerQueuedPromptBody} title={title}>
+                  {displayText ? (
+                    <div
+                      ref={
+                        queuedPrompts.length === 1
+                          ? singlePromptTextRef
+                          : undefined
+                      }
+                      className={styles.composerQueuedPromptText}
+                      onClick={(event) => {
+                        if (
+                          event.target instanceof Element &&
+                          event.target.closest("a")
+                        ) {
+                          event.stopPropagation();
+                        }
+                      }}
+                    >
+                      <AgentMessageMarkdown
+                        content={displayText}
+                        className="agent-gui-node__composer-queued-prompt-markdown"
+                        inline
+                        onLinkClick={onLinkClick}
+                        workspaceAppIcons={workspaceAppIcons}
+                      />
+                    </div>
+                  ) : null}
+                  {images.length > 0 ? (
+                    <div className={styles.composerQueuedPromptImages}>
+                      {images.slice(0, 3).map((image, index) => (
+                        <img
+                          key={`${queuedPrompt.id}:image:${index}`}
+                          alt=""
+                          className={styles.composerQueuedPromptImage}
+                          src={`data:${image.mimeType};base64,${image.data}`}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className={styles.composerQueuedPromptActions}>
@@ -270,15 +328,15 @@ export function AgentQueuedPromptPanel({
                     <DropdownMenuItem
                       className={styles.composerMenuItem}
                       disabled={isDraining}
-                      onPointerDown={(event) =>
+                      onPointerDown={(event) => {
                         handleEditQueuedPromptPointerDown(
                           event,
                           queuedPrompt.id
-                        )
-                      }
-                      onSelect={() =>
-                        handleEditQueuedPromptSelect(queuedPrompt.id)
-                      }
+                        );
+                      }}
+                      onSelect={() => {
+                        handleEditQueuedPromptSelect(queuedPrompt.id);
+                      }}
                     >
                       <span>{labels.editQueuedPrompt}</span>
                     </DropdownMenuItem>

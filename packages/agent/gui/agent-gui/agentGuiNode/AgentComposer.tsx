@@ -12,6 +12,8 @@ import {
 import { createPortal } from "react-dom";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import type {
+  AgentComposerDraft,
+  AgentComposerDraftImage,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
   AgentGUIQueuedPromptVM
@@ -53,10 +55,16 @@ import {
   filterProviderSkills,
   getProviderSkillQueryMatch,
   labelForProviderSkill,
-  promptForProviderSkills,
   skillDescriptionForDisplay,
   skillTriggerForPrefix
 } from "./model/agentSkillOptions";
+import {
+  agentComposerDraftHasContent,
+  agentComposerDraftToPromptContent,
+  emptyAgentComposerDraft,
+  MAX_AGENT_COMPOSER_DRAFT_IMAGES,
+  textPromptContent
+} from "./model/agentComposerDraft";
 import {
   resolveSlashCommandsForProvider,
   resolveSlashCommandSelectionEffect,
@@ -124,7 +132,7 @@ export interface AgentComposerProps {
   currentUserId?: string | null;
   provider: string;
   slashStatus?: AgentComposerSlashStatus | null;
-  draftPrompt: string;
+  draftContent: AgentComposerDraft;
   availableCommands: readonly AgentSessionCommand[];
   hasCompactableContext?: boolean;
   compactSupported?: boolean | null;
@@ -253,7 +261,7 @@ export interface AgentComposerProps {
     };
   };
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;
-  onDraftChange: (prompt: string) => void;
+  onDraftContentChange: (draftContent: AgentComposerDraft) => void;
   onProjectPathChange?: (
     path: string | null,
     metadata?: AgentProjectPathChangeMetadata
@@ -340,7 +348,6 @@ const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
 const EMPTY_PROVIDER_SKILLS: readonly AgentGUIProviderSkillOption[] = [];
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
-const MAX_PROMPT_IMAGES = 8;
 const PROMPT_TIP_CYCLE_STEP_MS = 5_200;
 const MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR = [
   "[data-node-drag-handle]",
@@ -357,14 +364,6 @@ interface MentionPaletteFrame {
   top: number;
   width: number;
   zIndex: number | string;
-}
-
-interface AgentPromptImageDraft {
-  id: string;
-  name: string;
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
-  data: string;
-  previewUrl: string;
 }
 
 function resolveMentionPalettePortalTarget(anchor: HTMLElement): Element {
@@ -762,7 +761,7 @@ export function AgentComposer({
   currentUserId,
   provider,
   slashStatus = null,
-  draftPrompt,
+  draftContent,
   availableCommands,
   hasCompactableContext = true,
   compactSupported = null,
@@ -790,7 +789,7 @@ export function AgentComposer({
   showProjectSelector = true,
   labels,
   workspaceUserProjectI18n,
-  onDraftChange,
+  onDraftContentChange,
   onProjectPathChange = () => {},
   onSettingsChange,
   onSubmit,
@@ -806,6 +805,8 @@ export function AgentComposer({
   richTextAtProviders = EMPTY_RICH_TEXT_AT_PROVIDERS
 }: AgentComposerProps): React.JSX.Element {
   "use memo";
+  const draftPrompt = draftContent.prompt;
+  const draftImages = draftContent.images;
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -823,9 +824,8 @@ export function AgentComposer({
     useState<AgentFileMentionSuggestionState | null>(null);
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
     useState(false);
-  const [draftImages, setDraftImages] = useState<AgentPromptImageDraft[]>([]);
   const [submittedImagePreview, setSubmittedImagePreview] = useState<
-    AgentPromptImageDraft[]
+    AgentComposerDraftImage[]
   >([]);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
@@ -1014,10 +1014,9 @@ export function AgentComposer({
   const clearSlashCommandDraft = useCallback((): void => {
     draftPromptRef.current = "";
     setPaletteDraftPrompt("");
-    setDraftImages([]);
     setIsPaletteOpen(false);
-    onDraftChange("");
-  }, [onDraftChange]);
+    onDraftContentChange(emptyAgentComposerDraft());
+  }, [onDraftContentChange]);
 
   const closeSlashStatusPanel = useCallback((): void => {
     setIsSlashStatusPanelOpen(false);
@@ -1091,7 +1090,7 @@ export function AgentComposer({
       const nextDraft = effect.draft;
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
-      onDraftChange(nextDraft);
+      onDraftContentChange({ ...draftContent, prompt: nextDraft });
       setIsPaletteOpen(false);
     },
     [
@@ -1100,7 +1099,8 @@ export function AgentComposer({
       composerSettings.draftSettings.speed,
       composerSettings.selectedSpeedValue,
       composerSettings.supportsSpeed,
-      onDraftChange,
+      draftContent,
+      onDraftContentChange,
       onSettingsChange,
       onSubmit
     ]
@@ -1133,10 +1133,10 @@ export function AgentComposer({
         draftForProviderSkill(skill, draftPromptRef.current, skillQueryMatch);
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
-      onDraftChange(nextDraft);
+      onDraftContentChange({ ...draftContent, prompt: nextDraft });
       setIsPaletteOpen(false);
     },
-    [onDraftChange, promptBeforeSelection, skillQueryMatch]
+    [draftContent, onDraftContentChange, promptBeforeSelection, skillQueryMatch]
   );
 
   const submitCurrentPrompt = (): void => {
@@ -1150,7 +1150,8 @@ export function AgentComposer({
       return;
     }
     const nextPrompt = draftPromptRef.current;
-    if (nextPrompt.trim() === "" && draftImages.length === 0) {
+    const nextDraftContent = { ...draftContent, prompt: nextPrompt };
+    if (!agentComposerDraftHasContent(nextDraftContent)) {
       return;
     }
     if (draftImages.length > 0 && !promptImagesSupported) {
@@ -1168,16 +1169,13 @@ export function AgentComposer({
     }
     setIsPaletteOpen(false);
     onSubmit(
-      promptContentFromDraft({
-        prompt: promptForProviderSkills({
-          prompt: nextPrompt,
-          provider,
-          skills: availableSkills
-        }),
-        images: draftImages
+      agentComposerDraftToPromptContent({
+        draft: nextDraftContent,
+        provider,
+        skills: availableSkills
       })
     );
-    if (draftImages.length > 0) {
+    if (draftImages.length > 0 && !canQueueWhileBusy) {
       setSubmittedImagePreview(draftImages);
       submittedImagePreviewObservedBusyRef.current = false;
     } else {
@@ -1186,8 +1184,7 @@ export function AgentComposer({
     }
     draftPromptRef.current = "";
     setPaletteDraftPrompt("");
-    onDraftChange("");
-    setDraftImages([]);
+    onDraftContentChange(emptyAgentComposerDraft());
   };
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
@@ -1525,10 +1522,11 @@ export function AgentComposer({
       mentionControllerRef.current?.updateQuery({
         workspaceId,
         currentUserId,
-        query: state.query
+        query: state.query,
+        sessionCwd: selectedProjectPath || null
       });
     },
-    [currentUserId, workspaceId]
+    [currentUserId, selectedProjectPath, workspaceId]
   );
 
   const handleLinkClick = useCallback(
@@ -1587,7 +1585,7 @@ export function AgentComposer({
     setIsPaletteOpen(true);
     setSubmittedImagePreview([]);
     submittedImagePreviewObservedBusyRef.current = false;
-    onDraftChange(nextDraft);
+    onDraftContentChange({ ...draftContent, prompt: nextDraft });
   };
 
   const addDraftImages = useCallback(
@@ -1601,22 +1599,31 @@ export function AgentComposer({
       }
       setSubmittedImagePreview([]);
       submittedImagePreviewObservedBusyRef.current = false;
-      setDraftImages((current) => {
-        const remainingSlots = Math.max(0, MAX_PROMPT_IMAGES - current.length);
-        if (remainingSlots === 0) {
-          return current;
-        }
-        const nextImages = images.slice(0, remainingSlots).map((image) => ({
-          id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
-          name: image.name,
-          mimeType: image.mimeType,
-          data: image.data,
-          previewUrl: `data:${image.mimeType};base64,${image.data}`
-        }));
-        return [...current, ...nextImages];
+      const remainingSlots = Math.max(
+        0,
+        MAX_AGENT_COMPOSER_DRAFT_IMAGES - draftImages.length
+      );
+      if (remainingSlots === 0) {
+        return;
+      }
+      const nextImages = images.slice(0, remainingSlots).map((image) => ({
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+        name: image.name,
+        mimeType: image.mimeType,
+        data: image.data,
+        previewUrl: `data:${image.mimeType};base64,${image.data}`
+      }));
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: [...draftImages, ...nextImages]
       });
     },
-    [onPromptImagesUnsupported, promptImagesSupported]
+    [
+      draftImages,
+      onDraftContentChange,
+      onPromptImagesUnsupported,
+      promptImagesSupported
+    ]
   );
 
   const handlePastedImages = useCallback(
@@ -1626,9 +1633,15 @@ export function AgentComposer({
     [addDraftImages]
   );
 
-  const removeDraftImage = useCallback((id: string): void => {
-    setDraftImages((current) => current.filter((image) => image.id !== id));
-  }, []);
+  const removeDraftImage = useCallback(
+    (id: string): void => {
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: draftImages.filter((image) => image.id !== id)
+      });
+    },
+    [draftImages, onDraftContentChange]
+  );
 
   const insertWorkspaceReferences = useCallback(
     (items: readonly WorkspaceFileReference[]) => {
@@ -2013,20 +2026,21 @@ export function AgentComposer({
     () => (showPalette ? { zIndex: composerPaletteZIndex } : undefined),
     [showPalette]
   );
-  const isQueueMode =
-    canQueueWhileBusy && (draftPrompt.trim() !== "" || draftImages.length > 0);
-  const sendButtonState = showStopButton
-    ? isInterrupting
-      ? "stopping"
-      : "interrupt"
-    : isQueueMode
-      ? "queue"
+  const hasDraftContent = agentComposerDraftHasContent(draftContent);
+  const isQueueMode = canQueueWhileBusy && hasDraftContent;
+  const shouldShowStopButton = showStopButton && !isQueueMode;
+  const sendButtonState = isQueueMode
+    ? "queue"
+    : shouldShowStopButton
+      ? isInterrupting
+        ? "stopping"
+        : "interrupt"
       : isSendingTurn
         ? "loading"
         : "send";
   const sendButtonBusy = isSendingTurn && !isQueueMode;
   const settingsControlsDisabled =
-    isSendingTurn || isSubmittingPrompt || showStopButton;
+    isSendingTurn || isSubmittingPrompt || shouldShowStopButton;
   const activePromptRequestId = activePrompt?.requestId ?? null;
   const [dismissedPromptRequestId, setDismissedPromptRequestId] = useState<
     string | null
@@ -2064,7 +2078,16 @@ export function AgentComposer({
     }
     previousSelectedProjectPathRef.current = selectedProjectPath;
     setIsSelectedProjectMissing(false);
-  }, [selectedProjectPath]);
+    if (!fileMentionSuggestion) {
+      return;
+    }
+    mentionControllerRef.current?.updateQuery({
+      workspaceId,
+      currentUserId,
+      query: fileMentionSuggestion.query,
+      sessionCwd: selectedProjectPath || null
+    });
+  }, [currentUserId, fileMentionSuggestion, selectedProjectPath, workspaceId]);
 
   useEffect(() => {
     setDismissedPromptRequestId(null);
@@ -2450,7 +2473,7 @@ export function AgentComposer({
                   onSettingsChange={onSettingsChange}
                 />
               ) : null}
-              {showStopButton ? (
+              {shouldShowStopButton ? (
                 <button
                   type="button"
                   className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent p-0 text-[var(--text-primary)] transition-[color,opacity] duration-150 hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background-panel)] active:bg-transparent disabled:cursor-not-allowed disabled:opacity-45"
@@ -2478,7 +2501,10 @@ export function AgentComposer({
                   className={styles.composerSendButton}
                   data-state={sendButtonState}
                   disabled={
-                    isSelectedProjectMissing || submitDisabled || sendButtonBusy
+                    isSelectedProjectMissing ||
+                    submitDisabled ||
+                    !hasDraftContent ||
+                    sendButtonBusy
                   }
                   aria-label={labels.send}
                   title={labels.send}
@@ -2545,26 +2571,6 @@ export function AgentComposer({
       </div>
     </form>
   );
-}
-
-function textPromptContent(prompt: string): AgentPromptContentBlock[] {
-  const text = prompt.trim();
-  return text ? [{ type: "text", text }] : [];
-}
-
-function promptContentFromDraft(input: {
-  prompt: string;
-  images: readonly AgentPromptImageDraft[];
-}): AgentPromptContentBlock[] {
-  return [
-    ...textPromptContent(input.prompt),
-    ...input.images.map((image) => ({
-      type: "image" as const,
-      mimeType: image.mimeType,
-      data: image.data,
-      name: image.name
-    }))
-  ];
 }
 
 function SendFilledIcon(): React.JSX.Element {

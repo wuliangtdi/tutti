@@ -18,7 +18,11 @@ import { AgentGUINode } from "./AgentGUINode";
 import { resolveAgentGUIHeroIconUrl } from "./AgentGUINodeView";
 import type { AgentRichTextAtProvider } from "./agentRichTextAtProvider";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
-import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
+import type {
+  AgentComposerDraft,
+  AgentGUIQueuedPromptVM,
+  AgentGUINodeViewModel
+} from "./model/agentGuiNodeTypes";
 import type { AgentGUINodeData } from "../../types";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
@@ -31,7 +35,7 @@ const mockShowPromptImagesUnsupported = vi.fn();
 const mockSubmitApprovalOption = vi.fn();
 const mockSubmitInteractivePrompt = vi.fn();
 const mockInterruptCurrentTurn = vi.fn();
-const mockUpdateDraftPrompt = vi.fn();
+const mockUpdateDraftContent = vi.fn();
 const mockUpdateComposerSettings = vi.fn();
 const mockSendQueuedPromptNext = vi.fn();
 const mockRemoveQueuedPrompt = vi.fn();
@@ -63,6 +67,22 @@ const mockRegisterUploadSources = vi.fn();
 const mockInspectUploadSources = vi.fn();
 const mockPreflightUpload = vi.fn();
 let mockViewModel: AgentGUINodeViewModel;
+
+function createDraft(prompt: string): AgentComposerDraft {
+  return { prompt, images: [] };
+}
+
+function textQueuedPrompt(
+  id: string,
+  text: string,
+  createdAtUnixMs = 1
+): AgentGUIQueuedPromptVM {
+  return {
+    id,
+    content: [{ type: "text", text }],
+    createdAtUnixMs
+  };
+}
 
 function promptBlocks(text: string) {
   return [{ type: "text" as const, text }];
@@ -593,7 +613,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       submitApprovalOption: mockSubmitApprovalOption,
       submitInteractivePrompt: mockSubmitInteractivePrompt,
       interruptCurrentTurn: mockInterruptCurrentTurn,
-      updateDraftPrompt: mockUpdateDraftPrompt,
+      updateDraftContent: mockUpdateDraftContent,
       updateComposerSettings: mockUpdateComposerSettings,
       sendQueuedPromptNext: mockSendQueuedPromptNext,
       removeQueuedPrompt: mockRemoveQueuedPrompt,
@@ -626,7 +646,7 @@ describe("AgentGUINode", () => {
     mockSubmitApprovalOption.mockClear();
     mockSubmitInteractivePrompt.mockClear();
     mockInterruptCurrentTurn.mockClear();
-    mockUpdateDraftPrompt.mockClear();
+    mockUpdateDraftContent.mockClear();
     mockUpdateComposerSettings.mockClear();
     mockSendQueuedPromptNext.mockClear();
     mockRemoveQueuedPrompt.mockClear();
@@ -2123,7 +2143,7 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     pasteComposerText(" world");
-    await waitFor(() => expect(mockUpdateDraftPrompt).toHaveBeenCalled());
+    await waitFor(() => expect(mockUpdateDraftContent).toHaveBeenCalled());
     const sendButton = screen.getByRole("button", {
       name: "agentHost.agentGui.send"
     });
@@ -2773,16 +2793,8 @@ describe("AgentGUINode", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       queuedPrompts: [
-        {
-          id: "queued-1",
-          prompt: "follow-up while busy",
-          createdAtUnixMs: 1
-        },
-        {
-          id: "queued-2",
-          prompt: "ship this after that",
-          createdAtUnixMs: 2
-        }
+        textQueuedPrompt("queued-1", "follow-up while busy"),
+        textQueuedPrompt("queued-2", "ship this after that", 2)
       ],
       canQueueWhileBusy: true,
       canSubmit: false,
@@ -2854,12 +2866,10 @@ describe("AgentGUINode", () => {
     mockViewModel = createViewModel({
       activeConversationId: "session-1",
       queuedPrompts: [
-        {
-          id: "queued-1",
-          prompt:
-            "follow [@2046494774160003072 & Claude Code Claude Code](mention://agent-session?workspaceId=room-1&id=session-queued)",
-          createdAtUnixMs: 1
-        }
+        textQueuedPrompt(
+          "queued-1",
+          "follow [@2046494774160003072 & Claude Code Claude Code](mention://agent-session?workspaceId=room-1&id=session-queued)"
+        )
       ],
       canQueueWhileBusy: true,
       canSubmit: false,
@@ -2946,13 +2956,7 @@ describe("AgentGUINode", () => {
           }
         ]
       },
-      queuedPrompts: [
-        {
-          id: "queued-1",
-          prompt: "follow-up while waiting",
-          createdAtUnixMs: 1
-        }
-      ]
+      queuedPrompts: [textQueuedPrompt("queued-1", "follow-up while waiting")]
     });
     renderAgentGUINode();
 
@@ -2980,12 +2984,10 @@ describe("AgentGUINode", () => {
       canSubmit: false,
       hasSentUserMessage: true,
       queuedPrompts: [
-        {
-          id: "queued-1",
-          prompt:
-            "local & Codex [@AI Media Canvas](mention://workspace-app?appId=ai-media-canvas&workspaceId=room-1) 帮我用这个应用生成一批国际象棋图片",
-          createdAtUnixMs: 1
-        }
+        textQueuedPrompt(
+          "queued-1",
+          "local & Codex [@AI Media Canvas](mention://workspace-app?appId=ai-media-canvas&workspaceId=room-1) 帮我用这个应用生成一批国际象棋图片"
+        )
       ]
     });
     renderAgentGUINode({
@@ -3353,7 +3355,7 @@ describe("AgentGUINode", () => {
       key: "Enter"
     });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/web ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft("/web "));
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
 
@@ -3371,7 +3373,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/init"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
     await waitFor(() =>
       expect(getComposerEditor()).not.toHaveTextContent("/init")
     );
@@ -3394,7 +3396,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(editor, { key: "Enter" });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("shows Codex fallback slash commands when ACP has not advertised commands", () => {
@@ -3413,7 +3415,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/compact"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("hides compact in an empty conversation", () => {
@@ -3442,7 +3444,7 @@ describe("AgentGUINode", () => {
 
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
     expect(mockUpdateComposerSettings).not.toHaveBeenCalled();
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("does not expose Codex plan as a local slash command from palette selection", () => {
@@ -3457,7 +3459,7 @@ describe("AgentGUINode", () => {
 
     expect(mockUpdateComposerSettings).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/pla"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("blocks manual Codex plan text", () => {
@@ -3472,7 +3474,7 @@ describe("AgentGUINode", () => {
 
     expect(mockUpdateComposerSettings).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("blocks advertised Claude Code plan commands", () => {
@@ -3492,7 +3494,7 @@ describe("AgentGUINode", () => {
 
     expect(mockUpdateComposerSettings).not.toHaveBeenCalled();
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("opens slash commands after leading whitespace at prompt start", () => {
@@ -3521,7 +3523,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/web ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft("/web "));
     await waitFor(() => expect(getComposerEditor()).toHaveTextContent("/web"));
   });
 
@@ -3536,7 +3538,7 @@ describe("AgentGUINode", () => {
     pasteComposerText("/");
 
     await waitFor(() =>
-      expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/")
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft("/"))
     );
     expect(
       screen.getByRole("listbox", {
@@ -3660,7 +3662,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(editor, { key: "ArrowDown" });
     fireEvent.keyDown(editor, { key: "Tab" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/read ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft("/read "));
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
 
@@ -3677,7 +3679,7 @@ describe("AgentGUINode", () => {
 
     fireEvent.click(screen.getByText("read").closest("button")!);
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/read ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft("/read "));
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
 
@@ -3716,7 +3718,7 @@ describe("AgentGUINode", () => {
     });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/web query"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("does not match slash commands after non-command text", () => {
@@ -3747,12 +3749,12 @@ describe("AgentGUINode", () => {
 
     const editor = getComposerEditor();
     fireEvent.keyDown(editor, { key: "Escape" });
-    expect(mockUpdateDraftPrompt).not.toHaveBeenCalled();
+    expect(mockUpdateDraftContent).not.toHaveBeenCalled();
 
     fireEvent.keyDown(editor, { key: "Enter" });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"));
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
   });
 
   it("filters slash commands and closes the palette after the command token", () => {
@@ -3808,7 +3810,9 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("$architecture-review ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("$architecture-review ")
+    );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
 
@@ -3837,7 +3841,9 @@ describe("AgentGUINode", () => {
 
     const editor = getComposerEditor();
     fireEvent.keyDown(editor, { key: "Enter" });
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith("/architecture-review ");
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("/architecture-review ")
+    );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
 
     fireEvent.keyDown(editor, { key: "Enter" });
@@ -3911,8 +3917,8 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "please use $architecture-review "
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("please use $architecture-review ")
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
@@ -3968,8 +3974,8 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "/product-design:frontend-design "
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("/product-design:frontend-design ")
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
@@ -4005,8 +4011,8 @@ describe("AgentGUINode", () => {
 
     const editor = getComposerEditor();
     fireEvent.keyDown(editor, { key: "Enter" });
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "$product-design:frontend-design "
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("$product-design:frontend-design ")
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
 
@@ -4047,8 +4053,8 @@ describe("AgentGUINode", () => {
 
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
-    expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-      "please use /product-design:frontend-design "
+    expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+      createDraft("please use /product-design:frontend-design ")
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
   });
@@ -4095,8 +4101,8 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(getComposerEditor(), { key: "Enter" });
 
     await waitFor(() =>
-      expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-        "[@README.md](/workspace/docs/README.md) "
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft("[@README.md](/workspace/docs/README.md) ")
       )
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
@@ -5302,8 +5308,8 @@ describe("AgentGUINode", () => {
     });
 
     await waitFor(() =>
-      expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-        "[@README.md](/workspace/docs/README.md) "
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft("[@README.md](/workspace/docs/README.md) ")
       )
     );
     expect(mockSubmitPrompt).not.toHaveBeenCalled();
@@ -5351,8 +5357,10 @@ describe("AgentGUINode", () => {
     });
 
     await waitFor(() =>
-      expect(mockUpdateDraftPrompt).toHaveBeenCalledWith(
-        "[@README.md](/workspace/docs/README.md) [@src](/workspace/src) "
+      expect(mockUpdateDraftContent).toHaveBeenCalledWith(
+        createDraft(
+          "[@README.md](/workspace/docs/README.md) [@src](/workspace/src) "
+        )
       )
     );
   });
@@ -6731,6 +6739,9 @@ function createManagedAgentsStateItem(
 function createViewModel(
   overrides: Partial<AgentGUINodeViewModel> = {}
 ): AgentGUINodeViewModel {
+  const draftContent =
+    overrides.draftContent ?? createDraft(overrides.draftPrompt ?? "");
+  const draftPrompt = overrides.draftPrompt ?? draftContent.prompt;
   return {
     workspaceId: "room-1",
     data: {
@@ -6744,7 +6755,8 @@ function createViewModel(
     activeConversationId: null,
     availableCommands: [],
     availableSkills: [],
-    draftPrompt: "",
+    draftPrompt,
+    draftContent,
     isLoadingConversations: false,
     isLoadingMessages: false,
     isCreatingConversation: false,

@@ -2,7 +2,10 @@ import "@testing-library/jest-dom/vitest";
 import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentGUINodeData, NodeFrame } from "../../types";
-import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
+import type {
+  AgentComposerDraft,
+  AgentGUINodeViewModel
+} from "./model/agentGuiNodeTypes";
 import { AgentGUINode } from "./AgentGUINode";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
@@ -33,7 +36,7 @@ vi.mock("./controller/useAgentGUINodeController", () => ({
       submitApprovalOption: vi.fn(),
       submitInteractivePrompt: vi.fn(),
       interruptCurrentTurn: vi.fn(),
-      updateDraftPrompt: vi.fn(),
+      updateDraftContent: vi.fn(),
       updateComposerSettings: vi.fn(),
       sendQueuedPromptNext: vi.fn(),
       removeQueuedPrompt: vi.fn(),
@@ -208,6 +211,7 @@ function createState(
 function createViewModel(
   overrides: Partial<AgentGUINodeViewModel> = {}
 ): AgentGUINodeViewModel {
+  const draftContent: AgentComposerDraft = { prompt: "", images: [] };
   return {
     workspaceId: "room-1",
     data: createState(),
@@ -218,9 +222,7 @@ function createViewModel(
     conversation: null,
     conversationDetail: null,
     draftPrompt: "",
-    draftPromptValue: "",
-    draftSettings: null,
-    sessionSettings: null,
+    draftContent,
     sessionChrome: {
       auth: null,
       approval: null,

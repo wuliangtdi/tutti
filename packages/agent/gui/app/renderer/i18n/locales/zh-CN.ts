@@ -662,7 +662,6 @@ export const zhCN = {
       retryActivation: "重试",
       continueInNewConversation: "去新会话",
       processing: "正在规划下一步",
-      promptImagesCannotQueue: "图片只能在 Agent 准备好接收下一条消息时发送。",
       promptImagesUnsupported: "当前模型不支持图片输入。",
       visibleErrorStartFailed: "{{provider}} 启动失败",
       visibleErrorRequestFailed: "{{provider}} 请求失败",

@@ -17,6 +17,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
+import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 
 export interface AgentGUISessionChrome {
   auth: {
@@ -70,6 +71,19 @@ export interface AgentGUIProviderSkillOption {
   pluginName?: string;
 }
 
+export interface AgentComposerDraftImage {
+  id: string;
+  name: string;
+  mimeType: "image/png" | "image/jpeg" | "image/webp";
+  data: string;
+  previewUrl: string;
+}
+
+export interface AgentComposerDraft {
+  prompt: string;
+  images: AgentComposerDraftImage[];
+}
+
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
@@ -106,7 +120,7 @@ export interface AgentGUIComposerSettingsVM {
 
 export interface AgentGUIQueuedPromptVM {
   id: string;
-  prompt: string;
+  content: AgentPromptContentBlock[];
   createdAtUnixMs: number;
 }
 
@@ -122,6 +136,7 @@ export interface AgentGUINodeViewModel {
   availableCommands: AgentSessionCommand[];
   availableSkills: AgentGUIProviderSkillOption[];
   draftPrompt: string;
+  draftContent: AgentComposerDraft;
   isLoadingConversations: boolean;
   isLoadingMessages: boolean;
   isCreatingConversation: boolean;

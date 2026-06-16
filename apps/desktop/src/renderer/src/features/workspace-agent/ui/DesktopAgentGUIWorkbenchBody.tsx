@@ -38,6 +38,7 @@ import {
   areDesktopAgentGUINodeStatesEqual,
   areDesktopAgentGUIWorkbenchStatesEqual,
   desktopAgentGUIProviderFromInstanceId,
+  desktopAgentGUIPrefillPromptActivationType,
   normalizeDesktopAgentGUINodeState,
   normalizeDesktopAgentGUIWorkbenchState,
   projectDesktopAgentGUIWorkbenchState,
@@ -47,6 +48,10 @@ import {
   type DesktopAgentGUIProvider
 } from "../desktopAgentGUINodeState";
 import { consumeDesktopAgentGUIOpenSessionActivation } from "../services/desktopAgentGUIOpenSessionActivation.ts";
+import {
+  consumeDesktopAgentGUIPrefillPromptActivation,
+  type DesktopAgentGUIPrefillPromptRequest
+} from "../services/desktopAgentGUIPrefillPromptActivation.ts";
 import {
   ensureDesktopManagedAgentProviderStatuses,
   isDesktopManagedAgentProvider,
@@ -345,9 +350,12 @@ export function DesktopAgentGUIWorkbenchBody({
   >({});
   const [workspaceAgentProbes, setWorkspaceAgentProbes] =
     useState<DesktopAgentProbeState | null>(null);
+  const [prefillPromptRequest, setPrefillPromptRequest] =
+    useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
   const lastRequestedWorkbenchStateRef =
     useRef<DesktopAgentGUIWorkbenchState | null>(null);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
+  const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   const pendingComposerDefaultsWriteRef =
     useRef<DesktopAgentComposerDefaultsWriteIntent | null>(null);
   const agentProbeProviders = useMemo(
@@ -481,6 +489,24 @@ export function DesktopAgentGUIWorkbenchBody({
     provider,
     workspaceId
   ]);
+
+  useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    const request = consumeDesktopAgentGUIPrefillPromptActivation({
+      activation: context.activation,
+      clearNodeActivation: context.host.clearNodeActivation?.bind(context.host),
+      handledSequence: handledPrefillPromptActivationSequenceRef.current,
+      markHandled: (sequence) => {
+        handledPrefillPromptActivationSequenceRef.current = sequence;
+      },
+      nodeId: context.node.id
+    });
+    if (request) {
+      setPrefillPromptRequest(request);
+    }
+  }, [context.activation, context.host, context.node.id, previewMode]);
 
   useEffect(() => {
     const handleOptimisticConversationRailToggle = (event: Event) => {
@@ -646,9 +672,10 @@ export function DesktopAgentGUIWorkbenchBody({
     [frame.height, frame.width, frame.x, frame.y]
   );
   const composerFocusRequestSequence =
-    context.activation?.type === workbenchFocusInputActivationType
+    context.activation?.type === workbenchFocusInputActivationType ||
+    context.activation?.type === desktopAgentGUIPrefillPromptActivationType
       ? context.activation.sequence
-      : null;
+      : (prefillPromptRequest?.sequence ?? null);
 
   return (
     <AgentGUI
@@ -664,6 +691,7 @@ export function DesktopAgentGUIWorkbenchBody({
       isMaximized={context.displayMode === "fullscreen"}
       isActive={context.isFocused}
       composerFocusRequestSequence={composerFocusRequestSequence}
+      prefillPromptRequest={prefillPromptRequest}
       managedAgentsState={managedAgentsState}
       nodeId={context.node.id}
       workspaceAgentProbes={workspaceAgentProbes}
