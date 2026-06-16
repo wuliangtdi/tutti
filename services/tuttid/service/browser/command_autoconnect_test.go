@@ -3,9 +3,39 @@ package browser
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func testStableChromeProfileDir(home string) string {
+	switch runtime.GOOS {
+	case "darwin":
+		return filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
+	case "linux":
+		return filepath.Join(home, ".config", "google-chrome")
+	case "windows":
+		return filepath.Join(home, "AppData", "Local", "Google", "Chrome", "User Data")
+	default:
+		return ""
+	}
+}
+
+func writeTestDevToolsActivePort(t *testing.T, home string, content string) {
+	t.Helper()
+
+	chromeDir := testStableChromeProfileDir(home)
+	if chromeDir == "" {
+		t.Skip("stable Chrome profile path is unavailable on this platform")
+	}
+	if err := os.MkdirAll(chromeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	portFile := filepath.Join(chromeDir, "DevToolsActivePort")
+	if err := os.WriteFile(portFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestParseDevToolsActivePort(t *testing.T) {
 	activePort, ok := parseDevToolsActivePort("9222\n/devtools/browser/abc\n")
@@ -19,14 +49,7 @@ func TestParseDevToolsActivePort(t *testing.T) {
 
 func TestStableChromeDevToolsWebSocketEndpointFromDevToolsActivePort(t *testing.T) {
 	home := t.TempDir()
-	chromeDir := filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
-	if err := os.MkdirAll(chromeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	portFile := filepath.Join(chromeDir, "DevToolsActivePort")
-	if err := os.WriteFile(portFile, []byte("9222\n/devtools/browser/live\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestDevToolsActivePort(t, home, "9222\n/devtools/browser/live\n")
 	t.Setenv("HOME", home)
 
 	endpoint, ok := stableChromeDevToolsWebSocketEndpoint()
@@ -40,14 +63,7 @@ func TestStableChromeDevToolsWebSocketEndpointFromDevToolsActivePort(t *testing.
 
 func TestValidateAutoConnectChromeReadyAcceptsDevToolsActivePortWithoutJsonVersion(t *testing.T) {
 	home := t.TempDir()
-	chromeDir := filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
-	if err := os.MkdirAll(chromeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	portFile := filepath.Join(chromeDir, "DevToolsActivePort")
-	if err := os.WriteFile(portFile, []byte("9222\n/devtools/browser/live\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestDevToolsActivePort(t, home, "9222\n/devtools/browser/live\n")
 	t.Setenv("HOME", home)
 
 	if err := validateAutoConnectChromeReady(); err != nil {
@@ -70,14 +86,7 @@ func TestValidateAutoConnectChromeReadyReturnsSetupHintWhenPortFileMissing(t *te
 
 func TestResolveAutoConnectMCPConnectionArgsUsesDevToolsActivePortEndpoint(t *testing.T) {
 	home := t.TempDir()
-	chromeDir := filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
-	if err := os.MkdirAll(chromeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	portFile := filepath.Join(chromeDir, "DevToolsActivePort")
-	if err := os.WriteFile(portFile, []byte("9222\n/devtools/browser/live\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeTestDevToolsActivePort(t, home, "9222\n/devtools/browser/live\n")
 	t.Setenv("HOME", home)
 
 	args := resolveAutoConnectMCPConnectionArgs()

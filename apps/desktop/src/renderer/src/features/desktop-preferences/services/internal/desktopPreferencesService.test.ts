@@ -406,6 +406,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
   assert.deepEqual(client.updatedRequests, [
     {
       agentComposerDefaultsByProvider: {},
+      browserUseConnectionMode: "isolated",
       defaultAgentProvider: "codex",
 
       dockIconStyle: "default",
@@ -421,6 +422,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
 
   client.emitDesktopPreferencesUpdated({
     agentComposerDefaultsByProvider: {},
+    browserUseConnectionMode: "isolated",
     defaultAgentProvider: "codex",
 
     dockIconStyle: "default",
