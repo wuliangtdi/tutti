@@ -90,6 +90,10 @@ export function createWorkspaceAgentGuiContribution(input: {
           launchAgentGui: requestWorkspaceAgentGuiLaunch,
           launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
           launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+          launchWorkspaceApp: async ({ appId, workspaceId }) => {
+            await input.appCenterService.openApp({ appId, workspaceId });
+            return true;
+          },
           openBrowserUrl: requestWorkspaceBrowserLaunch,
           workspaceId: input.workspaceId
         });

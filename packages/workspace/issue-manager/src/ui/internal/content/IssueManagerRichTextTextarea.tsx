@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX
+} from "react";
+import { RichTextAtPanel } from "@tutti-os/ui-rich-text/at-panel";
 import { RichTextAtEditor } from "@tutti-os/ui-rich-text/editor";
 import { Button, LinkIcon, cn } from "@tutti-os/ui-system";
 import type {
@@ -11,6 +19,14 @@ const issueManagerRichTextTextareaBaseClassName =
 
 const issueManagerRichTextPlaceholderBaseClassName =
   "min-h-20 w-full p-3 text-[13px] font-normal leading-[1.3] text-[var(--text-placeholder)]";
+
+const ISSUE_MANAGER_RICH_AT_PANEL_ENABLED = true;
+const ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS = {
+  apps: "workspace-app",
+  files: "file",
+  issues: "workspace-issue",
+  sessions: "agent-session"
+} as const;
 
 export function IssueManagerRichTextTextarea({
   controller,
@@ -31,8 +47,71 @@ export function IssueManagerRichTextTextarea({
     () => controller.resolveRichTextAtProviders(surface),
     [controller, surface]
   );
+  const richAtPanelConfig = useMemo(() => {
+    const labels = {
+      all: controller.copy.t("richTextAt.all"),
+      apps: controller.copy.t("richTextAt.apps"),
+      files: controller.copy.t("richTextAt.files"),
+      issues: controller.copy.t("richTextAt.issues"),
+      sessions: controller.copy.t("richTextAt.sessions")
+    };
+    return {
+      filterTabs: [
+        { id: "all", label: labels.all },
+        { id: "file", label: labels.files },
+        { id: "workspace-issue", label: labels.issues },
+        { id: "agent-session", label: labels.sessions },
+        { id: "workspace-app", label: labels.apps }
+      ],
+      providerGroups: [
+        {
+          id: "files",
+          label: labels.files,
+          providerIds: [ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.files],
+          filterId: ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.files
+        },
+        {
+          id: "issues",
+          label: labels.issues,
+          providerIds: [ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.issues],
+          filterId: ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.issues
+        },
+        {
+          id: "sessions",
+          label: labels.sessions,
+          providerIds: [ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.sessions],
+          filterId: ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.sessions
+        },
+        {
+          id: "apps",
+          label: labels.apps,
+          providerIds: [ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.apps],
+          filterId: ISSUE_MANAGER_RICH_AT_PROVIDER_GROUP_IDS.apps
+        }
+      ]
+    };
+  }, [controller.copy]);
   const showReferenceAction = controller.canReferenceWorkspaceFiles;
   const [focusSignal, setFocusSignal] = useState(0);
+  const [activeFilterId, setActiveFilterId] = useState<string>(
+    richAtPanelConfig.filterTabs[0]?.id ?? "all"
+  );
+  // Tab/Shift+Tab cycle through every filter tab (including empty ones) with
+  // wraparound, matching the agent composer's keyboard behavior.
+  const cycleFilter = useCallback(
+    (delta: 1 | -1) => {
+      const ids = richAtPanelConfig.filterTabs.map((tab) => tab.id);
+      if (ids.length === 0) {
+        return;
+      }
+      setActiveFilterId((current) => {
+        const index = ids.indexOf(current);
+        const base = index >= 0 ? index : delta > 0 ? -1 : 0;
+        return ids[(base + delta + ids.length) % ids.length] ?? current;
+      });
+    },
+    [richAtPanelConfig.filterTabs]
+  );
   const previousValueRef = useRef(value);
   const wasAddingReferenceRef = useRef(false);
 
@@ -55,7 +134,10 @@ export function IssueManagerRichTextTextarea({
     <RichTextAtEditor
       focusSignal={focusSignal}
       maxResults={8}
-      minQueryLength={1}
+      minQueryLength={ISSUE_MANAGER_RICH_AT_PANEL_ENABLED ? 0 : 1}
+      onCycleFilter={ISSUE_MANAGER_RICH_AT_PANEL_ENABLED ? cycleFilter : undefined}
+      cycleFilterHintLabel={controller.copy.t("richTextAt.switchCategory")}
+      moveSelectionHintLabel={controller.copy.t("richTextAt.switchSelection")}
       providers={providers}
       textOverrides={{
         loadingLabel: controller.copy.t("richTextAt.loading"),
@@ -73,6 +155,29 @@ export function IssueManagerRichTextTextarea({
         showReferenceAction && "pb-11"
       )}
       placeholder={placeholder}
+      renderPanel={
+        ISSUE_MANAGER_RICH_AT_PANEL_ENABLED
+          ? (context) => (
+              <RichTextAtPanel
+                {...context}
+                filterTabs={richAtPanelConfig.filterTabs}
+                activeFilterId={activeFilterId}
+                onActiveFilterChange={setActiveFilterId}
+                providerContext={context.providerContext}
+                providerGroups={richAtPanelConfig.providerGroups}
+                providers={context.providers}
+                queryKeyword={context.query.keyword}
+                referencePageSize={5}
+                text={{
+                  ...context.text,
+                  allFilterLabel: controller.copy.t("richTextAt.all"),
+                  showMoreLabel: (count) =>
+                    controller.copy.t("richTextAt.showMore", { count })
+                }}
+              />
+            )
+          : undefined
+      }
       value={value}
       onChange={onChange}
       overlay={

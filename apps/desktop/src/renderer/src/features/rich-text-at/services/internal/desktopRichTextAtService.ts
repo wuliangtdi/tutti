@@ -7,7 +7,11 @@ import {
   createRichTextMarkdownLinkInsertResult,
   createRichTextMentionInsertResult
 } from "@tutti-os/ui-rich-text/plugins";
-import type { RichTextAtProvider } from "@tutti-os/ui-rich-text/types";
+import type {
+  RichTextAtProvider,
+  RichTextAtQueryInput,
+  RichTextAtReferenceItemsResult
+} from "@tutti-os/ui-rich-text/types";
 import type {
   DesktopRichTextAtCapability,
   DesktopRichTextAtProviderRequest,
@@ -121,8 +125,47 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
     if (cacheKey !== null) {
       this.providerCache.set(cacheKey, providers);
     }
+    return withRichTextAtRequestMetadata(providers, input.metadata);
+  }
+}
+
+function withRichTextAtRequestMetadata(
+  providers: readonly RichTextAtProvider[],
+  metadata: Readonly<Record<string, unknown>> | undefined
+): readonly RichTextAtProvider[] {
+  if (!metadata) {
     return providers;
   }
+  return providers.map((provider) => ({
+    ...provider,
+    query: (input) =>
+      provider.query(withRichTextAtQueryMetadata(input, metadata)),
+    ...(provider.getItemReferenceItems
+      ? {
+          getItemReferenceItems: (item, input) =>
+            provider.getItemReferenceItems?.(
+              item,
+              withRichTextAtQueryMetadata(input, metadata)
+            ) ?? []
+        }
+      : {})
+  }));
+}
+
+function withRichTextAtQueryMetadata(
+  input: RichTextAtQueryInput,
+  metadata: Readonly<Record<string, unknown>>
+): RichTextAtQueryInput {
+  return {
+    ...input,
+    context: {
+      ...input.context,
+      metadata: {
+        ...metadata,
+        ...(input.context.metadata ?? {})
+      }
+    }
+  };
 }
 
 function createWorkspaceAppAtContributor(

@@ -1,5 +1,6 @@
 export {
   RichTextAtEditor,
+  type RichTextAtEditorPanelContext,
   type RichTextAtEditorProps
 } from "./RichTextAtEditor.tsx";
 export {
