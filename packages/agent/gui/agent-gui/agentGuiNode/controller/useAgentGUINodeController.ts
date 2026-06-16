@@ -76,8 +76,6 @@ import {
   clearAgentGUIConversationSubmitPending,
   createAgentGUIConversationListQueryKey,
   ensureAgentGUIConversationListQuery,
-  getAgentGUIConversationCreatePending,
-  getAgentGUIConversationSubmitPending,
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
@@ -122,7 +120,6 @@ import {
 } from "./agentGuiController.constants";
 import type {
   QueuedComposerSettingsUpdate,
-  QueuedPromptRetryBlock,
   UseAgentGUINodeControllerInput
 } from "./agentGuiController.types";
 import {
@@ -162,8 +159,6 @@ import {
   normalizeConfigOptionValue,
   normalizeProjectDraftPath,
   normalizePermissionModeId,
-  permissionConfigFromComposerOptions,
-  permissionModeOptions,
   providerSkillsFromComposerOptions,
   readNodeDefaultDraftPrompt,
   readNodeDefaultDraftSettings,
@@ -275,11 +270,9 @@ export function useAgentGUINodeController({
     setSelectedProjectPath,
     isComposerHome,
     setIsComposerHome,
-    pendingCreateConversationId,
     setPendingCreateConversationId,
     pendingCreateOwnerKey,
     resolvePendingCreateConversationId,
-    localIsCreatingConversation,
     setLocalIsCreatingConversation,
     isCreatingConversation
   } = conversationSelection;
@@ -302,10 +295,8 @@ export function useAgentGUINodeController({
     setDrainingQueuedPromptSessionId,
     failedQueuedPromptIdBySessionId,
     setFailedQueuedPromptIdBySessionId,
-    isPendingSubmit,
     setIsPendingSubmit,
     isSubmitting,
-    localIsSubmitting,
     setLocalIsSubmitting,
     queuedPromptRetryBlockBySessionId,
     setQueuedPromptRetryBlockBySessionId,
@@ -5173,7 +5164,7 @@ export function useAgentGUINodeController({
       modelSelectionFromComposerOptions(providerComposerOptions, draftModel),
     [draftModel, providerComposerOptions]
   );
-  const { effectivePlanMode, timelinePlanModeState } = usePlanModeState({
+  const { effectivePlanMode } = usePlanModeState({
     activeTimelineItems,
     activeSessionState,
     draftPlanMode: draftSettings.planMode

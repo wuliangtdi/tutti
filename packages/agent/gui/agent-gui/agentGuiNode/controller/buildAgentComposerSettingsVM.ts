@@ -12,7 +12,6 @@ import {
   permissionModeOptions,
   reasoningSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
-import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 export function buildAgentComposerSettingsVM(input: {
   data: AgentGUINodeData;
