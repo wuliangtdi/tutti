@@ -203,18 +203,16 @@ function createTestSessionProvider(
       );
       const items = await Promise.all(
         sessions.map(async (session: any) => {
-          const summary =
-            options.loadSessionSummary &&
-            session.sessionOrigin !== "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK"
-              ? await Promise.resolve(
-                  options.loadSessionSummary({
-                    workspaceId,
-                    agentSessionId: session.agentSessionId,
-                    agentReplyLimit: 1,
-                    recentTurnLimit: 1
-                  })
-                ).catch(() => null)
-              : null;
+          const summary = options.loadSessionSummary
+            ? await Promise.resolve(
+                options.loadSessionSummary({
+                  workspaceId,
+                  agentSessionId: session.agentSessionId,
+                  agentReplyLimit: 1,
+                  recentTurnLimit: 1
+                })
+              ).catch(() => null)
+            : null;
           const userId = String(session.userId ?? "");
           const profile = profiles.get(userId) as any;
           const title =
@@ -941,73 +939,6 @@ describe("AgentMentionSearchController", () => {
         ])
       })
     );
-  });
-
-  it("does not call runtime-only session summaries for hook-origin mention sessions", async () => {
-    vi.useFakeTimers();
-    const loadSessionSummary = vi.fn();
-    const controller = new AgentMentionSearchController({
-      queryFiles: vi.fn().mockResolvedValue({
-        workspaceId: "room-1",
-        root: "/workspace",
-        entries: []
-      }),
-      queryIssues: vi.fn().mockResolvedValue({
-        issues: [],
-        totalCount: 0,
-        statusCounts: undefined
-      }),
-      querySessions: vi.fn().mockResolvedValue({
-        presences: [],
-        sessions: [
-          {
-            agentSessionId: "hook-session-1",
-            workspaceId: "room-1",
-            userId: "user-2",
-            provider: "nexight",
-            title: "room status 接口整理",
-            sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK",
-            lifecycleStatus: "completed",
-            createdAtUnixMs: 2,
-            updatedAtUnixMs: 9
-          }
-        ]
-      }),
-      loadSessionMessages: vi
-        .fn()
-        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
-      loadSessionSummary,
-      loadUserProfiles: vi.fn().mockResolvedValue({
-        users: [
-          {
-            userId: "user-2",
-            name: "Alice",
-            avatar: "https://cdn.example.com/alice.png"
-          }
-        ]
-      }),
-      debounceMs: 20
-    });
-    const states: unknown[] = [];
-    controller.subscribe((state) => states.push(state));
-
-    controller.updateQuery({
-      workspaceId: "room-1",
-      currentUserId: "user-1",
-      query: "status"
-    });
-
-    await vi.advanceTimersByTimeAsync(20);
-    await vi.waitFor(() =>
-      expect(states.at(-1)).toMatchObject({
-        status: "ready",
-        groups: expect.not.arrayContaining([
-          expect.objectContaining({ id: "collab_sessions" })
-        ])
-      })
-    );
-
-    expect(loadSessionSummary).not.toHaveBeenCalled();
   });
 
   it("resets the active filter when the picker closes", () => {

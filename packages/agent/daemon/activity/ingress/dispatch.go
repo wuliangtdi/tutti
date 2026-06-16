@@ -78,11 +78,15 @@ func (d *DispatchService) ReportActivity(ctx context.Context, req *guestdesktopr
 	if reportRequestIndicatesAgentWork(req) {
 		d.notifyActivity(workspaceID)
 	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 
 	reply, err := agentsessionstore.ReportActivityAsSessionUpdates(ctx, handler.Reporter, agentsessionstore.ReportActivityInput{
 		WorkspaceID:    roomID,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		TimelineItems:  timelineItemsFromProto(req.GetTimelineItems()),
 		StatePatches:   statePatchesFromProto(req.GetStatePatches()),
 		MessageUpdates: messageUpdatesFromProto(req.GetMessageUpdates()),
@@ -111,12 +115,20 @@ func (d *DispatchService) ReportSessionState(ctx context.Context, req *guestdesk
 	}
 	d.notifyActivity(workspaceID)
 
+	sessionOrigin, err := serverSessionOriginFromProto(req.GetSessionOrigin())
+	if err != nil {
+		return nil, err
+	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 	reply, err := handler.Reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
 		WorkspaceID:    roomID,
 		AgentSessionID: agentSessionID,
-		SessionOrigin:  serverSessionOriginFromProto(req.GetSessionOrigin()),
+		SessionOrigin:  sessionOrigin,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		State:          sessionStateUpdateFromProto(req.GetState()),
 	})
 	if err != nil {
@@ -142,12 +154,20 @@ func (d *DispatchService) ReportSessionMessages(ctx context.Context, req *guestd
 	}
 	d.notifyActivity(workspaceID)
 
+	sessionOrigin, err := serverSessionOriginFromProto(req.GetSessionOrigin())
+	if err != nil {
+		return nil, err
+	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 	reply, err := handler.Reporter.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
 		WorkspaceID:    roomID,
 		AgentSessionID: agentSessionID,
-		SessionOrigin:  serverSessionOriginFromProto(req.GetSessionOrigin()),
+		SessionOrigin:  sessionOrigin,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		Updates:        sessionMessageUpdatesFromProto(req.GetUpdates()),
 	})
 	if err != nil {

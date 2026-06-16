@@ -14,6 +14,14 @@ import (
 )
 
 func (s *SQLiteStore) PutAppPackage(ctx context.Context, appPackage workspacebiz.AppPackage) error {
+	return s.putAppPackage(ctx, appPackage, true)
+}
+
+func (s *SQLiteStore) PutAppPackageVersion(ctx context.Context, appPackage workspacebiz.AppPackage) error {
+	return s.putAppPackage(ctx, appPackage, false)
+}
+
+func (s *SQLiteStore) putAppPackage(ctx context.Context, appPackage workspacebiz.AppPackage, activate bool) error {
 	if s == nil || s.db == nil {
 		return errors.New("workspace database is not initialized")
 	}
@@ -75,7 +83,8 @@ ON CONFLICT(app_id, version) DO UPDATE SET
 		return fmt.Errorf("put workspace app package: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if activate {
+		if _, err := tx.ExecContext(ctx, `
 INSERT INTO app_catalog_entries (
   app_id, active_version, source, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
 )
@@ -86,7 +95,18 @@ ON CONFLICT(app_id) DO UPDATE SET
   created_in_workspace_id = excluded.created_in_workspace_id,
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, appID, version, source, strings.TrimSpace(appPackage.CreatedInWorkspaceID), now, now); err != nil {
-		return fmt.Errorf("put workspace app catalog entry: %w", err)
+			return fmt.Errorf("put workspace app catalog entry: %w", err)
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO app_catalog_entries (
+  app_id, active_version, source, created_in_workspace_id, created_at_unix_ms, updated_at_unix_ms
+)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(app_id) DO NOTHING
+`, appID, version, source, strings.TrimSpace(appPackage.CreatedInWorkspaceID), now, now); err != nil {
+			return fmt.Errorf("put inactive workspace app catalog entry: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -394,6 +414,43 @@ ORDER BY app_id ASC
 		return nil, fmt.Errorf("iterate workspace app installations: %w", err)
 	}
 
+	return result, nil
+}
+
+func (s *SQLiteStore) ListWorkspaceAppInstallationsByApp(ctx context.Context, appID string) ([]workspacebiz.AppInstallation, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("workspace database is not initialized")
+	}
+
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return nil, errors.New("workspace app id is required")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT workspace_id, app_id, enabled
+FROM workspace_app_installations
+WHERE app_id = ?
+ORDER BY workspace_id ASC
+`, appID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace app installations by app: %w", err)
+	}
+	defer rows.Close()
+
+	var result []workspacebiz.AppInstallation
+	for rows.Next() {
+		var installation workspacebiz.AppInstallation
+		var enabled int
+		if err := rows.Scan(&installation.WorkspaceID, &installation.AppID, &enabled); err != nil {
+			return nil, fmt.Errorf("scan workspace app installation by app: %w", err)
+		}
+		installation.Enabled = enabled != 0
+		result = append(result, installation)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace app installations by app: %w", err)
+	}
 	return result, nil
 }
 

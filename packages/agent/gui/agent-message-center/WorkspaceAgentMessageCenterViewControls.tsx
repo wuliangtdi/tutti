@@ -113,10 +113,10 @@ export function MessageCenterViewMenu({
               onCheckedChange={() => onStatusToggle(option.value)}
               onSelect={(event) => event.preventDefault()}
             >
-              <span className="min-w-0 flex-1 truncate">{option.label}</span>
-              <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
-                {option.count}
-              </span>
+              <MessageCenterOptionWithCount
+                count={option.count}
+                label={option.label}
+              />
             </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuGroup>
@@ -139,12 +139,10 @@ export function MessageCenterViewMenu({
                   onCheckedChange={() => onProviderToggle(option.value)}
                   onSelect={(event) => event.preventDefault()}
                 >
-                  <span className="min-w-0 flex-1 truncate">
-                    {option.label}
-                  </span>
-                  <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">
-                    {option.count}
-                  </span>
+                  <MessageCenterOptionWithCount
+                    count={option.count}
+                    label={option.label}
+                  />
                 </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuGroup>
@@ -159,5 +157,22 @@ export function MessageCenterViewMenu({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function MessageCenterOptionWithCount({
+  count,
+  label
+}: {
+  count: number;
+  label: string;
+}): JSX.Element {
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-3">
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="shrink-0 tabular-nums text-[11px] text-[var(--text-tertiary)]">
+        {count}
+      </span>
+    </span>
   );
 }

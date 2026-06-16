@@ -61,13 +61,36 @@ func (p *ActivityProjection) SetSessionStateObserver(observer SessionStateObserv
 	p.sessionStateObserver = observer
 }
 
+func normalizeReportSessionOrigins(
+	sessionOrigin string,
+	source agentsessionstore.EventSource,
+) (string, agentsessionstore.EventSource, error) {
+	normalizedSessionOrigin := agentsessionstore.NormalizeSessionOrigin(sessionOrigin)
+	if normalizedSessionOrigin == "" {
+		return "", agentsessionstore.EventSource{}, ErrInvalidArgument
+	}
+	sourceOrigin := strings.TrimSpace(source.SessionOrigin)
+	if sourceOrigin == "" {
+		source.SessionOrigin = normalizedSessionOrigin
+		return normalizedSessionOrigin, source, nil
+	}
+	normalizedSourceOrigin := agentsessionstore.NormalizeSessionOrigin(sourceOrigin)
+	if normalizedSourceOrigin == "" {
+		return "", agentsessionstore.EventSource{}, ErrInvalidArgument
+	}
+	source.SessionOrigin = normalizedSourceOrigin
+	return normalizedSessionOrigin, source, nil
+}
+
 func (p *ActivityProjection) Report(ctx context.Context, input agentsessionstore.ReportActivityInput) error {
 	if p == nil || p.repo == nil {
 		return nil
 	}
-	if strings.TrimSpace(input.Source.SessionOrigin) == "" {
-		input.Source.SessionOrigin = agentsessionstore.WorkspaceAgentSessionOriginRuntime
+	sourceOrigin := agentsessionstore.NormalizeSessionOrigin(input.Source.SessionOrigin)
+	if sourceOrigin == "" {
+		return ErrInvalidArgument
 	}
+	input.Source.SessionOrigin = sourceOrigin
 	_, err := agentsessionstore.ReportActivityAsSessionUpdates(ctx, p, input)
 	return err
 }
@@ -79,6 +102,12 @@ func (p *ActivityProjection) ReportSessionState(
 	if p == nil || p.repo == nil {
 		return agentsessionstore.ReportSessionStateReply{}, nil
 	}
+	sessionOrigin, source, err := normalizeReportSessionOrigins(input.SessionOrigin, input.Source)
+	if err != nil {
+		return agentsessionstore.ReportSessionStateReply{}, err
+	}
+	input.SessionOrigin = sessionOrigin
+	input.Source = source
 	result, err := p.repo.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:       strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(input.AgentSessionID),
@@ -230,6 +259,12 @@ func (p *ActivityProjection) ReportSessionMessages(
 	if p == nil || p.repo == nil {
 		return agentsessionstore.ReportSessionMessagesReply{}, nil
 	}
+	sessionOrigin, source, err := normalizeReportSessionOrigins(input.SessionOrigin, input.Source)
+	if err != nil {
+		return agentsessionstore.ReportSessionMessagesReply{}, err
+	}
+	input.SessionOrigin = sessionOrigin
+	input.Source = source
 	result, err := p.repo.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID: strings.TrimSpace(input.AgentSessionID),

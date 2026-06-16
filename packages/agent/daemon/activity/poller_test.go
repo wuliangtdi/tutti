@@ -12,7 +12,7 @@ func TestPollerListsAgentsAndFetchesIncrementalMessagesWithNextCursors(t *testin
 		snapshot: &WorkspaceAgentSnapshot{
 			Sessions: []WorkspaceAgentSession{
 				{AgentSessionID: "session-1", SessionOrigin: WorkspaceAgentSessionOriginRuntime},
-				{AgentSessionID: "session-2", SessionOrigin: WorkspaceAgentSessionOriginHook},
+				{AgentSessionID: "session-2", SessionOrigin: WorkspaceAgentSessionOriginRuntime},
 			},
 		},
 		messages: map[string]ListSessionMessagesReply{

@@ -66,6 +66,13 @@ func TestSQLiteStoreWorkspaceAppsPersistPackagesAndInstallations(t *testing.T) {
 	if len(installations) != 1 || installations[0].AppID != "hello" || !installations[0].Enabled {
 		t.Fatalf("ListWorkspaceAppInstallations() = %#v", installations)
 	}
+	installationsByApp, err := store.ListWorkspaceAppInstallationsByApp(ctx, "hello")
+	if err != nil {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() error = %v", err)
+	}
+	if len(installationsByApp) != 1 || installationsByApp[0].WorkspaceID != "ws-apps" || !installationsByApp[0].Enabled {
+		t.Fatalf("ListWorkspaceAppInstallationsByApp() = %#v", installationsByApp)
+	}
 
 	if err := store.DeleteWorkspaceAppInstallation(ctx, "ws-apps", "hello"); err != nil {
 		t.Fatalf("DeleteWorkspaceAppInstallation() error = %v", err)
@@ -148,5 +155,102 @@ func TestSQLiteStoreDeleteAppPackageRemovesCatalogVersionsAndInstallations(t *te
 	}
 	if len(installations) != 0 {
 		t.Fatalf("installations after delete = %#v, want empty", installations)
+	}
+}
+
+func TestSQLiteStorePutAppPackageVersionDoesNotActivateVersion(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	manifest := workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "remote-app",
+		Version:       "1.0.0",
+		Name:          "Remote App v1",
+		Description:   "Remote app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "start.sh",
+			HealthcheckPath: "/ready",
+		},
+	}
+	if err := store.PutAppPackage(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: "/tmp/remote-app-1.0.0",
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackage() error = %v", err)
+	}
+	manifest.Version = "1.1.0"
+	manifest.Name = "Remote App v2"
+	if err := store.PutAppPackageVersion(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: "/tmp/remote-app-1.1.0",
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackageVersion() error = %v", err)
+	}
+
+	active, err := store.GetAppPackage(ctx, "remote-app")
+	if err != nil {
+		t.Fatalf("GetAppPackage() error = %v", err)
+	}
+	if active.Version != "1.0.0" {
+		t.Fatalf("active version = %q, want 1.0.0", active.Version)
+	}
+	versions, err := store.ListAppPackageVersions(ctx, "remote-app")
+	if err != nil {
+		t.Fatalf("ListAppPackageVersions() error = %v", err)
+	}
+	if len(versions) != 2 {
+		t.Fatalf("versions length = %d, want 2: %#v", len(versions), versions)
+	}
+	if err := store.SetActiveAppPackageVersion(ctx, "remote-app", "1.1.0"); err != nil {
+		t.Fatalf("SetActiveAppPackageVersion() error = %v", err)
+	}
+	active, err = store.GetAppPackage(ctx, "remote-app")
+	if err != nil {
+		t.Fatalf("GetAppPackage() after activate error = %v", err)
+	}
+	if active.Version != "1.1.0" {
+		t.Fatalf("active version after activate = %q, want 1.1.0", active.Version)
+	}
+}
+
+func TestSQLiteStorePutAppPackageVersionCreatesInitialCatalogEntry(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	manifest := workspacebiz.AppManifest{
+		SchemaVersion: workspacebiz.AppManifestSchemaVersionV1,
+		AppID:         "remote-app",
+		Version:       "1.0.0",
+		Name:          "Remote App",
+		Description:   "Remote app",
+		Runtime: workspacebiz.AppManifestRuntime{
+			Bootstrap:       "start.sh",
+			HealthcheckPath: "/ready",
+		},
+	}
+	if err := store.PutAppPackageVersion(ctx, workspacebiz.AppPackage{
+		AppID:      manifest.AppID,
+		Version:    manifest.Version,
+		PackageDir: "/tmp/remote-app-1.0.0",
+		Manifest:   manifest,
+		Source:     workspacebiz.AppPackageSourceBuiltin,
+	}); err != nil {
+		t.Fatalf("PutAppPackageVersion() error = %v", err)
+	}
+	active, err := store.GetAppPackage(ctx, "remote-app")
+	if err != nil {
+		t.Fatalf("GetAppPackage() error = %v", err)
+	}
+	if active.Version != "1.0.0" {
+		t.Fatalf("active version = %q, want 1.0.0", active.Version)
 	}
 }

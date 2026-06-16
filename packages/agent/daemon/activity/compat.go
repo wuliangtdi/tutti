@@ -42,12 +42,14 @@ func SessionStateInputsFromActivity(input ReportActivityInput) []ReportSessionSt
 	if len(input.StatePatches) == 0 {
 		return nil
 	}
+	source := input.Source
+	source.SessionOrigin = canonicalSessionOriginValue(source.SessionOrigin)
 	out := make([]ReportSessionStateInput, 0, len(input.StatePatches))
 	for _, patch := range input.StatePatches {
 		agentSessionID := strings.TrimSpace(firstNonEmptyString(
 			patch.AgentSessionID,
-			input.Source.AgentID,
-			input.Source.ProviderSessionID,
+			source.AgentID,
+			source.ProviderSessionID,
 		))
 		if agentSessionID == "" {
 			continue
@@ -55,9 +57,9 @@ func SessionStateInputsFromActivity(input ReportActivityInput) []ReportSessionSt
 		out = append(out, ReportSessionStateInput{
 			WorkspaceID:    input.WorkspaceID,
 			AgentSessionID: agentSessionID,
-			SessionOrigin:  input.Source.SessionOrigin,
+			SessionOrigin:  source.SessionOrigin,
 			Connector:      cloneConnector(input.Connector),
-			Source:         input.Source,
+			Source:         source,
 			State:          sessionStateUpdateFromPatch(patch),
 		})
 	}
@@ -69,13 +71,15 @@ func SessionMessageInputsFromActivity(input ReportActivityInput) []ReportSession
 	if len(updates) == 0 {
 		return nil
 	}
+	source := input.Source
+	source.SessionOrigin = canonicalSessionOriginValue(source.SessionOrigin)
 	indexBySession := make(map[string]int)
 	out := make([]ReportSessionMessagesInput, 0)
 	for _, update := range updates {
 		agentSessionID := strings.TrimSpace(firstNonEmptyString(
 			update.AgentSessionID,
-			input.Source.AgentID,
-			input.Source.ProviderSessionID,
+			source.AgentID,
+			source.ProviderSessionID,
 		))
 		if agentSessionID == "" {
 			continue
@@ -91,9 +95,9 @@ func SessionMessageInputsFromActivity(input ReportActivityInput) []ReportSession
 			out = append(out, ReportSessionMessagesInput{
 				WorkspaceID:    input.WorkspaceID,
 				AgentSessionID: agentSessionID,
-				SessionOrigin:  input.Source.SessionOrigin,
+				SessionOrigin:  source.SessionOrigin,
 				Connector:      cloneConnector(input.Connector),
-				Source:         input.Source,
+				Source:         source,
 			})
 		}
 		out[index].Updates = append(out[index].Updates, converted)

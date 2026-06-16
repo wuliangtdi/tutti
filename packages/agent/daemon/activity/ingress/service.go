@@ -55,10 +55,14 @@ func (s *Service) ReportActivity(ctx context.Context, req *guestdesktoprelayv1.R
 	if err != nil {
 		return nil, err
 	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 	reply, err := agentsessionstore.ReportActivityAsSessionUpdates(ctx, s.reporter, agentsessionstore.ReportActivityInput{
 		WorkspaceID:    roomID,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		TimelineItems:  timelineItemsFromProto(req.GetTimelineItems()),
 		StatePatches:   statePatchesFromProto(req.GetStatePatches()),
 		MessageUpdates: messageUpdatesFromProto(req.GetMessageUpdates()),
@@ -85,12 +89,20 @@ func (s *Service) ReportSessionState(ctx context.Context, req *guestdesktoprelay
 	if agentSessionID == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_session_id is required")
 	}
+	sessionOrigin, err := serverSessionOriginFromProto(req.GetSessionOrigin())
+	if err != nil {
+		return nil, err
+	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 	reply, err := s.reporter.ReportSessionState(ctx, agentsessionstore.ReportSessionStateInput{
 		WorkspaceID:    roomID,
 		AgentSessionID: agentSessionID,
-		SessionOrigin:  serverSessionOriginFromProto(req.GetSessionOrigin()),
+		SessionOrigin:  sessionOrigin,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		State:          sessionStateUpdateFromProto(req.GetState()),
 	})
 	if err != nil {
@@ -114,12 +126,20 @@ func (s *Service) ReportSessionMessages(ctx context.Context, req *guestdesktopre
 	if agentSessionID == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_session_id is required")
 	}
+	sessionOrigin, err := serverSessionOriginFromProto(req.GetSessionOrigin())
+	if err != nil {
+		return nil, err
+	}
+	source, err := eventSourceFromProto(req.GetSource())
+	if err != nil {
+		return nil, err
+	}
 	reply, err := s.reporter.ReportSessionMessages(ctx, agentsessionstore.ReportSessionMessagesInput{
 		WorkspaceID:    roomID,
 		AgentSessionID: agentSessionID,
-		SessionOrigin:  serverSessionOriginFromProto(req.GetSessionOrigin()),
+		SessionOrigin:  sessionOrigin,
 		Connector:      connectorInfoPointerFromProto(req.GetConnector()),
-		Source:         eventSourceFromProto(req.GetSource()),
+		Source:         source,
 		Updates:        sessionMessageUpdatesFromProto(req.GetUpdates()),
 	})
 	if err != nil {
@@ -163,27 +183,35 @@ func connectorInfoFromProto(connector *guestdesktoprelayv1.AgentActivityConnecto
 	}
 }
 
-func eventSourceFromProto(source *guestdesktoprelayv1.AgentActivitySource) agentsessionstore.EventSource {
+func eventSourceFromProto(source *guestdesktoprelayv1.AgentActivitySource) (agentsessionstore.EventSource, error) {
 	if source == nil {
-		return agentsessionstore.EventSource{}
+		return agentsessionstore.EventSource{
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		}, nil
+	}
+	sessionOrigin, err := serverSessionOriginFromProto(source.GetSessionOrigin())
+	if err != nil {
+		return agentsessionstore.EventSource{}, err
 	}
 	return agentsessionstore.EventSource{
 		Provider:          strings.TrimSpace(source.GetProvider()),
 		ProviderSessionID: strings.TrimSpace(source.GetProviderSessionId()),
 		AgentID:           strings.TrimSpace(source.GetAgentId()),
 		CWD:               strings.TrimSpace(source.GetCwd()),
-		SessionOrigin:     serverSessionOriginFromProto(source.GetSessionOrigin()),
-	}
+		SessionOrigin:     sessionOrigin,
+	}, nil
 }
 
-func serverSessionOriginFromProto(origin guestdesktoprelayv1.AgentSessionOrigin) string {
+func serverSessionOriginFromProto(origin guestdesktoprelayv1.AgentSessionOrigin) (string, error) {
 	switch origin {
-	case guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_HOOK:
-		return agentsessionstore.WorkspaceAgentSessionOriginHook
+	case guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_UNSPECIFIED:
+		return agentsessionstore.WorkspaceAgentSessionOriginRuntime, nil
 	case guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_RUNTIME:
-		return agentsessionstore.WorkspaceAgentSessionOriginRuntime
+		return agentsessionstore.WorkspaceAgentSessionOriginRuntime, nil
+	case guestdesktoprelayv1.AgentSessionOrigin(1):
+		return "", status.Error(codes.InvalidArgument, "unsupported session origin 1")
 	default:
-		return ""
+		return "", status.Errorf(codes.InvalidArgument, "unsupported session origin %d", origin)
 	}
 }
 

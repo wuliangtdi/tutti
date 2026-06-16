@@ -1,8 +1,6 @@
 import {
   FileCodeIcon,
   FileTextIcon,
-  FolderFilledIcon,
-  ImageFileIcon,
   LoadingIcon,
   VideoFileIcon,
   cn
@@ -17,8 +15,22 @@ import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.t
 import {
   resolveWorkspaceFileEntryIconCacheKey,
   isWorkspaceApplicationBundle,
+  shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
+
+const workspaceArchiveFallbackIconUrl = new URL(
+  "../assets/workspace-archive-fallback.png",
+  import.meta.url
+).toString();
+const workspaceFolderFallbackIconUrl = new URL(
+  "../assets/workspace-folder-fallback.png",
+  import.meta.url
+).toString();
+const workspaceImageFallbackIconUrl = new URL(
+  "../assets/workspace-image-fallback.png",
+  import.meta.url
+).toString();
 
 export function WorkspaceFileEntryIcon({
   entry,
@@ -26,6 +38,7 @@ export function WorkspaceFileEntryIcon({
   iconClassName = "size-4",
   iconUrlByCacheKey,
   isEnteringDirectory = false,
+  loadingIconClassName,
   onViewportLeave,
   onViewportEnter
 }: {
@@ -34,6 +47,7 @@ export function WorkspaceFileEntryIcon({
   iconClassName?: string;
   iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   isEnteringDirectory?: boolean;
+  loadingIconClassName?: string;
   onViewportLeave?: (entry: WorkspaceFileEntry) => void;
   onViewportEnter?: (entry: WorkspaceFileEntry) => void;
 }): ReactElement {
@@ -121,14 +135,16 @@ export function WorkspaceFileEntryIcon({
       )}
     >
       {isEnteringDirectory ? (
-        <LoadingIcon className={iconClassName + " animate-spin"} />
+        <LoadingIcon
+          className={cn(loadingIconClassName ?? iconClassName, "animate-spin")}
+        />
       ) : iconUrl ? (
         <img
           alt=""
           className={cn(
             iconClassName,
             visualKind === "image"
-              ? "rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] object-contain shadow-sm"
+              ? "rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] object-contain"
               : "rounded-[4px] object-contain"
           )}
           decoding="async"
@@ -184,32 +200,94 @@ function DefaultEntryIcon({
   iconClassName: string;
   visualKind: ReturnType<typeof resolveWorkspaceFileVisualKind>;
 }): ReactElement {
+  const vectorIconClassName = vectorFallbackIconClassName(iconClassName);
   if (isWorkspaceApplicationBundle(entry)) {
-    return <FileTextIcon className={iconClassName} />;
+    return <FileTextIcon className={vectorIconClassName} />;
+  }
+  if (shouldUseWorkspaceFileArchiveIcon(entry)) {
+    return <WorkspaceArchiveFallbackIcon className={iconClassName} />;
   }
   if (shouldUseWorkspaceFileExtensionDocumentIcon(entry)) {
     return (
-      <ExtensionDocumentIcon entry={entry} iconClassName={iconClassName} />
+      <ExtensionDocumentIcon
+        entry={entry}
+        iconClassName={vectorIconClassName}
+      />
     );
   }
 
   switch (visualKind) {
     case "directory":
-      return <FolderFilledIcon className={iconClassName} />;
+      return <WorkspaceFolderFallbackIcon className={iconClassName} />;
     case "image":
-      return <ImageFileIcon className={iconClassName} />;
+      return <WorkspaceImageFallbackIcon className={iconClassName} />;
     case "video":
-      return <VideoFileIcon className={iconClassName} />;
+      return <VideoFileIcon className={vectorIconClassName} />;
     case "markdown":
     case "document":
-      return <FileTextIcon className={iconClassName} />;
+      return <FileTextIcon className={vectorIconClassName} />;
     case "code":
-      return <FileCodeIcon className={iconClassName} />;
+      return <FileCodeIcon className={vectorIconClassName} />;
     case "binary":
-      return <FileTextIcon className={iconClassName} />;
+      return <FileTextIcon className={vectorIconClassName} />;
     default:
-      return <FileTextIcon className={iconClassName} />;
+      return <FileTextIcon className={vectorIconClassName} />;
   }
+}
+
+function vectorFallbackIconClassName(iconClassName: string): string {
+  return iconClassName.includes("size-[84px]") ? "size-[64px]" : iconClassName;
+}
+
+export function WorkspaceFolderFallbackIcon({
+  className
+}: {
+  className: string;
+}): ReactElement {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={cn("object-contain", className)}
+      decoding="async"
+      draggable={false}
+      src={workspaceFolderFallbackIconUrl}
+    />
+  );
+}
+
+export function WorkspaceArchiveFallbackIcon({
+  className
+}: {
+  className: string;
+}): ReactElement {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={cn("object-contain", className)}
+      decoding="async"
+      draggable={false}
+      src={workspaceArchiveFallbackIconUrl}
+    />
+  );
+}
+
+export function WorkspaceImageFallbackIcon({
+  className
+}: {
+  className: string;
+}): ReactElement {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className={cn("object-contain", className)}
+      decoding="async"
+      draggable={false}
+      src={workspaceImageFallbackIconUrl}
+    />
+  );
 }
 
 function ExtensionDocumentIcon({
@@ -230,9 +308,9 @@ function ExtensionDocumentIcon({
       aria-hidden="true"
       className={cn("relative inline-block overflow-visible", iconClassName)}
     >
-      <span className="absolute inset-[5%] rounded-[6px] border border-black/10 bg-linear-to-br from-white via-[#f8f8f8] to-[#ececec] shadow-[0_8px_16px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.85)]" />
+      <span className="absolute inset-[5%] rounded-[6px] border border-black/10 bg-linear-to-br from-white via-[#f8f8f8] to-[#ececec]" />
       <span className="absolute top-[5%] right-[5%] h-[28%] w-[28%] overflow-hidden rounded-tr-[6px]">
-        <span className="absolute top-0 right-0 h-full w-full origin-top-right -skew-x-3 rounded-bl-[4px] border-b border-l border-black/10 bg-linear-to-br from-white to-[#d9d9d9] shadow-[-2px_3px_5px_rgba(0,0,0,0.18)]" />
+        <span className="absolute top-0 right-0 h-full w-full origin-top-right -skew-x-3 rounded-bl-[4px] border-b border-l border-black/10 bg-linear-to-br from-white to-[#d9d9d9]" />
       </span>
       {showExtension ? (
         <span className="absolute right-[12%] bottom-[14%] left-[12%] truncate text-center text-[10px] leading-none font-semibold tracking-wide text-[#7a7a7a]">

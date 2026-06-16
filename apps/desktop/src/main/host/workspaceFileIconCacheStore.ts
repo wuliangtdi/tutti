@@ -13,6 +13,7 @@ export interface WorkspaceApplicationIconCacheKey {
   assetKind: "application-icon";
   mtimeMs: number | null;
   path: string;
+  sizePx: number;
   workspaceID: string;
 }
 
@@ -21,6 +22,7 @@ export interface WorkspaceFileTypeDefaultApplicationIconCacheKey {
   assetKind: "file-type-default-application-icon";
   fileExtension: string;
   platform: "darwin";
+  sizePx: number;
 }
 
 export interface WorkspaceFileImageThumbnailCacheKey {
@@ -67,7 +69,7 @@ type WorkspaceFileIconMimeType = "image/png";
 
 const indexFileName = "index.json";
 const defaultMaxEntries = 500;
-const defaultMaxEntryBytes = 256 * 1024;
+const defaultMaxEntryBytes = 512 * 1024;
 const defaultMaxTotalBytes = 32 * 1024 * 1024;
 const maxCacheKeyPartLength = 4096;
 
@@ -241,6 +243,7 @@ function isValidWorkspaceFileIconCacheKey(
   if (typed.assetKind === "application-icon") {
     return (
       isValidCacheKeyPart(typed.path) &&
+      isValidIconSize(typed.sizePx) &&
       isValidCacheKeyPart(typed.workspaceID) &&
       (typed.mtimeMs === null ||
         (typeof typed.mtimeMs === "number" && Number.isFinite(typed.mtimeMs)))
@@ -251,6 +254,7 @@ function isValidWorkspaceFileIconCacheKey(
     return (
       typed.platform === "darwin" &&
       isValidCacheKeyPart(typed.applicationPath) &&
+      isValidIconSize(typed.sizePx) &&
       isValidWorkspaceFileIconExtension(typed.fileExtension)
     );
   }
@@ -259,7 +263,7 @@ function isValidWorkspaceFileIconCacheKey(
     return (
       isValidCacheKeyPart(typed.path) &&
       isValidCacheKeyPart(typed.workspaceID) &&
-      isValidThumbnailSize(typed.sizePx) &&
+      isValidIconSize(typed.sizePx) &&
       (typed.mtimeMs === null ||
         (typeof typed.mtimeMs === "number" && Number.isFinite(typed.mtimeMs)))
     );
@@ -282,7 +286,7 @@ function isValidWorkspaceFileIconExtension(value: unknown): value is string {
   );
 }
 
-function isValidThumbnailSize(value: unknown): value is number {
+function isValidIconSize(value: unknown): value is number {
   return (
     typeof value === "number" &&
     Number.isInteger(value) &&
@@ -298,6 +302,7 @@ function workspaceFileIconCacheKeyHash(key: WorkspaceFileIconCacheKey): string {
       assetKind: key.assetKind,
       mtimeMs: key.mtimeMs,
       path: key.path,
+      sizePx: key.sizePx,
       workspaceID: key.workspaceID
     };
   } else if (key.assetKind === "image-thumbnail") {
@@ -313,7 +318,8 @@ function workspaceFileIconCacheKeyHash(key: WorkspaceFileIconCacheKey): string {
       applicationPath: key.applicationPath,
       assetKind: key.assetKind,
       fileExtension: key.fileExtension,
-      platform: key.platform
+      platform: key.platform,
+      sizePx: key.sizePx
     };
   }
 

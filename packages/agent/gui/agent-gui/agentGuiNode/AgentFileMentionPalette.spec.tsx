@@ -1749,6 +1749,9 @@ describe("AgentFileMentionPalette", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
+    );
+    expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*36px[^}]*margin-left:\s*36px/s
     );
     expect(css).toMatch(

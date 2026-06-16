@@ -7,7 +7,6 @@ type AgentSessionOrigin int32
 
 const (
 	AgentSessionOrigin_AGENT_SESSION_ORIGIN_UNSPECIFIED AgentSessionOrigin = 0
-	AgentSessionOrigin_AGENT_SESSION_ORIGIN_HOOK        AgentSessionOrigin = 1
 	AgentSessionOrigin_AGENT_SESSION_ORIGIN_RUNTIME     AgentSessionOrigin = 2
 )
 

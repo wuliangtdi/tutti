@@ -145,6 +145,36 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("uses 90 percent of the visible height when the remaining workbench height is compact", () => {
+    const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
+      frame: { height: 560, width: 1040, x: 140, y: 48 },
+      request: {
+        layoutConstraints: {
+          minHeight: 160,
+          minWidth: 280,
+          safeArea: {
+            bottom: 79,
+            left: 0,
+            right: 0,
+            top: 52
+          },
+          surfacePadding: 0
+        },
+        surfaceSize: {
+          height: 747,
+          width: 1440
+        }
+      }
+    });
+
+    expect(frame).toEqual({
+      height: 554,
+      width: 1040,
+      x: 200,
+      y: 83
+    });
+  });
+
   it("preserves the 90 percent visible-area frame during compact launches", () => {
     const contribution = createAgentGuiWorkbenchContribution({
       renderBody: () => null,

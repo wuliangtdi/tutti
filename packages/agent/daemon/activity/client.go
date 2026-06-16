@@ -301,37 +301,12 @@ func (c *Client) doJSONWithTransientRemoteRetry(
 	}
 }
 
-func sessionOriginQueryValue(origin string) string {
-	switch strings.TrimSpace(origin) {
-	case "", WorkspaceAgentSessionOriginHook, "hook", "HOOK", "1":
-		return ""
-	case WorkspaceAgentSessionOriginRuntime, "runtime", "RUNTIME", "2":
-		return "2"
-	default:
-		return ""
-	}
-}
-
 func sessionOriginCanonicalQueryValue(origin string) string {
-	switch strings.TrimSpace(origin) {
-	case "", WorkspaceAgentSessionOriginHook, "hook", "HOOK", "1":
-		return ""
-	case WorkspaceAgentSessionOriginRuntime, "runtime", "RUNTIME", "2":
-		return WorkspaceAgentSessionOriginRuntime
-	default:
-		return ""
-	}
+	return canonicalSessionOriginValue(origin)
 }
 
 func sessionOriginCanonicalRequestValue(origin string) string {
-	switch strings.TrimSpace(origin) {
-	case "", WorkspaceAgentSessionOriginHook, "hook", "HOOK", "1":
-		return WorkspaceAgentSessionOriginHook
-	case WorkspaceAgentSessionOriginRuntime, "runtime", "RUNTIME", "2":
-		return WorkspaceAgentSessionOriginRuntime
-	default:
-		return strings.TrimSpace(origin)
-	}
+	return canonicalSessionOriginValue(origin)
 }
 
 func (c *Client) doJSON(ctx context.Context, method, endpoint string, requestBody any, responseBody any) error {
@@ -396,13 +371,13 @@ func sanitizeReportActivityRequest(req reportActivityRequest) reportActivityRequ
 }
 
 // SanitizeTimelineItemsForRelay reuses the upstream payload sanitation rules for
-// local relay transports so oversized tool outputs do not block hook reporting.
+// local relay transports so oversized tool outputs do not block activity reporting.
 func SanitizeTimelineItemsForRelay(items []WorkspaceAgentTimelineItem) []WorkspaceAgentTimelineItem {
 	return sanitizeTimelineItemsForUpstream(items)
 }
 
 // SanitizeStatePatchesForRelay reuses the upstream payload sanitation rules for
-// local relay transports so oversized tool outputs do not block hook reporting.
+// local relay transports so oversized tool outputs do not block activity reporting.
 func SanitizeStatePatchesForRelay(patches []WorkspaceAgentStatePatch) []WorkspaceAgentStatePatch {
 	return sanitizeStatePatchesForUpstream(patches)
 }

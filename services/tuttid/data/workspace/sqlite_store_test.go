@@ -478,46 +478,46 @@ func TestSQLiteStoreReportsProviderSessionMessagesToSameOriginSession(t *testing
 	}
 	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:       "ws-agent-provider-origin-message",
-		AgentSessionID:    "hook-1",
-		Origin:            agentsessionstore.WorkspaceAgentSessionOriginHook,
+		AgentSessionID:    "runtime-2",
+		Origin:            agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Provider:          "codex",
 		ProviderSessionID: "shared-provider-session",
 		Status:            "running",
 		OccurredAtUnixMS:  100,
 	}); err != nil {
-		t.Fatalf("ReportSessionState(hook) error = %v", err)
+		t.Fatalf("ReportSessionState(runtime-2) error = %v", err)
 	}
 
 	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-provider-origin-message",
 		AgentSessionID: "shared-provider-session",
-		Origin:         agentsessionstore.WorkspaceAgentSessionOriginHook,
+		Origin:         agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 		Messages: []agentactivitybiz.MessageUpdate{{
-			MessageID:        "hook-message-1",
+			MessageID:        "runtime-message-1",
 			Role:             "assistant",
 			Kind:             "text",
 			Status:           "completed",
-			Payload:          map[string]any{"text": "hook"},
+			Payload:          map[string]any{"text": "runtime"},
 			OccurredAtUnixMS: 110,
 		}},
 	})
 	if err != nil {
 		t.Fatalf("ReportSessionMessages() error = %v", err)
 	}
-	if result.AcceptedCount != 1 || result.Messages[0].AgentSessionID != "hook-1" {
-		t.Fatalf("result = %#v, want message under hook-1", result)
+	if result.AcceptedCount != 1 || result.Messages[0].AgentSessionID != "shared-provider-session" {
+		t.Fatalf("result = %#v, want ambiguous message under provider session", result)
 	}
 
-	hookPage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
+	providerPage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
 		WorkspaceID:    "ws-agent-provider-origin-message",
-		AgentSessionID: "hook-1",
+		AgentSessionID: "shared-provider-session",
 		Limit:          10,
 	})
 	if err != nil {
-		t.Fatalf("ListSessionMessages(hook) error = %v", err)
+		t.Fatalf("ListSessionMessages(provider) error = %v", err)
 	}
-	if !ok || len(hookPage.Messages) != 1 || hookPage.Messages[0].AgentSessionID != "hook-1" {
-		t.Fatalf("hook page = %#v ok=%v, want hook message", hookPage, ok)
+	if !ok || len(providerPage.Messages) != 1 || providerPage.Messages[0].AgentSessionID != "shared-provider-session" {
+		t.Fatalf("provider page = %#v ok=%v, want ambiguous provider message", providerPage, ok)
 	}
 	runtimePage, ok, err := store.ListSessionMessages(ctx, agentactivitybiz.ListSessionMessagesInput{
 		WorkspaceID:    "ws-agent-provider-origin-message",

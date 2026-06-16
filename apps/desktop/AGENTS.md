@@ -54,6 +54,7 @@ Current naming guidance:
 - route desktop-owned user-visible copy through `src/shared/i18n`; this includes renderer product text, Electron dialog labels, status copy, empty states, host-owned workbench text, and user-facing error messages
 - keep reusable package default i18n resources with the owning package; the renderer app-level i18n runtime should merge package defaults with desktop-owned resources instead of copying package strings back into `src/shared/i18n`
 - prefer consuming shared visuals from `@tutti-os/ui-system` instead of growing a second token or primitive layer in renderer
+- use `@tutti-os/ui-system` components wherever practical for renderer React UI, especially components under `src/renderer/src/features/*/ui`
 - load `@tutti-os/ui-system/styles.css` once from the renderer style entrypoint rather than per component
 - keep launcher surfaces lighter and more welcoming, while workspace surfaces stay denser and more workbench-like
 

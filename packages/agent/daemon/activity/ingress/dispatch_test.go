@@ -223,7 +223,7 @@ func TestDispatchReportSessionMessagesNotifiesObserverAndForwardsMessages(t *tes
 	resp, err := dispatch.ReportSessionMessages(context.Background(), &guestdesktoprelayv1.ReportAgentSessionMessagesRequest{
 		WorkspaceId:    "ws-1",
 		AgentSessionId: " agent-session-1 ",
-		SessionOrigin:  guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_HOOK,
+		SessionOrigin:  guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_RUNTIME,
 		Updates: []*guestdesktoprelayv1.AgentSessionMessageUpdate{{
 			MessageId: " message-1 ",
 			Role:      " assistant ",
@@ -246,7 +246,7 @@ func TestDispatchReportSessionMessagesNotifiesObserverAndForwardsMessages(t *tes
 		t.Fatal("ReportSessionMessages was not called")
 	}
 	input := reporter.sessionMessagesInput
-	if input.WorkspaceID != "room-1" || input.AgentSessionID != "agent-session-1" || input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginHook {
+	if input.WorkspaceID != "room-1" || input.AgentSessionID != "agent-session-1" || input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginRuntime {
 		t.Fatalf("input identity = %#v", input)
 	}
 	if len(input.Updates) != 1 || input.Updates[0].MessageID != "message-1" {

@@ -208,7 +208,7 @@ func TestReportActivitySplitsStateAndMessagesFromOldActivity(t *testing.T) {
 			Provider:          " codex ",
 			ProviderSessionId: " provider-session-1 ",
 			AgentId:           " source-session ",
-			SessionOrigin:     guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_HOOK,
+			SessionOrigin:     guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_RUNTIME,
 		},
 		TimelineItems: []*guestdesktoprelayv1.AgentActivityTimelineItem{{
 			AgentSessionId: "timeline-session",
@@ -260,7 +260,7 @@ func TestReportActivitySplitsStateAndMessagesFromOldActivity(t *testing.T) {
 		t.Fatalf("ReportSessionState calls = %d, want 1", len(reporter.sessionStateInputs))
 	}
 	stateInput := reporter.sessionStateInputs[0]
-	if stateInput.AgentSessionID != "state-session" || stateInput.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginHook {
+	if stateInput.AgentSessionID != "state-session" || stateInput.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginRuntime {
 		t.Fatalf("state input identity = %#v", stateInput)
 	}
 	if stateInput.State.Title != "Working" || stateInput.State.CurrentPhase != "coding" ||
@@ -276,7 +276,7 @@ func TestReportActivitySplitsStateAndMessagesFromOldActivity(t *testing.T) {
 			t.Fatalf("message input = %#v, want one update per session", input)
 		}
 		seen[input.AgentSessionID] = input.Updates[0]
-		if input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginHook {
+		if input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginRuntime {
 			t.Fatalf("message input origin = %#v", input)
 		}
 	}
@@ -389,7 +389,7 @@ func TestReportSessionMessagesForwardsMessagesWithoutReportActivity(t *testing.T
 	resp, err := service.ReportSessionMessages(context.Background(), &guestdesktoprelayv1.ReportAgentSessionMessagesRequest{
 		WorkspaceId:    "room-1",
 		AgentSessionId: " agent-session-1 ",
-		SessionOrigin:  guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_HOOK,
+		SessionOrigin:  guestdesktoprelayv1.AgentSessionOrigin_AGENT_SESSION_ORIGIN_RUNTIME,
 		Updates: []*guestdesktoprelayv1.AgentSessionMessageUpdate{{
 			MessageId:         " message-1 ",
 			TurnId:            " turn-1 ",
@@ -415,7 +415,7 @@ func TestReportSessionMessagesForwardsMessagesWithoutReportActivity(t *testing.T
 		t.Fatal("ReportSessionMessages was not called")
 	}
 	input := reporter.sessionMessagesInput
-	if input.WorkspaceID != "room-1" || input.AgentSessionID != "agent-session-1" || input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginHook {
+	if input.WorkspaceID != "room-1" || input.AgentSessionID != "agent-session-1" || input.SessionOrigin != agentsessionstore.WorkspaceAgentSessionOriginRuntime {
 		t.Fatalf("input identity = %#v", input)
 	}
 	if len(input.Updates) != 1 {

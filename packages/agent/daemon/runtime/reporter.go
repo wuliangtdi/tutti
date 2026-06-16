@@ -378,7 +378,34 @@ func textMessageUpdateFromSessionEvent(
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
 	}
+	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
 	return update, true
+}
+
+func forwardSystemNoticeMessageMetadata(payload map[string]any, metadata map[string]any) {
+	if stringFromPayload(metadata, "kind") != "agent_system_notice" {
+		return
+	}
+	for _, key := range []string{
+		"kind",
+		"noticeKind",
+		"severity",
+		"title",
+		"detail",
+		"additionalDetails",
+	} {
+		if value := stringFromPayload(metadata, key); value != "" {
+			payload[key] = value
+		}
+	}
+	if retryable, ok := metadata["retryable"].(bool); ok {
+		payload["retryable"] = retryable
+	}
+	for _, key := range []string{"acp", "codexErrorInfo", "extra"} {
+		if value, ok := metadata[key]; ok && !payloadValueIsEmpty(value) {
+			payload[key] = clonePayloadValue(value)
+		}
+	}
 }
 
 func callMessageUpdateFromSessionEvent(

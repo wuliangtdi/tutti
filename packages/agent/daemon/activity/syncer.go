@@ -146,10 +146,10 @@ func (s *sessionSyncer) syncSessionState(ctx context.Context, roomID string) ([]
 		return nil, false
 	}
 	if snapshot == nil {
-		s.svc.updateStateForOrigin(roomID, WorkspaceAgentSnapshot{}, WorkspaceAgentSessionOriginHook)
+		s.svc.updateStateForOrigin(roomID, WorkspaceAgentSnapshot{}, WorkspaceAgentSessionOriginRuntime)
 		return nil, true
 	}
-	s.svc.updateStateForOrigin(roomID, *snapshot, WorkspaceAgentSessionOriginHook)
+	s.svc.updateStateForOrigin(roomID, *snapshot, WorkspaceAgentSessionOriginRuntime)
 	return snapshot.Sessions, true
 }
 

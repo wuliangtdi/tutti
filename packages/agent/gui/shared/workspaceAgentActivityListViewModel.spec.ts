@@ -1710,7 +1710,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       sessions: [
         {
           id: 20,
-          agentSessionId: "hook-session-20",
+          agentSessionId: "alias-session-20",
           presenceId: 0,
           provider: "codex",
           providerSessionId: "runtime-session-20",

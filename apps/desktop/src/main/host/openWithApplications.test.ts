@@ -248,7 +248,7 @@ test("readDefaultApplicationIconDataUrl returns default handler icon on macOS", 
   assert.ok(
     Buffer.from(iconDataUrl.replace(/^data:image\/png;base64,/, ""), "base64")
       .byteLength <
-      96 * 1024
+      512 * 1024
   );
 });
 

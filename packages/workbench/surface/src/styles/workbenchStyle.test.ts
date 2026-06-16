@@ -164,11 +164,31 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*flex:\s*0 0 auto;/s);
   assert.match(
     css,
-    /\.desktop-dock__separator\s*{[^}]*flex:\s*0 0 auto;[^}]*margin:\s*0 4px var\(--desktop-dock-separator-center-offset\);[^}]*align-self:\s*flex-end;[^}]*background:\s*var\(--line-1\);/s
+    /\.desktop-dock__separator\s*{[^}]*--desktop-dock-separator-color:\s*var\(--line-1\);[^}]*flex:\s*0 0 auto;[^}]*margin:\s*0 4px var\(--desktop-dock-separator-center-offset\);[^}]*align-self:\s*flex-end;[^}]*background:\s*var\(--desktop-dock-separator-color\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__separator\[data-wallpaper-tone="dark"\]\s*{[^}]*--desktop-dock-separator-color:\s*rgb\(255 255 255 \/ 15%\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__separator\[data-wallpaper-tone="light"\]\s*{[^}]*--desktop-dock-separator-color:\s*rgb\(0 0 0 \/ 12%\);/s
   );
   assert.match(
     css,
     /\.desktop-dock\[data-dock-placement="left"\]\s+\.desktop-dock__separator\s*{[^}]*align-self:\s*flex-start;[^}]*margin:\s*4px 0 4px var\(--desktop-dock-separator-center-offset\);/s
+  );
+  assert.match(
+    css,
+    /\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*var\(--transparency-block\);[^}]*--workspace-launchpad-dock-icon-border:\s*var\(--line-1\);[^}]*background:\s*var\(--workspace-launchpad-dock-icon-bg\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot\[data-wallpaper-tone="dark"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(255 255 255 \/ 18%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(255 255 255 \/ 15%\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot\[data-wallpaper-tone="light"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(0 0 0 \/ 10%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(0 0 0 \/ 10%\);/s
   );
   assert.match(
     css,

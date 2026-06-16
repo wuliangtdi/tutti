@@ -101,12 +101,12 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 			if !ok {
 				return nil, err
 			}
-			s.startRemoteBuiltinPackage(workspaceID, remoteBuiltin, "missing")
+			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
 			slog.Warn("workspace app start enabled deferred app; package unavailable locally", "workspaceId", workspaceID, "appId", installation.AppID)
 			continue
 		}
 		if remoteBuiltin, ok := remoteBuiltins[installation.AppID]; ok && shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
-			s.startRemoteBuiltinPackage(workspaceID, remoteBuiltin, "update")
+			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
 			slog.Info(
 				"workspace app start enabled deferred app; remote builtin update available",
 				"workspaceId", workspaceID,
@@ -171,54 +171,14 @@ func (s *AppCenterService) publishInstalledAppRuntime(ctx context.Context, works
 	return s.publishAppIfChanged(ctx, workspaceID, appPackage.AppID, app)
 }
 
-func (s *AppCenterService) startRemoteBuiltinPackage(workspaceID string, builtin builtinapps.App, reason string) {
-	go func() {
-		startedAt := time.Now()
-		appID := strings.TrimSpace(builtin.Manifest.AppID)
-		slog.Info(
-			"workspace app remote builtin update and start started",
-			"workspaceId", workspaceID,
-			"appId", appID,
-			"version", builtin.Manifest.Version,
-			"reason", reason,
-		)
-		appPackage, err := s.packageForRemoteBuiltinStart(context.Background(), builtin)
-		if err != nil {
-			slog.Warn(
-				"workspace app remote builtin update and start failed",
-				"workspaceId", workspaceID,
-				"appId", appID,
-				"version", builtin.Manifest.Version,
-				"reason", reason,
-				"duration", time.Since(startedAt),
-				"error", err,
-			)
-			return
-		}
-		if _, err := s.startPackage(context.Background(), workspaceID, appPackage, false); err != nil {
-			slog.Warn(
-				"workspace app remote builtin start failed",
-				"workspaceId", workspaceID,
-				"appId", appID,
-				"version", appPackage.Version,
-				"reason", reason,
-				"duration", time.Since(startedAt),
-				"error", err,
-			)
-			return
-		}
-		slog.Info(
-			"workspace app remote builtin updated and started",
-			"workspaceId", workspaceID,
-			"appId", appID,
-			"version", appPackage.Version,
-			"reason", reason,
-			"duration", time.Since(startedAt),
-		)
-	}()
+func (s *AppCenterService) startRemoteBuiltinInstallJob(workspaceID string, builtin builtinapps.App) bool {
+	appID := strings.TrimSpace(builtin.Manifest.AppID)
+	return s.startInstallJob(workspaceID, appID, InstallOptions{}, func(ctx context.Context) (workspacebiz.AppPackage, error) {
+		return s.packageForRemoteBuiltinInstall(ctx, builtin)
+	})
 }
 
-func (s *AppCenterService) packageForRemoteBuiltinStart(ctx context.Context, builtin builtinapps.App) (workspacebiz.AppPackage, error) {
+func (s *AppCenterService) packageForRemoteBuiltinInstall(ctx context.Context, builtin builtinapps.App) (workspacebiz.AppPackage, error) {
 	appID := strings.TrimSpace(builtin.Manifest.AppID)
 	version := strings.TrimSpace(builtin.Manifest.Version)
 	if appID == "" || version == "" {
@@ -228,9 +188,6 @@ func (s *AppCenterService) packageForRemoteBuiltinStart(ctx context.Context, bui
 	if err == nil && existing.Source == workspacebiz.AppPackageSourceBuiltin {
 		if shouldMaterializeRemoteBuiltin(existing, builtin) {
 			return s.downloadRemoteBuiltinPackage(ctx, builtin)
-		}
-		if err := s.Store.SetActiveAppPackageVersion(ctx, appID, version); err != nil {
-			return workspacebiz.AppPackage{}, err
 		}
 		return existing, nil
 	}

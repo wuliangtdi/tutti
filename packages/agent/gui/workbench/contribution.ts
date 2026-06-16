@@ -324,14 +324,15 @@ export function resolveAgentGuiWorkbenchDefaultLaunchFrame(input: {
   const defaultHeight = Math.round(
     layoutFrame.height * agentGuiWorkbenchDefaultUsableHeightRatio
   );
+  const shouldUseCompactWidth = layoutFrame.width < input.frame.width;
+  const shouldUseCompactHeight =
+    layoutFrame.height <
+    input.frame.height / agentGuiWorkbenchCompactVisibleAreaRatio;
 
-  if (
-    layoutFrame.width < input.frame.width ||
-    layoutFrame.height < input.frame.height
-  ) {
-    const width = Math.round(
-      layoutFrame.width * agentGuiWorkbenchCompactVisibleAreaRatio
-    );
+  if (shouldUseCompactWidth || shouldUseCompactHeight) {
+    const width = shouldUseCompactWidth
+      ? Math.round(layoutFrame.width * agentGuiWorkbenchCompactVisibleAreaRatio)
+      : input.frame.width;
     const height = Math.round(
       layoutFrame.height * agentGuiWorkbenchCompactVisibleAreaRatio
     );

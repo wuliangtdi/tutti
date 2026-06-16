@@ -4,6 +4,7 @@ import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.t
 import {
   resolveWorkspaceFileEntryIconCacheKey,
   shouldResolveWorkspaceFileEntryIcon,
+  shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
 
@@ -51,16 +52,26 @@ test("resolves image thumbnails only when enabled", () => {
   );
 });
 
-test("uses extension document icons for text and code files", () => {
-  for (const name of ["example.txt", "index.html", "README.md"]) {
+test("uses extension document icons for text, code, and pdf files", () => {
+  for (const name of ["example.txt", "index.html", "README.md", "brief.pdf"]) {
     const entry = createEntry({ name, path: `/workspace/${name}` });
     assert.equal(shouldUseWorkspaceFileExtensionDocumentIcon(entry), true);
+    assert.equal(shouldUseWorkspaceFileArchiveIcon(entry), false);
+    assert.equal(shouldResolveWorkspaceFileEntryIcon(entry), false);
+  }
+});
+
+test("uses the archive fallback icon for compressed files", () => {
+  for (const name of ["Archive.zip", "backup.tar", "bundle.7z"]) {
+    const entry = createEntry({ name, path: `/workspace/${name}` });
+    assert.equal(shouldUseWorkspaceFileArchiveIcon(entry), true);
+    assert.equal(shouldUseWorkspaceFileExtensionDocumentIcon(entry), false);
     assert.equal(shouldResolveWorkspaceFileEntryIcon(entry), false);
   }
 });
 
 test("resolves default application icons for selected document-like file types", () => {
-  for (const name of ["brief.pdf", "Deck.pptx", "Archive.zip", "Design.psd"]) {
+  for (const name of ["Deck.pptx", "Design.psd"]) {
     assert.equal(
       shouldResolveWorkspaceFileEntryIcon(
         createEntry({ name, path: `/workspace/${name}` })
@@ -128,10 +139,10 @@ test("builds cache keys by icon target kind", () => {
     resolveWorkspaceFileEntryIconCacheKey(
       createEntry({
         mtimeMs: 42,
-        name: "Brief.pdf",
-        path: "/workspace/Brief.pdf"
+        name: "Deck.pptx",
+        path: "/workspace/Deck.pptx"
       })
     ),
-    "file-type-default-application:pdf"
+    "file-type-default-application:pptx"
   );
 });

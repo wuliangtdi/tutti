@@ -288,8 +288,6 @@ func shouldPreferActivePeerCandidate(
 
 func activePeerOriginRank(origin string) int {
 	switch agentsessionstore.NormalizeSessionOrigin(origin) {
-	case agentsessionstore.WorkspaceAgentSessionOriginHook:
-		return 2
 	case agentsessionstore.WorkspaceAgentSessionOriginRuntime:
 		return 1
 	default:

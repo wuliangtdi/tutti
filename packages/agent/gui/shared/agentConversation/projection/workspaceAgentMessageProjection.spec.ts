@@ -382,6 +382,75 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(toolRows[0]?.calls[0]?.toolName).toBe("Agent");
   });
 
+  it("projects Codex warning notices without appending them to assistant text", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-1",
+          id: 1,
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: { text: "你好" }
+        }),
+        message({
+          messageId: "notice-1",
+          id: 2,
+          version: 2,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "warning",
+            severity: "warning",
+            title: "Codex warning",
+            detail:
+              "Skill descriptions were shortened to fit the 2% skills context budget.",
+            text: "Codex warning",
+            content: "Codex warning",
+            contentMode: "snapshot"
+          }
+        }),
+        message({
+          messageId: "assistant-1",
+          id: 3,
+          version: 3,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            text: "你好。有什么需要我在这个 workspace 里处理?"
+          }
+        })
+      ]
+    });
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(2);
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toEqual({
+      noticeKind: "warning",
+      severity: "warning",
+      title: "Codex warning",
+      detail:
+        "Skill descriptions were shortened to fit the 2% skills context budget.",
+      retryable: null
+    });
+    expect(assistantRows[0]?.messages[0]?.body).toBe("Codex warning");
+    expect(assistantRows[1]?.messages[0]?.body).toBe(
+      "你好。有什么需要我在这个 workspace 里处理?"
+    );
+  });
+
   it("renders displayPrompt instead of rich content text while preserving prompt images", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),

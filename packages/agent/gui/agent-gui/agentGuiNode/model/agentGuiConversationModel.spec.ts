@@ -118,7 +118,7 @@ describe("agentGuiConversationModel", () => {
     ]);
   });
 
-  it("builds conversations only from runtime-origin Codex sessions", () => {
+  it("builds conversations only from runtime Codex sessions", () => {
     const snapshot: AgentHostWorkspaceAgentSnapshot = {
       presences: [],
       sessions: [
@@ -130,10 +130,10 @@ describe("agentGuiConversationModel", () => {
           updatedAtUnixMs: 30
         }),
         workspaceAgentSession({
-          agentSessionId: "hook-codex",
+          agentSessionId: "unknown-origin-codex",
           provider: "codex",
-          sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK",
-          title: "Hook Codex",
+          sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_UNKNOWN",
+          title: "Unknown Origin Codex",
           updatedAtUnixMs: 40
         }),
         workspaceAgentSession({

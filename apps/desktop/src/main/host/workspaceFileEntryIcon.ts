@@ -10,8 +10,8 @@ import {
 } from "./openWithApplications.ts";
 import type { WorkspaceFileIconCacheStore } from "./workspaceFileIconCacheStore.ts";
 
-const entryIconPixelSize = 64;
-const imageThumbnailPixelSize = 160;
+const entryIconPixelSize = 256;
+const imageThumbnailPixelSize = 256;
 const imageThumbnailMaxSourceBytes = 20 * 1024 * 1024;
 
 type WorkspaceFileEntryIconStat = {
@@ -135,6 +135,7 @@ async function resolveApplicationBundleIconUrl(
     assetKind: "application-icon" as const,
     mtimeMs: entry.mtimeMs,
     path: entry.path,
+    sizePx: entryIconPixelSize,
     workspaceID: entry.workspaceID
   };
   const cachedUrl = await cacheStore.readUrl(cacheKey);
@@ -187,7 +188,8 @@ async function resolveFileTypeDefaultApplicationIconUrl(
     applicationPath: defaultApplication.applicationPath,
     assetKind: "file-type-default-application-icon" as const,
     fileExtension,
-    platform: "darwin" as const
+    platform: "darwin" as const,
+    sizePx: entryIconPixelSize
   };
   const cachedUrl = await cacheStore.readUrl(cacheKey);
   if (cachedUrl) {

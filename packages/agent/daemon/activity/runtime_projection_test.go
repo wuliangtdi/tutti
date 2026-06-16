@@ -2,6 +2,34 @@ package agentsessionstore
 
 import "testing"
 
+func TestNormalizeSessionOriginRuntimeOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		origin string
+		want   string
+	}{
+		{name: "empty defaults to runtime", origin: "", want: WorkspaceAgentSessionOriginRuntime},
+		{name: "runtime is accepted", origin: WorkspaceAgentSessionOriginRuntime, want: WorkspaceAgentSessionOriginRuntime},
+		{name: "hook alias is not accepted", origin: "hook", want: ""},
+		{name: "uppercase hook alias is not accepted", origin: "HOOK", want: ""},
+		{name: "numeric hook alias is not accepted", origin: "1", want: ""},
+		{name: "unknown explicit origin is not accepted", origin: "WORKSPACE_AGENT_SESSION_ORIGIN_UNKNOWN", want: ""},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := NormalizeSessionOrigin(tt.origin); got != tt.want {
+				t.Fatalf("NormalizeSessionOrigin(%q) = %q, want %q", tt.origin, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFilterTimelineItemsDropsZeroIDRowsAfterCursor(t *testing.T) {
 	t.Parallel()
 
@@ -347,7 +375,7 @@ func TestRuntimeSnapshotForDisplayNormalizesNewerUpstreamActiveIdleOverLocalIdle
 	}
 }
 
-func TestRuntimeSnapshotForDisplayMergesHookFallbackSessionByProviderSessionID(t *testing.T) {
+func TestRuntimeSnapshotForDisplayMergesRuntimeFallbackSessionByProviderSessionID(t *testing.T) {
 	t.Parallel()
 
 	upstream := WorkspaceAgentSnapshot{
@@ -369,7 +397,7 @@ func TestRuntimeSnapshotForDisplayMergesHookFallbackSessionByProviderSessionID(t
 			AgentSessionID:    "provider-session-1",
 			Provider:          "codex",
 			ProviderSessionID: "provider-session-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginHook,
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus:   "active",
 			TurnPhase:         "working",
 			EffectiveStatus:   "working",
@@ -469,122 +497,5 @@ func TestRuntimeSnapshotForDisplayKeepsIdleRuntimePlaceholderForHandlerLevelFilt
 
 	if len(display.Sessions) != 1 {
 		t.Fatalf("sessions = %#v, want runtime placeholder preserved for handler filtering", display.Sessions)
-	}
-}
-
-func TestHookSnapshotForDisplayKeepsUpstreamWorkingStatusAgainstLocalIdleState(t *testing.T) {
-	t.Parallel()
-
-	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
-			ID:                42,
-			AgentSessionID:    "agent-session-1",
-			UserID:            "user-1",
-			Provider:          "claude-code",
-			ProviderSessionID: "provider-session-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginHook,
-			CWD:               "/workspace/ws-local",
-			LifecycleStatus:   "active",
-			TurnPhase:         "working",
-			EffectiveStatus:   "working",
-			Title:             "Upstream title",
-			CreatedAtUnixMS:   1000,
-			UpdatedAtUnixMS:   2000,
-		}},
-	}
-	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
-			AgentSessionID:    "agent-session-1",
-			UserID:            "user-1",
-			Provider:          "claude-code",
-			ProviderSessionID: "provider-session-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginHook,
-			CWD:               "/workspace/ws-local",
-			LifecycleStatus:   "active",
-			TurnPhase:         "idle",
-			EffectiveStatus:   "idle",
-			Title:             "Local title",
-			CreatedAtUnixMS:   1000,
-			UpdatedAtUnixMS:   3000,
-		}},
-	}
-
-	display := HookSnapshotForDisplay(upstream, local)
-
-	if len(display.Sessions) != 1 {
-		t.Fatalf("sessions = %#v, want one merged session", display.Sessions)
-	}
-	session := display.Sessions[0]
-	if session.EffectiveStatus != "working" || session.TurnPhase != "working" {
-		t.Fatalf("session status = %#v, want upstream working state to win for hook display", session)
-	}
-	if session.Title != "Local title" {
-		t.Fatalf("session title = %q, want local title merged in", session.Title)
-	}
-	if session.ID != 42 || session.UserID != "user-1" {
-		t.Fatalf("session identity = %#v, want upstream identity preserved", session)
-	}
-}
-
-func TestHookSnapshotForDisplayAppendsLocalOnlyHookSession(t *testing.T) {
-	t.Parallel()
-
-	upstream := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
-			ID:                42,
-			AgentSessionID:    "agent-session-1",
-			Provider:          "claude-code",
-			ProviderSessionID: "provider-session-1",
-			SessionOrigin:     WorkspaceAgentSessionOriginHook,
-			LifecycleStatus:   "active",
-			TurnPhase:         "working",
-			EffectiveStatus:   "working",
-		}},
-	}
-	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
-			AgentSessionID:    "agent-session-2",
-			Provider:          "claude-code",
-			ProviderSessionID: "provider-session-2",
-			SessionOrigin:     WorkspaceAgentSessionOriginHook,
-			LifecycleStatus:   "active",
-			TurnPhase:         "working",
-			EffectiveStatus:   "working",
-			Title:             "Unsynced local hook session",
-		}},
-	}
-
-	display := HookSnapshotForDisplay(upstream, local)
-
-	if len(display.Sessions) != 2 {
-		t.Fatalf("sessions = %#v, want upstream session plus local-only hook session", display.Sessions)
-	}
-	if display.Sessions[1].AgentSessionID != "agent-session-2" {
-		t.Fatalf("local-only hook session = %#v, want appended local session", display.Sessions[1])
-	}
-}
-
-func TestHookSnapshotForDisplayFiltersIdleRuntimePlaceholderSession(t *testing.T) {
-	t.Parallel()
-
-	local := WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{{
-			AgentSessionID:    "agent-session-placeholder",
-			Provider:          "claude-code",
-			ProviderSessionID: "provider-session-placeholder",
-			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-			LifecycleStatus:   "active",
-			TurnPhase:         "idle",
-			EffectiveStatus:   "idle",
-			Title:             "Claude Code",
-			CreatedAtUnixMS:   1000,
-			UpdatedAtUnixMS:   2000,
-		}},
-	}
-
-	display := HookSnapshotForDisplay(WorkspaceAgentSnapshot{}, local)
-
-	if len(display.Sessions) != 0 {
-		t.Fatalf("sessions = %#v, want runtime placeholder filtered from hook display", display.Sessions)
 	}
 }

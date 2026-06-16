@@ -253,6 +253,11 @@ func (s *Store) ApplyEvents(roomID string, source EventSource, events []activity
 	if s == nil || roomID == "" || len(events) == 0 {
 		return
 	}
+	var ok bool
+	source, ok = normalizeRuntimeEventSource(source)
+	if !ok {
+		return
+	}
 	entry := s.roomEntry(roomID)
 	if entry == nil {
 		return
@@ -287,6 +292,11 @@ func (s *Store) ApplyActivity(
 	if s == nil || roomID == "" || (len(timelineItems) == 0 && len(statePatches) == 0 && len(messageUpdates) == 0) {
 		return
 	}
+	var ok bool
+	source, ok = normalizeRuntimeEventSource(source)
+	if !ok {
+		return
+	}
 	entry := s.roomEntry(roomID)
 	if entry == nil {
 		return
@@ -316,6 +326,11 @@ func (s *Store) ApplySessionState(
 	roomID = strings.TrimSpace(roomID)
 	agentSessionID = strings.TrimSpace(firstNonEmptyString(agentSessionID, source.AgentID, source.ProviderSessionID))
 	if s == nil || roomID == "" || agentSessionID == "" {
+		return
+	}
+	var ok bool
+	source, ok = normalizeRuntimeEventSource(source)
+	if !ok {
 		return
 	}
 	entry := s.roomEntry(roomID)
@@ -349,6 +364,11 @@ func (s *Store) ApplySessionMessages(
 	if s == nil || roomID == "" || agentSessionID == "" || len(updates) == 0 {
 		return
 	}
+	var ok bool
+	source, ok = normalizeRuntimeEventSource(source)
+	if !ok {
+		return
+	}
 	entry := s.roomEntry(roomID)
 	if entry == nil {
 		return
@@ -364,6 +384,15 @@ func (s *Store) ApplySessionMessages(
 	if changed {
 		s.notifyRoomUpdate(roomID)
 	}
+}
+
+func normalizeRuntimeEventSource(source EventSource) (EventSource, bool) {
+	origin := NormalizeSessionOrigin(source.SessionOrigin)
+	if origin == "" {
+		return EventSource{}, false
+	}
+	source.SessionOrigin = origin
+	return source, true
 }
 
 func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
@@ -1049,28 +1078,20 @@ func findSessionIndex(
 	if providerSessionID == "" {
 		return -1
 	}
-	sessionOrigin = lookupSessionOrigin(sessionOrigin)
+	sessionOrigin = NormalizeSessionOrigin(sessionOrigin)
+	if sessionOrigin == "" {
+		return -1
+	}
 	for index, session := range sessions {
 		if strings.TrimSpace(session.ProviderSessionID) != providerSessionID {
 			continue
 		}
-		if sessionOrigin != "" && NormalizeSessionOrigin(session.SessionOrigin) != sessionOrigin {
+		if NormalizeSessionOrigin(session.SessionOrigin) != sessionOrigin {
 			continue
 		}
 		return index
 	}
 	return -1
-}
-
-func lookupSessionOrigin(origin string) string {
-	switch strings.TrimSpace(origin) {
-	case WorkspaceAgentSessionOriginHook, "hook", "HOOK", "1":
-		return WorkspaceAgentSessionOriginHook
-	case WorkspaceAgentSessionOriginRuntime, "runtime", "RUNTIME", "2":
-		return WorkspaceAgentSessionOriginRuntime
-	default:
-		return ""
-	}
 }
 
 func applyStatusPayload(session *WorkspaceAgentSession, event activityshared.Event) {
@@ -1255,7 +1276,7 @@ func (s *Store) interruptWorkspaceAgents(ctx context.Context, roomID string, _ s
 			origin = patchOrigins[index]
 		}
 		if origin == "" {
-			origin = WorkspaceAgentSessionOriginHook
+			origin = WorkspaceAgentSessionOriginRuntime
 		}
 		reportPatches = append(reportPatches, interruptReportPatch{patch: patch, origin: origin})
 	}
@@ -1404,10 +1425,8 @@ func interruptReportOriginRank(origin string) int {
 	switch NormalizeSessionOrigin(origin) {
 	case WorkspaceAgentSessionOriginRuntime:
 		return 0
-	case WorkspaceAgentSessionOriginHook:
-		return 1
 	default:
-		return 2
+		return 1
 	}
 }
 
@@ -1931,7 +1950,10 @@ func findUniqueSessionIDByProvider(
 		return ""
 	}
 	provider = strings.TrimSpace(provider)
-	sessionOrigin = lookupSessionOrigin(sessionOrigin)
+	sessionOrigin = NormalizeSessionOrigin(sessionOrigin)
+	if sessionOrigin == "" {
+		return ""
+	}
 	matchedID := ""
 	for _, session := range sessions {
 		if strings.TrimSpace(session.ProviderSessionID) != providerSessionID {
@@ -1940,7 +1962,7 @@ func findUniqueSessionIDByProvider(
 		if provider != "" && strings.TrimSpace(session.Provider) != provider {
 			continue
 		}
-		if sessionOrigin != "" && NormalizeSessionOrigin(session.SessionOrigin) != sessionOrigin {
+		if NormalizeSessionOrigin(session.SessionOrigin) != sessionOrigin {
 			continue
 		}
 		agentSessionID := strings.TrimSpace(session.AgentSessionID)

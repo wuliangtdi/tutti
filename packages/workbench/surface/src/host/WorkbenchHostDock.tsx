@@ -85,6 +85,8 @@ type WorkbenchMinimizedDockStackPopupCardRestoreIntent = Extract<
   { kind: "stack-popup-card" }
 >;
 
+type WorkbenchDockWallpaperTone = "dark" | "light";
+
 function stripDockDescriptionTerminalPunctuation(value: string): string {
   const trimmed = value.trim();
   if (!trimmed || trimmed.endsWith("...") || trimmed.endsWith("…")) {
@@ -172,6 +174,7 @@ export function WorkbenchHostDock({
   );
   const pendingDockStateRefreshRef = useRef(false);
   const slotRefs = useRef(new Map<string, HTMLElement>());
+  const wallpaperToneElementRefs = useRef(new Map<string, HTMLElement>());
   const dockSlotRefCallbacksRef = useRef(
     new Map<string, (element: HTMLElement | null) => void>()
   );
@@ -379,6 +382,15 @@ export function WorkbenchHostDock({
   const presentDockItems = useDockPresenceItems(dockItems, (nodeId) =>
     context.genie.shouldAnimateMinimizedDockEnter(nodeId)
   );
+  const presentDockItemKeys = useMemo(
+    () => presentDockItems.map((item) => item.key).join("\n"),
+    [presentDockItems]
+  );
+  const wallpaperTones = useDockWallpaperTones({
+    dockItemsRef,
+    elementRefs: wallpaperToneElementRefs,
+    itemKeys: presentDockItemKeys
+  });
   const dockWidth = useMemo(
     () => resolveWorkbenchHostDockItemsWidth(dockItems),
     [dockItems]
@@ -408,6 +420,16 @@ export function WorkbenchHostDock({
   registerDockAnchorRef.current = (anchorKey, element) => {
     context.genie.registerDockAnchor(anchorKey, element);
   };
+  const registerWallpaperToneElement = useCallback(
+    (key: string) => (element: HTMLElement | null) => {
+      if (element) {
+        wallpaperToneElementRefs.current.set(key, element);
+        return;
+      }
+      wallpaperToneElementRefs.current.delete(key);
+    },
+    []
+  );
 
   const setDockHoverPanelOpen = useCallback((open: boolean) => {
     if (open) {
@@ -977,8 +999,10 @@ export function WorkbenchHostDock({
     const callback = (element: HTMLElement | null) => {
       if (element) {
         slotRefs.current.set(anchorKey, element);
+        wallpaperToneElementRefs.current.set(anchorKey, element);
       } else {
         slotRefs.current.delete(anchorKey);
+        wallpaperToneElementRefs.current.delete(anchorKey);
         if (!dockMeasureRef.current?.hasAttribute("data-dock-pointer-active")) {
           clearSlotMagnificationRef.current(anchorKey);
         }
@@ -1079,9 +1103,11 @@ export function WorkbenchHostDock({
                 if (dockItem.item.kind === "separator") {
                   return (
                     <span
+                      ref={registerWallpaperToneElement(dockItem.key)}
                       className="desktop-dock__separator"
                       aria-hidden="true"
                       data-presence={dockItem.presence}
+                      data-wallpaper-tone={wallpaperTones.get(dockItem.key)}
                       key={dockItem.key}
                     />
                   );
@@ -1263,6 +1289,7 @@ export function WorkbenchHostDock({
                       data-popup-active={currentPopup ? "true" : undefined}
                       data-presence={dockItem.presence}
                       data-section-id={entry.sectionId}
+                      data-wallpaper-tone={wallpaperTones.get(anchorKey)}
                       onBlur={(event) => {
                         if (
                           hasHoverPanel &&
@@ -2395,6 +2422,340 @@ function useDockPresenceItems(
   });
 }
 
+function useDockWallpaperTones({
+  dockItemsRef,
+  elementRefs,
+  itemKeys
+}: {
+  dockItemsRef: RefObject<HTMLElement | null>;
+  elementRefs: RefObject<Map<string, HTMLElement>>;
+  itemKeys: string;
+}): ReadonlyMap<string, WorkbenchDockWallpaperTone> {
+  const [tones, setTones] = useState<Map<string, WorkbenchDockWallpaperTone>>(
+    () => new Map()
+  );
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    let canceled = false;
+    let frameId: number | null = null;
+
+    const updateTones = () => {
+      frameId = null;
+      void resolveDockWallpaperTones({
+        dockItemsElement: dockItemsRef.current,
+        elements: elementRefs.current
+      }).then((nextTones) => {
+        if (canceled) {
+          return;
+        }
+        setTones((current) =>
+          dockWallpaperToneMapsEqual(current, nextTones) ? current : nextTones
+        );
+      });
+    };
+
+    const scheduleUpdate = () => {
+      if (frameId !== null) {
+        return;
+      }
+      frameId = window.requestAnimationFrame(updateTones);
+    };
+
+    scheduleUpdate();
+    window.addEventListener("resize", scheduleUpdate);
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleUpdate);
+    if (dockItemsRef.current) {
+      resizeObserver?.observe(dockItemsRef.current);
+    }
+    const wallpaperElement = dockItemsRef.current
+      ?.closest(".workbench-surface")
+      ?.querySelector(".workbench-surface__wallpaper");
+    if (wallpaperElement instanceof HTMLElement) {
+      resizeObserver?.observe(wallpaperElement);
+    }
+
+    return () => {
+      canceled = true;
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [dockItemsRef, elementRefs, itemKeys]);
+
+  return tones;
+}
+
+async function resolveDockWallpaperTones({
+  dockItemsElement,
+  elements
+}: {
+  dockItemsElement: HTMLElement | null;
+  elements: ReadonlyMap<string, HTMLElement>;
+}): Promise<Map<string, WorkbenchDockWallpaperTone>> {
+  const wallpaperElement = dockItemsElement
+    ?.closest(".workbench-surface")
+    ?.querySelector(".workbench-surface__wallpaper");
+  if (!(wallpaperElement instanceof HTMLElement)) {
+    return new Map();
+  }
+
+  const wallpaperStyle = window.getComputedStyle(wallpaperElement);
+  const wallpaperUrl = parseDockWallpaperCssUrl(wallpaperStyle.backgroundImage);
+  if (!wallpaperUrl) {
+    return new Map();
+  }
+
+  const wallpaperImage = await loadDockWallpaperImage(wallpaperUrl);
+  if (!wallpaperImage) {
+    return new Map();
+  }
+
+  const sampleCanvas = createDockWallpaperSampleCanvas(wallpaperImage);
+  if (!sampleCanvas) {
+    return new Map();
+  }
+
+  const wallpaperRect = wallpaperElement.getBoundingClientRect();
+  const renderedImageRect = resolveDockWallpaperRenderedImageRect({
+    containerHeight: wallpaperRect.height,
+    containerWidth: wallpaperRect.width,
+    imageHeight: wallpaperImage.naturalHeight,
+    imageWidth: wallpaperImage.naturalWidth,
+    positionX: wallpaperStyle.backgroundPositionX,
+    positionY: wallpaperStyle.backgroundPositionY,
+    size: wallpaperStyle.backgroundSize
+  });
+  const nextTones = new Map<string, WorkbenchDockWallpaperTone>();
+
+  for (const [key, element] of elements) {
+    const luminance = sampleDockWallpaperLuminanceAtElement({
+      elementRect: element.getBoundingClientRect(),
+      renderedImageRect,
+      sampleCanvas,
+      wallpaperRect
+    });
+    if (luminance === null) {
+      continue;
+    }
+    nextTones.set(
+      key,
+      luminance < dockWallpaperDarkLuminanceThreshold ? "dark" : "light"
+    );
+  }
+
+  return nextTones;
+}
+
+function parseDockWallpaperCssUrl(backgroundImage: string): string | null {
+  const match = /^url\((['"]?)(.*)\1\)$/u.exec(backgroundImage.trim());
+  return match?.[2] ? match[2] : null;
+}
+
+const dockWallpaperImageCache = new Map<
+  string,
+  Promise<HTMLImageElement | null>
+>();
+
+function loadDockWallpaperImage(url: string): Promise<HTMLImageElement | null> {
+  const cached = dockWallpaperImageCache.get(url);
+  if (cached) {
+    return cached;
+  }
+  const promise = new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+  dockWallpaperImageCache.set(url, promise);
+  return promise;
+}
+
+function createDockWallpaperSampleCanvas(
+  image: HTMLImageElement
+): HTMLCanvasElement | null {
+  if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+    return null;
+  }
+  const canvas = document.createElement("canvas");
+  const scale =
+    dockWallpaperSampleCanvasMaxSizePx /
+    Math.max(image.naturalWidth, image.naturalHeight);
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    return null;
+  }
+  try {
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.getImageData(0, 0, 1, 1);
+  } catch {
+    return null;
+  }
+  return canvas;
+}
+
+function resolveDockWallpaperRenderedImageRect({
+  containerHeight,
+  containerWidth,
+  imageHeight,
+  imageWidth,
+  positionX,
+  positionY,
+  size
+}: {
+  containerHeight: number;
+  containerWidth: number;
+  imageHeight: number;
+  imageWidth: number;
+  positionX: string;
+  positionY: string;
+  size: string;
+}): { height: number; left: number; top: number; width: number } {
+  const imageAspect = imageWidth / imageHeight;
+  const containerAspect = containerWidth / containerHeight;
+  let width = containerWidth;
+  let height = containerHeight;
+
+  if (size === "cover") {
+    if (containerAspect > imageAspect) {
+      height = containerWidth / imageAspect;
+    } else {
+      width = containerHeight * imageAspect;
+    }
+  } else if (size === "contain") {
+    if (containerAspect > imageAspect) {
+      width = containerHeight * imageAspect;
+    } else {
+      height = containerWidth / imageAspect;
+    }
+  } else if (size !== "100% 100%") {
+    width = imageWidth;
+    height = imageHeight;
+  }
+
+  return {
+    height,
+    left: resolveDockWallpaperPositionOffset(positionX, containerWidth - width),
+    top: resolveDockWallpaperPositionOffset(
+      positionY,
+      containerHeight - height
+    ),
+    width
+  };
+}
+
+function resolveDockWallpaperPositionOffset(
+  value: string,
+  availableSpace: number
+): number {
+  const trimmed = value.trim();
+  if (trimmed.endsWith("%")) {
+    const percentage = Number.parseFloat(trimmed);
+    return Number.isFinite(percentage)
+      ? (availableSpace * percentage) / 100
+      : availableSpace / 2;
+  }
+  if (trimmed.endsWith("px")) {
+    const px = Number.parseFloat(trimmed);
+    return Number.isFinite(px) ? px : availableSpace / 2;
+  }
+  if (trimmed === "left" || trimmed === "top") {
+    return 0;
+  }
+  if (trimmed === "right" || trimmed === "bottom") {
+    return availableSpace;
+  }
+  return availableSpace / 2;
+}
+
+function sampleDockWallpaperLuminanceAtElement({
+  elementRect,
+  renderedImageRect,
+  sampleCanvas,
+  wallpaperRect
+}: {
+  elementRect: DOMRect;
+  renderedImageRect: {
+    height: number;
+    left: number;
+    top: number;
+    width: number;
+  };
+  sampleCanvas: HTMLCanvasElement;
+  wallpaperRect: DOMRect;
+}): number | null {
+  const context = sampleCanvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    return null;
+  }
+  const isVerticalElement = elementRect.height >= elementRect.width;
+  let luminanceSum = 0;
+  let samples = 0;
+
+  for (let index = 0; index < dockWallpaperToneSampleCount; index += 1) {
+    const ratio = index / (dockWallpaperToneSampleCount - 1);
+    const clientX = isVerticalElement
+      ? elementRect.left + elementRect.width / 2
+      : elementRect.left + elementRect.width * ratio;
+    const clientY = isVerticalElement
+      ? elementRect.top + elementRect.height * ratio
+      : elementRect.top + elementRect.height / 2;
+    const imageX =
+      (clientX - wallpaperRect.left - renderedImageRect.left) /
+      renderedImageRect.width;
+    const imageY =
+      (clientY - wallpaperRect.top - renderedImageRect.top) /
+      renderedImageRect.height;
+    if (imageX < 0 || imageX > 1 || imageY < 0 || imageY > 1) {
+      continue;
+    }
+    const canvasX = Math.min(
+      sampleCanvas.width - 1,
+      Math.max(0, Math.round(imageX * (sampleCanvas.width - 1)))
+    );
+    const canvasY = Math.min(
+      sampleCanvas.height - 1,
+      Math.max(0, Math.round(imageY * (sampleCanvas.height - 1)))
+    );
+    const pixel = context.getImageData(canvasX, canvasY, 1, 1).data;
+    const red = pixel[0] ?? 0;
+    const green = pixel[1] ?? 0;
+    const blue = pixel[2] ?? 0;
+    luminanceSum += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    samples += 1;
+  }
+
+  return samples > 0 ? luminanceSum / samples : null;
+}
+
+function dockWallpaperToneMapsEqual(
+  left: ReadonlyMap<string, WorkbenchDockWallpaperTone>,
+  right: ReadonlyMap<string, WorkbenchDockWallpaperTone>
+): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 const DOCK_BOUNCE_MS = 600;
 
 function useDockBounce(slotRefs: RefObject<Map<string, HTMLElement>>) {
@@ -2475,6 +2836,9 @@ const dockHoverPanelHitSlopPx = 12;
 const dockHoverPanelBridgeSlopPx = 6;
 const dockHoverPanelPointerRestTolerancePx = 4;
 const DOCK_MAGNIFIED_TOOLTIP_SIDE_OFFSET = 40;
+const dockWallpaperSampleCanvasMaxSizePx = 192;
+const dockWallpaperToneSampleCount = 7;
+const dockWallpaperDarkLuminanceThreshold = 132;
 
 function rectContainsPoint(
   rect: DOMRect,

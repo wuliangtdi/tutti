@@ -361,7 +361,7 @@ func TestActivePeersLeavesSelfMarkerUnsetWhenSelfUnknown(t *testing.T) {
 	}
 }
 
-func TestActivePeersCollapsesHookRuntimeDuplicatesAndPrefersHook(t *testing.T) {
+func TestActivePeersCollapsesDuplicateRuntimeSessionsAndPrefersNewest(t *testing.T) {
 	service, err := New(Config{
 		RoomID: "room-1",
 		Client: &fakeAgentStateGetter{
@@ -378,19 +378,19 @@ func TestActivePeersCollapsesHookRuntimeDuplicatesAndPrefersHook(t *testing.T) {
 						Title:             "old runtime row",
 					},
 					{
-						AgentSessionID:    "hook-current",
+						AgentSessionID:    "runtime-current",
 						Provider:          "codex",
 						ProviderSessionID: "provider-session-1",
-						SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginHook,
+						SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 						EffectiveStatus:   "working",
 						UpdatedAtUnixMS:   200,
-						Title:             "current hook row",
+						Title:             "current runtime row",
 					},
 					{
-						AgentSessionID:    "other-hook",
+						AgentSessionID:    "other-runtime",
 						Provider:          "claude-code",
 						ProviderSessionID: "provider-session-2",
-						SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginHook,
+						SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 						EffectiveStatus:   "working",
 						UpdatedAtUnixMS:   150,
 					},
@@ -415,11 +415,11 @@ func TestActivePeersCollapsesHookRuntimeDuplicatesAndPrefersHook(t *testing.T) {
 	if len(reply.GetAgents()) != 2 {
 		t.Fatalf("agents = %d, want 2: %#v", len(reply.GetAgents()), reply.GetAgents())
 	}
-	if got := reply.GetAgents()[0]; got.GetAgentId() != "hook-current" || !got.GetIsSelf() {
-		t.Fatalf("first logical peer = %#v, want hook self row", got)
+	if got := reply.GetAgents()[0]; got.GetAgentId() != "runtime-current" || !got.GetIsSelf() {
+		t.Fatalf("first logical peer = %#v, want current runtime self row", got)
 	}
-	if got := reply.GetAgents()[1]; got.GetAgentId() != "other-hook" {
-		t.Fatalf("second logical peer = %#v, want unrelated hook row", got)
+	if got := reply.GetAgents()[1]; got.GetAgentId() != "other-runtime" {
+		t.Fatalf("second logical peer = %#v, want unrelated runtime row", got)
 	}
 }
 

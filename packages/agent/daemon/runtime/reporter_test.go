@@ -444,6 +444,39 @@ func TestReportActivityInputForwardsMessageKindToPayload(t *testing.T) {
 	}
 }
 
+func TestReportActivityInputForwardsSystemNoticeMetadataToPayload(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	noticeEvent := newTurnActivityEventWithID(session, "notice-event-1", EventMessage, "turn-1", messageStreamStateCompleted, RoleAssistant, "Codex warning", map[string]any{
+		"messageId":         "notice-message-1",
+		"kind":              "agent_system_notice",
+		"noticeKind":        "warning",
+		"severity":          "warning",
+		"title":             "Codex warning",
+		"detail":            "Skill descriptions were shortened to fit the 2% skills context budget.",
+		"additionalDetails": "Disable unused skills or plugins to leave more room for the rest.",
+		"retryable":         false,
+		"streamState":       messageStreamStateCompleted,
+	})
+	noticeEvent.OccurredAtUnixMS = 111
+
+	report := reportActivityInput(session, []activityshared.Event{noticeEvent})
+	if len(report.MessageUpdates) != 1 {
+		t.Fatalf("message updates = %#v, want one notice update", report.MessageUpdates)
+	}
+	notice := report.MessageUpdates[0]
+	if notice.Payload["kind"] != "agent_system_notice" ||
+		notice.Payload["noticeKind"] != "warning" ||
+		notice.Payload["severity"] != "warning" ||
+		notice.Payload["title"] != "Codex warning" ||
+		notice.Payload["detail"] != "Skill descriptions were shortened to fit the 2% skills context budget." ||
+		notice.Payload["additionalDetails"] != "Disable unused skills or plugins to leave more room for the rest." ||
+		notice.Payload["retryable"] != false {
+		t.Fatalf("notice message payload = %#v, want system notice metadata forwarded to the GUI", notice.Payload)
+	}
+}
+
 func TestReportActivityInputProjectsRuntimeCallsToStableMessageUpdates(t *testing.T) {
 	t.Parallel()
 

@@ -68,6 +68,18 @@ export function createWorkspaceAgentGuiContribution(input: {
     workspaceUserProjectService: input.workspaceUserProjectService,
     workspaceId: input.workspaceId
   });
+  const handleLinkAction: NonNullable<
+    Parameters<typeof DesktopAgentGUIWorkbenchBody>[0]["onLinkAction"]
+  > = (action) => {
+    void runDesktopAgentGUILinkAction(action, {
+      homeDirectory: input.platformApi.homeDirectory,
+      launchAgentGui: requestWorkspaceAgentGuiLaunch,
+      launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
+      launchWorkspaceFiles: requestWorkspaceFilesLaunch,
+      openBrowserUrl: requestWorkspaceBrowserLaunch,
+      workspaceId: input.workspaceId
+    });
+  };
   const renderAgentGuiWorkbenchBody = (
     context: Parameters<
       Parameters<typeof createAgentGuiWorkbenchContribution>[0]["renderBody"]
@@ -84,27 +96,14 @@ export function createWorkspaceAgentGuiContribution(input: {
       agentProviderStatusService: input.agentProviderStatusService,
       context,
       dockPreviewCache: input.dockPreviewCache,
-      onLinkAction: (action) => {
-        void runDesktopAgentGUILinkAction(action, {
-          homeDirectory: input.platformApi.homeDirectory,
-          launchAgentGui: requestWorkspaceAgentGuiLaunch,
-          launchWorkspaceIssueManager: requestWorkspaceIssueManagerLaunch,
-          launchWorkspaceFiles: requestWorkspaceFilesLaunch,
-          launchWorkspaceApp: async ({ appId, workspaceId }) => {
-            await input.appCenterService.openApp({ appId, workspaceId });
-            return true;
-          },
-          openBrowserUrl: requestWorkspaceBrowserLaunch,
-          workspaceId: input.workspaceId
-        });
-      },
-      onStateChange: (state) => helpers.onStateChange(state),
+      onLinkAction: handleLinkAction,
+      onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
       richTextAtProviders: agentGUIWorkbenchHostInput.richTextAtProviders,
       resolveAppIconUrl: input.resolveAppIconUrl,
       runtimeApi: input.runtimeApi,
-      trackWorkspaceFileReferences: (referenceInput) =>
-        agentGUIWorkbenchHostInput.trackWorkspaceFileReferences(referenceInput),
+      trackWorkspaceFileReferences:
+        agentGUIWorkbenchHostInput.trackWorkspaceFileReferences,
       workspaceFileReferenceAdapter:
         agentGUIWorkbenchHostInput.workspaceFileReferenceAdapter,
       workspaceId: input.workspaceId

@@ -205,17 +205,14 @@ function createAgentGUITestRichTextAtProviders(): readonly AgentRichTextAtProvid
         );
         const items = await Promise.all(
           sessions.map(async (session: any) => {
-            const summary =
-              session.sessionOrigin === "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK"
-                ? null
-                : await Promise.resolve(
-                    mockGetWorkspaceAgentSessionSummary({
-                      workspaceId: workspaceId,
-                      agentSessionId: session.agentSessionId,
-                      agentReplyLimit: 1,
-                      recentTurnLimit: 1
-                    })
-                  ).catch(() => null);
+            const summary = await Promise.resolve(
+              mockGetWorkspaceAgentSessionSummary({
+                workspaceId: workspaceId,
+                agentSessionId: session.agentSessionId,
+                agentReplyLimit: 1,
+                recentTurnLimit: 1
+              })
+            ).catch(() => null);
             const userId = String(session.userId ?? "");
             const profile = profiles.get(userId) as any;
             const title =
@@ -5745,6 +5742,24 @@ describe("AgentGUINode", () => {
       HTMLElement.prototype.getBoundingClientRect =
         originalGetBoundingClientRect;
     }
+  });
+
+  it("keeps the bottom dock composer 24px wider than the transcript flow", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "app/renderer/agentactivity.css"),
+      "utf8"
+    );
+
+    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*24px/);
+    expect(css).toMatch(
+      /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-node__composer\s*{[^}]*padding-right:\s*0[^}]*padding-left:\s*0/s
+    );
   });
 
   it("deduplicates inline notices already shown by session chrome", () => {

@@ -83,6 +83,7 @@ test("workspace file icon cache reads by exact cache key", async () => {
     await store.readUrl({ ...key, path: "/workspace/Other.app" }),
     null
   );
+  assert.equal(await store.readUrl({ ...key, sizePx: 128 }), null);
 });
 
 test("workspace file icon cache reads file type icons by extension and application", async () => {
@@ -105,6 +106,13 @@ test("workspace file icon cache reads file type icons by extension and applicati
   );
   assert.equal(
     await store.readUrl(testFileTypeCacheKey("pdf", "/Applications/Other.app")),
+    null
+  );
+  assert.equal(
+    await store.readUrl({
+      ...testFileTypeCacheKey("pdf", "/Applications/Preview.app"),
+      sizePx: 128
+    }),
     null
   );
 });
@@ -204,6 +212,7 @@ function testCacheKey(path: string): WorkspaceApplicationIconCacheKey {
     assetKind: "application-icon",
     mtimeMs: 1_700_000_000_000,
     path,
+    sizePx: 256,
     workspaceID: "workspace-a"
   };
 }
@@ -216,7 +225,8 @@ function testFileTypeCacheKey(
     applicationPath,
     assetKind: "file-type-default-application-icon",
     fileExtension,
-    platform: "darwin"
+    platform: "darwin",
+    sizePx: 256
   };
 }
 

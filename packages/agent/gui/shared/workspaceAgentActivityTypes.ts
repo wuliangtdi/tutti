@@ -20,14 +20,13 @@ export const WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN =
   "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME";
 
 export type WorkspaceAgentActivitySessionOrigin =
-  | "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK"
   | typeof WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN
   | string;
 
 export function isWorkspaceAgentActivityRuntimeSessionOrigin(
   sessionOrigin: string | null | undefined
 ): boolean {
-  const normalized = sessionOrigin?.trim().toUpperCase() ?? "";
+  const normalized = sessionOrigin?.trim() ?? "";
   // Core-native AgentActivitySession does not carry the legacy host origin DTO.
   return (
     normalized === "" ||

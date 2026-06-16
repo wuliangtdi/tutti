@@ -799,6 +799,35 @@ func TestServiceMapsRuntimeSessionLastError(t *testing.T) {
 	}
 }
 
+func TestServiceGetDoesNotDiscoverComposerSkills(t *testing.T) {
+	tempDir := t.TempDir()
+	homeDir := filepath.Join(tempDir, "home")
+	cwd := filepath.Join(tempDir, "repo")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	writeSkill(t, filepath.Join(cwd, ".codex", "skills", "project-skill", "SKILL.md"), `---
+description: Project skill.
+---
+`)
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		Provider:    "codex",
+		WorkspaceID: "ws-1",
+		Cwd:         cwd,
+		Status:      "working",
+	}
+	service := NewService(runtime)
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if _, ok := session.RuntimeContext["skills"]; ok {
+		t.Fatalf("runtime context skills = %#v, want not discovered on get", session.RuntimeContext["skills"])
+	}
+}
+
 func TestServiceSessionNormalizesReasoningRuntimeConfigOptions(t *testing.T) {
 	session := serviceSession(RuntimeSession{
 		ID:          "session-1",
@@ -1068,6 +1097,33 @@ func TestStaleResumeMessageUpdatesFailOpenToolCallsForLatestTurn(t *testing.T) {
 	errorPayload, ok := update.Payload["error"].(map[string]any)
 	if !ok || errorPayload["requestId"] != "permission-2" {
 		t.Fatalf("error payload = %#v, want permission request id", update.Payload["error"])
+	}
+}
+
+func TestHasStaleResumeOpenToolCall(t *testing.T) {
+	if hasStaleResumeOpenToolCall([]SessionMessage{{
+		MessageID: "text-1",
+		TurnID:    "turn-1",
+		Kind:      "text",
+		Status:    "waiting_approval",
+	}}) {
+		t.Fatal("text message reported as open tool call")
+	}
+	if hasStaleResumeOpenToolCall([]SessionMessage{{
+		MessageID: "approval-1",
+		TurnID:    "turn-1",
+		Kind:      "tool_call",
+		Status:    "completed",
+	}}) {
+		t.Fatal("completed tool call reported as open")
+	}
+	if !hasStaleResumeOpenToolCall([]SessionMessage{{
+		MessageID: "approval-2",
+		TurnID:    "turn-2",
+		Kind:      "tool_call",
+		Status:    "waiting_approval",
+	}}) {
+		t.Fatal("waiting approval tool call was not reported as open")
 	}
 }
 
@@ -1471,6 +1527,62 @@ func TestServiceReconcilesStalePersistedTurnBeforeSubmittingInteractive(t *testi
 	}
 	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
 		t.Fatalf("reconciled = %#v, want stale persisted session", reconciled)
+	}
+	if len(runtime.submitInteractiveCalls) != 0 {
+		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)
+	}
+}
+
+func TestServiceReconcilesOpenToolCallBeforeSubmittingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:                "session-1",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "provider-session-1",
+				Cwd:               "/workspace",
+				Status:            "created",
+				Title:             "Created",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
+
+	session, err := service.SubmitInteractive(
+		context.Background(),
+		"ws-1",
+		"session-1",
+		"permission-1",
+		SubmitInteractiveInput{OptionID: stringRef("approve")},
+	)
+	if err != nil {
+		t.Fatalf("SubmitInteractive returned error: %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
+	}
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want open tool call session", reconciled)
 	}
 	if len(runtime.submitInteractiveCalls) != 0 {
 		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)

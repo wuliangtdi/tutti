@@ -148,7 +148,6 @@ export function buildCanonicalWorkspaceAgentDetailView({
   const visibleTurns = [...turns.values()].filter(
     (turn) => turn.userMessages.length > 0 || turn.agentItems.length > 0
   );
-  visibleTurns.forEach(collapseHookShadowToolCalls);
   nestDelegatedToolCallsAcrossTurns(visibleTurns);
   visibleTurns.forEach(mergeBackgroundTerminalContinuations);
   const allowTrailingToolGrouping = !isSessionWorking(session);
@@ -489,33 +488,6 @@ function mergeBackgroundTerminalCall(
   };
 }
 
-function collapseHookShadowToolCalls(
-  turn: WorkspaceAgentSessionDetailTurn
-): void {
-  if (turn.toolCalls.length < 2) {
-    return;
-  }
-  const removeIDs = new Set<string>();
-  for (const call of turn.toolCalls) {
-    if (!isSyntheticHookToolCallID(call.id)) {
-      continue;
-    }
-    const shadowed = turn.toolCalls.some((candidate) => {
-      if (candidate.id === call.id || isSyntheticHookToolCallID(candidate.id)) {
-        return false;
-      }
-      return (
-        equivalentToolCallSignature(candidate) ===
-        equivalentToolCallSignature(call)
-      );
-    });
-    if (shadowed) {
-      removeIDs.add(call.id);
-    }
-  }
-  pruneTurnToolCalls(turn, removeIDs);
-}
-
 function nestDelegatedToolCallsAcrossTurns(
   turns: readonly WorkspaceAgentSessionDetailTurn[]
 ): void {
@@ -782,24 +754,6 @@ function compareToolCallsAscending(
   );
 }
 
-function equivalentToolCallSignature(
-  call: WorkspaceAgentSessionDetailToolCall
-): string {
-  return [
-    normalizeToolName(call.toolName),
-    normalizeToolName(call.callType),
-    stableSerialize(
-      normalizedPayload(
-        call.payload?.input as WorkspaceAgentActivityTimelineItem["payload"]
-      )
-    )
-  ].join("\u0000");
-}
-
-function isSyntheticHookToolCallID(id: string): boolean {
-  return /^call:tool\./i.test(id);
-}
-
 function toolCallView(
   item: WorkspaceAgentActivityTimelineItem
 ): WorkspaceAgentSessionDetailToolCall {
@@ -1013,26 +967,6 @@ function summarizeCallTarget(summary: string): string | null {
 
 function dedupeStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function stableSerialize(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(stableSerialize).join(",")}]`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(
-      ([left], [right]) => left.localeCompare(right)
-    );
-    return `{${entries
-      .map(
-        ([key, nested]) => `${JSON.stringify(key)}:${stableSerialize(nested)}`
-      )
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function shouldShowProcessingIndicator(

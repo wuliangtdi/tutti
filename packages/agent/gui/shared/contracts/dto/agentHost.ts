@@ -854,7 +854,6 @@ export interface AgentHostDisableRoomVisitorShareLinkResult {
 
 export type AgentHostWorkspaceAgentProvider = "codex" | "claude-code" | string;
 export type AgentHostWorkspaceAgentSessionOrigin =
-  | "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK"
   | "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
   | string;
 export type AgentHostWorkspaceAgentPresenceStatus =

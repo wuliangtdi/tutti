@@ -95,7 +95,7 @@ func TestWorkspaceAgentMessageFunctionalFlow(t *testing.T) {
 			},
 		},
 		Source: agentsessionstore.EventSource{
-			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginHook,
+			SessionOrigin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 			Provider:      "codex",
 		},
 	})

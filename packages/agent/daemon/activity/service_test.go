@@ -243,7 +243,7 @@ func TestStoreRemoteSessionEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	svc.ApplySessionState("room-1", EventSource{
 		Provider:      "codex",
 		AgentID:       "agent-1",
-		SessionOrigin: WorkspaceAgentSessionOriginHook,
+		SessionOrigin: WorkspaceAgentSessionOriginRuntime,
 	}, "agent-1", WorkspaceAgentSessionStateUpdate{
 		Provider:         "codex",
 		Title:            "Build feature",
@@ -264,7 +264,7 @@ func TestStoreRemoteSessionEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	remoteEcho.ID = 99
 	svc.updateStateForOrigin("room-1", WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{remoteEcho},
-	}, WorkspaceAgentSessionOriginHook)
+	}, WorkspaceAgentSessionOriginRuntime)
 	if notifyCount != 1 {
 		t.Fatalf("notify count after remote echo = %d, want unchanged", notifyCount)
 	}
@@ -273,7 +273,7 @@ func TestStoreRemoteSessionEchoDoesNotNotifyBusinessUpdate(t *testing.T) {
 	remoteEcho.UpdatedAtUnixMS = 1200
 	svc.updateStateForOrigin("room-1", WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{remoteEcho},
-	}, WorkspaceAgentSessionOriginHook)
+	}, WorkspaceAgentSessionOriginRuntime)
 	if notifyCount != 2 {
 		t.Fatalf("notify count after changed remote state = %d, want 2", notifyCount)
 	}
@@ -660,7 +660,7 @@ func TestStoreMapsWaitingTurnPhaseToSessionStatus(t *testing.T) {
 	}
 }
 
-func TestStoreAppliesHookStatusEventsImmediately(t *testing.T) {
+func TestStoreAppliesRuntimeStatusEventsImmediately(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 
@@ -726,7 +726,7 @@ func TestStoreAppliesHookStatusEventsImmediately(t *testing.T) {
 		t.Fatalf("completed session = %#v, want idle immediately", state.Sessions[0])
 	}
 	if state.Sessions[0].UpdatedAtUnixMS != 1710000000200 {
-		t.Fatalf("updated_at = %d, want hook timestamp", state.Sessions[0].UpdatedAtUnixMS)
+		t.Fatalf("updated_at = %d, want runtime timestamp", state.Sessions[0].UpdatedAtUnixMS)
 	}
 }
 
@@ -1213,33 +1213,25 @@ func TestStoreAppliesProviderOnlyMessageUpdateToSameOriginSession(t *testing.T) 
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
-		Sessions: []WorkspaceAgentSession{
-			{
-				AgentSessionID:    "runtime-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
-			},
-			{
-				AgentSessionID:    "hook-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
-			},
-		},
+		Sessions: []WorkspaceAgentSession{{
+			AgentSessionID:    "runtime-1",
+			Provider:          "codex",
+			ProviderSessionID: "provider-1",
+			SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
+		}},
 	})
 
 	svc.ApplyActivity("room-1", EventSource{
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
-		SessionOrigin:     WorkspaceAgentSessionOriginHook,
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 	}, nil, nil, []WorkspaceAgentMessageUpdate{{
 		AgentSessionID:   "provider-1",
-		MessageID:        "hook-message-1",
+		MessageID:        "runtime-message-1",
 		Role:             "assistant",
 		Kind:             "text",
 		Status:           "completed",
-		Payload:          map[string]any{"text": "hook"},
+		Payload:          map[string]any{"text": "runtime"},
 		OccurredAtUnixMS: 1000,
 	}})
 
@@ -1250,12 +1242,9 @@ func TestStoreAppliesProviderOnlyMessageUpdateToSameOriginSession(t *testing.T) 
 	if _, ok := snapshot.SessionMessagesByID["provider-1"]; ok {
 		t.Fatalf("provider bucket = %#v, want no alias message bucket", snapshot.SessionMessagesByID["provider-1"])
 	}
-	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 {
-		t.Fatalf("runtime messages = %#v, want untouched runtime session", snapshot.SessionMessagesByID["runtime-1"])
-	}
-	messages := snapshot.SessionMessagesByID["hook-1"]
-	if len(messages) != 1 || messages[0].AgentSessionID != "hook-1" || messages[0].MessageID != "hook-message-1" {
-		t.Fatalf("hook messages = %#v, want provider-only message on hook session", messages)
+	messages := snapshot.SessionMessagesByID["runtime-1"]
+	if len(messages) != 1 || messages[0].AgentSessionID != "runtime-1" || messages[0].MessageID != "runtime-message-1" {
+		t.Fatalf("runtime messages = %#v, want provider-only message on runtime session", messages)
 	}
 }
 
@@ -1271,10 +1260,10 @@ func TestStoreKeepsProviderOnlyMessageUpdateAmbiguousWithoutOrigin(t *testing.T)
 				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 			},
 			{
-				AgentSessionID:    "hook-1",
+				AgentSessionID:    "runtime-2",
 				Provider:          "codex",
 				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 			},
 		},
 	})
@@ -1296,7 +1285,7 @@ func TestStoreKeepsProviderOnlyMessageUpdateAmbiguousWithoutOrigin(t *testing.T)
 	if !ok {
 		t.Fatal("GetAgentSnapshot() ok = false, want true")
 	}
-	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 || len(snapshot.SessionMessagesByID["hook-1"]) != 0 {
+	if len(snapshot.SessionMessagesByID["runtime-1"]) != 0 || len(snapshot.SessionMessagesByID["runtime-2"]) != 0 {
 		t.Fatalf("canonical buckets = %#v, want ambiguous message left unmapped", snapshot.SessionMessagesByID)
 	}
 	messages := snapshot.SessionMessagesByID["provider-1"]
@@ -1808,7 +1797,7 @@ func TestStoreDoesNotAdvanceUpdatedAtForPassiveIdleStatePatch(t *testing.T) {
 	}
 }
 
-func TestStoreSeparatesHookAndRuntimeSessionsWithSameProviderSession(t *testing.T) {
+func TestStoreAppliesProviderSessionAliasToRuntimeSession(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
@@ -1827,7 +1816,7 @@ func TestStoreSeparatesHookAndRuntimeSessionsWithSameProviderSession(t *testing.
 	svc.ApplyActivity("room-1", EventSource{
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
-		SessionOrigin:     WorkspaceAgentSessionOriginHook,
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 	}, nil, []WorkspaceAgentStatePatch{{
 		AgentSessionID:    "provider-1",
 		Provider:          "codex",
@@ -1838,36 +1827,20 @@ func TestStoreSeparatesHookAndRuntimeSessionsWithSameProviderSession(t *testing.
 	}}, nil)
 
 	state, ok := svc.GetAgentState("room-1")
-	if !ok || len(state.Sessions) != 2 {
+	if !ok || len(state.Sessions) != 1 {
 		t.Fatalf("state = %#v, ok=%v", state, ok)
 	}
 
-	var runtimeSession *WorkspaceAgentSession
-	var hookSession *WorkspaceAgentSession
-	for i := range state.Sessions {
-		session := &state.Sessions[i]
-		switch session.AgentSessionID {
-		case "runtime-1":
-			runtimeSession = session
-		case "provider-1":
-			hookSession = session
-		}
-	}
-	if runtimeSession == nil || hookSession == nil {
-		t.Fatalf("sessions = %#v, want distinct runtime and hook sessions", state.Sessions)
-	}
-	if runtimeSession.SessionOrigin != WorkspaceAgentSessionOriginRuntime || runtimeSession.EffectiveStatus != "working" {
-		t.Fatalf("runtime session = %#v, want unchanged runtime working session", *runtimeSession)
-	}
-	if hookSession.SessionOrigin != WorkspaceAgentSessionOriginHook ||
-		hookSession.ProviderSessionID != "provider-1" ||
-		hookSession.EffectiveStatus != string(activityshared.SessionStatusIdle) ||
-		hookSession.UpdatedAtUnixMS != 1000 {
-		t.Fatalf("hook session = %#v, want independent hook session", *hookSession)
+	runtimeSession := state.Sessions[0]
+	if runtimeSession.AgentSessionID != "runtime-1" ||
+		runtimeSession.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
+		runtimeSession.ProviderSessionID != "provider-1" ||
+		runtimeSession.EffectiveStatus != string(activityshared.SessionStatusIdle) {
+		t.Fatalf("runtime session = %#v, want provider alias patch applied to runtime session", runtimeSession)
 	}
 }
 
-func TestStoreAppliesProviderOnlyStatePatchToSameOriginSession(t *testing.T) {
+func TestStoreKeepsProviderOnlyStatePatchAmbiguousForDuplicateRuntimeSessions(t *testing.T) {
 	svc := New(nil)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
@@ -1883,10 +1856,10 @@ func TestStoreAppliesProviderOnlyStatePatchToSameOriginSession(t *testing.T) {
 				UpdatedAtUnixMS:   900,
 			},
 			{
-				AgentSessionID:    "hook-1",
+				AgentSessionID:    "runtime-2",
 				Provider:          "codex",
 				ProviderSessionID: "provider-1",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 				LifecycleStatus:   "active",
 				TurnPhase:         "working",
 				EffectiveStatus:   "working",
@@ -1898,7 +1871,7 @@ func TestStoreAppliesProviderOnlyStatePatchToSameOriginSession(t *testing.T) {
 	svc.ApplyActivity("room-1", EventSource{
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
-		SessionOrigin:     WorkspaceAgentSessionOriginHook,
+		SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 	}, nil, []WorkspaceAgentStatePatch{{
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
@@ -1913,28 +1886,24 @@ func TestStoreAppliesProviderOnlyStatePatchToSameOriginSession(t *testing.T) {
 	}
 
 	var runtimeSession *WorkspaceAgentSession
-	var hookSession *WorkspaceAgentSession
+	var peerSession *WorkspaceAgentSession
 	for i := range state.Sessions {
 		session := &state.Sessions[i]
 		switch session.AgentSessionID {
 		case "runtime-1":
 			runtimeSession = session
-		case "hook-1":
-			hookSession = session
+		case "runtime-2":
+			peerSession = session
 		}
 	}
-	if runtimeSession == nil || hookSession == nil {
-		t.Fatalf("sessions = %#v, want runtime and hook sessions", state.Sessions)
+	if runtimeSession == nil || peerSession == nil {
+		t.Fatalf("sessions = %#v, want runtime sessions", state.Sessions)
 	}
 	if runtimeSession.EffectiveStatus != "working" || runtimeSession.SessionOrigin != WorkspaceAgentSessionOriginRuntime {
 		t.Fatalf("runtime session = %#v, want untouched runtime session", *runtimeSession)
 	}
-	if hookSession.SessionOrigin != WorkspaceAgentSessionOriginHook ||
-		hookSession.LifecycleStatus != string(activityshared.SessionLifecycleStatusEnded) ||
-		hookSession.EffectiveStatus != string(activityshared.SessionStatusCompleted) ||
-		hookSession.EndedAtUnixMS != 1000 ||
-		hookSession.UpdatedAtUnixMS != 850 {
-		t.Fatalf("hook session = %#v, want provider-only patch applied to hook session", *hookSession)
+	if peerSession.EffectiveStatus != "working" || peerSession.SessionOrigin != WorkspaceAgentSessionOriginRuntime {
+		t.Fatalf("peer session = %#v, want untouched runtime session", *peerSession)
 	}
 }
 
@@ -2012,7 +1981,7 @@ func TestStoreInterruptWorkspaceAgentsReportsWorkingSessions(t *testing.T) {
 	}
 }
 
-func TestStoreInterruptWorkspaceAgentsReportsHookAndRuntimeOriginsSeparately(t *testing.T) {
+func TestStoreInterruptWorkspaceAgentsReportsRuntimeSessionsSeparately(t *testing.T) {
 	client := &fakeInterruptReporter{}
 	svc := New(client)
 	svc.TrackRoom("room-1")
@@ -2029,10 +1998,10 @@ func TestStoreInterruptWorkspaceAgentsReportsHookAndRuntimeOriginsSeparately(t *
 				EffectiveStatus:   "working",
 			},
 			{
-				AgentSessionID:    "hook-1",
+				AgentSessionID:    "runtime-2",
 				Provider:          "codex",
 				ProviderSessionID: "shared-provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 				CWD:               "/workspace/room-1",
 				LifecycleStatus:   "active",
 				TurnPhase:         "working",
@@ -2045,16 +2014,13 @@ func TestStoreInterruptWorkspaceAgentsReportsHookAndRuntimeOriginsSeparately(t *
 	}
 
 	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want state-only runtime + hook reports", client.reportInputs)
+		t.Fatalf("reported inputs = %#v, want one report per runtime session", client.reportInputs)
 	}
-	var runtimeReports, hookReports int
+	var runtimeReports int
 	for index := range client.reportInputs {
 		input := &client.reportInputs[index]
-		switch input.Source.SessionOrigin {
-		case WorkspaceAgentSessionOriginRuntime:
+		if input.Source.SessionOrigin == WorkspaceAgentSessionOriginRuntime {
 			runtimeReports++
-		case WorkspaceAgentSessionOriginHook:
-			hookReports++
 		}
 		if input.Source.Provider != "codex" || input.Source.ProviderSessionID != "shared-provider-session" {
 			t.Fatalf("report source = %#v, want provider identity preserved", input.Source)
@@ -2066,8 +2032,8 @@ func TestStoreInterruptWorkspaceAgentsReportsHookAndRuntimeOriginsSeparately(t *
 			t.Fatalf("report state patches = %#v, want one patch per report", input.StatePatches)
 		}
 	}
-	if runtimeReports != 1 || hookReports != 1 {
-		t.Fatalf("reported inputs = %#v, want one runtime and one hook state report", client.reportInputs)
+	if runtimeReports != 2 {
+		t.Fatalf("reported inputs = %#v, want runtime reports", client.reportInputs)
 	}
 }
 
@@ -2275,17 +2241,17 @@ func TestStoreInterruptWorkspaceAgentSessionsCompletesSingleFoldedTarget(t *test
 	}
 }
 
-func TestStoreInterruptWorkspaceAgentSessionsReportsEachOriginSeparately(t *testing.T) {
+func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetsSeparately(t *testing.T) {
 	client := &fakeInterruptReporter{}
 	svc := New(client)
 	svc.TrackRoom("room-1")
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{
 			{
-				AgentSessionID:    "hook-session",
+				AgentSessionID:    "peer-session",
 				Provider:          "codex",
 				ProviderSessionID: "provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 				CWD:               "/workspace/room-1",
 				LifecycleStatus:   "active",
 				TurnPhase:         "working",
@@ -2308,23 +2274,23 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsEachOriginSeparately(t *test
 		context.Background(),
 		"room-1",
 		"workspace-leave",
-		[]string{"hook-session", "runtime-session"},
+		[]string{"peer-session", "runtime-session"},
 	); err != nil {
 		t.Fatalf("InterruptWorkspaceAgentSessions() error = %v", err)
 	}
 
 	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want runtime and hook reports", client.reportInputs)
+		t.Fatalf("reported inputs = %#v, want runtime reports", client.reportInputs)
 	}
 	if client.reportInputs[0].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
 		len(client.reportInputs[0].StatePatches) != 1 ||
-		client.reportInputs[0].StatePatches[0].AgentSessionID != "runtime-session" {
-		t.Fatalf("first report = %#v, want runtime patch", client.reportInputs[0])
+		client.reportInputs[0].StatePatches[0].AgentSessionID != "peer-session" {
+		t.Fatalf("first report = %#v, want peer runtime patch", client.reportInputs[0])
 	}
-	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginHook ||
+	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
 		len(client.reportInputs[1].StatePatches) != 1 ||
-		client.reportInputs[1].StatePatches[0].AgentSessionID != "hook-session" {
-		t.Fatalf("second report = %#v, want hook patch", client.reportInputs[1])
+		client.reportInputs[1].StatePatches[0].AgentSessionID != "runtime-session" {
+		t.Fatalf("second report = %#v, want runtime patch", client.reportInputs[1])
 	}
 }
 
@@ -2335,10 +2301,10 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetFromProviderCon
 	svc.updateState("room-1", WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{
 			{
-				AgentSessionID:    "hook-session",
+				AgentSessionID:    "peer-session",
 				Provider:          "codex",
 				ProviderSessionID: "provider-session",
-				SessionOrigin:     WorkspaceAgentSessionOriginHook,
+				SessionOrigin:     WorkspaceAgentSessionOriginRuntime,
 				CWD:               "/workspace/room-1",
 				LifecycleStatus:   "active",
 				TurnPhase:         "working",
@@ -2357,18 +2323,18 @@ func TestStoreInterruptWorkspaceAgentSessionsReportsRuntimeTargetFromProviderCon
 	}
 
 	if len(client.reportInputs) != 2 {
-		t.Fatalf("reported inputs = %#v, want runtime fallback and hook reports", client.reportInputs)
+		t.Fatalf("reported inputs = %#v, want runtime fallback and existing session reports", client.reportInputs)
 	}
 	if client.reportInputs[0].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
 		len(client.reportInputs[0].StatePatches) != 1 ||
-		client.reportInputs[0].StatePatches[0].AgentSessionID != "runtime-session" ||
-		client.reportInputs[0].StatePatches[0].ProviderSessionID != "provider-session" {
-		t.Fatalf("first report = %#v, want runtime fallback patch", client.reportInputs[0])
+		client.reportInputs[0].StatePatches[0].AgentSessionID != "peer-session" {
+		t.Fatalf("first report = %#v, want existing runtime patch", client.reportInputs[0])
 	}
-	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginHook ||
+	if client.reportInputs[1].Source.SessionOrigin != WorkspaceAgentSessionOriginRuntime ||
 		len(client.reportInputs[1].StatePatches) != 1 ||
-		client.reportInputs[1].StatePatches[0].AgentSessionID != "hook-session" {
-		t.Fatalf("second report = %#v, want hook patch", client.reportInputs[1])
+		client.reportInputs[1].StatePatches[0].AgentSessionID != "runtime-session" ||
+		client.reportInputs[1].StatePatches[0].ProviderSessionID != "provider-session" {
+		t.Fatalf("second report = %#v, want runtime fallback patch", client.reportInputs[1])
 	}
 }
 

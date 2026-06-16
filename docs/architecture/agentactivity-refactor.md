@@ -25,7 +25,6 @@ packages/agentactivity/
     ├── client.go          # 领域类型 + HTTP 实现混合
     ├── compat.go          # SessionActivityReporter 接口
     ├── service.go         # AgentActivityService + 仓储接口
-    ├── dispatch/
     ├── ingress/
     ├── hostquery/
     └── shared/
@@ -45,7 +44,6 @@ packages/agentactivity/
     ├── types.go           # 所有领域类型（从 client.go 拆出）
     ├── client.go          # HTTP 实现（只保留网络层）
     ├── service.go
-    ├── dispatch/
     ├── ingress/
     ├── hostquery/
 │   └── events/            # shared/ 改名
@@ -70,7 +68,7 @@ type ActivityReporter interface {
     Report(ctx context.Context, input ReportActivityInput) error
 }
 
-// SessionActivityReporter 是 ingress 层（hook/gRPC）的细粒度上报契约。
+// SessionActivityReporter 是 ingress 层的细粒度上报契约。
 type SessionActivityReporter interface {
     ReportSessionState(context.Context, ReportSessionStateInput) (ReportSessionStateReply, error)
     ReportSessionMessages(context.Context, ReportSessionMessagesInput) (ReportSessionMessagesReply, error)
@@ -82,7 +80,7 @@ type SessionActivityReporter interface {
 | 路径               | 接口                      | 特点                        |
 | ------------------ | ------------------------- | --------------------------- |
 | ACP（JSON-RPC 流） | `ActivityReporter`        | 实时，每个 ACP 事件触发一次 |
-| Hook/gRPC ingress  | `SessionActivityReporter` | 批量，工具调用结束后触发    |
+| gRPC ingress       | `SessionActivityReporter` | 批量，工具调用结束后触发    |
 
 两者在 daemon 内部都通过 `ReportActivityAsSessionUpdates` 适配，外部不需要感知区别。
 
@@ -166,121 +164,37 @@ func (b *myBridge) OnSnapshotChanged(roomID string, snap agentactivity.Workspace
 
 ---
 
-## dispatch/Manager 支持 Coalesce
-
-当前 `dispatch/Manager` 是 FIFO per-key 队列，不支持合并。新增 `Coalesce` 字段，由提交方决定合并语义，向后兼容（nil 表示不合并）。
-
-### Job 定义变更
-
-```go
-type Job struct {
-    Key       string
-    Source    string
-    Context   context.Context
-    Report    agentactivity.ReportActivityInput
-    Send      SendFunc
-    OnSuccess func(Result)
-    OnFailure func(Result)
-
-    // Coalesce 可选。队列末尾有同 key 的待执行 job 时调用，
-    // 返回空 Key 表示不合并，按 FIFO 追加。
-    Coalesce func(existing Job, incoming Job) Job
-}
-```
-
-### run() 中的合并逻辑
-
-```go
-case request := <-m.submitCh:
-    queue := queuesByKey[request.job.Key]
-
-    if fn := request.job.Coalesce; fn != nil && len(queue) > 0 {
-        last := queue[len(queue)-1]
-        if merged := fn(last, request.job); merged.Key != "" {
-            queue[len(queue)-1] = merged
-            queuesByKey[request.job.Key] = queue
-            request.resp <- nil
-            continue
-        }
-    }
-
-    queue = append(queue, request.job)
-    // ...
-```
-
----
-
-## 本地优先 Reporter 的流式合并
+## Runtime Reporter 的流式合并
 
 ### 当前问题
 
-`bridge/agent_activity.go` 每个 chunk 一个 goroutine，100 个 chunk = 100 个远端 API 请求。
+ACP streaming 每个 chunk 都可能生成一次消息更新；如果逐条远端提交，100 个 chunk 会产生 100 个远端请求。
+
+### 当前实现
+
+本地应用路径由 `Store.ApplyEvents` / `Store.ApplyActivity` 立即更新内存快照并触发 listener。远端提交由 runtime reporter 负责，流式消息合并在 `packages/agent/daemon/runtime/report_coalescer.go` 内完成，不再经过 `activity/dispatch` 包。
 
 ```go
-// 当前：每次调用都启动一个 goroutine
-go reportAgentSessionMessagesUpstream(context.WithoutCancel(ctx), "hook", upstream, input)
-```
-
-### 改造后
-
-本地应用路径不变（立即触发 SnapshotListener → View 实时更新），远端提交走 dispatcher 并启用 Coalesce。
-
-```go
-func (r *agentActivityLocalFirstReporter) ReportSessionMessages(
-    ctx context.Context,
-    input agentactivity.ReportSessionMessagesInput,
-) (agentactivity.ReportSessionMessagesReply, error) {
-    if r.service != nil {
-        // 1. 本地立即应用，触发 View 实时更新（不变）
-        r.service.ApplySessionMessages(input.WorkspaceID, input.Source,
-            input.AgentSessionID, input.Updates)
+func (c *streamingReportCoalescer) add(request reportRequest) []reportRequest {
+    sessionKey := reportCoalesceSessionKey(request.report)
+    if isCoalescibleStreamingReport(request.report) {
+        c.merge(sessionKey, request)
+        c.ensureTimer()
+        return nil
     }
-
-    reply := agentActivitySessionMessagesAcceptedReply(input)
-
-    if r.dispatcher != nil {
-        // 2. 远端异步提交，启用合并
-        job := dispatch.Job{
-            Key:      dispatch.SessionKey("hook", input.WorkspaceID, input.AgentSessionID),
-            Source:   dispatch.SourceLocalFirstHook,
-            Context:  context.WithoutCancel(ctx),
-            Report:   sessionMessagesToReportInput(input),
-            Send:     r.upstream.send,
-            Coalesce: mergeMessageReportJobs,
-        }
-        _ = r.dispatcher.Submit(job)
-    }
-
-    return reply, nil
+    flushed := c.flushSession(sessionKey)
+    return append(flushed, request)
 }
 ```
 
-### 合并函数
+### 合并粒度
 
-```go
-func mergeMessageReportJobs(existing, incoming dispatch.Job) dispatch.Job {
-    // 包含终态的消息不合并，让它独立排队立即发送
-    for _, u := range incoming.Report.MessageUpdates {
-        switch u.Status {
-        case "completed", "failed", "canceled":
-            return dispatch.Job{} // 空 Key → 触发方按 FIFO 追加
-        }
-    }
-    existing.Report.MessageUpdates = append(
-        existing.Report.MessageUpdates,
-        incoming.Report.MessageUpdates...,
-    )
-    existing.Context = incoming.Context
-    return existing
-}
-```
+合并只针对同 workspace、同 origin、同 agent session 的 streaming text/reasoning message update；终态消息、state patch、timeline item 会先 flush 同 session 的 pending streaming update，再独立提交。
 
-### 两条路径对比
-
-| 路径     | 触发 View           | 远端同步                |
-| -------- | ------------------- | ----------------------- |
-| 本地应用 | 每个 chunk 立即触发 | —                       |
-| 远端同步 | —                   | Coalesce 合并后批量发送 |
+| 路径     | 触发 View           | 远端同步                         |
+| -------- | ------------------- | -------------------------------- |
+| 本地应用 | 每个 chunk 立即触发 | —                                |
+| 远端同步 | —                   | runtime coalescer 合并后批量发送 |
 
 本地优先的核心价值是 UI 始终响应；合并只针对远端，两者不冲突。
 
@@ -347,11 +261,10 @@ func (w *MessageStreamWriter) Close(ctx context.Context, status string) error {
 
 ## 改造顺序
 
-| 步骤 | 内容                                                      | 风险                         |
-| ---- | --------------------------------------------------------- | ---------------------------- |
-| 1    | `client.go` 拆分为 `types.go` + `client.go`               | 低，纯文件拆分，无逻辑变更   |
-| 2    | `shared/` 改名为 `events/`，更新所有 import               | 低                           |
-| 3    | 三个根包接口文件（`reporter.go` / `repo.go` / `view.go`） | 低，大部分已存在，只是移位   |
-| 4    | `dispatch/Job` 加 `Coalesce` 字段                         | 低，向后兼容（nil = 不合并） |
-| 5    | 本地优先 reporter 改用 dispatcher + coalesce              | 中，需要覆盖流式场景的测试   |
-| 6    | `stream_writer.go` helper                                 | 低，纯新增                   |
+| 步骤 | 内容                                                      | 风险                       |
+| ---- | --------------------------------------------------------- | -------------------------- |
+| 1    | `client.go` 拆分为 `types.go` + `client.go`               | 低，纯文件拆分，无逻辑变更 |
+| 2    | `shared/` 改名为 `events/`，更新所有 import               | 低                         |
+| 3    | 三个根包接口文件（`reporter.go` / `repo.go` / `view.go`） | 低，大部分已存在，只是移位 |
+| 4    | runtime reporter 增加 streaming report coalescer          | 中，需要覆盖流式场景的测试 |
+| 5    | `stream_writer.go` helper                                 | 低，纯新增                 |

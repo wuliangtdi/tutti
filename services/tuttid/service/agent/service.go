@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 )
 
@@ -22,7 +23,10 @@ func NewService(runtime RuntimeController) *Service {
 	if runtime == nil {
 		panic("agent service requires a runtime")
 	}
-	return &Service{Runtime: runtime}
+	return &Service{
+		Runtime:           runtime,
+		skillOptionsCache: newComposerSkillOptionsCache(),
+	}
 }
 
 func (s *Service) List(ctx context.Context, workspaceID string) ([]Session, error) {
@@ -168,9 +172,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if refreshed, ok := s.controller().Session(workspaceID, session.ID); ok {
 		session = refreshed
 	}
-	return serviceSession(
+	return serviceSessionWithComposerSkillOptions(
 		session,
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
+		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 	), nil
 }
 
@@ -692,7 +697,11 @@ func (s *Service) reconcilePersistedStaleTurn(ctx context.Context, workspaceID s
 }
 
 func (s *Service) reconcileStaleTurnOnResume(ctx context.Context, session PersistedSession) (bool, error) {
-	if !isResumeStaleTurnStatus(session.Status) {
+	shouldReconcile, err := s.shouldReconcileStaleTurn(session)
+	if err != nil {
+		return false, err
+	}
+	if !shouldReconcile {
 		return false, nil
 	}
 	reconciler, ok := s.SessionReader.(StaleTurnResumeReconciler)
@@ -703,6 +712,34 @@ func (s *Service) reconcileStaleTurnOnResume(ctx context.Context, session Persis
 		return false, err
 	}
 	return true, nil
+}
+
+func (s *Service) shouldReconcileStaleTurn(session PersistedSession) (bool, error) {
+	if isResumeStaleTurnStatus(session.Status) || isResumeStaleTurnStatus(session.CurrentPhase) {
+		return true, nil
+	}
+	if s == nil || s.MessageReader == nil {
+		return false, nil
+	}
+	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    strings.TrimSpace(session.WorkspaceID),
+		AgentSessionID: strings.TrimSpace(session.ID),
+		Limit:          100,
+		Order:          agentactivitybiz.MessageOrderDesc,
+	})
+	if !ok {
+		return false, nil
+	}
+	return hasStaleResumeOpenToolCall(page.Messages), nil
+}
+
+func hasStaleResumeOpenToolCall(messages []SessionMessage) bool {
+	for _, message := range messages {
+		if isStaleResumeOpenToolCall(message) {
+			return true
+		}
+	}
+	return false
 }
 
 func isResumeStaleTurnStatus(status string) bool {

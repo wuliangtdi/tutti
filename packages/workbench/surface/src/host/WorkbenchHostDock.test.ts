@@ -218,3 +218,12 @@ test("dock new window launch returns the created node id to the genie boundary",
     /context\.genie\.launchNodeFromAnchor\(\s*anchorKeyFromPopupEntry\(popupEntry\),\s*popupEntry\.entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
   );
 });
+
+test("dock chrome samples wallpaper luminance for contrast", () => {
+  assert.match(source, /useDockWallpaperTones/);
+  assert.match(source, /data-wallpaper-tone=\{wallpaperTones\.get/);
+  assert.match(source, /wallpaperToneElementRefs\.current\.set/);
+  assert.ok(source.includes('querySelector(".workbench-surface__wallpaper")'));
+  assert.match(source, /getImageData/);
+  assert.match(source, /dockWallpaperDarkLuminanceThreshold/);
+});

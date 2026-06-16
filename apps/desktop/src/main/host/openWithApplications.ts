@@ -42,6 +42,7 @@ const videoPlayerApplicationPathPattern =
   /\/(QuickTime Player|QuickTime|TV|IINA|VLC|Elmedia Player|Movist|MPV|Fig Player|5KPlayer|NicePlayer)\.app$/i;
 const videoPlayerApplicationNamePattern =
   /^(QuickTime Player|IINA|VLC|Elmedia Player|Movist|MPV|Fig Player|5KPlayer|NicePlayer)/i;
+const applicationIconPixelSize = 256;
 const openWithSwiftMaxBufferBytes = 64 * 1024 * 1024;
 
 const listOpenWithApplicationsSwiftSource = `
@@ -154,7 +155,7 @@ func encodeIconBase64(_ icon: NSImage, pixelSize: Int) -> String {
 let bundlePath = CommandLine.arguments[1]
 let workspace = NSWorkspace.shared
 let icon = workspace.icon(forFile: bundlePath)
-let iconBase64 = encodeIconBase64(icon, pixelSize: 64)
+let iconBase64 = encodeIconBase64(icon, pixelSize: ${applicationIconPixelSize})
 if iconBase64.isEmpty {
     exit(1)
 }
@@ -511,7 +512,12 @@ export async function readApplicationIconDataUrl(
       const { nativeImage } = await import("electron");
       const image = nativeImage.createFromPath(iconPath);
       if (!image.isEmpty()) {
-        const iconDataUrl = image.resize({ height: 32, width: 32 }).toDataURL();
+        const iconDataUrl = image
+          .resize({
+            height: applicationIconPixelSize,
+            width: applicationIconPixelSize
+          })
+          .toDataURL();
         applicationIconDataUrlByPath.set(applicationPath, iconDataUrl);
         return iconDataUrl;
       }

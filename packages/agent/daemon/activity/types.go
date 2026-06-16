@@ -17,7 +17,6 @@ const (
 	maxUpstreamSessionMessagePayloadBytes = 240 * 1024
 	maxUpstreamReportRequestBytes         = 900 * 1024
 
-	WorkspaceAgentSessionOriginHook    = "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK"
 	WorkspaceAgentSessionOriginRuntime = "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
 )
 

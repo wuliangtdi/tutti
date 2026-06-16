@@ -14,7 +14,7 @@ func TestAgentActivitySyncerSyncsSessionMessages(t *testing.T) {
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{{
 			AgentSessionID:  "agent-session-1",
-			SessionOrigin:   WorkspaceAgentSessionOriginHook,
+			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
 			EffectiveStatus: "working",
 		}},
@@ -67,8 +67,8 @@ func TestAgentActivitySyncerSyncsSessionMessages(t *testing.T) {
 	if got := client.afterVersionsFor("agent-session-1"); !reflect.DeepEqual(got, []uint64{0, 1}) {
 		t.Fatalf("AfterVersions = %#v, want [0 1]", got)
 	}
-	if got := client.messageOriginsFor("agent-session-1"); !reflect.DeepEqual(got, []string{WorkspaceAgentSessionOriginHook, WorkspaceAgentSessionOriginHook}) {
-		t.Fatalf("SessionOrigins = %#v, want hook paging", got)
+	if got := client.messageOriginsFor("agent-session-1"); !reflect.DeepEqual(got, []string{WorkspaceAgentSessionOriginRuntime, WorkspaceAgentSessionOriginRuntime}) {
+		t.Fatalf("SessionOrigins = %#v, want runtime paging", got)
 	}
 }
 
@@ -77,7 +77,7 @@ func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{{
 			AgentSessionID:  "agent-session-1",
-			SessionOrigin:   WorkspaceAgentSessionOriginHook,
+			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
 			EffectiveStatus: "working",
 		}},
@@ -99,7 +99,7 @@ func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 
 	svc := New(client)
 	svc.TrackRoom("room-1")
-	svc.updateStateForOrigin("room-1", *client.snapshots["room-1"], WorkspaceAgentSessionOriginHook)
+	svc.updateStateForOrigin("room-1", *client.snapshots["room-1"], WorkspaceAgentSessionOriginRuntime)
 	var notifyCount int
 	svc.SetUpdateListener(func(string, WorkspaceAgentSnapshot) {
 		notifyCount++
@@ -128,7 +128,7 @@ func TestAgentActivitySyncerRemoteMessageEchoOnlyAdvancesCursor(t *testing.T) {
 	}
 }
 
-func TestAgentActivitySyncerUsesSessionOriginForMessageSync(t *testing.T) {
+func TestAgentActivitySyncerUsesRuntimeSessionOriginForMessageSync(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{
@@ -139,15 +139,15 @@ func TestAgentActivitySyncerUsesSessionOriginForMessageSync(t *testing.T) {
 				EffectiveStatus: "working",
 			},
 			{
-				AgentSessionID:  "hook-1",
-				SessionOrigin:   WorkspaceAgentSessionOriginHook,
+				AgentSessionID:  "runtime-2",
+				SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 				LifecycleStatus: "active",
 				EffectiveStatus: "working",
 			},
 		},
 	}
 	client.messages["room-1/runtime-1"] = []ListSessionMessagesReply{{}}
-	client.messages["room-1/hook-1"] = []ListSessionMessagesReply{{}}
+	client.messages["room-1/runtime-2"] = []ListSessionMessagesReply{{}}
 
 	svc := New(client)
 	svc.TrackRoom("room-1")
@@ -158,17 +158,17 @@ func TestAgentActivitySyncerUsesSessionOriginForMessageSync(t *testing.T) {
 	if got := client.messageOriginsFor("runtime-1"); !reflect.DeepEqual(got, []string{WorkspaceAgentSessionOriginRuntime}) {
 		t.Fatalf("runtime origins = %#v, want runtime", got)
 	}
-	if got := client.messageOriginsFor("hook-1"); !reflect.DeepEqual(got, []string{WorkspaceAgentSessionOriginHook}) {
-		t.Fatalf("hook origins = %#v, want hook", got)
+	if got := client.messageOriginsFor("runtime-2"); !reflect.DeepEqual(got, []string{WorkspaceAgentSessionOriginRuntime}) {
+		t.Fatalf("runtime origins = %#v, want runtime", got)
 	}
 }
 
-func TestAgentActivitySyncerPreservesRuntimeSessionsWhenSyncingDefaultSnapshot(t *testing.T) {
+func TestAgentActivitySyncerReplacesRuntimeSessionsWhenSyncingDefaultSnapshot(t *testing.T) {
 	client := newFakeSyncerRepository()
 	client.snapshots["room-1"] = &WorkspaceAgentSnapshot{
 		Sessions: []WorkspaceAgentSession{{
-			AgentSessionID:  "hook-1",
-			SessionOrigin:   WorkspaceAgentSessionOriginHook,
+			AgentSessionID:  "remote-runtime-1",
+			SessionOrigin:   WorkspaceAgentSessionOriginRuntime,
 			LifecycleStatus: "active",
 			EffectiveStatus: "working",
 		}},
@@ -195,7 +195,7 @@ func TestAgentActivitySyncerPreservesRuntimeSessionsWhenSyncingDefaultSnapshot(t
 		t.Fatal("missing room state")
 	}
 	got := sessionIDs(state.Sessions)
-	want := []string{"hook-1", "runtime-1"}
+	want := []string{"remote-runtime-1"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sessions = %#v, want %#v", got, want)
 	}

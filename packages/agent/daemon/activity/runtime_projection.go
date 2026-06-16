@@ -63,117 +63,6 @@ func RuntimeSnapshotForDisplay(
 	}
 }
 
-func HookSnapshotForDisplay(
-	upstream WorkspaceAgentSnapshot,
-	local WorkspaceAgentSnapshot,
-) WorkspaceAgentSnapshot {
-	sessions := make([]WorkspaceAgentSession, 0, len(upstream.Sessions)+len(local.Sessions))
-	bySessionID := make(map[string]int, len(upstream.Sessions)+len(local.Sessions))
-	byProviderSessionID := make(map[string]int, len(upstream.Sessions)+len(local.Sessions))
-	for _, session := range upstream.Sessions {
-		sessionID := strings.TrimSpace(session.AgentSessionID)
-		providerSessionID := strings.TrimSpace(session.ProviderSessionID)
-		if sessionID == "" && providerSessionID == "" {
-			sessions = append(sessions, session)
-			continue
-		}
-		index := len(sessions)
-		sessions = append(sessions, session)
-		if sessionID != "" {
-			bySessionID[sessionID] = index
-		}
-		if providerSessionID != "" {
-			byProviderSessionID[providerSessionID] = index
-		}
-	}
-	for _, localSession := range local.Sessions {
-		sessionID := strings.TrimSpace(localSession.AgentSessionID)
-		providerSessionID := strings.TrimSpace(localSession.ProviderSessionID)
-		if sessionID == "" && providerSessionID == "" {
-			sessions = append(sessions, localSession)
-			continue
-		}
-		if existingIndex, ok := bySessionID[sessionID]; ok {
-			sessions[existingIndex] = mergeHookAgentSession(sessions[existingIndex], localSession)
-			continue
-		}
-		if existingIndex, ok := byProviderSessionID[providerSessionID]; ok {
-			sessions[existingIndex] = mergeHookAgentSession(sessions[existingIndex], localSession)
-			continue
-		}
-		index := len(sessions)
-		sessions = append(sessions, localSession)
-		if sessionID != "" {
-			bySessionID[sessionID] = index
-		}
-		if providerSessionID != "" {
-			byProviderSessionID[providerSessionID] = index
-		}
-	}
-	return WorkspaceAgentSnapshot{
-		Presences: upstream.Presences,
-		Sessions:  filterDisplaySessions(sessions),
-	}
-}
-
-func filterDisplaySessions(sessions []WorkspaceAgentSession) []WorkspaceAgentSession {
-	filtered := make([]WorkspaceAgentSession, 0, len(sessions))
-	for _, session := range sessions {
-		if isRuntimePlaceholderSession(session) {
-			continue
-		}
-		filtered = append(filtered, session)
-	}
-	return filtered
-}
-
-func isRuntimePlaceholderSession(session WorkspaceAgentSession) bool {
-	if NormalizeSessionOrigin(session.SessionOrigin) != WorkspaceAgentSessionOriginRuntime {
-		return false
-	}
-	if strings.ToLower(strings.TrimSpace(session.LifecycleStatus)) != "active" {
-		return false
-	}
-	if strings.ToLower(strings.TrimSpace(session.TurnPhase)) != "idle" {
-		return false
-	}
-	if canonicalWorkspaceAgentSessionStatus(session) != "idle" {
-		return false
-	}
-	return runtimePlaceholderDisplayTitle(session) == ""
-}
-
-func runtimePlaceholderDisplayTitle(session WorkspaceAgentSession) string {
-	title := strings.TrimSpace(session.Title)
-	if title == "" {
-		return ""
-	}
-	providerLabel := runtimeProviderDisplayLabel(session.Provider)
-	if providerLabel != "" && strings.EqualFold(title, providerLabel) {
-		return ""
-	}
-	return title
-}
-
-func runtimeProviderDisplayLabel(provider string) string {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "codex":
-		return "Codex"
-	case "claude-code":
-		return "Claude Code"
-	case "gemini":
-		return "Gemini"
-	case "openclaw":
-		return "OpenClaw"
-	case "hermes":
-		return "Hermes"
-	case "nexight":
-		return "Nexight"
-	default:
-		return ""
-	}
-}
-
 func mergeRuntimeAgentSession(
 	upstream WorkspaceAgentSession,
 	local WorkspaceAgentSession,
@@ -305,39 +194,6 @@ func normalizeRuntimeSessionForDisplay(session WorkspaceAgentSession) WorkspaceA
 
 	syncCanonicalSessionStatus(&session)
 	return session
-}
-
-func mergeHookAgentSession(
-	upstream WorkspaceAgentSession,
-	local WorkspaceAgentSession,
-) WorkspaceAgentSession {
-	merged := upstream
-	merged.AgentSessionID = firstNonEmptyString(upstream.AgentSessionID, local.AgentSessionID)
-	merged.Provider = firstNonEmptyString(upstream.Provider, local.Provider)
-	merged.ProviderSessionID = firstNonEmptyString(upstream.ProviderSessionID, local.ProviderSessionID)
-	merged.SessionOrigin = firstNonEmptyString(upstream.SessionOrigin, local.SessionOrigin)
-	merged.CWD = firstNonEmptyString(upstream.CWD, local.CWD)
-	merged.LifecycleStatus = firstNonEmptyString(upstream.LifecycleStatus, local.LifecycleStatus)
-	merged.TurnPhase = firstNonEmptyString(upstream.TurnPhase, local.TurnPhase)
-	merged.EffectiveStatus = firstNonEmptyString(upstream.EffectiveStatus, local.EffectiveStatus)
-	merged.Title = firstNonEmptyString(local.Title, upstream.Title)
-	merged.StartedAtUnixMS = firstNonZeroInt64(upstream.StartedAtUnixMS, local.StartedAtUnixMS)
-	merged.EndedAtUnixMS = firstNonZeroInt64(upstream.EndedAtUnixMS, local.EndedAtUnixMS)
-	merged.CreatedAtUnixMS = firstNonZeroInt64(upstream.CreatedAtUnixMS, local.CreatedAtUnixMS)
-	merged.UpdatedAtUnixMS = firstNonZeroInt64(upstream.UpdatedAtUnixMS, local.UpdatedAtUnixMS)
-	if strings.TrimSpace(merged.UserID) == "" {
-		merged.UserID = local.UserID
-	}
-	if merged.PresenceID == 0 {
-		merged.PresenceID = local.PresenceID
-	}
-	if merged.ID == 0 {
-		merged.ID = local.ID
-	}
-	if local.SyncState != nil {
-		merged.SyncState = cloneSyncState(local.SyncState)
-	}
-	return merged
 }
 
 func preferredMergedAgentSessionID(
@@ -864,23 +720,6 @@ func LimitTimelineItems(items []WorkspaceAgentTimelineItem, limit int) []Workspa
 	return items[:limit]
 }
 
-func FilterSessionsByOrigin(
-	sessions []WorkspaceAgentSession,
-	sessionOrigin string,
-) []WorkspaceAgentSession {
-	sessionOrigin = NormalizeSessionOrigin(sessionOrigin)
-	if sessionOrigin == "" || len(sessions) == 0 {
-		return sessions
-	}
-	filtered := make([]WorkspaceAgentSession, 0, len(sessions))
-	for _, session := range sessions {
-		if NormalizeSessionOrigin(session.SessionOrigin) == sessionOrigin {
-			filtered = append(filtered, session)
-		}
-	}
-	return filtered
-}
-
 func FilterSessionsByUserID(
 	sessions []WorkspaceAgentSession,
 	userID string,
@@ -900,13 +739,19 @@ func FilterSessionsByUserID(
 
 func NormalizeSessionOrigin(origin string) string {
 	switch strings.TrimSpace(origin) {
-	case "", "1", "hook", "HOOK", WorkspaceAgentSessionOriginHook:
-		return WorkspaceAgentSessionOriginHook
-	case "2", "runtime", "RUNTIME", WorkspaceAgentSessionOriginRuntime:
+	case "", WorkspaceAgentSessionOriginRuntime:
 		return WorkspaceAgentSessionOriginRuntime
 	default:
 		return ""
 	}
+}
+
+func canonicalSessionOriginValue(origin string) string {
+	origin = strings.TrimSpace(origin)
+	if normalized := NormalizeSessionOrigin(origin); normalized != "" {
+		return normalized
+	}
+	return origin
 }
 
 func NonNilPresences(presences []WorkspaceAgentPresence) []WorkspaceAgentPresence {

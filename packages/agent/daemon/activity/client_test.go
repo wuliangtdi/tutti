@@ -1274,7 +1274,7 @@ func TestWorkspaceAgentSessionUnmarshalProtoSessionStatusFallback(t *testing.T) 
 			"provider": "claude-code",
 			"user_id": "user-1",
 			"provider_session_id": "provider-session-1",
-			"session_origin": "WORKSPACE_AGENT_SESSION_ORIGIN_HOOK",
+			"session_origin": "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
 			"cwd": "/workspace",
 			"title": "Look around",
 			"status": "working",
@@ -1295,7 +1295,7 @@ func TestWorkspaceAgentSessionUnmarshalProtoSessionStatusFallback(t *testing.T) 
 	if got := session.ProviderSessionID; got != "provider-session-1" {
 		t.Fatalf("ProviderSessionID = %q", got)
 	}
-	if got := session.SessionOrigin; got != WorkspaceAgentSessionOriginHook {
+	if got := session.SessionOrigin; got != WorkspaceAgentSessionOriginRuntime {
 		t.Fatalf("SessionOrigin = %q", got)
 	}
 	if got := session.Status; got != "working" {

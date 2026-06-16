@@ -33,6 +33,7 @@ export {
   resolveWorkspaceFileDefaultApplicationIconExtension,
   resolveWorkspaceFileEntryIconCacheKey,
   shouldResolveWorkspaceFileEntryIcon,
+  shouldUseWorkspaceFileArchiveIcon,
   shouldUseWorkspaceFileExtensionDocumentIcon
 } from "./workspaceFileEntryIconPolicy.ts";
 export {
