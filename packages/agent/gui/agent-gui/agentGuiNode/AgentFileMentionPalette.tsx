@@ -5,14 +5,17 @@ import {
 import {
   MentionPalette,
   flattenMentionPaletteEntries,
+  renderMentionRow,
   type MentionPaletteEntry,
   type MentionPaletteState,
-  type MentionPaletteTheme
+  type MentionPaletteTheme,
+  type MentionRowItem,
+  type MentionRowStatusTag,
+  type MentionRowStatusTone
 } from "@tutti-os/ui-rich-text/at-panel";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
 import userAvatarPlaceholderUrl from "../../app/renderer/assets/icons/user-avatar-placeholder.png";
 import { translate } from "../../i18n/index";
-import { cn } from "../../app/renderer/lib/utils";
 import { managedAgentRoundedIconUrl } from "../../shared/managedAgentIcons";
 import { workspaceAgentActivityStatusLabel } from "../../shared/workspaceAgentActivityStatusLabel";
 import { roomIssueStatusLabel } from "../../shared/roomIssueStatusLabel";
@@ -20,7 +23,6 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../shared/mentionFilePresentation";
-import { Badge, StatusDot } from "@tutti-os/ui-system";
 import {
   agentMentionEmptyGroupLabel,
   agentMentionFilterLabel,
@@ -239,7 +241,7 @@ export function AgentFileMentionPalette({
       state={shellState}
       highlightedKey={highlightedKey}
       getItemKey={agentMentionItemKey}
-      renderItem={(item) => renderMentionRow(item)}
+      renderItem={(item) => renderMentionRow(agentMentionItemToRowItem(item))}
       labels={{
         loading: loadingLabel,
         empty: emptyLabelForShell,
@@ -389,7 +391,16 @@ function shouldRenderMentionGroupLabel(input: {
   );
 }
 
-function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
+/**
+ * Resolve an agent mention item into the shared, display-ready
+ * {@link MentionRowItem} view-model the generic {@link renderMentionRow}
+ * consumes. All agent-specific bits — i18n via {@link translate}, the user
+ * avatar placeholder asset, the managed-agent rounded icon, and the activity /
+ * issue status labels — are resolved here so the shared renderer stays pure.
+ */
+function agentMentionItemToRowItem(
+  item: AgentContextMentionItem
+): MentionRowItem {
   if (item.kind === "file") {
     const visualKind = resolveAgentMentionFileVisualKind({
       entryKind: item.entryKind,
@@ -406,217 +417,53 @@ function renderMentionRow(item: AgentContextMentionItem): React.JSX.Element {
             count: item.childCount
           })
         : null;
-    return (
-      <span
-        className="flex min-w-0 items-center gap-2"
-        data-agent-file-mention="true"
-        data-agent-mention-kind="file"
-        data-agent-file-entry-kind={item.entryKind}
-        data-agent-file-visual-kind={visualKind}
-        {...(item.mentionNavigation
-          ? { "data-agent-mention-navigation": item.mentionNavigation }
-          : {})}
-      >
-        <MentionFileIcon item={item} visualKind={visualKind} />
-        <span className="flex min-w-0 items-baseline gap-1 overflow-hidden">
-          <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-            {item.name}
-          </span>
-          {childCountLabel ? (
-            <span className="shrink-0 text-[13px] font-normal text-[var(--text-secondary)]">
-              {childCountLabel}
-            </span>
-          ) : null}
-        </span>
-      </span>
-    );
+    return {
+      kind: "file",
+      name: item.name,
+      visualKind,
+      thumbnailUrl: resolveAgentMentionFileThumbnailUrl(item) ?? null,
+      childCountLabel,
+      entryKind: item.entryKind,
+      mentionNavigation: item.mentionNavigation
+    };
   }
 
   if (item.kind === "session") {
-    const statusTag = renderSessionMentionStatusTag(item.status);
-    return (
-      <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-          <MentionSessionAvatarStack item={item} />
-          <span className="min-w-0 truncate text-[13px] font-semibold leading-[16px] text-[var(--text-primary)]">
-            <MentionSessionTitle item={item} />
-          </span>
-        </span>
-        {statusTag}
-      </span>
-    );
+    return {
+      kind: "session",
+      participant: `${item.initiatorName} & ${item.agentName}`,
+      summary: item.title,
+      userAvatarUrl: item.initiatorAvatarUrl ?? null,
+      userAvatarPlaceholderUrl,
+      agentIconUrl: managedAgentRoundedIconUrl(
+        mentionSessionAgentProvider(item) ?? item.agentName
+      ),
+      statusTag: agentSessionStatusTag(item.status)
+    };
   }
 
   if (item.kind === "workspace-app") {
-    return (
-      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-        <MentionWorkspaceAppIcon iconUrl={item.iconUrl} />
-        <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden">
-          <span className="min-w-0 max-w-[40%] shrink-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-            {item.name}
-          </span>
-          {item.description ? (
-            <span className="min-w-0 flex-1 truncate text-[13px] font-normal text-[var(--text-secondary)]">
-              {item.description}
-            </span>
-          ) : null}
-        </span>
-      </span>
-    );
+    return {
+      kind: "app",
+      name: item.name,
+      description: item.description ?? null,
+      iconUrl: item.iconUrl ?? null
+    };
   }
 
   if (item.kind === "workspace-app-factory") {
-    return (
-      <span className="grid min-w-0 overflow-hidden gap-1">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-          {item.name}
-        </span>
-      </span>
-    );
+    return {
+      kind: "app-factory",
+      name: item.name
+    };
   }
 
-  return (
-    <span className="grid min-w-0 overflow-hidden gap-1">
-      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
-        <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--text-primary)]">
-          {item.title}
-        </span>
-        {item.status ? <IssueMentionStatusTag status={item.status} /> : null}
-      </span>
-      {item.creatorName ? (
-        <span className="truncate text-[13px] font-normal text-[var(--text-secondary)]">
-          {item.creatorName}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function MentionFileIcon({
-  item,
-  visualKind
-}: {
-  item: Extract<AgentContextMentionItem, { kind: "file" }>;
-  visualKind: ReturnType<typeof resolveAgentMentionFileVisualKind>;
-}): React.JSX.Element {
-  "use memo";
-  const thumbnailUrl = resolveAgentMentionFileThumbnailUrl(item);
-  if (thumbnailUrl) {
-    return (
-      <span
-        className="agent-gui-node__mention-file-thumb"
-        data-agent-mention-file-thumb="true"
-        aria-hidden="true"
-      >
-        <img
-          src={thumbnailUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
-        />
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="agent-gui-node__mention-file-icon"
-      data-agent-file-visual-kind={visualKind}
-      aria-hidden="true"
-    />
-  );
-}
-
-function MentionWorkspaceAppIcon({
-  iconUrl
-}: {
-  iconUrl?: string | null;
-}): React.JSX.Element {
-  "use memo";
-  const normalizedIconUrl = iconUrl?.trim() ?? "";
-  return (
-    <span
-      className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-[5px] bg-block text-[var(--text-secondary)]"
-      data-agent-mention-app-icon="true"
-      data-workspace-app-icon="true"
-      aria-hidden="true"
-    >
-      {normalizedIconUrl ? (
-        <img
-          src={normalizedIconUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
-        />
-      ) : (
-        <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
-      )}
-    </span>
-  );
-}
-
-function MentionSessionAvatarStack({
-  item
-}: {
-  item: Extract<AgentContextMentionItem, { kind: "session" }>;
-}): React.JSX.Element {
-  "use memo";
-  const userAvatarUrl = item.initiatorAvatarUrl?.trim() ?? "";
-  const userImageUrl = userAvatarUrl || userAvatarPlaceholderUrl;
-  return (
-    <span
-      className="relative isolate block h-5 w-9 shrink-0"
-      aria-hidden="true"
-    >
-      <span
-        className="absolute left-0 top-0 z-0 grid h-5 w-5 overflow-hidden rounded-full bg-block"
-        data-agent-mention-user-avatar="true"
-      >
-        <img
-          src={userImageUrl}
-          alt=""
-          className={cn(
-            "h-full w-full object-cover",
-            !userAvatarUrl &&
-              "workspace-agents-status-panel__avatar-img--user-placeholder"
-          )}
-          decoding="async"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          draggable={false}
-          onError={(event) => {
-            if (event.currentTarget.dataset.fallbackAvatarApplied === "true") {
-              return;
-            }
-            event.currentTarget.dataset.fallbackAvatarApplied = "true";
-            event.currentTarget.src = userAvatarPlaceholderUrl;
-            event.currentTarget.classList.add(
-              "workspace-agents-status-panel__avatar-img--user-placeholder"
-            );
-          }}
-        />
-      </span>
-      <span
-        className="absolute left-4 top-0 z-10 grid h-5 w-5 overflow-hidden rounded-full bg-block"
-        data-agent-mention-agent-avatar="true"
-      >
-        <img
-          src={managedAgentRoundedIconUrl(
-            mentionSessionAgentProvider(item) ?? item.agentName
-          )}
-          alt=""
-          className="h-full w-full object-cover"
-          decoding="async"
-          loading="lazy"
-          draggable={false}
-        />
-      </span>
-    </span>
-  );
+  return {
+    kind: "issue",
+    title: item.title,
+    creatorName: item.creatorName ?? null,
+    statusTag: agentIssueStatusTag(item.status)
+  };
 }
 
 function mentionSessionAgentProvider(
@@ -629,88 +476,39 @@ function mentionSessionAgentProvider(
   return new URLSearchParams(item.href.slice(queryStart + 1)).get("provider");
 }
 
-function MentionSessionTitle({
-  item
-}: {
-  item: Extract<AgentContextMentionItem, { kind: "session" }>;
-}): React.JSX.Element {
-  "use memo";
-  return (
-    <>
-      <span className="text-[13px] leading-[16px]">
-        {item.initiatorName} & {item.agentName}
-      </span>
-      <span className="text-[13px] font-normal leading-[16px] text-[var(--text-secondary)]">
-        {" "}
-        {item.title}
-      </span>
-    </>
-  );
-}
-
-function MentionStatusTag({ status }: { status: string }): React.JSX.Element {
-  "use memo";
-  const activityStatus = normalizeAgentActivityDisplayStatus(status);
-  const statusTone = mentionStatusTone(activityStatus);
-  const statusLabel = workspaceAgentActivityStatusLabel(activityStatus);
-  return (
-    <Badge
-      variant="secondary"
-      className={cn(
-        "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-[4px] px-2 text-[11px] font-semibold leading-none",
-        mentionStatusBadgeClassName(activityStatus)
-      )}
-      data-agent-mention-status-tag="true"
-      data-status={activityStatus}
-      data-tone={statusTone}
-      title={statusLabel}
-    >
-      <StatusDot
-        tone={statusTone}
-        pulse={activityStatus === "working" || activityStatus === "waiting"}
-        size="xs"
-        title={statusLabel}
-      />
-      <span>{statusLabel}</span>
-    </Badge>
-  );
-}
-
-function renderSessionMentionStatusTag(
+function agentSessionStatusTag(
   status: string | undefined
-): React.JSX.Element | null {
+): MentionRowStatusTag | null {
   if (!status) {
     return null;
   }
   const activityStatus = normalizeAgentActivityDisplayStatus(status);
-  return <MentionStatusTag status={activityStatus} />;
+  return {
+    label: workspaceAgentActivityStatusLabel(activityStatus),
+    tone: mentionStatusTone(activityStatus),
+    pulse: activityStatus === "working" || activityStatus === "waiting",
+    variant: "activity",
+    dataStatus: activityStatus
+  };
 }
 
-function IssueMentionStatusTag({
-  status
-}: {
-  status: string;
-}): React.JSX.Element {
-  "use memo";
-  const normalizedStatus = status.trim().toLowerCase() || "not_started";
-  return (
-    <Badge
-      variant="secondary"
-      className={cn(
-        "shrink-0 text-[13px]",
-        issueMentionStatusBadgeClassName(status)
-      )}
-      data-agent-mention-status-tag="true"
-      data-status={normalizedStatus}
-    >
-      {roomIssueStatusLabel(status)}
-    </Badge>
-  );
+function agentIssueStatusTag(
+  status: string | undefined
+): MentionRowStatusTag | null {
+  if (!status) {
+    return null;
+  }
+  return {
+    label: roomIssueStatusLabel(status),
+    tone: issueMentionStatusTone(status),
+    variant: "issue",
+    dataStatus: status.trim().toLowerCase() || "not_started"
+  };
 }
 
 function mentionStatusTone(
   status: AgentActivityDisplayStatus
-): "amber" | "blue" | "green" | "neutral" | "red" {
+): MentionRowStatusTone {
   if (status === "working") {
     return "blue";
   }
@@ -726,36 +524,15 @@ function mentionStatusTone(
   return "neutral";
 }
 
-function mentionStatusBadgeClassName(
-  status: AgentActivityDisplayStatus
-): string {
-  if (status === "working") {
-    return "bg-sky-500/10 text-sky-700";
-  }
-  if (status === "waiting" || status === "canceled") {
-    return "bg-[color:color-mix(in_srgb,var(--color-amber-500)_12%,transparent)] text-[var(--color-amber-500)]";
-  }
-  if (status === "completed" || status === "idle") {
-    return "bg-[var(--tsh-ui-pill-success-bg)] text-[var(--tsh-ui-pill-success-fg)]";
-  }
-  if (status === "failed") {
-    return "bg-[var(--on-danger)] text-[var(--state-danger)]";
-  }
-  return "bg-[var(--transparency-block)] text-[var(--text-secondary)]";
-}
-
-function issueMentionStatusBadgeClassName(status: string): string {
+function issueMentionStatusTone(status: string): MentionRowStatusTone {
   switch (status.trim().toLowerCase()) {
     case "completed":
-      return "bg-[color:color-mix(in_srgb,var(--state-success)_12%,transparent)] text-[var(--state-success)]";
-    case "running":
-    case "pending_acceptance":
-      return "bg-[var(--transparency-block)] text-[var(--text-secondary)]";
+      return "green";
     case "failed":
     case "canceled":
-      return "bg-[var(--on-danger)] text-[var(--state-danger)]";
+      return "red";
     default:
-      return "bg-[var(--transparency-block)] text-[var(--text-secondary)]";
+      return "neutral";
   }
 }
 

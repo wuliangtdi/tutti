@@ -1,5 +1,28 @@
 export { buildMentionPaletteState } from "./buildMentionPaletteState.ts";
 export { MentionPalette } from "./MentionPalette.tsx";
+export { renderMentionRow } from "./MentionRow.tsx";
+export type {
+  MentionRowAppFactoryItem,
+  MentionRowAppItem,
+  MentionRowFileItem,
+  MentionRowIssueItem,
+  MentionRowItem,
+  MentionRowSessionItem,
+  MentionRowStatusTag
+} from "./mentionRowTypes.ts";
+export {
+  resolveMentionFileThumbnailUrl,
+  resolveMentionFileVisualKind,
+  type MentionFileVisualKind,
+  type MentionFileVisualKindInput
+} from "./mentionFileVisualKind.ts";
+export {
+  activityMentionStatusBadgeClassName,
+  issueMentionStatusBadgeClassName,
+  mentionStatusBadgeClassName,
+  type MentionRowStatusTone,
+  type MentionRowStatusVariant
+} from "./mentionStatusTone.ts";
 export { flattenMentionPaletteEntries } from "./mentionPaletteEntries.ts";
 export type {
   MentionPaletteCategory,

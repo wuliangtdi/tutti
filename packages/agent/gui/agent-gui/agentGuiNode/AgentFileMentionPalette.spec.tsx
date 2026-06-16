@@ -1291,12 +1291,24 @@ describe("AgentFileMentionPalette", () => {
       resolve("agent-gui/agentGuiNode/AgentFileMentionPalette.tsx"),
       "utf8"
     );
+    // The per-kind row markup moved to the shared MentionRow renderer; the
+    // primary-text tokens now live there. Guard both files so the discipline
+    // (product tokens, never raw shadcn tokens) stays enforced.
+    const rowSource = readFileSync(
+      resolve(
+        "node_modules/@tutti-os/ui-rich-text/src/at-panel/MentionRow.tsx"
+      ),
+      "utf8"
+    );
 
     expect(source).not.toContain("text-foreground");
     expect(source).not.toContain("text-muted-foreground");
-    expect(source).toContain("text-[var(--text-primary)]");
     expect(source).toContain("text-[var(--text-secondary)]");
     expect(source).toContain("text-[var(--text-tertiary)]");
+    expect(rowSource).not.toContain("text-foreground");
+    expect(rowSource).not.toContain("text-muted-foreground");
+    expect(rowSource).toContain("text-[var(--text-primary)]");
+    expect(rowSource).toContain("text-[var(--text-secondary)]");
   });
 
   it("shows only loading while browse results are refreshing", () => {
