@@ -89,6 +89,9 @@ import {
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { useAgentGuiConversationList } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { useAgentGUIActivation } from "./useAgentGUIActivation";
+import { buildAgentComposerSettingsVM } from "./buildAgentComposerSettingsVM";
+import { useAgentConversationSelectionState } from "./useAgentConversationSelectionState";
+import { useAgentPromptSubmissionState } from "./useAgentPromptSubmissionState";
 import { composerSettingsSupportFromOptions } from "../model/composerSettingsSupport";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
@@ -259,73 +262,63 @@ export function useAgentGUINodeController({
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
-  const pendingCreateOwnerKey = nodeId?.trim() ?? "";
-  const resolvePendingCreateConversationId = useCallback(
-    () =>
-      conversationListQuery && pendingCreateOwnerKey
-        ? getAgentGUIConversationCreatePending({
-            query: conversationListQuery,
-            ownerKey: pendingCreateOwnerKey
-          })
-        : null,
-    [conversationListQuery, pendingCreateOwnerKey]
-  );
-  const [pendingCreateConversationId, setPendingCreateConversationId] =
-    useState(resolvePendingCreateConversationId);
+  const conversationSelection = useAgentConversationSelectionState({
+    conversationListQuery,
+    nodeId,
+    initialActiveConversationId: data.lastActiveAgentSessionId,
+    initialComposerHome: data.lastActiveAgentSessionId === null
+  });
+  const {
+    activeConversationId,
+    setActiveConversationId,
+    selectedProjectPath,
+    setSelectedProjectPath,
+    isComposerHome,
+    setIsComposerHome,
+    pendingCreateConversationId,
+    setPendingCreateConversationId,
+    pendingCreateOwnerKey,
+    resolvePendingCreateConversationId,
+    localIsCreatingConversation,
+    setLocalIsCreatingConversation,
+    isCreatingConversation
+  } = conversationSelection;
   const conversations = conversationListState?.conversations ?? [];
   const [userProjects, setUserProjects] = useState<AgentHostUserProject[]>([]);
   const isNoProjectPath = agentHostApi.userProjects?.isNoProjectPath;
-  const [activeConversationId, setActiveConversationId] = useState<
-    string | null
-  >(data.lastActiveAgentSessionId);
-  const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(
-    null
-  );
-  const [isComposerHome, setIsComposerHome] = useState(
-    data.lastActiveAgentSessionId === null
-  );
   const [draftBySessionId, setDraftBySessionId] = useState<
     Record<string, string>
   >({});
   const [draftSettingsBySessionId, setDraftSettingsBySessionId] = useState<
     Record<string, AgentSessionComposerSettings>
   >({});
-  const [queuedPromptsBySessionId, setQueuedPromptsBySessionId] = useState<
-    Record<string, AgentGUIQueuedPromptVM[]>
-  >({});
+  const promptSubmission = useAgentPromptSubmissionState({
+    conversationListQuery,
+    activeConversationId
+  });
+  const {
+    activePendingPromptRef,
+    drainingQueuedPromptSessionId,
+    setDrainingQueuedPromptSessionId,
+    failedQueuedPromptIdBySessionId,
+    setFailedQueuedPromptIdBySessionId,
+    isPendingSubmit,
+    setIsPendingSubmit,
+    isSubmitting,
+    localIsSubmitting,
+    setLocalIsSubmitting,
+    queuedPromptRetryBlockBySessionId,
+    setQueuedPromptRetryBlockBySessionId,
+    queuedPromptsBySessionId,
+    setQueuedPromptsBySessionId,
+    resolvePendingSubmit,
+    sendNextQueuedPromptIdBySessionId,
+    setSendNextQueuedPromptIdBySessionId
+  } = promptSubmission;
   const hasLoadedConversations = conversationListState?.initialized ?? false;
   const isLoadingConversations = conversationListState?.isLoading ?? false;
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [localIsCreatingConversation, setLocalIsCreatingConversation] =
-    useState(false);
-  const isCreatingConversation =
-    localIsCreatingConversation || pendingCreateConversationId !== null;
   const isCreatingConversationRef = useRef(isCreatingConversation);
-  const resolvePendingSubmit = useCallback(
-    () =>
-      conversationListQuery
-        ? getAgentGUIConversationSubmitPending({
-            query: conversationListQuery,
-            conversationId: activeConversationId
-          })
-        : false,
-    [activeConversationId, conversationListQuery]
-  );
-  const [isPendingSubmit, setIsPendingSubmit] = useState(resolvePendingSubmit);
-  const [localIsSubmitting, setLocalIsSubmitting] = useState(false);
-  const isSubmitting = localIsSubmitting || isPendingSubmit;
-  const [drainingQueuedPromptSessionId, setDrainingQueuedPromptSessionId] =
-    useState<string | null>(null);
-  const [
-    sendNextQueuedPromptIdBySessionId,
-    setSendNextQueuedPromptIdBySessionId
-  ] = useState<Record<string, string | null>>({});
-  const [failedQueuedPromptIdBySessionId, setFailedQueuedPromptIdBySessionId] =
-    useState<Record<string, string | null>>({});
-  const [
-    queuedPromptRetryBlockBySessionId,
-    setQueuedPromptRetryBlockBySessionId
-  ] = useState<Record<string, QueuedPromptRetryBlock | null>>({});
   const [interruptingSessionIds, setInterruptingSessionIds] = useState<
     Record<string, boolean>
   >({});
@@ -333,11 +326,6 @@ export function useAgentGUINodeController({
     suppressedPromptRequestIdsBySessionId,
     setSuppressedPromptRequestIdsBySessionId
   ] = useState<Record<string, string>>({});
-  const activePendingPromptRef = useRef<{
-    sessionId: string;
-    requestId: string;
-    kind: string | null;
-  } | null>(null);
   // Bridges submitInteractivePrompt (defined earlier) to
   // updateComposerSettings (defined later); assigned right after the
   // callback's definition.
@@ -5190,106 +5178,40 @@ export function useAgentGUINodeController({
     activeSessionState,
     draftPlanMode: draftSettings.planMode
   });
-  const composerSettings = useMemo<AgentGUIComposerSettingsVM>(() => {
-    const permissionConfig = permissionConfigFromComposerOptions(
-      providerComposerOptions
-    );
-    const supportsPermissionMode = Boolean(
-      permissionConfig?.configurable && permissionConfig.modes.length > 0
-    );
-    const hasOptionsSource = providerComposerOptions !== null;
-    const hasACPSettings =
-      hasOptionsSource &&
-      (!composerSupport.model || activeSessionModelSelection !== null) &&
-      (!composerSupport.reasoning || activeSessionReasoningSelection !== null);
-    const isSettingsLoading = !hasACPSettings;
-    const selectedModelValue = draftModel;
-    const selectedReasoningEffortValue =
-      draftReasoningEffort as AgentSessionReasoningEffort | null;
-    const selectedPermissionModeValue =
-      normalizePermissionModeId(draftSettings.permissionModeId) ??
-      normalizePermissionModeId(permissionConfig?.defaultValue);
-
-    return {
+  const composerSettings = useMemo<AgentGUIComposerSettingsVM>(
+    () =>
+      buildAgentComposerSettingsVM({
+        data,
+        activeConversationId,
+        activeConversationCwd: activeConversation?.cwd,
+        selectedProjectPath,
+        sessionSettings,
+        draftSettings,
+        draftModel,
+        draftReasoningEffort,
+        effectivePlanMode,
+        composerSupport,
+        providerComposerOptions,
+        activeSessionModelSelection,
+        activeSessionReasoningSelection
+      }),
+    [
+      activeConversationId,
+      activeConversation?.cwd,
+      activeSessionModelSelection,
+      activeSessionReasoningSelection,
+      draftSettings.permissionModeId,
+      draftSettings.planMode,
+      effectivePlanMode,
+      providerComposerOptions,
       sessionSettings,
-      draftSettings: {
-        model: draftModel,
-        reasoningEffort: draftReasoningEffort,
-        planMode: Boolean(draftSettings.planMode),
-        // Browser use defaults on; an unset stored value means "default".
-        browserUse: draftSettings.browserUse ?? true,
-        permissionModeId: normalizePermissionModeId(
-          draftSettings.permissionModeId
-        )
-      },
-      effectivePlanMode: composerSupport.plan ? effectivePlanMode : false,
-      supportsModel: composerSupport.model,
-      supportsReasoningEffort: composerSupport.reasoning,
-      supportsPermissionMode,
-      supportsPlanMode: composerSupport.plan,
-      supportsBrowser: composerSupport.browser,
-      isSettingsLoading,
-      modelUnavailable:
-        activeConversationId !== null &&
-        sessionSettings === null &&
-        composerSupport.model &&
-        draftModel === null,
-      reasoningUnavailable:
-        activeConversationId !== null &&
-        sessionSettings === null &&
-        composerSupport.reasoning &&
-        draftReasoningEffort === null,
-      permissionModeUnavailable:
-        activeConversationId !== null &&
-        sessionSettings === null &&
-        supportsPermissionMode &&
-        selectedPermissionModeValue === null,
-      planUnavailable:
-        activeConversationId !== null &&
-        sessionSettings === null &&
-        composerSupport.plan &&
-        !effectivePlanMode,
-      selectedModelValue,
-      selectedReasoningEffortValue,
-      selectedPermissionModeValue,
-      permissionConfig,
-      selectedProjectPath:
-        activeConversationId !== null
-          ? (activeConversation?.cwd ?? null)
-          : selectedProjectPath,
-      projectLocked: activeConversationId !== null,
-      availableModels:
-        composerSupport.model &&
-        hasOptionsSource &&
-        activeSessionModelSelection !== null
-          ? activeSessionModelSelection.options
-          : [],
-      availableReasoningEfforts:
-        composerSupport.reasoning &&
-        hasOptionsSource &&
-        activeSessionReasoningSelection !== null
-          ? activeSessionReasoningSelection.options
-          : [],
-      availablePermissionModes: supportsPermissionMode
-        ? permissionModeOptions(data.provider, permissionConfig)
-        : []
-    };
-  }, [
-    activeConversationId,
-    activeConversation?.cwd,
-    activeSessionModelSelection,
-    activeSessionReasoningSelection,
-    draftSettings.permissionModeId,
-    draftSettings.planMode,
-    effectivePlanMode,
-    providerComposerOptions,
-    sessionSettings,
-    selectedProjectPath,
-    composerSupport,
-    timelinePlanModeState,
-    draftModel,
-    draftReasoningEffort
-  ]);
+      selectedProjectPath,
+      composerSupport,
+      draftModel,
+      draftReasoningEffort,
+      data
+    ]
+  );
 
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);

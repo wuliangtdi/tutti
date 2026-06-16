@@ -93,8 +93,8 @@ func (t *scriptedTransport) Start(_ context.Context, spec agentruntime.ProcessSp
 	return conn, nil
 }
 
-func newTestService(t *scriptedTransport) *Service {
-	svc := &Service{transport: t, idleTTL: time.Hour, sessions: make(map[string]*browserSession)}
+func newTestService(transport agentruntime.ProcessTransport) *Service {
+	svc := &Service{transport: transport, idleTTL: time.Hour, sessions: make(map[string]*browserSession)}
 	svc.autoConnectPreflight = func() error { return nil }
 	return svc
 }
@@ -216,6 +216,50 @@ func TestCallToolRestartsSessionWhenConnectionModeChanges(t *testing.T) {
 	}
 }
 
+func TestCallToolRestartsAfterProcessExit(t *testing.T) {
+	transport := &exitAfterFirstToolTransport{}
+	svc := newTestService(transport)
+	ctx := context.Background()
+
+	if _, err := svc.CallTool(ctx, "ws-1", "", "list_pages", nil); err != nil {
+		t.Fatalf("first CallTool: %v", err)
+	}
+	if transport.startCnt != 1 {
+		t.Fatalf("start count = %d, want 1", transport.startCnt)
+	}
+	if _, err := svc.CallTool(ctx, "ws-1", "", "list_pages", nil); err != nil {
+		t.Fatalf("second CallTool after process exit: %v", err)
+	}
+	if transport.startCnt != 2 {
+		t.Fatalf("start count = %d, want restart after process exit", transport.startCnt)
+	}
+}
+
+func TestIdleTimerDoesNotShutdownDuringInFlightCall(t *testing.T) {
+	transport := &slowToolTransport{}
+	svc := newTestService(transport)
+	svc.idleTTL = 25 * time.Millisecond
+	ctx := context.Background()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.CallTool(ctx, "ws-1", "", "list_pages", nil)
+		done <- err
+	}()
+
+	time.Sleep(60 * time.Millisecond)
+	if transport.startCnt != 1 {
+		t.Fatalf("start count = %d during in-flight call, want 1", transport.startCnt)
+	}
+	close(transport.release)
+	if err := <-done; err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if transport.startCnt != 1 {
+		t.Fatalf("start count = %d after call completed, want 1", transport.startCnt)
+	}
+}
+
 func idOf(v any) int {
 	switch n := v.(type) {
 	case float64:
@@ -225,6 +269,97 @@ func idOf(v any) int {
 		return int(i)
 	}
 	return -1
+}
+
+type exitAfterFirstToolTransport struct {
+	mu       sync.Mutex
+	startCnt int
+	conn     *exitAfterFirstToolConn
+}
+
+func (t *exitAfterFirstToolTransport) Start(_ context.Context, _ agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.startCnt++
+	if t.conn == nil {
+		t.conn = newExitAfterFirstToolConn()
+	} else {
+		t.conn = newExitAfterFirstToolConn()
+	}
+	return t.conn, nil
+}
+
+type exitAfterFirstToolConn struct {
+	*scriptedConn
+	toolCalls int
+}
+
+func newExitAfterFirstToolConn() *exitAfterFirstToolConn {
+	return &exitAfterFirstToolConn{scriptedConn: newScriptedConn()}
+}
+
+func (c *exitAfterFirstToolConn) Send(data []byte) error {
+	var msg map[string]any
+	_ = json.Unmarshal(data, &msg)
+	method, _ := msg["method"].(string)
+	err := c.scriptedConn.Send(data)
+	if method == "tools/call" {
+		c.toolCalls++
+		if c.toolCalls == 1 {
+			code := 1
+			c.frames <- agentruntime.ProcessFrame{ExitCode: &code}
+		}
+	}
+	return err
+}
+
+type slowToolTransport struct {
+	mu       sync.Mutex
+	startCnt int
+	release  chan struct{}
+	conn     *slowToolConn
+}
+
+func (t *slowToolTransport) Start(_ context.Context, _ agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.startCnt++
+	if t.release == nil {
+		t.release = make(chan struct{})
+	}
+	t.conn = newSlowToolConn(t.release)
+	return t.conn, nil
+}
+
+type slowToolConn struct {
+	*scriptedConn
+	release <-chan struct{}
+}
+
+func newSlowToolConn(release <-chan struct{}) *slowToolConn {
+	return &slowToolConn{scriptedConn: newScriptedConn(), release: release}
+}
+
+func (c *slowToolConn) Send(data []byte) error {
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return err
+	}
+	method, _ := msg["method"].(string)
+	id := msg["id"]
+	switch method {
+	case "initialize":
+		c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+			"protocolVersion": mcpProtocolVersion, "capabilities": map[string]any{},
+		}})
+	case "tools/call":
+		<-c.release
+		c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+			"isError": false,
+			"content": []map[string]any{{"type": "text", "text": "slow ok"}},
+		}})
+	}
+	return nil
 }
 
 type staticPreferencesReader struct {

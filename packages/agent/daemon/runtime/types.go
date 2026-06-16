@@ -125,6 +125,7 @@ type SessionSettings struct {
 	Model            string `json:"model,omitempty"`
 	ReasoningEffort  string `json:"reasoningEffort,omitempty"`
 	PlanMode         bool   `json:"planMode,omitempty"`
+	BrowserUse       *bool  `json:"browserUse,omitempty"`
 	PermissionModeID string `json:"permissionModeId,omitempty"`
 }
 
@@ -132,6 +133,7 @@ type SessionSettingsPatch struct {
 	Model            *string `json:"model,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
+	BrowserUse       *bool   `json:"browserUse,omitempty"`
 	PermissionModeID *string `json:"permissionModeId,omitempty"`
 }
 

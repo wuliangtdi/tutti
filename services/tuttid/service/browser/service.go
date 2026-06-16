@@ -74,14 +74,20 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 	}
 
 	session = s.getOrCreate(workspaceID, currentMode)
+	session.beginCall()
+	defer session.endCall(func() { s.resetIdle(workspaceID, session) })
+
 	if err := session.start(ctx, cwd); err != nil {
 		// A failed start should not be cached; drop the session so the next
 		// call retries (e.g. transient npx/network failure).
 		s.Shutdown(workspaceID)
 		return ToolResult{}, err
 	}
-	s.resetIdle(workspaceID, session)
-	return session.callTool(ctx, tool, args)
+	result, err := session.callTool(ctx, tool, args)
+	if err != nil && session.client != nil && session.client.isClosed() {
+		s.Shutdown(workspaceID)
+	}
+	return result, err
 }
 
 func (s *Service) getOrCreate(workspaceID, connectionMode string) *browserSession {
@@ -104,8 +110,14 @@ func (s *Service) resolveCommand(ctx context.Context) []string {
 }
 
 func (s *Service) resetIdle(workspaceID string, session *browserSession) {
+	if session.inFlightCount() != 0 {
+		return
+	}
 	session.idleMu.Lock()
 	defer session.idleMu.Unlock()
+	if session.inFlightCount() != 0 {
+		return
+	}
 	if session.idle != nil {
 		session.idle.Stop()
 	}

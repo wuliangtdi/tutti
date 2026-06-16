@@ -128,7 +128,8 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			provider,
 			value(input.ReasoningEffort),
 		),
-		Visible: input.Visible,
+		BrowserUse: input.BrowserUse,
+		Visible:    input.Visible,
 	})
 	if err != nil {
 		return Session{}, cleanupPrepared(normalizeRuntimeError(err))
@@ -714,29 +715,6 @@ func isRuntimeActiveTurnStatus(status string) bool {
 }
 
 func (s *Service) prepareRuntimeForResume(ctx context.Context, session PersistedSession) (preparedRuntime, error) {
-	input := CreateSessionInput{
-		AgentSessionID: strings.TrimSpace(session.ID),
-		Provider:       strings.TrimSpace(session.Provider),
-	}
-	if title := strings.TrimSpace(session.Title); title != "" {
-		input.Title = &title
-	}
-	if model := strings.TrimSpace(session.Settings.Model); model != "" {
-		input.Model = &model
-	}
-	if permissionModeID := strings.TrimSpace(session.Settings.PermissionModeID); permissionModeID != "" {
-		normalizedPermissionModeID := normalizePermissionModeIDForProvider(input.Provider, permissionModeID)
-		input.PermissionModeID = &normalizedPermissionModeID
-	}
-	if session.Settings.PlanMode {
-		input.PlanMode = boolPointer(true)
-	}
-	if reasoningEffort := strings.TrimSpace(session.Settings.ReasoningEffort); reasoningEffort != "" {
-		normalizedReasoningEffort := normalizeReasoningEffortForProvider(
-			strings.TrimSpace(session.Provider),
-			reasoningEffort,
-		)
-		input.ReasoningEffort = &normalizedReasoningEffort
-	}
+	input := createSessionInputFromPersisted(session)
 	return s.prepareRuntime(ctx, strings.TrimSpace(session.WorkspaceID), strings.TrimSpace(session.Cwd), input)
 }

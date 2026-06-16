@@ -91,6 +91,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
+		BrowserUse:       input.Settings.BrowserUse,
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 	})
 	effectiveSettings := resolveComposerEffectiveSettings(
@@ -178,6 +179,10 @@ func resolveComposerEffectiveSettings(
 	}
 	if requested.ReasoningEffort != "" {
 		effective.ReasoningEffort = requested.ReasoningEffort
+	}
+	if requested.BrowserUse != nil {
+		value := *requested.BrowserUse
+		effective.BrowserUse = &value
 	}
 	return normalizeComposerSettingsForProvider(provider, effective)
 }

@@ -419,6 +419,7 @@ func composerSettingsPatchFromGenerated(settings tuttigenerated.AgentSessionComp
 		Model:            settings.Model,
 		PermissionModeID: settings.PermissionModeId,
 		PlanMode:         settings.PlanMode,
+		BrowserUse:       settings.BrowserUse,
 		ReasoningEffort:  settings.ReasoningEffort,
 	}
 }
@@ -496,12 +497,16 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 }
 
 func generatedAgentSessionComposerSettings(settings agentservice.ComposerSettings) tuttigenerated.AgentSessionComposerSettings {
-	return tuttigenerated.AgentSessionComposerSettings{
+	result := tuttigenerated.AgentSessionComposerSettings{
 		Model:            optionalStringPointer(strings.TrimSpace(settings.Model)),
 		PermissionModeId: optionalStringPointer(strings.TrimSpace(settings.PermissionModeID)),
 		PlanMode:         boolPointer(settings.PlanMode),
 		ReasoningEffort:  optionalStringPointer(strings.TrimSpace(settings.ReasoningEffort)),
 	}
+	if settings.BrowserUse != nil {
+		result.BrowserUse = settings.BrowserUse
+	}
+	return result
 }
 
 func generatedPermissionConfig(config agentservice.PermissionConfig) tuttigenerated.PermissionConfig {

@@ -9,6 +9,13 @@ import "strings"
 // (a daemon-owned chrome-devtools-mcp), not through provider MCP injection.
 const browserUseEnabledEnv = "TUTTI_BROWSER_USE_ENABLED"
 
+func appendBrowserUseCapability(capabilities []string, env []string) []string {
+	if sessionEnvBool(env, browserUseEnabledEnv) {
+		return append(capabilities, CapabilityBrowserUse)
+	}
+	return capabilities
+}
+
 // sessionEnvBool reports whether the given env key is set to a truthy value.
 func sessionEnvBool(env []string, key string) bool {
 	switch strings.ToLower(strings.TrimSpace(sessionEnvValue(env, key))) {

@@ -24,7 +24,8 @@ import (
 // (packages/agent/daemon/runtime/acp_client.go) but speaks MCP tools/call
 // rather than ACP, so it is kept as a small dedicated client.
 type mcpClient struct {
-	conn agentruntime.ProcessConnection
+	conn   agentruntime.ProcessConnection
+	writer agentruntime.ProcessNDJSONWriter
 
 	mu       sync.Mutex
 	nextID   int
@@ -51,7 +52,11 @@ type rpcError struct {
 func (e *rpcError) Error() string { return fmt.Sprintf("mcp error %d: %s", e.Code, e.Message) }
 
 func newMCPClient(conn agentruntime.ProcessConnection) *mcpClient {
-	c := &mcpClient{conn: conn, pending: make(map[int]chan rpcIncoming)}
+	c := &mcpClient{
+		conn:    conn,
+		writer:  agentruntime.NewProcessNDJSONWriter(conn),
+		pending: make(map[int]chan rpcIncoming),
+	}
 	go c.readLoop()
 	return c
 }
@@ -153,11 +158,7 @@ func (c *mcpClient) respond(id json.RawMessage, result any, rpcErr *rpcError) {
 }
 
 func (c *mcpClient) send(payload any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	return c.conn.Send(append(data, '\n'))
+	return c.writer.SendJSON(payload)
 }
 
 // call issues a request and waits for the response or ctx cancellation.
@@ -209,6 +210,12 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 
 func (c *mcpClient) notify(method string, params any) error {
 	return c.send(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
+}
+
+func (c *mcpClient) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 func (c *mcpClient) fail(err error) {
