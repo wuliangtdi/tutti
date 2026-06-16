@@ -48,6 +48,8 @@ interface ResolveSlashCommandSubmitEffectInput {
 interface ProviderSlashPolicy {
   /** Commands submitted immediately on selection instead of filling a draft. */
   immediateCommands: ReadonlySet<string>;
+  /** Commands that open the shared review target picker when invoked bare. */
+  reviewPickerCommands: ReadonlySet<string>;
   /** Commands surfaced when the agent advertises none of its own. */
   fallbackCommands: readonly AgentSessionCommand[];
 }
@@ -70,6 +72,10 @@ const CODEX_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
   ...ACP_FALLBACK_COMMANDS,
   { name: REVIEW_COMMAND }
 ];
+const CLAUDE_CODE_FALLBACK_COMMANDS: readonly AgentSessionCommand[] = [
+  ...ACP_FALLBACK_COMMANDS,
+  { name: REVIEW_COMMAND }
+];
 
 const PROVIDER_SLASH_POLICY: Record<
   "codex" | "claude-code",
@@ -77,11 +83,13 @@ const PROVIDER_SLASH_POLICY: Record<
 > = {
   codex: {
     immediateCommands: new Set(["init", "compact"]),
+    reviewPickerCommands: new Set([REVIEW_COMMAND]),
     fallbackCommands: CODEX_FALLBACK_COMMANDS
   },
   "claude-code": {
     immediateCommands: new Set(["compact", "context", "usage"]),
-    fallbackCommands: ACP_FALLBACK_COMMANDS
+    reviewPickerCommands: new Set([REVIEW_COMMAND]),
+    fallbackCommands: CLAUDE_CODE_FALLBACK_COMMANDS
   }
 };
 
@@ -214,7 +222,10 @@ function isReviewPickerCommand(
   provider: AgentSlashCommandProvider,
   commandName: string
 ): boolean {
-  return provider === "codex" && commandName === REVIEW_COMMAND;
+  return (
+    providerSlashPolicy(provider)?.reviewPickerCommands.has(commandName) ??
+    false
+  );
 }
 
 function fallbackCommandsForProvider(

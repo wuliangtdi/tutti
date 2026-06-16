@@ -302,6 +302,29 @@ func claudeCodeACPModeID(mode string) string {
 	}
 }
 
+func claudeCodeACPCommands() []AgentSessionCommand {
+	return []AgentSessionCommand{
+		{Name: "review"},
+		{Name: "compact"},
+	}
+}
+
+func standardACPInitialLiveState(provider string) acpLiveState {
+	state := newACPLiveState()
+	seedStandardACPInitialCommands(&state, provider)
+	return state
+}
+
+func seedStandardACPInitialCommands(state *acpLiveState, provider string) {
+	if state == nil || state.commandsKnown {
+		return
+	}
+	if strings.TrimSpace(provider) == ProviderClaudeCode {
+		state.availableCommands = claudeCodeACPCommands()
+		state.commandsKnown = true
+	}
+}
+
 func NewClaudeCodeAdapter(transport ProcessTransport) *standardACPAdapter {
 	return NewClaudeCodeAdapterWithHostMetadata(transport, LegacyHostMetadata())
 }
@@ -373,7 +396,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		client:           client,
 		agentInfo:        acpAgentInfo(initializeResult),
 		promptImage:      standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		acpLiveState:     newACPLiveState(),
+		acpLiveState:     standardACPInitialLiveState(a.config.provider),
 		pendingApprovals: make(map[string]*pendingACPApproval),
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
@@ -492,11 +515,12 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		providerSessionID: session.ProviderSessionID,
 		agentInfo:         acpAgentInfo(initializeResult),
 		promptImage:       standardACPProviderPromptImageSupported(a.config.provider, initializeResult),
-		acpLiveState:      newACPLiveState(),
+		acpLiveState:      standardACPInitialLiveState(a.config.provider),
 		pendingApprovals:  make(map[string]*pendingACPApproval),
 	}
 	if previousSession != nil {
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)
+		seedStandardACPInitialCommands(&acpSession.acpLiveState, a.config.provider)
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 

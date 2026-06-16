@@ -1786,100 +1786,110 @@ describe("AgentComposer", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("opens the codex review picker and submits the chosen target", () => {
-    const onSubmit = vi.fn();
-    const { container } = render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
-        draftContent={createDraft("/review")}
-        availableCommands={
-          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
-        }
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={onSubmit}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
+  it.each(["codex", "claude-code"] as const)(
+    "opens the %s review picker and submits the chosen target",
+    (provider) => {
+      const onSubmit = vi.fn();
+      const { container } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+          draftContent={createDraft("/review")}
+          availableCommands={
+            [
+              { name: "review" }
+            ] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
 
-    fireEvent.submit(container.querySelector("form")!);
-    expect(
-      screen.getByTestId("agent-gui-review-picker-panel")
-    ).toBeInTheDocument();
-    expect(onSubmit).not.toHaveBeenCalled();
+      fireEvent.submit(container.querySelector("form")!);
+      expect(
+        screen.getByTestId("agent-gui-review-picker-panel")
+      ).toBeInTheDocument();
+      expect(onSubmit).not.toHaveBeenCalled();
 
-    // Selecting the "uncommitted changes" scope submits a bare /review.
-    fireEvent.click(screen.getByText("未提交的更改"));
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0]?.[0]).toEqual([
-      { type: "text", text: "/review" }
-    ]);
-  });
+      // Selecting the "uncommitted changes" scope submits a bare /review.
+      fireEvent.click(screen.getByText("未提交的更改"));
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(onSubmit.mock.calls[0]?.[0]).toEqual([
+        { type: "text", text: "/review" }
+      ]);
+    }
+  );
 
-  it("submits /review <text> as a custom review without opening the picker", () => {
-    const onSubmit = vi.fn();
-    const { container } = render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="codex"
-        slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
-        draftContent={createDraft("/review check the auth flow")}
-        availableCommands={
-          [{ name: "review" }] satisfies readonly AgentHostAgentSessionCommand[]
-        }
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings()}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={vi.fn()}
-        onSubmit={onSubmit}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
+  it.each(["codex", "claude-code"] as const)(
+    "submits %s /review <text> as a custom review without opening the picker",
+    (provider) => {
+      const onSubmit = vi.fn();
+      const { container } = render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          slashStatus={{ agentSessionId: "agent-session-1", limits: [] }}
+          draftContent={createDraft("/review check the auth flow")}
+          availableCommands={
+            [
+              { name: "review" }
+            ] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings()}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={vi.fn()}
+          onSubmit={onSubmit}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
 
-    fireEvent.submit(container.querySelector("form")!);
-    expect(
-      screen.queryByTestId("agent-gui-review-picker-panel")
-    ).not.toBeInTheDocument();
-    expect(onSubmit).toHaveBeenCalledTimes(1);
-  });
+      fireEvent.submit(container.querySelector("form")!);
+      expect(
+        screen.queryByTestId("agent-gui-review-picker-panel")
+      ).not.toBeInTheDocument();
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    }
+  );
 });
 
 function createComposerSettings(

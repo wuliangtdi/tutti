@@ -6,6 +6,8 @@ import {
 } from "./agentSlashCommandProviderPolicy";
 
 describe("agentSlashCommandProviderPolicy", () => {
+  const reviewPickerProviders = ["codex", "claude-code"] as const;
+
   it("adds Codex compact, status, fast, and review fallback commands after provider commands", () => {
     expect(
       resolveSlashCommandsForProvider({
@@ -27,7 +29,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         provider: "claude-code",
         commands: []
       }).map((command) => command.name)
-    ).toEqual(["compact", "status", "fast"]);
+    ).toEqual(["compact", "status", "fast", "review"]);
   });
 
   it("filters compact when the session has no compactable context", () => {
@@ -46,7 +48,12 @@ describe("agentSlashCommandProviderPolicy", () => {
         provider: "claude-code",
         commands: [{ name: "plan", description: "provider plan" }]
       })
-    ).toEqual([{ name: "compact" }, { name: "status" }, { name: "fast" }]);
+    ).toEqual([
+      { name: "compact" },
+      { name: "status" },
+      { name: "fast" },
+      { name: "review" }
+    ]);
   });
 
   it("submits Codex init and compact commands immediately", () => {
@@ -197,64 +204,76 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toBeNull();
   });
 
-  it("opens the review picker when picking codex /review from the palette", () => {
+  it.each(reviewPickerProviders)(
+    "opens the review picker when picking %s /review from the palette",
+    (provider) => {
+      expect(
+        resolveSlashCommandSelectionEffect({
+          provider,
+          command: { name: "review", description: "Review code changes" },
+          currentDraft: "/rev"
+        })
+      ).toEqual({ kind: "showReviewPicker" });
+    }
+  );
+
+  it.each(reviewPickerProviders)(
+    "opens the review picker when submitting bare /review on %s",
+    (provider) => {
+      const commands = resolveSlashCommandsForProvider({
+        provider,
+        commands: [{ name: "review", description: "Review code changes" }]
+      });
+      expect(
+        resolveSlashCommandSubmitEffect({
+          provider,
+          commands,
+          draft: "/review"
+        })
+      ).toEqual({ kind: "showReviewPicker" });
+    }
+  );
+
+  it.each(reviewPickerProviders)(
+    "opens the review picker from %s fallback /review before provider commands arrive",
+    (provider) => {
+      const commands = resolveSlashCommandsForProvider({
+        provider,
+        commands: [],
+        hasCompactableContext: false
+      });
+      expect(commands.map((command) => command.name)).toContain("review");
+      expect(
+        resolveSlashCommandSubmitEffect({
+          provider,
+          commands,
+          draft: "/review"
+        })
+      ).toEqual({ kind: "showReviewPicker" });
+    }
+  );
+
+  it.each(reviewPickerProviders)(
+    "submits /review <text> straight through as a %s custom review",
+    (provider) => {
+      const commands = resolveSlashCommandsForProvider({
+        provider,
+        commands: [{ name: "review", description: "Review code changes" }]
+      });
+      expect(
+        resolveSlashCommandSubmitEffect({
+          provider,
+          commands,
+          draft: "/review check the auth flow"
+        })
+      ).toBeNull();
+    }
+  );
+
+  it("does not open the review picker for unknown providers", () => {
     expect(
       resolveSlashCommandSelectionEffect({
-        provider: "codex",
-        command: { name: "review", description: "Review code changes" },
-        currentDraft: "/rev"
-      })
-    ).toEqual({ kind: "showReviewPicker" });
-  });
-
-  it("opens the review picker when submitting bare /review on codex", () => {
-    const commands = resolveSlashCommandsForProvider({
-      provider: "codex",
-      commands: [{ name: "review", description: "Review code changes" }]
-    });
-    expect(
-      resolveSlashCommandSubmitEffect({
-        provider: "codex",
-        commands,
-        draft: "/review"
-      })
-    ).toEqual({ kind: "showReviewPicker" });
-  });
-
-  it("opens the review picker for Codex fallback /review before provider commands arrive", () => {
-    const commands = resolveSlashCommandsForProvider({
-      provider: "codex",
-      commands: [],
-      hasCompactableContext: false
-    });
-    expect(commands.map((command) => command.name)).toContain("review");
-    expect(
-      resolveSlashCommandSubmitEffect({
-        provider: "codex",
-        commands,
-        draft: "/review"
-      })
-    ).toEqual({ kind: "showReviewPicker" });
-  });
-
-  it("submits /review <text> straight through as a custom review", () => {
-    const commands = resolveSlashCommandsForProvider({
-      provider: "codex",
-      commands: [{ name: "review", description: "Review code changes" }]
-    });
-    expect(
-      resolveSlashCommandSubmitEffect({
-        provider: "codex",
-        commands,
-        draft: "/review check the auth flow"
-      })
-    ).toBeNull();
-  });
-
-  it("does not open the review picker for non-codex providers", () => {
-    expect(
-      resolveSlashCommandSelectionEffect({
-        provider: "claude-code",
+        provider: "other-provider",
         command: { name: "review", description: "Review" },
         currentDraft: "/rev"
       })

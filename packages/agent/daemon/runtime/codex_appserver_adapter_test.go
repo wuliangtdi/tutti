@@ -1380,6 +1380,17 @@ func TestAppServerReasoningText(t *testing.T) {
 	}
 }
 
+func TestAppServerReasoningDeltaTextPreservesWhitespace(t *testing.T) {
+	t.Parallel()
+
+	if got := appServerReasoningDeltaText(map[string]any{"delta": "Need "}); got != "Need " {
+		t.Fatalf("delta text = %q, want trailing space preserved", got)
+	}
+	if got := appServerReasoningDeltaText(map[string]any{"text": " more"}); got != " more" {
+		t.Fatalf("text fallback = %q, want leading space preserved", got)
+	}
+}
+
 func TestCodexAppServerAdapterSlashReviewInlineReasoningSummaryDelta(t *testing.T) {
 	t.Parallel()
 
