@@ -22,10 +22,13 @@ Do not infer app behavior from the mention label alone.
 
 After reading the mention query, recover the smallest useful app context through Tutti CLI:
 
-1. Read the injected `tutti-cli` command guide and find commands whose description says they are provided by the mentioned workspace app.
-2. If several apps have similar names, match by `appId` from the mention, not only by the visible label.
-3. Use the listed `tutti <scope> <command>` examples to inspect or invoke the app.
-4. Prefer `--json` when the command output is used as context for reasoning.
+1. If `appId` is `agent-codex`, treat the mention as the Codex agent launcher and use `{{CLI_COMMAND}} codex start --model <model> --prompt <task> --show --json`.
+2. If `appId` is `agent-claude-code`, treat the mention as the Claude Code agent launcher and use `{{CLI_COMMAND}} claude start --model <model> --prompt <task> --show --json`.
+3. For agent launcher mentions, ask for missing `model` or task prompt before invoking. Do not guess a model and do not start an empty task.
+4. For other app ids, read the injected `tutti-cli` command guide and find commands whose description says they are provided by the mentioned workspace app.
+5. If several apps have similar names, match by `appId` from the mention, not only by the visible label.
+6. Use the listed `{{CLI_COMMAND}} <scope> <command>` examples to inspect or invoke the app.
+7. Prefer `--json` when the command output is used as context for reasoning.
 
 If the mentioned app has no visible CLI commands in the command guide, explain that the app is not currently exposing usable CLI capabilities instead of guessing an app-specific command.
 

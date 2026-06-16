@@ -182,6 +182,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	}
 	bootstrapPath := filepath.Join(input.PackageDir, filepath.Clean(bootstrap))
 	command := exec.Command(bootstrapPath)
+	prepareAppProcessCommand(command)
 	command.Dir = input.RuntimeDir
 	command.Stdout = logFile
 	command.Stderr = logFile
@@ -412,10 +413,8 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 	r.mu.Unlock()
 	r.notifyStateChanged(key, stoppingState)
 
-	if process.command.Process != nil {
-		if err := process.command.Process.Signal(os.Interrupt); err != nil {
-			_ = process.command.Process.Kill()
-		}
+	if err := interruptAppProcess(process.command); err != nil {
+		_ = killAppProcess(process.command)
 	}
 
 	select {
@@ -423,9 +422,7 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 	case <-ctx.Done():
 		return r.setFailed(key, "stop", ctx.Err()), ctx.Err()
 	case <-time.After(2 * time.Second):
-		if process.command.Process != nil {
-			_ = process.command.Process.Kill()
-		}
+		_ = killAppProcess(process.command)
 		select {
 		case <-process.done:
 			return r.setState(key, workspacebiz.AppRuntimeState{

@@ -53,8 +53,7 @@ type AppManifestCLI struct {
 }
 
 type AppManifestReferences struct {
-	ListEndpoint   string `json:"listEndpoint"`
-	SearchEndpoint string `json:"searchEndpoint,omitempty"`
+	ListEndpoint string `json:"listEndpoint"`
 }
 
 type AppManifestWindow struct {
@@ -454,7 +453,6 @@ func ParseAppManifestJSON(data []byte) (AppManifest, string, error) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return AppManifest{}, "", fmt.Errorf("parse app manifest json: %w", err)
 	}
-	normalizeAppManifestReferences(&manifest)
 	if err := ValidateAppManifest(manifest); err != nil {
 		return AppManifest{}, "", err
 	}
@@ -478,23 +476,11 @@ func validateAppManifestReferencesJSON(raw map[string]json.RawMessage) error {
 		return errors.New("app manifest references must be an object when provided")
 	}
 	for key := range references {
-		if key != "listEndpoint" && key != "searchEndpoint" {
+		if key != "listEndpoint" {
 			return fmt.Errorf("app manifest references.%s is unsupported", key)
 		}
 	}
 	return nil
-}
-
-func normalizeAppManifestReferences(manifest *AppManifest) {
-	if manifest == nil || manifest.References == nil {
-		return
-	}
-	listEndpoint := strings.TrimSpace(manifest.References.ListEndpoint)
-	searchEndpoint := strings.TrimSpace(manifest.References.SearchEndpoint)
-	if listEndpoint == "" && searchEndpoint != "" {
-		manifest.References.ListEndpoint = searchEndpoint
-	}
-	manifest.References.SearchEndpoint = ""
 }
 
 func ReadAppManifestFile(path string) (AppManifest, string, error) {

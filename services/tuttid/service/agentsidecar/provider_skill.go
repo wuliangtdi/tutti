@@ -41,10 +41,12 @@ func issueManagerSkill(input PrepareInput) string {
 	)
 }
 
-func workspaceAppSkill(_ PrepareInput) string {
+func workspaceAppSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/workspace-app.md",
-		map[string]string{},
+		map[string]string{
+			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
+		},
 	)
 }
 

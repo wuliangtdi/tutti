@@ -389,6 +389,130 @@ test("desktop rich text @ service assembles workspace app providers by capabilit
   });
 });
 
+test("desktop rich text @ service assembles provider agent mention apps from capabilities", async () => {
+  const service = new DesktopRichTextAtService({
+    tuttidClient: {
+      async listCliCapabilities() {
+        return {
+          commands: [
+            {
+              id: "agent-context.codex.start",
+              description:
+                "Start a Codex agent session in the current workspace.",
+              path: ["codex", "start"],
+              summary: "Start a Codex agent session",
+              output: { defaultMode: "table", json: true, table: null },
+              source: {
+                appId: "agent-codex",
+                appName: "Codex",
+                cliDescription:
+                  "Start a Codex agent session in the current workspace.",
+                kind: "app"
+              }
+            },
+            {
+              id: "agent-context.claude.start",
+              description:
+                "Start a Claude Code agent session in the current workspace.",
+              path: ["claude", "start"],
+              summary: "Start a Claude Code agent session",
+              output: { defaultMode: "table", json: true, table: null },
+              source: {
+                appId: "agent-claude-code",
+                appName: "Claude Code",
+                cliDescription:
+                  "Start a Claude Code agent session in the current workspace.",
+                kind: "app"
+              }
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["workspace-app"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "agent",
+    maxResults: 5
+  });
+
+  assert.equal(items.length, 2);
+  const claudeItem = items[0];
+  const codexItem = items[1];
+  const claudeIconUrl = iconUrlFromProviderItem(claudeItem);
+  const codexIconUrl = iconUrlFromProviderItem(codexItem);
+  assert.match(claudeIconUrl, /claudecode.*\.png$/u);
+  assert.match(codexIconUrl, /codex.*\.png$/u);
+  assert.deepEqual(items, [
+    {
+      appId: "agent-claude-code",
+      commandCount: 1,
+      commandDescriptions: [
+        "Start a Claude Code agent session in the current workspace."
+      ],
+      commandPaths: ["claude start"],
+      description:
+        "Start a Claude Code agent session in the current workspace.",
+      commandSummaries: ["Start a Claude Code agent session"],
+      displayName: "Claude Code",
+      iconUrl: claudeIconUrl,
+      scopes: ["claude"],
+      workspaceId: "workspace-1"
+    },
+    {
+      appId: "agent-codex",
+      commandCount: 1,
+      commandDescriptions: [
+        "Start a Codex agent session in the current workspace."
+      ],
+      commandPaths: ["codex start"],
+      description: "Start a Codex agent session in the current workspace.",
+      commandSummaries: ["Start a Codex agent session"],
+      displayName: "Codex",
+      iconUrl: codexIconUrl,
+      scopes: ["codex"],
+      workspaceId: "workspace-1"
+    }
+  ]);
+  assert.deepEqual(provider.toInsertResult(codexItem), {
+    kind: "mention",
+    mention: {
+      entityId: "agent-codex",
+      href: "mention://workspace-app?appId=agent-codex&workspaceId=workspace-1",
+      kind: "workspace-app",
+      label: "Codex",
+      meta: {
+        appId: "agent-codex",
+        commandCount: "1",
+        commandDescriptions:
+          "Start a Codex agent session in the current workspace.",
+        commandPaths: "codex start",
+        commandSummaries: "Start a Codex agent session",
+        description: "Start a Codex agent session in the current workspace.",
+        iconUrl: codexIconUrl,
+        scopes: "codex",
+        workspaceId: "workspace-1"
+      }
+    }
+  });
+});
+
+function iconUrlFromProviderItem(item: unknown): string {
+  if (!item || typeof item !== "object") {
+    return "";
+  }
+  const iconUrl = (item as { readonly iconUrl?: unknown }).iconUrl;
+  return typeof iconUrl === "string" ? iconUrl : "";
+}
+
 test("desktop rich text @ service falls back to app description for workspace app mentions", async () => {
   const service = new DesktopRichTextAtService({
     tuttidClient: {

@@ -136,6 +136,46 @@ func TestCommandGuideFromCatalogUsesProvidedCLIName(t *testing.T) {
 	}
 }
 
+func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
+	guide := commandGuideFromCapabilities("tutti-dev", []cliservice.Capability{
+		{
+			ID:          "agent-context.codex.start",
+			Path:        []string{"codex", "start"},
+			Summary:     "Start a Codex agent session",
+			Description: "Start a Codex agent session in the current workspace.",
+			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "agent-codex",
+				AppName: "Codex",
+			},
+		},
+		{
+			ID:          "agent-context.claude.start",
+			Path:        []string{"claude", "start"},
+			Summary:     "Start a Claude Code agent session",
+			Description: "Start a Claude Code agent session in the current workspace.",
+			InputSchema: map[string]any{"required": []string{"model", "prompt"}},
+			Source: cliservice.CapabilitySource{
+				Kind:    cliservice.CapabilitySourceApp,
+				AppID:   "agent-claude-code",
+				AppName: "Claude Code",
+			},
+		},
+	})
+
+	if !strings.Contains(guide, "tutti-dev codex start --model <model> --prompt <prompt>") {
+		t.Fatalf("guide missing codex start: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev claude start --model <model> --prompt <prompt>") {
+		t.Fatalf("guide missing claude start: %q", guide)
+	}
+	if !strings.Contains(guide, "App id: agent-codex.") ||
+		!strings.Contains(guide, "App id: agent-claude-code.") {
+		t.Fatalf("guide missing app ids: %q", guide)
+	}
+}
+
 func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	guide := commandGuide(PrepareInput{CLICommand: "tutti-dev"})
 

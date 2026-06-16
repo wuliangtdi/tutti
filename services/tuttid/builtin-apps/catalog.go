@@ -51,6 +51,8 @@ const (
 	remoteCatalogFetchAttempts   = 3
 )
 
+var sleepRemoteCatalogRetry = time.Sleep
+
 type RemoteCatalogLoadStatus string
 
 const (
@@ -362,7 +364,7 @@ func fetchRemoteCatalogWithRetries(catalogURL string) ([]App, error) {
 		if attempt >= remoteCatalogFetchAttempts || !isRetryableRemoteCatalogError(err) {
 			break
 		}
-		time.Sleep(remoteCatalogRetryDelay(attempt))
+		sleepRemoteCatalogRetry(remoteCatalogRetryDelay(attempt))
 	}
 	return nil, lastErr
 }

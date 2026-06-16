@@ -164,23 +164,25 @@ type InstallCommandResult struct {
 }
 
 type Service struct {
-	Environ          func() []string
-	FileExists       func(string) bool
-	HomeDir          func() (string, error)
-	HTTPClient       *http.Client
-	LookPath         func(string) (string, error)
-	InstallCommand   func(context.Context, InstallCommandInput) (InstallCommandResult, error)
-	InstallTimeout   time.Duration
-	IsExecutableFile func(string) bool
-	Now              func() time.Time
-	ProbeReadyAfter  time.Duration
-	ProbeTimeout     time.Duration
-	Registry         Registry
+	Environ                     func() []string
+	FileExists                  func(string) bool
+	HomeDir                     func() (string, error)
+	HTTPClient                  *http.Client
+	LookPath                    func(string) (string, error)
+	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
+	InstallTimeout              time.Duration
+	RunAuthStatusCommand        func(context.Context, ProviderSpec, string) (AuthInfo, bool)
+	AuthStatusCommandRetryDelay time.Duration
+	IsExecutableFile            func(string) bool
+	Now                         func() time.Time
+	ProbeReadyAfter             time.Duration
+	ProbeTimeout                time.Duration
+	Registry                    Registry
 }
 
 const authStatusCommandTimeout = 3 * time.Second
 const authStatusCommandAttempts = 2
-const authStatusCommandRetryDelay = 150 * time.Millisecond
+const defaultAuthStatusCommandRetryDelay = 150 * time.Millisecond
 const defaultInstallTimeout = 5 * time.Minute
 const defaultProbeReadyAfter = 600 * time.Millisecond
 const defaultProbeTimeout = 3 * time.Second
@@ -548,7 +550,7 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 		return AuthInfo{Status: AuthUnknown}
 	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
-		if auth, ok := resolveAuthFromCommand(ctx, spec, binaryPath); ok {
+		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
 			return auth
 		}
 		return AuthInfo{Status: AuthUnknown}
@@ -571,19 +573,33 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 	return AuthInfo{Status: AuthRequired}
 }
 
-func resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+func (s Service) resolveAuthFromCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	for attempt := 0; attempt < authStatusCommandAttempts; attempt++ {
-		if auth, ok := runAuthStatusCommand(ctx, spec, binaryPath); ok {
+		if auth, ok := s.runAuthStatusCommand(ctx, spec, binaryPath); ok {
 			return auth, true
 		}
-		if attempt+1 < authStatusCommandAttempts && !sleepContext(ctx, authStatusCommandRetryDelay) {
+		if attempt+1 < authStatusCommandAttempts && !sleepContext(ctx, s.authStatusCommandRetryDelay()) {
 			return AuthInfo{}, false
 		}
 	}
 	return AuthInfo{}, false
+}
+
+func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+	if s.RunAuthStatusCommand != nil {
+		return s.RunAuthStatusCommand(ctx, spec, binaryPath)
+	}
+	return runAuthStatusCommand(ctx, spec, binaryPath)
+}
+
+func (s Service) authStatusCommandRetryDelay() time.Duration {
+	if s.AuthStatusCommandRetryDelay > 0 {
+		return s.AuthStatusCommandRetryDelay
+	}
+	return defaultAuthStatusCommandRetryDelay
 }
 
 func runAuthStatusCommand(ctx context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {

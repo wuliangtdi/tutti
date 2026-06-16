@@ -116,6 +116,7 @@ func TestCatalogLoadsRemoteAppsFromURL(t *testing.T) {
 }
 
 func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
+	disableRemoteCatalogRetrySleepForTest(t)
 	t.Setenv(remoteCatalogFileEnv, "")
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
@@ -168,6 +169,7 @@ func TestCatalogRetriesRemoteURLFetch(t *testing.T) {
 }
 
 func TestCatalogKeepsEmbeddedAppsWhenRemoteURLFails(t *testing.T) {
+	disableRemoteCatalogRetrySleepForTest(t)
 	t.Setenv(remoteCatalogFileEnv, "")
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		http.Error(writer, "unavailable", http.StatusServiceUnavailable)
@@ -373,4 +375,13 @@ func waitForCatalogStatusForTest(t *testing.T, status RemoteCatalogLoadStatus) C
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func disableRemoteCatalogRetrySleepForTest(t *testing.T) {
+	t.Helper()
+	previous := sleepRemoteCatalogRetry
+	sleepRemoteCatalogRetry = func(time.Duration) {}
+	t.Cleanup(func() {
+		sleepRemoteCatalogRetry = previous
+	})
 }

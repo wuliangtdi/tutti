@@ -1,3 +1,11 @@
+const defaultClaudeCodeIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/claudecode.png",
+  import.meta.url
+).href;
+const defaultCodexIconUrl = new URL(
+  "../../../assets/workspace-canvas/dock/default/codex.png",
+  import.meta.url
+).href;
 const defaultAutomationIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/automation.png",
   import.meta.url
@@ -55,6 +63,8 @@ export type WorkspaceAppIconResolver = (appId: string) => string | null;
 
 export function createDefaultWorkspaceAppIconResolver(): WorkspaceAppIconResolver {
   const iconsByAppId = new Map<string, string>([
+    ["agent-claude-code", defaultClaudeCodeIconUrl],
+    ["agent-codex", defaultCodexIconUrl],
     ["automation", defaultAutomationIconUrl],
     ["ai-ppt", defaultAiPptIconUrl],
     ["ai-document", defaultDocumentIconUrl],

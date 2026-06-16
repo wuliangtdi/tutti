@@ -5,12 +5,18 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
 const appID = "agent-context"
+
+const (
+	codexAgentAppID      = "agent-codex"
+	claudeCodeAgentAppID = "agent-claude-code"
+)
 
 type AgentSessions interface {
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
@@ -69,6 +75,24 @@ func (p Provider) Commands() []cliservice.Command {
 	return []cliservice.Command{
 		p.newProvidersCommand(),
 		p.newComposerOptionsCommand(),
+		p.newProviderStartCommand(providerStartCommandSpec{
+			AppID:       codexAgentAppID,
+			AppName:     "Codex",
+			CommandID:   appID + ".codex.start",
+			Description: "Start a Codex agent session in the current workspace. Use --show to request AgentGUI activation.",
+			Path:        []string{"codex", "start"},
+			Provider:    agentproviderbiz.Codex,
+			Summary:     "Start a Codex agent session",
+		}),
+		p.newProviderStartCommand(providerStartCommandSpec{
+			AppID:       claudeCodeAgentAppID,
+			AppName:     "Claude Code",
+			CommandID:   appID + ".claude.start",
+			Description: "Start a Claude Code agent session in the current workspace. Use --show to request AgentGUI activation.",
+			Path:        []string{"claude", "start"},
+			Provider:    agentproviderbiz.ClaudeCode,
+			Summary:     "Start a Claude Code agent session",
+		}),
 		p.newStartCommand(),
 		p.newGetCommand(),
 		p.newOpenCommand(),

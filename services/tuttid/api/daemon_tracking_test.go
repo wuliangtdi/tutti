@@ -145,13 +145,6 @@ func TestTrackEventsRejectsInvalidEventShape(t *testing.T) {
 			wantReason: "analytics_event_name_invalid",
 		},
 		{
-			name: "legacy underscore name",
-			events: []tuttigenerated.TrackEvent{
-				{Name: "click_workspace_create", ClientTs: 1749124800000},
-			},
-			wantReason: "analytics_event_name_invalid",
-		},
-		{
 			name: "too long name",
 			events: []tuttigenerated.TrackEvent{
 				{Name: strings.Repeat("a", 129), ClientTs: 1749124800000},

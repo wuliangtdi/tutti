@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AgentRichTextAtProvider } from "@tutti-os/agent-gui/agent-rich-text-at-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
+import { createDefaultWorkspaceAppIconResolver } from "../../workspace-workbench/services/workspaceAppIconStyle.ts";
 import { createDesktopWorkspaceAppMentionProvider } from "./desktopWorkspaceAppMentionProvider.ts";
 
 test("workspace app mention provider uses localized Chinese app text", async () => {
@@ -136,6 +137,42 @@ test("workspace app mention provider prefers resolved built-in app icons", async
     insertResult.mention.meta?.iconUrl,
     "resolved-automation-icon.png"
   );
+});
+
+test("workspace app mention provider resolves built-in agent app icons without App Center metadata", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [],
+    baseProvider: createBaseWorkspaceAppProvider([
+      {
+        appId: "agent-codex",
+        label: "Codex",
+        scopes: "codex"
+      },
+      {
+        appId: "agent-claude-code",
+        label: "Claude Code",
+        scopes: "claude"
+      }
+    ]),
+    locale: "en",
+    resolveAppIconUrl: createDefaultWorkspaceAppIconResolver(),
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    keyword: "agent",
+    maxResults: 10
+  });
+
+  const claude = items.find((item) => item.appId === "agent-claude-code");
+  const codex = items.find((item) => item.appId === "agent-codex");
+  assert.match(claude?.iconUrl ?? "", /\/claudecode\.png$/u);
+  assert.match(codex?.iconUrl ?? "", /\/codex\.png$/u);
+  assert.ok(codex);
+  const insertResult = provider.toInsertResult(codex);
+  assert.equal(insertResult.kind, "mention");
+  assert.equal(insertResult.mention.meta?.iconUrl, codex.iconUrl);
 });
 
 test("workspace app mention provider keeps English fallback when localization is missing", async () => {

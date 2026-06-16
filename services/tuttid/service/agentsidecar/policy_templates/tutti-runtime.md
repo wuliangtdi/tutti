@@ -43,7 +43,7 @@ Tutti mention handoffs:
 - Do not open `mention://...` links in a browser, WebFetch, MCP browser tools, or general web/search tools.
 - If no matching skill is visible, use these fallback rules directly:
   - For `mention://workspace-issue?...`, parse `id`, `topicId`, `taskId`, `runId`, and `mode` from the query. Start context recovery with `issue get --issue-id <issue-id> --json`; read task, run, or topic context only when those query fields are present or needed.
-  - For `mention://workspace-app?...`, parse `appId` and match it against the workspace-app commands listed in the command guide. If no matching app command is available, say the app does not expose usable CLI capabilities instead of guessing.
+  - For `mention://workspace-app?...`, parse `appId`. If it is `agent-codex`, use `{{CLI_COMMAND}} codex start --model <model> --prompt <task> --show --json`; if it is `agent-claude-code`, use `{{CLI_COMMAND}} claude start --model <model> --prompt <task> --show --json`. Ask for missing `model` or task prompt before invoking. For other app ids, match against the workspace-app commands listed in the command guide. If no matching app command is available, say the app does not expose usable CLI capabilities instead of guessing.
   - For `mention://agent-session?...`, parse `id` and start context recovery with `agent session-summary --session-id <session-id> --json`.
 
 Use the bundled Tutti CLI for workspace context:

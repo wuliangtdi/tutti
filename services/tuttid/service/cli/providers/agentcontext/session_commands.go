@@ -43,7 +43,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 					"title":   map[string]any{"type": "string"},
 					"visible": map[string]any{"type": "boolean"},
 				},
-				"required": []string{"provider"},
+				"required": []string{"provider", "model", "prompt"},
 			},
 			Output: cliservice.CapabilityOutput{
 				DefaultMode: cliservice.OutputModeTable,
@@ -51,71 +51,132 @@ func (p Provider) newStartCommand() cliservice.Command {
 				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
 			},
 		},
-		Handler: func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
-			if err := p.requireSessions(); err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			workspaceID, err := p.workspaceID(ctx, request)
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			provider, err := cliservice.RequiredStringInput(request.Input, "provider")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			cwd, _, err := cliservice.StringInput(request.Input, "cwd")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			displayPrompt, _, err := cliservice.StringInput(request.Input, "display-prompt")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			model, _, err := cliservice.StringInput(request.Input, "model")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			permissionModeID, _, err := cliservice.StringInput(request.Input, "permission-mode")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			prompt, _, err := cliservice.StringInput(request.Input, "prompt")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			reasoningEffort, _, err := cliservice.StringInput(request.Input, "reasoning-effort")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			title, _, err := cliservice.StringInput(request.Input, "title")
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			show := boolInput(request.Input, "show")
-			visible := boolInput(request.Input, "visible") || show
-			session, err := p.sessions.Create(ctx, workspaceID, agentservice.CreateSessionInput{
-				Provider:             provider,
-				Cwd:                  optionalStringPointer(cwd),
-				InitialContent:       agentservice.TextPromptContent(prompt),
-				InitialDisplayPrompt: displayPrompt,
-				Model:                optionalStringPointer(model),
-				PermissionModeID:     optionalStringPointer(permissionModeID),
-				ReasoningEffort:      optionalStringPointer(reasoningEffort),
-				Title:                optionalStringPointer(title),
-				Visible:              boolPointer(visible),
-			})
-			if err != nil {
-				return cliservice.CommandOutput{}, err
-			}
-			launchRequested := false
-			if show {
-				if err := p.publishLaunchRequested(ctx, workspaceID, session, "start_show", request.Context.Source); err != nil {
-					return cliservice.CommandOutput{}, err
-				}
-				launchRequested = true
-			}
-			return sessionActionOutput(request, session, launchRequested), nil
+		Handler: p.startCommandHandler(""),
+	}
+}
+
+type providerStartCommandSpec struct {
+	AppID       string
+	AppName     string
+	CommandID   string
+	Description string
+	Path        []string
+	Provider    string
+	Summary     string
+}
+
+func (p Provider) newProviderStartCommand(spec providerStartCommandSpec) cliservice.Command {
+	return cliservice.Command{
+		Capability: cliservice.Capability{
+			ID:          spec.CommandID,
+			Path:        spec.Path,
+			Summary:     spec.Summary,
+			Description: spec.Description,
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"cwd": map[string]any{"type": "string"},
+					"display-prompt": map[string]any{
+						"type": "string",
+					},
+					"model": map[string]any{"type": "string"},
+					"permission-mode": map[string]any{
+						"type": "string",
+					},
+					"prompt": map[string]any{"type": "string"},
+					"reasoning-effort": map[string]any{
+						"type": "string",
+					},
+					"show":    map[string]any{"type": "boolean"},
+					"title":   map[string]any{"type": "string"},
+					"visible": map[string]any{"type": "boolean"},
+				},
+				"required": []string{"model", "prompt"},
+			},
+			Output: cliservice.CapabilityOutput{
+				DefaultMode: cliservice.OutputModeTable,
+				JSON:        true,
+				Table:       &cliservice.TableOutput{Columns: sessionActionColumns},
+			},
+			Source: cliservice.CapabilitySource{
+				Kind:           cliservice.CapabilitySourceApp,
+				AppID:          spec.AppID,
+				AppName:        spec.AppName,
+				CLIDescription: spec.Description,
+			},
 		},
+		Handler: p.startCommandHandler(spec.Provider),
+	}
+}
+
+func (p Provider) startCommandHandler(fixedProvider string) cliservice.Handler {
+	return func(ctx context.Context, request cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
+		if err := p.requireSessions(); err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		workspaceID, err := p.workspaceID(ctx, request)
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		provider := strings.TrimSpace(fixedProvider)
+		if provider == "" {
+			provider, err = cliservice.RequiredStringInput(request.Input, "provider")
+			if err != nil {
+				return cliservice.CommandOutput{}, err
+			}
+		}
+		cwd, _, err := cliservice.StringInput(request.Input, "cwd")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		displayPrompt, _, err := cliservice.StringInput(request.Input, "display-prompt")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		model, err := cliservice.RequiredStringInput(request.Input, "model")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		permissionModeID, _, err := cliservice.StringInput(request.Input, "permission-mode")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		prompt, err := cliservice.RequiredStringInput(request.Input, "prompt")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		reasoningEffort, _, err := cliservice.StringInput(request.Input, "reasoning-effort")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		title, _, err := cliservice.StringInput(request.Input, "title")
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		show := boolInput(request.Input, "show")
+		visible := boolInput(request.Input, "visible") || show
+		session, err := p.sessions.Create(ctx, workspaceID, agentservice.CreateSessionInput{
+			Provider:             provider,
+			Cwd:                  optionalStringPointer(cwd),
+			InitialContent:       agentservice.TextPromptContent(prompt),
+			InitialDisplayPrompt: displayPrompt,
+			Model:                optionalStringPointer(model),
+			PermissionModeID:     optionalStringPointer(permissionModeID),
+			ReasoningEffort:      optionalStringPointer(reasoningEffort),
+			Title:                optionalStringPointer(title),
+			Visible:              boolPointer(visible),
+		})
+		if err != nil {
+			return cliservice.CommandOutput{}, err
+		}
+		launchRequested := false
+		if show {
+			if err := p.publishLaunchRequested(ctx, workspaceID, session, "start_show", request.Context.Source); err != nil {
+				return cliservice.CommandOutput{}, err
+			}
+			launchRequested = true
+		}
+		return sessionActionOutput(request, session, launchRequested), nil
 	}
 }
 

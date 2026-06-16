@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,6 +41,7 @@ type fakeAgentSessions struct {
 	afterVersion    uint64
 	listCallCount   int
 	messageCallIDs  []string
+	createCallCount int
 	createInput     agentservice.CreateSessionInput
 	composerInput   agentservice.ComposerOptionsInput
 	sendInput       agentservice.SendInput
@@ -58,6 +60,7 @@ func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessio
 
 func (f *fakeAgentSessions) Create(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.Session, error) {
 	f.workspaceID = workspaceID
+	f.createCallCount++
 	f.createInput = input
 	cwd := ""
 	if input.Cwd != nil {
@@ -204,6 +207,17 @@ func (f *fakeAgentGUILaunchPublisher) PublishAgentGUILaunchRequested(_ context.C
 	return nil
 }
 
+func commandByID(t *testing.T, commands []cliservice.Command, commandID string) cliservice.Command {
+	t.Helper()
+	for _, command := range commands {
+		if command.Capability.ID == commandID {
+			return command
+		}
+	}
+	t.Fatalf("command %q not found", commandID)
+	return cliservice.Command{}
+}
+
 func TestSessionMessagesCommandUsesLimitAndAfterVersion(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionMessagesCommand([]string{"agent", "session", "messages"}, "agent-context.agent.session.messages")
@@ -229,6 +243,7 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{
 			"provider":       "codex",
+			"model":          "gpt-5",
 			"prompt":         "real automation prompt",
 			"display-prompt": "Run Automation",
 		},
@@ -241,6 +256,32 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	}
 	if sessions.createInput.InitialDisplayPrompt != "Run Automation" {
 		t.Fatalf("initial display prompt = %q", sessions.createInput.InitialDisplayPrompt)
+	}
+}
+
+func TestStartCommandRequiresProviderModelAndPrompt(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newStartCommand()
+	required, ok := command.Capability.InputSchema["required"].([]string)
+	if !ok {
+		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
+	}
+	if len(required) != 3 || required[0] != "provider" || required[1] != "model" || required[2] != "prompt" {
+		t.Fatalf("required = %#v", required)
+	}
+
+	for name, input := range map[string]map[string]any{
+		"missing provider": {"model": "gpt-5", "prompt": "do work"},
+		"missing model":    {"provider": "codex", "prompt": "do work"},
+		"missing prompt":   {"provider": "codex", "model": "gpt-5"},
+	} {
+		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: input})
+		if !errors.Is(err, cliservice.ErrInvalidInput) {
+			t.Fatalf("%s err = %v, want ErrInvalidInput", name, err)
+		}
+	}
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
 	}
 }
 
@@ -371,7 +412,7 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 	command := provider.newStartCommand()
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex"},
+		Input: map[string]any{"provider": "codex", "model": "gpt-5", "prompt": "do work"},
 		Context: cliservice.InvokeContext{
 			Source: "cli",
 		},
@@ -386,7 +427,7 @@ func TestStartCommandDefaultsHeadlessAndShowPublishesLaunch(t *testing.T) {
 	}
 
 	if _, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"provider": "codex", "show": "true"},
+		Input: map[string]any{"provider": "codex", "model": "gpt-5", "prompt": "do work", "show": "true"},
 		Context: cliservice.InvokeContext{
 			Source: "cli",
 		},
@@ -409,6 +450,7 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 		Input: map[string]any{
 			"model":            "gpt-5",
 			"permission-mode":  "ask",
+			"prompt":           "do work",
 			"provider":         "codex",
 			"reasoning-effort": "high",
 		},
@@ -423,6 +465,81 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 	}
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %#v", sessions.createInput.ReasoningEffort)
+	}
+}
+
+func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
+	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{})
+	commands := provider.Commands()
+	codex := commandByID(t, commands, "agent-context.codex.start")
+	claude := commandByID(t, commands, "agent-context.claude.start")
+
+	if codex.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
+		codex.Capability.Source.AppID != codexAgentAppID ||
+		codex.Capability.Source.AppName != "Codex" ||
+		len(codex.Capability.Path) != 2 ||
+		codex.Capability.Path[0] != "codex" ||
+		codex.Capability.Path[1] != "start" {
+		t.Fatalf("codex capability = %#v", codex.Capability)
+	}
+	if claude.Capability.Source.Kind != cliservice.CapabilitySourceApp ||
+		claude.Capability.Source.AppID != claudeCodeAgentAppID ||
+		claude.Capability.Source.AppName != "Claude Code" ||
+		len(claude.Capability.Path) != 2 ||
+		claude.Capability.Path[0] != "claude" ||
+		claude.Capability.Path[1] != "start" {
+		t.Fatalf("claude capability = %#v", claude.Capability)
+	}
+
+	for name, tc := range map[string]struct {
+		commandID string
+		want      string
+	}{
+		"codex":  {commandID: "agent-context.codex.start", want: "codex"},
+		"claude": {commandID: "agent-context.claude.start", want: "claude-code"},
+	} {
+		sessions := &fakeAgentSessions{}
+		command := commandByID(t, NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).Commands(), tc.commandID)
+		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+			Input: map[string]any{"model": "model-1", "prompt": "do work"},
+		})
+		if err != nil {
+			t.Fatalf("%s Handler: %v", name, err)
+		}
+		if sessions.createInput.Provider != tc.want {
+			t.Fatalf("%s provider = %q, want %q", name, sessions.createInput.Provider, tc.want)
+		}
+	}
+}
+
+func TestProviderStartCommandRequiresModelAndPrompt(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newProviderStartCommand(providerStartCommandSpec{
+		AppID:     codexAgentAppID,
+		AppName:   "Codex",
+		CommandID: appID + ".codex.start",
+		Path:      []string{"codex", "start"},
+		Provider:  "codex",
+		Summary:   "Start a Codex agent session",
+	})
+	required, ok := command.Capability.InputSchema["required"].([]string)
+	if !ok {
+		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
+	}
+	if len(required) != 2 || required[0] != "model" || required[1] != "prompt" {
+		t.Fatalf("required = %#v", required)
+	}
+	for name, input := range map[string]map[string]any{
+		"missing model":  {"prompt": "do work"},
+		"missing prompt": {"model": "gpt-5"},
+	} {
+		_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: input})
+		if !errors.Is(err, cliservice.ErrInvalidInput) {
+			t.Fatalf("%s err = %v, want ErrInvalidInput", name, err)
+		}
+	}
+	if sessions.createCallCount != 0 {
+		t.Fatalf("createCallCount = %d, want 0", sessions.createCallCount)
 	}
 }
 

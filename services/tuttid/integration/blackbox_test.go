@@ -23,7 +23,7 @@ import (
 const (
 	daemonStartTimeout = 15 * time.Second
 	requestTimeout     = 5 * time.Second
-	healthPollInterval = 250 * time.Millisecond
+	healthPollInterval = 25 * time.Millisecond
 )
 
 var (

@@ -886,7 +886,7 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
 	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\nprintf '{\"loggedIn\":false,\"authMethod\":\"none\"}'\n")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
 
 	service := Service{
@@ -901,6 +901,15 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 		},
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+		},
+		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+			if spec.Provider != "claude-code" {
+				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
+			}
+			if binaryPath != claudePath {
+				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
+			}
+			return AuthInfo{Status: AuthRequired}, true
 		},
 	}
 
@@ -927,10 +936,10 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
-	counterPath := filepath.Join(home, "claude-auth-count")
 	claudePath := filepath.Join(binDir, "claude")
-	writeExecutable(t, claudePath, "#!/bin/sh\ncount=$(cat "+shellQuote(counterPath)+" 2>/dev/null || printf 0)\nnext=$((count + 1))\nprintf '%s' \"$next\" > "+shellQuote(counterPath)+"\nif [ \"$next\" -eq 1 ]; then\n  printf 'temporarily unavailable'\n  exit 0\nfi\nprintf '{\"loggedIn\":true,\"email\":\"dev@example.com\"}'\n")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
+	authStatusCommandCalls := 0
 
 	service := Service{
 		Environ: func() []string {
@@ -944,6 +953,20 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 		},
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+		},
+		AuthStatusCommandRetryDelay: time.Nanosecond,
+		RunAuthStatusCommand: func(_ context.Context, spec ProviderSpec, binaryPath string) (AuthInfo, bool) {
+			if spec.Provider != "claude-code" {
+				t.Fatalf("auth status provider = %q, want claude-code", spec.Provider)
+			}
+			if binaryPath != claudePath {
+				t.Fatalf("auth status binaryPath = %q, want %q", binaryPath, claudePath)
+			}
+			authStatusCommandCalls++
+			if authStatusCommandCalls == 1 {
+				return AuthInfo{}, false
+			}
+			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, true
 		},
 	}
 
@@ -961,6 +984,9 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 	}
 	if status.Auth.AccountLabel != "dev@example.com" {
 		t.Fatalf("AccountLabel = %q, want dev@example.com", status.Auth.AccountLabel)
+	}
+	if authStatusCommandCalls != 2 {
+		t.Fatalf("auth status command calls = %d, want 2", authStatusCommandCalls)
 	}
 }
 

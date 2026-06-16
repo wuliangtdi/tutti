@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -23,9 +22,6 @@ func (ClaudeCodePreparer) Provider() string {
 }
 
 func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (ProviderPrepareResult, error) {
-	if err := cleanupClaudeLegacyProjectSkills(input.Cwd); err != nil {
-		return ProviderPrepareResult{}, err
-	}
 	systemPromptPath := filepath.Join(input.RuntimeRoot, "claude-system-prompt.md")
 	if err := os.MkdirAll(filepath.Dir(systemPromptPath), 0o700); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("create claude system prompt directory: %w", err)
@@ -150,71 +146,4 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 		return fmt.Errorf("install claude tutti skill plugin: %w", err)
 	}
 	return nil
-}
-
-func cleanupClaudeLegacyProjectSkills(cwd string) error {
-	skillRoot := providerSkillRoot(cwd, "claude-code")
-	if strings.TrimSpace(skillRoot) == "" {
-		return nil
-	}
-	entries, err := os.ReadDir(skillRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read claude project skills: %w", err)
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := strings.TrimSpace(entry.Name())
-		if !isLegacyTuttiProviderSkillDir(name) {
-			continue
-		}
-		skillPath := filepath.Join(skillRoot, name, "SKILL.md")
-		content, err := os.ReadFile(skillPath)
-		if err != nil || !isLegacyTuttiProviderSkillContent(string(content)) {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(skillRoot, name)); err != nil {
-			return fmt.Errorf("remove legacy claude tutti skill %s: %w", name, err)
-		}
-	}
-	return nil
-}
-
-func isLegacyTuttiProviderSkillDir(name string) bool {
-	name = strings.TrimSpace(name)
-	legacyProviderSkillName := strings.Join([]string{"n", "e", "x", "t", "o", "p"}, "") + "-cli"
-	for _, base := range []string{tuttiSkillName, legacyProviderSkillName, issueManagerSkillName, workspaceAppSkillName} {
-		if name == base || name == base+"-tutti" {
-			return true
-		}
-		suffix, ok := strings.CutPrefix(name, base+"-tutti-")
-		if !ok {
-			continue
-		}
-		index, err := strconv.Atoi(suffix)
-		if err == nil && index >= 2 && index <= 99 {
-			return true
-		}
-	}
-	return false
-}
-
-func isLegacyTuttiProviderSkillContent(content string) bool {
-	legacyProductName := strings.Join([]string{"N", "e", "x", "t", "o", "p"}, "")
-	for _, marker := range []string{
-		"description: Use for `mention://agent-session?...` links, Tutti CLI command syntax",
-		"description: Use for `mention://agent-session?...` links, " + legacyProductName + " CLI command syntax",
-		"description: Use for Tutti CLI command syntax and daemon context lookup",
-		"description: Use for `mention://workspace-issue?...` links",
-		"description: Use for `mention://workspace-app?...` links",
-	} {
-		if strings.Contains(content, marker) {
-			return true
-		}
-	}
-	return false
 }

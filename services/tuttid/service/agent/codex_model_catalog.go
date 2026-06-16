@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	codexAppServerModelListTimeout = 8 * time.Second
-	codexModelListMaxLineBytes     = 16 * 1024 * 1024
-	codexModelListMaxStderrBytes   = 1024 * 1024
+	codexAppServerModelListTimeout  = 8 * time.Second
+	codexAppServerShutdownWaitDelay = 100 * time.Millisecond
+	codexModelListMaxLineBytes      = 16 * 1024 * 1024
+	codexModelListMaxStderrBytes    = 1024 * 1024
 )
 
 type CodexCLIModelLister struct {
@@ -80,6 +81,7 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	}
 	cmd := exec.CommandContext(processCtx, command, args...)
 	cmd.Env = env
+	cmd.WaitDelay = codexAppServerShutdownWaitDelay
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return AgentModelListResult{}, fmt.Errorf("open codex app-server stdin: %w", err)
