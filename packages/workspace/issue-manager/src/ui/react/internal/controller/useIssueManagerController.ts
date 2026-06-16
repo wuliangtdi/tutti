@@ -39,10 +39,12 @@ import { createIssueManagerControllerActionsBridge } from "./createIssueManagerC
 import { createIssueManagerControllerBindings } from "./createIssueManagerControllerBindings.ts";
 import { resolveIssueManagerTopicDeleteErrorMessage } from "../../../../services/internal/controllerUtils.ts";
 import { useIssueManagerControllerRuntime } from "./useIssueManagerControllerRuntime.ts";
+import type { IssueManagerDiagnostics } from "../../../../internal/issueManagerDiagnostics.ts";
 
 export type IssueManagerRichTextSurface = "issue" | "task";
 
 export interface UseIssueManagerControllerInput {
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   openSource?: IssueManagerOpenSource;
   onStateChange?: (state: IssueManagerNodeState) => void;
@@ -63,6 +65,7 @@ export interface IssueManagerController {
   canReferenceWorkspaceFiles: boolean;
   canUploadWorkspaceFiles: boolean;
   copy: IssueManagerI18nRuntime;
+  diagnostics: IssueManagerDiagnostics | null;
   createTopic: (
     input: Omit<IssueManagerCreateTopicInput, "workspaceId">
   ) => Promise<void>;
@@ -140,6 +143,7 @@ export interface IssueManagerController {
 }
 
 export function useIssueManagerController({
+  diagnostics,
   feature,
   openSource,
   onStateChange,
@@ -151,6 +155,7 @@ export function useIssueManagerController({
   const copy = feature.i18n;
   const { controllerSession, floatingNotice, snapshot } =
     useIssueManagerControllerRuntime({
+      diagnostics,
       feature,
       openSource,
       onStateChange,
@@ -196,6 +201,7 @@ export function useIssueManagerController({
   const actions = createIssueManagerControllerActionsBridge({
     controllerSession,
     copy,
+    diagnostics,
     feature,
     issueDetail,
     issueDraft,
@@ -209,6 +215,7 @@ export function useIssueManagerController({
   });
   const bindings = createIssueManagerControllerBindings({
     controllerSession,
+    diagnostics,
     feature,
     issueEditorMode,
     nodeState,
@@ -234,6 +241,7 @@ export function useIssueManagerController({
     canSelectExecutionDirectory,
     canUploadWorkspaceFiles,
     copy,
+    diagnostics: diagnostics ?? null,
     async createTopic(topicInput) {
       try {
         const topic = await feature.backend.createTopic({

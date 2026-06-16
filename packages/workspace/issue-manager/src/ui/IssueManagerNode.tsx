@@ -9,6 +9,7 @@ import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceFileReferencePicker } from "@tutti-os/workspace-file-reference/ui";
 import type { IssueManagerI18nRuntime } from "../i18n/issueManagerI18n.ts";
 import type { IssueManagerOpenSource } from "../contracts/index.ts";
+import { logIssueManagerDiagnostic } from "../internal/issueManagerDiagnostics.ts";
 import type { IssueManagerLatestRunStatusRenderer } from "./latestRunStatusRenderer.ts";
 import { IssueManagerShell } from "./internal/shell/IssueManagerShell.tsx";
 import { IssueManagerTopicSelector } from "./internal/shell/IssueManagerTopicSelector.tsx";
@@ -45,6 +46,7 @@ export type IssueManagerNodeProps = UseIssueManagerNodeViewInput & {
 };
 
 export function IssueManagerNode({
+  diagnostics,
   emptyIllustration,
   feature,
   nodeId,
@@ -59,6 +61,7 @@ export function IssueManagerNode({
 }: IssueManagerNodeProps): JSX.Element {
   const { controller, referencePicker, selectedIssue, selectedTask, shell } =
     useIssueManagerNodeView({
+      diagnostics,
       feature,
       nodeId,
       openSource,
@@ -75,9 +78,32 @@ export function IssueManagerNode({
       return;
     }
     if (lastHandledOpenRequestIdRef.current === openRequest.requestId) {
+      logIssueManagerDiagnostic(
+        controller.diagnostics,
+        "open_request.skipped_duplicate",
+        {
+          issueId: openRequest.issueId,
+          requestId: openRequest.requestId,
+          taskId: openRequest.taskId?.trim() || null,
+          topicId: openRequest.topicId?.trim() || null
+        }
+      );
       return;
     }
     lastHandledOpenRequestIdRef.current = openRequest.requestId;
+
+    logIssueManagerDiagnostic(
+      controller.diagnostics,
+      "open_request.consumed",
+      {
+        issueId: openRequest.issueId,
+        mode: openRequest.mode ?? null,
+        requestId: openRequest.requestId,
+        taskId: openRequest.taskId?.trim() || null,
+        topicId: openRequest.topicId?.trim() || null
+      },
+      { includeStack: true }
+    );
 
     if (openRequest.topicId?.trim()) {
       controller.selectTopic(openRequest.topicId);

@@ -1,4 +1,4 @@
-import { type JSX } from "react";
+import type { JSX, MouseEvent } from "react";
 import {
   AgentSessionsIcon,
   ArrowRightIcon,
@@ -30,6 +30,7 @@ import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadg
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
 import type { IssueManagerController } from "../../react/index.ts";
 import type { IssueManagerI18nRuntime } from "../../../i18n/issueManagerI18n.ts";
+import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
 
 export function IssueManagerDetailTextSection({
   body,
@@ -292,12 +293,14 @@ export function IssueManagerOutputSection({
 
 export function IssueManagerSubtaskSection({
   copy,
+  diagnostics,
   onCreate,
   onSelectTask,
   selectedTaskId,
   tasks
 }: {
   copy: IssueManagerI18nRuntime;
+  diagnostics?: IssueManagerController["diagnostics"];
   onCreate: () => void;
   onSelectTask: (taskId: string | null) => void;
   selectedTaskId: string | null;
@@ -330,7 +333,17 @@ export function IssueManagerSubtaskSection({
               )}
               key={task.taskId}
               type="button"
-              onClick={() => onSelectTask(task.taskId)}
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                logIssueManagerDiagnostic(diagnostics, "task_row.click", {
+                  clientX: event.clientX,
+                  clientY: event.clientY,
+                  selectedTaskId,
+                  surface: "detail_subtasks",
+                  taskId: task.taskId,
+                  taskTitle: task.title
+                });
+                onSelectTask(task.taskId);
+              }}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2.5">
@@ -424,7 +437,21 @@ export function IssueManagerTaskSection({
                   )}
                   key={task.taskId}
                   type="button"
-                  onClick={() => controller.selectTask(task.taskId)}
+                  onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                    logIssueManagerDiagnostic(
+                      controller.diagnostics,
+                      "task_row.click",
+                      {
+                        clientX: event.clientX,
+                        clientY: event.clientY,
+                        selectedTaskId,
+                        surface: "task_section",
+                        taskId: task.taskId,
+                        taskTitle: task.title
+                      }
+                    );
+                    controller.selectTask(task.taskId);
+                  }}
                 >
                   <div className="flex min-w-0 flex-col gap-2">
                     <div className="flex min-w-0 items-center justify-between gap-3">

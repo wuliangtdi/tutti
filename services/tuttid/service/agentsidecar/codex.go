@@ -49,7 +49,7 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 	if err := exposeUserCodexFiles(codexHome); err != nil {
 		return err
 	}
-	if err := ensureCodexProjectRootMarkersDisabledConfig(filepath.Join(codexHome, "config.toml")); err != nil {
+	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml")); err != nil {
 		return err
 	}
 	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills")); err != nil {
@@ -124,12 +124,16 @@ func exposeUserCodexConfig(codexHome string, userCodexHome string) error {
 	return nil
 }
 
-func ensureCodexProjectRootMarkersDisabledConfig(configPath string) error {
+func ensureCodexSessionConfig(configPath string) error {
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read codex config: %w", err)
 	}
 	next, changed := codexConfigWithProjectRootMarkersDisabled(string(contentBytes))
+	if serviceTierNext, serviceTierChanged := codexConfigWithSupportedServiceTier(next); serviceTierChanged {
+		next = serviceTierNext
+		changed = true
+	}
 	if !changed {
 		return nil
 	}
@@ -168,11 +172,85 @@ func codexConfigWithProjectRootMarkersDisabled(content string) (string, bool) {
 	return next, true
 }
 
+func codexConfigWithSupportedServiceTier(content string) (string, bool) {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		if !codexConfigLineHasKey(trimmed, "service_tier") {
+			continue
+		}
+		value, ok := codexConfigStringAssignmentValue(trimmed, "service_tier")
+		if !ok {
+			return content, false
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "fast", "flex":
+			return content, false
+		case "priority":
+			nextLines := append([]string{}, lines...)
+			nextLines[index] = `service_tier = "fast"`
+			return strings.Join(nextLines, "\n"), true
+		case "", "default", "standard":
+			endIndex := codexConfigAssignmentEndLine(lines, index)
+			nextLines := make([]string, 0, len(lines)-(endIndex-index+1))
+			nextLines = append(nextLines, lines[:index]...)
+			nextLines = append(nextLines, lines[endIndex+1:]...)
+			return strings.Join(nextLines, "\n"), true
+		default:
+			return content, false
+		}
+	}
+	return content, false
+}
+
 func codexConfigLineHasKey(line string, key string) bool {
 	if !strings.HasPrefix(line, key) {
 		return false
 	}
 	return strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(line, key)), "=")
+}
+
+func codexConfigStringAssignmentValue(line string, key string) (string, bool) {
+	if !codexConfigLineHasKey(line, key) {
+		return "", false
+	}
+	_, rawValue, ok := strings.Cut(line, "=")
+	if !ok {
+		return "", false
+	}
+	rawValue = strings.TrimSpace(rawValue)
+	if rawValue == "" {
+		return "", true
+	}
+	quote := rawValue[0]
+	if quote != '"' && quote != '\'' {
+		return "", false
+	}
+	var builder strings.Builder
+	escaped := false
+	for index := 1; index < len(rawValue); index++ {
+		char := rawValue[index]
+		if quote == '"' && escaped {
+			builder.WriteByte(char)
+			escaped = false
+			continue
+		}
+		if quote == '"' && char == '\\' {
+			escaped = true
+			continue
+		}
+		if char == quote {
+			return builder.String(), true
+		}
+		builder.WriteByte(char)
+	}
+	return "", false
 }
 
 // Consume a complete multiline TOML array so stale marker entries do not remain

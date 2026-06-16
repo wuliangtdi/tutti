@@ -17,8 +17,13 @@ import {
   type IssueManagerController,
   type IssueManagerRichTextSurface
 } from "../controller/useIssueManagerController.ts";
+import {
+  logIssueManagerDiagnostic,
+  type IssueManagerDiagnostics
+} from "../../../../internal/issueManagerDiagnostics.ts";
 
 export interface UseIssueManagerNodeViewInput {
+  diagnostics?: IssueManagerDiagnostics | null;
   emptyIllustration?: ReactNode;
   feature: IssueManagerFeature;
   nodeId: string;
@@ -34,6 +39,7 @@ export interface UseIssueManagerNodeViewInput {
 }
 
 export function useIssueManagerNodeView({
+  diagnostics,
   feature,
   nodeId,
   openSource,
@@ -44,6 +50,7 @@ export function useIssueManagerNodeView({
   workspaceId
 }: UseIssueManagerNodeViewInput) {
   const controller = useIssueManagerController({
+    diagnostics,
     feature,
     openSource,
     onStateChange,
@@ -87,6 +94,14 @@ export function useIssueManagerNodeView({
     selectedTask,
     shell: {
       onCloseTaskDrawer: () => {
+        logIssueManagerDiagnostic(
+          controller.diagnostics,
+          "task_drawer.close_requested",
+          {
+            selectedIssueId: controller.nodeState.selectedIssueId,
+            selectedTaskId: controller.nodeState.selectedTaskId
+          }
+        );
         controller.selectTask(null);
       },
       onDismissIssueCreate: () => {

@@ -167,15 +167,36 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 	case ProviderOpenClaw:
 		mergeACPParamsMeta(params, map[string]any{"sessionKey": openclawGatewayChatSessionKey(session, a.host)})
 	case ProviderClaudeCode:
+		systemPromptPath := sessionEnvValue(session.Env, claudeSystemPromptFileEnv)
+		pluginDirPath := sessionEnvValue(session.Env, claudePluginDirEnv)
 		systemPrompt, err := claudeSystemPromptAppend(session.Env)
 		if err != nil {
+			slog.Warn("agent session ACP claude provider meta system prompt failed",
+				"event", "agent_session.acp.claude_provider_meta.system_prompt_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"system_prompt_env_present", strings.TrimSpace(systemPromptPath) != "",
+				"system_prompt_path", systemPromptPath,
+				"error", err.Error(),
+			)
 			return err
 		}
 		pluginDir, err := claudePluginDir(session.Env)
 		if err != nil {
+			slog.Warn("agent session ACP claude provider meta plugin dir failed",
+				"event", "agent_session.acp.claude_provider_meta.plugin_dir_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"plugin_dir_env_present", strings.TrimSpace(pluginDirPath) != "",
+				"plugin_dir_path", pluginDirPath,
+				"error", err.Error(),
+			)
 			return err
 		}
-		if strings.TrimSpace(systemPrompt) != "" {
+		systemPromptPresent := strings.TrimSpace(systemPrompt) != ""
+		if systemPromptPresent {
 			mergeACPParamsMeta(params, map[string]any{
 				"systemPrompt": map[string]any{
 					"type":   "preset",
@@ -208,6 +229,25 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 				"claudeCode": claudeCodeMeta,
 			})
 		}
+		slog.Info("agent session ACP claude provider meta prepared",
+			"event", "agent_session.acp.claude_provider_meta.prepared",
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"provider_session_id", session.ProviderSessionID,
+			"system_prompt_env_present", strings.TrimSpace(systemPromptPath) != "",
+			"system_prompt_path", systemPromptPath,
+			"system_prompt_present", systemPromptPresent,
+			"system_prompt_len", len(systemPrompt),
+			"system_prompt_has_tutti_runtime", strings.Contains(systemPrompt, "# Tutti Runtime"),
+			"system_prompt_has_claude_mention_routing", strings.Contains(systemPrompt, "Claude Code mention routing"),
+			"system_prompt_has_agent_session_skill_routing", strings.Contains(systemPrompt, `Skill(skill="tutti-cli"`),
+			"meta_system_prompt_attached", systemPromptPresent,
+			"plugin_dir_env_present", strings.TrimSpace(pluginDirPath) != "",
+			"plugin_dir_path", pluginDirPath,
+			"plugin_dir_present", pluginDir != "",
+			"meta_claude_code_attached", len(claudeOptions) > 0,
+			"emit_raw_sdk_messages", pluginDir != "",
+		)
 	}
 	return nil
 }
@@ -677,6 +717,8 @@ func (a *standardACPAdapter) Exec(
 	}
 	session.ProviderSessionID = acpSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	routedContent, mentionRoutingApplied, mentionRoutingSkills := claudeCodePromptContentWithMentionRouting(a.config.provider, content, visibleText)
+	acpPromptContent := promptContentForACP(routedContent)
 	normalizer := newACPTurnNormalizer()
 	var events []activityshared.Event
 	emitEvents := func(next []activityshared.Event) {
@@ -708,11 +750,27 @@ func (a *standardACPAdapter) Exec(
 		"provider_session_id", session.ProviderSessionID,
 		"turn_id", turnID,
 		"prompt_length", len(visibleText),
+		"mention_uri_count", len(extractMentionURIs(visibleText)),
+		"claude_mention_routing_applied", mentionRoutingApplied,
+		"claude_mention_routing_skills", mentionRoutingSkills,
 	)
+	if mentionRoutingApplied {
+		slog.Info("agent session ACP claude mention routing applied",
+			"event", "agent_session.acp.claude_mention_routing.applied",
+			"provider", a.config.provider,
+			"adapter", a.config.adapterName,
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"provider_session_id", session.ProviderSessionID,
+			"turn_id", turnID,
+			"mention_routing_skills", mentionRoutingSkills,
+			"prompt_length", len(visibleText),
+		)
+	}
 
 	result, err := acpSession.client.Call(ctx, acpMethodPrompt, map[string]any{
 		"sessionId": acpSession.providerSessionID,
-		"prompt":    promptContentForACP(content),
+		"prompt":    acpPromptContent,
 	}, func(ctx context.Context, message acpMessage) error {
 		slog.Info("agent session ACP exec received message",
 			"event", "agent_session.acp.exec.message",
@@ -820,6 +878,105 @@ func (a *standardACPAdapter) Exec(
 		"final_event_type_counts", activityEventTypeCounts(events),
 	)
 	return events, nil
+}
+
+func claudeCodePromptContentWithMentionRouting(provider string, content []PromptContentBlock, visibleText string) ([]PromptContentBlock, bool, []string) {
+	if strings.TrimSpace(provider) != ProviderClaudeCode {
+		return content, false, nil
+	}
+	directive, skills := claudeCodeMentionRoutingDirective(visibleText)
+	if directive == "" {
+		return content, false, nil
+	}
+	out := append([]PromptContentBlock(nil), content...)
+	for index, block := range out {
+		if block.Type != "text" || strings.TrimSpace(block.Text) == "" {
+			continue
+		}
+		out[index].Text = directive + "\n\nUser prompt:\n" + block.Text
+		return out, true, skills
+	}
+	return append([]PromptContentBlock{{Type: "text", Text: directive}}, out...), true, skills
+}
+
+func claudeCodeMentionRoutingDirective(text string) (string, []string) {
+	mentions := extractMentionURIs(text)
+	if len(mentions) == 0 {
+		return "", nil
+	}
+	lines := []string{
+		"Claude Code mention handoff routing for this user turn:",
+		"- Treat `mention://...` links as internal Tutti references. Do not infer the source platform from the display label, and do not answer from the label alone.",
+	}
+	var skills []string
+	seenSkills := map[string]struct{}{}
+	for _, mention := range mentions {
+		skill := skillForMentionURI(mention)
+		if skill == "" {
+			continue
+		}
+		if _, ok := seenSkills[skill]; !ok {
+			skills = append(skills, skill)
+			seenSkills[skill] = struct{}{}
+		}
+		lines = append(lines, fmt.Sprintf(
+			"- The prompt contains `%s`. Before answering, your first tool call MUST be `Skill(skill=\"%s\", args=\"%s\")`.",
+			mention,
+			skill,
+			mention,
+		))
+	}
+	if len(lines) == 2 {
+		return "", nil
+	}
+	lines = append(lines, "- Do not say you cannot read the mention until that Skill call fails or no matching skill exists.")
+	return strings.Join(lines, "\n"), skills
+}
+
+func skillForMentionURI(uri string) string {
+	switch {
+	case strings.HasPrefix(uri, "mention://workspace-issue?"):
+		return "issue-manager"
+	case strings.HasPrefix(uri, "mention://workspace-app?"):
+		return "workspace-app"
+	case strings.HasPrefix(uri, "mention://agent-session?"):
+		return "tutti-cli"
+	default:
+		return ""
+	}
+}
+
+func extractMentionURIs(text string) []string {
+	const marker = "mention://"
+	var mentions []string
+	seen := map[string]struct{}{}
+	for offset := 0; offset < len(text); {
+		index := strings.Index(text[offset:], marker)
+		if index < 0 {
+			break
+		}
+		start := offset + index
+		end := start
+		for end < len(text) && !mentionURITerminator(text[end]) {
+			end++
+		}
+		mention := strings.TrimSpace(text[start:end])
+		if _, ok := seen[mention]; mention != "" && !ok {
+			mentions = append(mentions, mention)
+			seen[mention] = struct{}{}
+		}
+		offset = end
+	}
+	return mentions
+}
+
+func mentionURITerminator(char byte) bool {
+	switch char {
+	case ' ', '\t', '\n', '\r', ')', ']', '>', '"', '\'':
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {

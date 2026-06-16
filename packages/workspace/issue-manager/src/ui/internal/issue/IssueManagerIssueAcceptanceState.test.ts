@@ -98,7 +98,6 @@ test("issue run task is hidden from subtasks after acceptance", () => {
       status: "completed",
       title: "Issue"
     }),
-    selectedTaskId: null,
     tasks: [
       createTaskSummary({
         issueId: "issue-1",
@@ -125,7 +124,6 @@ test("issue run task detection keeps normal visible subtasks", () => {
       status: "completed",
       title: "Issue"
     }),
-    selectedTaskId: null,
     tasks: [
       createTaskSummary({
         issueId: "issue-1",
@@ -161,5 +159,44 @@ test("issue subtask list hides the issue-level execution task", () => {
   assert.deepEqual(
     tasks.map((task) => task.taskId),
     ["task-visible"]
+  );
+});
+
+test("issue subtask list keeps the issue-level execution task hidden while another task is selected", () => {
+  const hiddenTask = createTaskSummary({
+    issueId: "issue-1",
+    status: "pending_acceptance",
+    taskId: "task-hidden",
+    title: "Issue"
+  });
+  const selectedTask = createTaskSummary({
+    issueId: "issue-1",
+    status: "not_started",
+    taskId: "task-selected",
+    title: "Selected task"
+  });
+
+  const hiddenIssueRunTaskId = resolveIssueManagerIssueRunTaskId({
+    latestRun: createRun({
+      issueId: "issue-1",
+      runId: "run-1",
+      status: "completed",
+      taskId: "task-hidden"
+    }),
+    selectedIssue: createIssueSummary({
+      issueId: "issue-1",
+      status: "completed",
+      title: "Issue"
+    }),
+    tasks: [hiddenTask, selectedTask]
+  });
+  const tasks = resolveIssueManagerVisibleSubtasks({
+    hiddenIssueRunTaskId,
+    tasks: [hiddenTask, selectedTask]
+  });
+
+  assert.deepEqual(
+    tasks.map((task) => task.taskId),
+    ["task-selected"]
   );
 });

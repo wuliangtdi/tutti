@@ -1,9 +1,10 @@
-import type { JSX } from "react";
+import { useRef, type JSX, type MouseEvent, type PointerEvent } from "react";
 import { ScrollArea, cn } from "@tutti-os/ui-system";
 import type {
   IssueManagerIssueSummary,
   IssueManagerTaskSummary
 } from "../../../contracts/index.ts";
+import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
 import {
   IssueManagerTaskDrawerBody,
   IssueManagerTaskDrawerFooter,
@@ -13,26 +14,91 @@ import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusR
 import { resolveIssueManagerTaskDrawerViewState } from "./IssueManagerTaskDrawerState.ts";
 import type { IssueManagerController } from "../../react/index.ts";
 
+export type IssueManagerTaskDrawerCloseSource = "backdrop" | "header_back";
+
 export function IssueManagerTaskDrawer({
   controller,
   isClosing,
   renderLatestRunStatus,
   selectedIssue,
   selectedTask,
-  onClose
+  onClose,
+  shouldIgnoreBackdropClick
 }: {
   controller: IssueManagerController;
   isClosing: boolean;
   renderLatestRunStatus?: IssueManagerLatestRunStatusRenderer;
   selectedIssue: IssueManagerIssueSummary | null;
   selectedTask: IssueManagerTaskSummary | null;
-  onClose: () => void;
+  onClose: (source: IssueManagerTaskDrawerCloseSource) => void;
+  shouldIgnoreBackdropClick?: (event: {
+    clientX: number;
+    clientY: number;
+  }) => boolean;
 }): JSX.Element {
   const view = resolveIssueManagerTaskDrawerViewState({
     controller,
     selectedTask
   });
   const taskContent = selectedTask?.content ?? "";
+  const hasRequestedBackdropCloseRef = useRef(false);
+  const requestBackdropClose = (
+    event: MouseEvent<HTMLDivElement> | PointerEvent<HTMLDivElement>,
+    phase: "click" | "pointer_down"
+  ) => {
+    const target = event.target;
+    logIssueManagerDiagnostic(
+      controller.diagnostics,
+      "task_drawer.backdrop_close_event",
+      {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        currentTargetTag: event.currentTarget.tagName,
+        hasRequestedBackdropClose: hasRequestedBackdropCloseRef.current,
+        isClosing,
+        isDirectBackdropClick: event.target === event.currentTarget,
+        phase,
+        selectedIssueId: selectedIssue?.issueId ?? null,
+        selectedTaskId: selectedTask?.taskId ?? null,
+        selectedTaskTitle: selectedTask?.title ?? null,
+        targetClassName:
+          target instanceof HTMLElement ? target.className : null,
+        targetTag: target instanceof HTMLElement ? target.tagName : null
+      }
+    );
+
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (hasRequestedBackdropCloseRef.current) {
+      return;
+    }
+
+    if (shouldIgnoreBackdropClick?.(event)) {
+      return;
+    }
+
+    hasRequestedBackdropCloseRef.current = true;
+    onClose("backdrop");
+  };
+  const handleBackdropPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    requestBackdropClose(event, "pointer_down");
+  };
+  const handleBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (hasRequestedBackdropCloseRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    requestBackdropClose(event, "click");
+  };
 
   return (
     <div
@@ -42,7 +108,8 @@ export function IssueManagerTaskDrawer({
           ? "motion-safe:animate-out motion-safe:fade-out-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.4,0,0.2,1)]"
           : "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-[180ms] motion-safe:ease-[cubic-bezier(0.4,0,0.2,1)]"
       )}
-      onClick={onClose}
+      onClick={handleBackdropClick}
+      onPointerDown={handleBackdropPointerDown}
       onTouchMove={(event) => {
         event.preventDefault();
       }}
@@ -64,7 +131,7 @@ export function IssueManagerTaskDrawer({
         {view.bodyKind === "edit" ? null : (
           <IssueManagerTaskDrawerHeader
             controller={controller}
-            onClose={onClose}
+            onClose={() => onClose("header_back")}
             selectedTask={selectedTask}
             view={view}
           />

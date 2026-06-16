@@ -14,8 +14,10 @@ import {
   resolveIssueManagerFloatingNoticeViewState,
   type IssueManagerFloatingNoticeViewState
 } from "../shell/IssueManagerNoticeState.ts";
+import type { IssueManagerDiagnostics } from "../../../../internal/issueManagerDiagnostics.ts";
 
 export function useIssueManagerControllerRuntime(input: {
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   openSource?: IssueManagerOpenSource;
   onStateChange?: (state: IssueManagerNodeState) => void;
@@ -28,8 +30,15 @@ export function useIssueManagerControllerRuntime(input: {
   floatingNotice: IssueManagerFloatingNoticeViewState | null;
   snapshot: IssueManagerControllerSession["store"];
 } {
-  const { feature, openSource, onStateChange, service, state, workspaceId } =
-    input;
+  const {
+    diagnostics,
+    feature,
+    openSource,
+    onStateChange,
+    service,
+    state,
+    workspaceId
+  } = input;
   const controllerService = useMemo(
     () => service ?? createIssueManagerControllerService(),
     [service]
@@ -37,12 +46,13 @@ export function useIssueManagerControllerRuntime(input: {
   const controllerSession = useMemo(
     () =>
       controllerService.createSession({
+        diagnostics,
         feature,
         openSource,
         state,
         workspaceId
       }),
-    [controllerService, feature, openSource, workspaceId]
+    [controllerService, diagnostics, feature, openSource, workspaceId]
   );
   const snapshot = useSnapshot(
     controllerSession.store

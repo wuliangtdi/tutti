@@ -63,13 +63,15 @@ export function IssueManagerIssuePane({
         ? controller.taskDetail.value.task
         : tasks.find((task) => task.taskId === selectedTaskId)) ?? null)
     : null;
+  const issueLatestRun =
+    controller.issueDetail.value?.latestRun ??
+    controller.issueDetail.value?.recentRuns[0] ??
+    null;
   const latestRun = selectedTask
     ? (controller.taskDetail.value?.latestRun ??
       controller.taskDetail.value?.recentRuns[0] ??
       null)
-    : (controller.issueDetail.value?.latestRun ??
-      controller.issueDetail.value?.recentRuns[0] ??
-      null);
+    : issueLatestRun;
   const latestOutputs = selectedTask
     ? (controller.taskDetail.value?.latestOutputs ?? [])
     : (controller.issueDetail.value?.latestOutputs ?? []);
@@ -80,9 +82,8 @@ export function IssueManagerIssuePane({
     tasks
   });
   const issueRunTaskId = resolveIssueManagerIssueRunTaskId({
-    latestRun,
+    latestRun: issueLatestRun,
     selectedIssue,
-    selectedTaskId,
     tasks
   });
   const visibleTasks = resolveIssueManagerVisibleSubtasks({
@@ -282,6 +283,7 @@ export function IssueManagerIssuePane({
               />
               <IssueManagerSubtaskSection
                 copy={copy}
+                diagnostics={controller.diagnostics}
                 onCreate={controller.createTaskDraft}
                 onSelectTask={controller.selectTask}
                 selectedTaskId={selectedTask?.taskId ?? null}

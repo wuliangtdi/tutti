@@ -12,21 +12,25 @@ export function resolveIssueManagerIssueAcceptanceTaskId(input: {
 }): string | null {
   if (
     input.selectedIssue?.status !== "pending_acceptance" ||
-    input.latestRun?.status !== "completed"
+    input.latestRun?.status !== "completed" ||
+    input.selectedTaskId
   ) {
     return null;
   }
 
-  return resolveIssueManagerIssueRunTaskId(input);
+  return resolveIssueManagerIssueRunTaskId({
+    latestRun: input.latestRun,
+    selectedIssue: input.selectedIssue,
+    tasks: input.tasks
+  });
 }
 
 export function resolveIssueManagerIssueRunTaskId(input: {
   latestRun: IssueManagerRun | null;
   selectedIssue: IssueManagerIssueSummary | null;
-  selectedTaskId: string | null;
   tasks: readonly IssueManagerTaskSummary[];
 }): string | null {
-  if (!input.selectedIssue || input.selectedTaskId) {
+  if (!input.selectedIssue) {
     return null;
   }
 

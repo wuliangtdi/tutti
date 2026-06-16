@@ -1,4 +1,11 @@
-import { useEffect, useState, type JSX, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+  type PointerEvent,
+  type ReactNode
+} from "react";
 import { Button, FileCreateIcon, cn } from "@tutti-os/ui-system";
 import type {
   IssueManagerIssueSummary,
@@ -9,14 +16,25 @@ import { IssueManagerBottomBar } from "./IssueManagerBottomBar.tsx";
 import { IssueManagerFloatingNotice } from "./IssueManagerFloatingNotice.tsx";
 import { IssueManagerSidebar } from "./IssueManagerSidebar.tsx";
 import { IssueManagerTaskComposerPane } from "./IssueManagerTaskComposerPane.tsx";
-import { IssueManagerTaskDrawer } from "./IssueManagerTaskDrawer.tsx";
+import {
+  IssueManagerTaskDrawer,
+  type IssueManagerTaskDrawerCloseSource
+} from "./IssueManagerTaskDrawer.tsx";
 import type { IssueManagerController } from "../../react/index.ts";
 import { useIssueManagerShellView } from "./useIssueManagerShellView.ts";
 import type { IssueManagerLatestRunStatusRenderer } from "../../latestRunStatusRenderer.ts";
+import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
+import {
+  shouldIgnoreIssueManagerTaskDrawerBackdropEcho,
+  type IssueManagerPointerSnapshot
+} from "./IssueManagerTaskDrawerEcho.ts";
 
 export { shouldAutoCollapseIssueManagerSidebar } from "./useIssueManagerShellView.ts";
 
 const issueManagerTaskDrawerExitDurationMs = 180;
+const issueManagerTaskDrawerCloseBlockerMs = 500;
+
+let issueManagerTaskDrawerCloseBlockerUntilMs = 0;
 
 export interface IssueManagerShellProps {
   controller: IssueManagerController;
@@ -44,36 +62,223 @@ export function IssueManagerShell({
   });
   const [renderedTaskDrawerTask, setRenderedTaskDrawerTask] =
     useState<IssueManagerTaskSummary | null>(selectedTask);
-  const [isTaskDrawerClosing, setIsTaskDrawerClosing] = useState(false);
+  const [taskDrawerCloseBlockerUntilMs, setTaskDrawerCloseBlockerUntilMs] =
+    useState(issueManagerTaskDrawerCloseBlockerUntilMs);
+  const lastContentPointerDownRef = useRef<IssueManagerPointerSnapshot | null>(
+    null
+  );
+  const taskDrawerOpenPointerRef = useRef<IssueManagerPointerSnapshot | null>(
+    null
+  );
+  const pendingTaskDrawerCloseRef = useRef(false);
+  const taskDrawerCloseBlockerTimeoutRef = useRef<number | null>(null);
+  const previousTaskDrawerOpenRef = useRef<{
+    isOpen: boolean;
+    taskId: string | null;
+  }>({
+    isOpen: shellView.content.isTaskDrawerOpen,
+    taskId: selectedTask?.taskId ?? null
+  });
+
+  const clearTaskDrawerCloseBlocker = () => {
+    if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
+      window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
+      taskDrawerCloseBlockerTimeoutRef.current = null;
+    }
+    issueManagerTaskDrawerCloseBlockerUntilMs = 0;
+    setTaskDrawerCloseBlockerUntilMs(0);
+  };
+
+  const startTaskDrawerCloseBlocker = () => {
+    issueManagerTaskDrawerCloseBlockerUntilMs =
+      performance.now() + issueManagerTaskDrawerCloseBlockerMs;
+    setTaskDrawerCloseBlockerUntilMs(issueManagerTaskDrawerCloseBlockerUntilMs);
+  };
 
   useEffect(() => {
-    if (shellView.content.isTaskDrawerOpen) {
-      setRenderedTaskDrawerTask(selectedTask);
-      setIsTaskDrawerClosing(false);
+    if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
+      window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
+      taskDrawerCloseBlockerTimeoutRef.current = null;
+    }
+
+    if (taskDrawerCloseBlockerUntilMs <= performance.now()) {
       return undefined;
     }
+
+    taskDrawerCloseBlockerTimeoutRef.current = window.setTimeout(() => {
+      if (issueManagerTaskDrawerCloseBlockerUntilMs <= performance.now()) {
+        issueManagerTaskDrawerCloseBlockerUntilMs = 0;
+      }
+      taskDrawerCloseBlockerTimeoutRef.current = null;
+      setTaskDrawerCloseBlockerUntilMs(
+        issueManagerTaskDrawerCloseBlockerUntilMs
+      );
+    }, taskDrawerCloseBlockerUntilMs - performance.now());
+
+    return () => {
+      if (taskDrawerCloseBlockerTimeoutRef.current !== null) {
+        window.clearTimeout(taskDrawerCloseBlockerTimeoutRef.current);
+        taskDrawerCloseBlockerTimeoutRef.current = null;
+      }
+    };
+  }, [taskDrawerCloseBlockerUntilMs]);
+
+  const handleCloseTaskDrawer = (source: IssueManagerTaskDrawerCloseSource) => {
+    logIssueManagerDiagnostic(
+      controller.diagnostics,
+      "task_drawer.close_source_requested",
+      {
+        isTaskDrawerOpen: shellView.content.isTaskDrawerOpen,
+        renderedTaskId: renderedTaskDrawerTask?.taskId ?? null,
+        selectedIssueId: selectedIssue?.issueId ?? null,
+        selectedTaskId: selectedTask?.taskId ?? null,
+        source
+      }
+    );
+    pendingTaskDrawerCloseRef.current = true;
+    setRenderedTaskDrawerTask(null);
+    if (source === "backdrop") {
+      startTaskDrawerCloseBlocker();
+    } else {
+      clearTaskDrawerCloseBlocker();
+    }
+    onCloseTaskDrawer();
+  };
+
+  const handleContentPointerDownCapture = (
+    event: PointerEvent<HTMLDivElement>
+  ) => {
+    if (shellView.content.isTaskDrawerOpen || event.button !== 0) {
+      return;
+    }
+    lastContentPointerDownRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      timeMs: performance.now()
+    };
+  };
+
+  const shouldIgnoreTaskDrawerBackdropClick = (event: {
+    clientX: number;
+    clientY: number;
+  }) => {
+    const openPointer = taskDrawerOpenPointerRef.current;
+    if (!openPointer) {
+      return false;
+    }
+    const echo = shouldIgnoreIssueManagerTaskDrawerBackdropEcho({
+      clickClientX: event.clientX,
+      clickClientY: event.clientY,
+      nowMs: performance.now(),
+      openPointer
+    });
+    if (echo.ignore) {
+      logIssueManagerDiagnostic(
+        controller.diagnostics,
+        "task_drawer.backdrop_click_ignored_as_open_echo",
+        {
+          clickClientX: event.clientX,
+          clickClientY: event.clientY,
+          distancePx: echo.distancePx,
+          elapsedMs: echo.elapsedMs,
+          openClientX: openPointer.clientX,
+          openClientY: openPointer.clientY,
+          selectedIssueId: selectedIssue?.issueId ?? null,
+          selectedTaskId: selectedTask?.taskId ?? null
+        }
+      );
+    }
+    return echo.ignore;
+  };
+
+  useEffect(() => {
+    const selectedTaskId = selectedTask?.taskId ?? null;
+    const previousOpen = previousTaskDrawerOpenRef.current;
+
+    if (shellView.content.isTaskDrawerOpen) {
+      if (pendingTaskDrawerCloseRef.current) {
+        return undefined;
+      }
+      if (!previousOpen.isOpen || previousOpen.taskId !== selectedTaskId) {
+        taskDrawerOpenPointerRef.current = lastContentPointerDownRef.current;
+        logIssueManagerDiagnostic(
+          controller.diagnostics,
+          "task_drawer.open_state",
+          {
+            isOpen: true,
+            openClientX: taskDrawerOpenPointerRef.current?.clientX ?? null,
+            openClientY: taskDrawerOpenPointerRef.current?.clientY ?? null,
+            selectedIssueId: selectedIssue?.issueId ?? null,
+            selectedTaskId,
+            selectedTaskTitle: selectedTask?.title ?? null
+          }
+        );
+      }
+      previousTaskDrawerOpenRef.current = {
+        isOpen: true,
+        taskId: selectedTaskId
+      };
+      if (renderedTaskDrawerTask?.taskId !== selectedTaskId) {
+        setRenderedTaskDrawerTask(selectedTask);
+      }
+      return undefined;
+    }
+
+    previousTaskDrawerOpenRef.current = {
+      isOpen: false,
+      taskId: null
+    };
+    taskDrawerOpenPointerRef.current = null;
+    pendingTaskDrawerCloseRef.current = false;
 
     if (!renderedTaskDrawerTask) {
       return undefined;
     }
 
-    setIsTaskDrawerClosing(true);
+    logIssueManagerDiagnostic(
+      controller.diagnostics,
+      "task_drawer.exit_started",
+      {
+        renderedTaskId: renderedTaskDrawerTask.taskId,
+        renderedTaskTitle: renderedTaskDrawerTask.title,
+        selectedIssueId: selectedIssue?.issueId ?? null,
+        selectedTaskId: selectedTask?.taskId ?? null
+      }
+    );
     const timeout = window.setTimeout(() => {
+      logIssueManagerDiagnostic(
+        controller.diagnostics,
+        "task_drawer.exit_finished",
+        {
+          renderedTaskId: renderedTaskDrawerTask.taskId,
+          renderedTaskTitle: renderedTaskDrawerTask.title
+        }
+      );
       setRenderedTaskDrawerTask(null);
-      setIsTaskDrawerClosing(false);
     }, issueManagerTaskDrawerExitDurationMs);
 
     return () => {
       window.clearTimeout(timeout);
     };
   }, [
+    controller.diagnostics,
     renderedTaskDrawerTask,
+    renderedTaskDrawerTask?.taskId,
+    selectedIssue?.issueId,
     selectedTask,
+    selectedTask?.taskId,
+    selectedTask?.title,
     shellView.content.isTaskDrawerOpen
   ]);
-  const taskDrawerTask = shellView.content.isTaskDrawerOpen
+  const isTaskDrawerOpenForRender =
+    shellView.content.isTaskDrawerOpen && !pendingTaskDrawerCloseRef.current;
+  const taskDrawerTask = isTaskDrawerOpenForRender
     ? selectedTask
     : renderedTaskDrawerTask;
+  const isTaskDrawerClosing =
+    !isTaskDrawerOpenForRender && renderedTaskDrawerTask !== null;
+  const isTaskDrawerCloseBlockerVisible =
+    !taskDrawerTask && taskDrawerCloseBlockerUntilMs > performance.now();
 
   return (
     <div
@@ -124,7 +329,10 @@ export function IssueManagerShell({
         </div>
       )}
 
-      <div className="relative h-full min-h-0 overflow-hidden bg-transparent @container/issue-manager-content">
+      <div
+        className="relative h-full min-h-0 overflow-hidden bg-transparent @container/issue-manager-content"
+        onPointerDownCapture={handleContentPointerDownCapture}
+      >
         <div className="flex h-full min-h-0 flex-col">
           <div className="min-h-0 flex-1 overflow-hidden">
             {shellView.content.isIssueEditing ? (
@@ -170,7 +378,31 @@ export function IssueManagerShell({
             renderLatestRunStatus={renderLatestRunStatus}
             selectedIssue={selectedIssue}
             selectedTask={taskDrawerTask}
-            onClose={onCloseTaskDrawer}
+            onClose={handleCloseTaskDrawer}
+            shouldIgnoreBackdropClick={shouldIgnoreTaskDrawerBackdropClick}
+          />
+        ) : null}
+
+        {isTaskDrawerCloseBlockerVisible ? (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 z-20 bg-transparent"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onDoubleClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onPointerUp={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
           />
         ) : null}
       </div>

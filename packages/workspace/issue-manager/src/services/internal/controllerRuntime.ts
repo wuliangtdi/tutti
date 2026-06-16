@@ -13,6 +13,10 @@ import {
   normalizeIssueManagerNodeState,
   type IssueManagerFeature
 } from "../../core/index.ts";
+import {
+  logIssueManagerDiagnostic,
+  type IssueManagerDiagnostics
+} from "../../internal/issueManagerDiagnostics.ts";
 import { resolveIssueManagerErrorMessage } from "./controllerUtils.ts";
 import {
   applyIssueManagerIssueDetailResultToNodeState,
@@ -49,6 +53,7 @@ export interface IssueManagerControllerSnapshot {
 }
 
 export interface CreateIssueManagerControllerRuntimeInput {
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   openSource?: IssueManagerOpenSource;
   state?: Partial<IssueManagerNodeState> | null;
@@ -105,6 +110,7 @@ export interface IssueManagerControllerRuntime {
 export function createIssueManagerControllerRuntime(
   input: CreateIssueManagerControllerRuntimeInput
 ): IssueManagerControllerRuntime {
+  const diagnostics = input.diagnostics ?? null;
   const normalizedNodeState = normalizeIssueManagerNodeState(input.state);
   const listeners = new Set<() => void>();
   let deferredIssueSearch = normalizedNodeState.issueSearchQuery;
@@ -214,6 +220,29 @@ export function createIssueManagerControllerRuntime(
           } satisfies IssueManagerNodeState);
     if (next === previous) {
       return;
+    }
+
+    if (
+      previous.activeTopicId !== next.activeTopicId ||
+      previous.selectedIssueId !== next.selectedIssueId ||
+      previous.selectedTaskId !== next.selectedTaskId ||
+      previous.taskListCollapsed !== next.taskListCollapsed
+    ) {
+      logIssueManagerDiagnostic(
+        diagnostics,
+        "node_state.changed",
+        {
+          nextActiveTopicId: next.activeTopicId ?? null,
+          nextSelectedIssueId: next.selectedIssueId,
+          nextSelectedTaskId: next.selectedTaskId,
+          nextTaskListCollapsed: next.taskListCollapsed === true,
+          previousActiveTopicId: previous.activeTopicId ?? null,
+          previousSelectedIssueId: previous.selectedIssueId,
+          previousSelectedTaskId: previous.selectedTaskId,
+          previousTaskListCollapsed: previous.taskListCollapsed === true
+        },
+        { includeStack: true }
+      );
     }
 
     setSnapshot((current) => ({

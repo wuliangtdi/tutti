@@ -16,10 +16,15 @@ import type {
   IssueManagerNodeState,
   IssueManagerTaskDetail
 } from "../../../../contracts/index.ts";
+import {
+  logIssueManagerDiagnostic,
+  type IssueManagerDiagnostics
+} from "../../../../internal/issueManagerDiagnostics.ts";
 
 export function createIssueManagerControllerActionsBridge(input: {
   controllerSession: IssueManagerControllerSession;
   copy: IssueManagerI18nRuntime;
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   issueDetail: {
     value: IssueManagerIssueDetail | null;
@@ -38,6 +43,7 @@ export function createIssueManagerControllerActionsBridge(input: {
   const {
     controllerSession,
     copy,
+    diagnostics,
     feature,
     issueDetail,
     issueDraft,
@@ -67,14 +73,41 @@ export function createIssueManagerControllerActionsBridge(input: {
     setIsRunningTask: (update) => controllerSession.setIsRunningTask(update),
     setIssueDraftInternal: (update) =>
       controllerSession.setIssueDraftInternal(update),
-    setIssueEditorModeState: (update) =>
-      controllerSession.setIssueEditorModeState(update),
+    setIssueEditorModeState: (update) => {
+      const nextMode =
+        typeof update === "function" ? update(issueEditorMode) : update;
+      logIssueManagerDiagnostic(
+        diagnostics,
+        "issue_editor_mode.action_requested",
+        {
+          nextIssueEditorMode: nextMode,
+          previousIssueEditorMode: issueEditorMode,
+          selectedIssueId: nodeState.selectedIssueId,
+          selectedTaskId: nodeState.selectedTaskId
+        },
+        { includeStack: true }
+      );
+      controllerSession.setIssueEditorModeState(nextMode);
+    },
     setReferenceTarget: (update) =>
       controllerSession.setReferenceTarget(update),
     setTaskDraftInternal: (update) =>
       controllerSession.setTaskDraftInternal(update),
-    setTaskEditorModeState: (update) =>
-      controllerSession.setTaskEditorModeState(update),
+    setTaskEditorModeState: (update) => {
+      const nextMode =
+        typeof update === "function" ? update(taskEditorMode) : update;
+      logIssueManagerDiagnostic(
+        diagnostics,
+        "task_editor_mode.action_requested",
+        {
+          nextTaskEditorMode: nextMode,
+          previousSelectedTaskId: nodeState.selectedTaskId,
+          previousTaskEditorMode: taskEditorMode
+        },
+        { includeStack: true }
+      );
+      controllerSession.setTaskEditorModeState(nextMode);
+    },
     taskDetail,
     taskDraft,
     taskEditorMode,

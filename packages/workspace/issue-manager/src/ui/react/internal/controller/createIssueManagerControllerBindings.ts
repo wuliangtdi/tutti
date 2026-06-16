@@ -9,9 +9,14 @@ import type {
 import { applyIssueManagerIssueSelection } from "../../../../services/internal/controllerState.ts";
 import { createIssueManagerIssueBindings } from "../issue/createIssueManagerIssueBindings.ts";
 import { createIssueManagerTaskBindings } from "../task/createIssueManagerTaskBindings.ts";
+import {
+  logIssueManagerDiagnostic,
+  type IssueManagerDiagnostics
+} from "../../../../internal/issueManagerDiagnostics.ts";
 
 export function createIssueManagerControllerBindings(input: {
   controllerSession: IssueManagerControllerSession;
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   issueEditorMode: IssueManagerEditorMode;
   nodeState: IssueManagerNodeState;
@@ -24,6 +29,7 @@ export function createIssueManagerControllerBindings(input: {
 }) {
   const {
     controllerSession,
+    diagnostics,
     feature,
     issueEditorMode,
     nodeState,
@@ -34,12 +40,14 @@ export function createIssueManagerControllerBindings(input: {
 
   const issueBindings = createIssueManagerIssueBindings({
     controllerSession,
+    diagnostics,
     feature,
     issueEditorMode,
     nodeState
   });
   const taskBindings = createIssueManagerTaskBindings({
     controllerSession,
+    diagnostics,
     feature,
     nodeState,
     taskEditorMode
@@ -66,9 +74,19 @@ export function createIssueManagerControllerBindings(input: {
       );
     },
     selectIssue(issueId: string | null) {
-      controllerSession.updateNodeState((current) =>
-        applyIssueManagerIssueSelection(current, issueId)
-      );
+      controllerSession.updateNodeState((current) => {
+        logIssueManagerDiagnostic(
+          diagnostics,
+          "issue_selection.requested",
+          {
+            nextSelectedIssueId: issueId,
+            previousSelectedIssueId: current.selectedIssueId,
+            previousSelectedTaskId: current.selectedTaskId
+          },
+          { includeStack: true }
+        );
+        return applyIssueManagerIssueSelection(current, issueId);
+      });
       controllerSession.setIssueEditorModeState("read");
       controllerSession.setTaskEditorModeState("read");
     },

@@ -24,12 +24,24 @@ import {
   resolveIssueManagerStatusCounts,
   resolveIssueManagerSidebarViewState
 } from "./IssueManagerShellState.ts";
+import { logIssueManagerDiagnostic } from "../../../internal/issueManagerDiagnostics.ts";
 
 interface SidebarResizeState {
   maxWidth: number;
   pointerId: number;
   startClientX: number;
   startWidth: number;
+}
+
+interface ShellContentDiagnosticSnapshot {
+  isIssueEditing: boolean;
+  isTaskCreating: boolean;
+  isTaskDrawerOpen: boolean;
+  issueEditorMode: string;
+  selectedIssueId: string | null;
+  selectedTaskId: string | null;
+  selectedTaskPresent: boolean;
+  taskEditorMode: string;
 }
 
 export interface UseIssueManagerShellViewInput {
@@ -53,6 +65,8 @@ export function useIssueManagerShellView({
     controller.dismissNotification();
   });
   const floatingNotice = controller.floatingNotice;
+  const lastContentDiagnosticRef =
+    useRef<ShellContentDiagnosticSnapshot | null>(null);
 
   useEffect(() => {
     const publishLayout = () => {
@@ -102,6 +116,59 @@ export function useIssueManagerShellView({
     selectedTaskPresent: selectedTask !== null,
     taskEditorMode: controller.taskEditorMode
   });
+  useEffect(() => {
+    const nextDiagnostic: ShellContentDiagnosticSnapshot = {
+      isIssueEditing: content.isIssueEditing,
+      isTaskCreating: content.isTaskCreating,
+      isTaskDrawerOpen: content.isTaskDrawerOpen,
+      issueEditorMode: controller.issueEditorMode,
+      selectedIssueId: controller.nodeState.selectedIssueId,
+      selectedTaskId: controller.nodeState.selectedTaskId,
+      selectedTaskPresent: selectedTask !== null,
+      taskEditorMode: controller.taskEditorMode
+    };
+    const previousDiagnostic = lastContentDiagnosticRef.current;
+    if (
+      previousDiagnostic &&
+      previousDiagnostic.isIssueEditing === nextDiagnostic.isIssueEditing &&
+      previousDiagnostic.isTaskCreating === nextDiagnostic.isTaskCreating &&
+      previousDiagnostic.isTaskDrawerOpen === nextDiagnostic.isTaskDrawerOpen &&
+      previousDiagnostic.issueEditorMode === nextDiagnostic.issueEditorMode &&
+      previousDiagnostic.selectedIssueId === nextDiagnostic.selectedIssueId &&
+      previousDiagnostic.selectedTaskId === nextDiagnostic.selectedTaskId &&
+      previousDiagnostic.selectedTaskPresent ===
+        nextDiagnostic.selectedTaskPresent &&
+      previousDiagnostic.taskEditorMode === nextDiagnostic.taskEditorMode
+    ) {
+      return;
+    }
+    lastContentDiagnosticRef.current = nextDiagnostic;
+    logIssueManagerDiagnostic(controller.diagnostics, "shell_content.derived", {
+      isIssueEditing: content.isIssueEditing,
+      isTaskCreating: content.isTaskCreating,
+      isTaskDrawerOpen: content.isTaskDrawerOpen,
+      issueEditorMode: controller.issueEditorMode,
+      previousIsTaskDrawerOpen: previousDiagnostic?.isTaskDrawerOpen ?? null,
+      previousSelectedTaskId: previousDiagnostic?.selectedTaskId ?? null,
+      previousTaskEditorMode: previousDiagnostic?.taskEditorMode ?? null,
+      selectedIssueId: controller.nodeState.selectedIssueId,
+      selectedTaskId: controller.nodeState.selectedTaskId,
+      selectedTaskPresent: selectedTask !== null,
+      showBottomBar: content.showBottomBar,
+      taskEditorMode: controller.taskEditorMode
+    });
+  }, [
+    content.isIssueEditing,
+    content.isTaskCreating,
+    content.isTaskDrawerOpen,
+    content.showBottomBar,
+    controller.diagnostics,
+    controller.issueEditorMode,
+    controller.nodeState.selectedIssueId,
+    controller.nodeState.selectedTaskId,
+    controller.taskEditorMode,
+    selectedTask
+  ]);
   const sidebarViewState = resolveIssueManagerSidebarViewState({
     copy: controller.copy,
     issues: controller.issues

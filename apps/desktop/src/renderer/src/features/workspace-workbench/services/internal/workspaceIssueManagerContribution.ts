@@ -120,6 +120,18 @@ export function createWorkspaceIssueManagerContribution(input: {
     externalStateSource: nodeStateSource.externalStateSource,
     feature,
     node: {
+      diagnostics: {
+        log: (event, details) => {
+          void input.runtimeApi
+            .logRendererDiagnostic({
+              details,
+              event: `issue_manager.${event}`,
+              source: "issue-manager",
+              workspaceId: input.workspaceId
+            })
+            .catch(() => undefined);
+        }
+      },
       emptyIllustration: createElement("img", {
         alt: "",
         "aria-hidden": "true",

@@ -15,20 +15,38 @@ import {
   persistIssueManagerTaskDraftContent
 } from "../../../../services/internal/controllerState.ts";
 import { trackIssueManagerContentReferenceChanges } from "../../../../services/internal/controllerAnalytics.ts";
+import {
+  logIssueManagerDiagnostic,
+  type IssueManagerDiagnostics
+} from "../../../../internal/issueManagerDiagnostics.ts";
 
 export function createIssueManagerTaskBindings(input: {
   controllerSession: IssueManagerControllerSession;
+  diagnostics?: IssueManagerDiagnostics | null;
   feature: IssueManagerFeature;
   nodeState: IssueManagerNodeState;
   taskEditorMode: IssueManagerEditorMode;
 }) {
-  const { controllerSession, feature, nodeState, taskEditorMode } = input;
+  const { controllerSession, diagnostics, feature, nodeState, taskEditorMode } =
+    input;
 
   return {
     selectTask(taskId: string | null) {
-      controllerSession.updateNodeState((current) =>
-        applyIssueManagerTaskSelection(current, taskId)
-      );
+      controllerSession.updateNodeState((current) => {
+        logIssueManagerDiagnostic(
+          diagnostics,
+          "task_selection.requested",
+          {
+            activeTopicId: current.activeTopicId ?? null,
+            nextSelectedTaskId: taskId,
+            previousSelectedIssueId: current.selectedIssueId,
+            previousSelectedTaskId: current.selectedTaskId,
+            taskEditorMode
+          },
+          { includeStack: true }
+        );
+        return applyIssueManagerTaskSelection(current, taskId);
+      });
       controllerSession.setTaskEditorModeState("read");
     },
     setTaskContent(content: string) {
@@ -55,6 +73,16 @@ export function createIssueManagerTaskBindings(input: {
       }));
     },
     setTaskEditorMode(mode: IssueManagerEditorMode) {
+      logIssueManagerDiagnostic(
+        diagnostics,
+        "task_editor_mode.requested",
+        {
+          nextTaskEditorMode: mode,
+          previousSelectedTaskId: nodeState.selectedTaskId,
+          previousTaskEditorMode: taskEditorMode
+        },
+        { includeStack: true }
+      );
       controllerSession.setTaskEditorModeState(mode);
       if (mode === "create") {
         controllerSession.setTaskDraftInternal(

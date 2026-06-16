@@ -14,6 +14,7 @@ import type {
   IssueManagerNodeState,
   IssueManagerOpenSource
 } from "../contracts/index.ts";
+import type { IssueManagerDiagnostics } from "../internal/issueManagerDiagnostics.ts";
 import {
   normalizeIssueManagerNodeState,
   resolveIssueManagerExpandedFrame,
@@ -48,6 +49,7 @@ export interface IssueManagerExternalWorkspaceState {
 }
 
 export interface CreateIssueManagerWorkbenchNodeDefinitionInput {
+  diagnostics?: IssueManagerDiagnostics | null;
   emptyIllustration?: ReactNode;
   feature: IssueManagerFeature;
   frame?: WorkbenchFrame;
@@ -101,6 +103,7 @@ export function createIssueManagerWorkbenchNodeDefinition<
     IssueManagerExternalWorkspaceState
 >({
   emptyIllustration,
+  diagnostics,
   feature,
   frame = defaultIssueManagerNodeFrame,
   onStateChange,
@@ -121,6 +124,7 @@ export function createIssueManagerWorkbenchNodeDefinition<
     renderBody: (context) =>
       createElement(IssueManagerNode, {
         emptyIllustration,
+        diagnostics,
         feature,
         nodeId: context.node.id,
         openRequest: toIssueManagerNodeOpenRequest(context.activation),

@@ -1839,6 +1839,87 @@ func TestClaudeCodeAdapterStartAppendsSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterExecPrependsMentionRoutingDirective(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-mention-routing")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+	session.PermissionModeID = "default"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "[@User & Codex story](mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1) 这里有什么内容？"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-mention", func([]activityshared.Event) {}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if !strings.Contains(text, "Claude Code mention handoff routing for this user turn") ||
+		!strings.Contains(text, `Skill(skill="tutti-cli", args="mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1")`) ||
+		!strings.Contains(text, "Do not say you cannot read the mention") ||
+		!strings.Contains(text, "User prompt:\n"+prompt) {
+		t.Fatalf("prompt text = %q, want Claude mention routing directive and original prompt", text)
+	}
+	userContent := firstUserMessageContent(t, events)
+	if !strings.Contains(userContent, prompt) ||
+		strings.Contains(userContent, "Claude Code mention handoff routing") {
+		t.Fatalf("user activity event = %#v, want original user prompt only", events)
+	}
+}
+
+func TestStandardACPAdapterExecDoesNotPrependClaudeMentionRoutingForGemini(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Gemini CLI", "gemini-session-mention-routing")
+	adapter := NewGeminiAdapter(transport)
+	session := standardTestSession(ProviderGemini)
+	session.PermissionModeID = "full-access"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	prompt := "[@User & Codex story](mention://agent-session?id=session-1&provider=codex&workspaceId=workspace-1) 这里有什么内容？"
+
+	if _, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-mention", func([]activityshared.Event) {}, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	text := firstPromptText(t, transport.conn.lastPromptParamsSnapshot)
+	if text != prompt {
+		t.Fatalf("prompt text = %q, want unmodified prompt %q", text, prompt)
+	}
+}
+
+func firstPromptText(t *testing.T, params map[string]any) string {
+	t.Helper()
+	items, ok := params["prompt"].([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("prompt params = %#v, want prompt items", params)
+	}
+	first, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first prompt item = %#v, want map", items[0])
+	}
+	text, ok := first["text"].(string)
+	if !ok {
+		t.Fatalf("first prompt text = %#v, want string", first["text"])
+	}
+	return text
+}
+
+func firstUserMessageContent(t *testing.T, events []activityshared.Event) string {
+	t.Helper()
+	for _, event := range events {
+		if event.Type == activityshared.EventMessageAppended && event.Payload.Role == activityshared.MessageRoleUser {
+			return event.Payload.Content
+		}
+	}
+	t.Fatalf("events = %#v, want user message event", events)
+	return ""
+}
+
 func TestClaudeCodeAdapterStartFailsWhenSystemPromptFileIsMissing(t *testing.T) {
 	t.Parallel()
 

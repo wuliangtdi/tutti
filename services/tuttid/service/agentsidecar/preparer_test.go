@@ -25,6 +25,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	userCodexConfig := strings.Join([]string{
 		`notify = ["say", "done"]`,
 		`model_provider = "proxy"`,
+		`service_tier = "default"`,
 		"",
 		"[model_providers.proxy]",
 		`base_url = "https://openai.proxy.test/v1"`,
@@ -85,6 +86,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(codexAgents), "tutti issue list") {
 		t.Fatalf("codex AGENTS.md content = %q", string(codexAgents))
 	}
+	if strings.Contains(string(codexAgents), `Skill(skill="issue-manager", args="<full mention URI>")`) {
+		t.Fatalf("codex AGENTS.md content = %q, want provider-neutral mention routing", string(codexAgents))
+	}
 	if !strings.Contains(string(codexAgents), "# Host App Context") ||
 		!strings.Contains(string(codexAgents), "standard Markdown syntax, for example `![alt](/absolute/path.png)`") ||
 		!strings.Contains(string(codexAgents), "you MUST include that image in your final response using Markdown image syntax") ||
@@ -117,6 +121,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		!strings.Contains(string(codexConfig), `model_provider = "proxy"`) ||
 		!strings.Contains(string(codexConfig), "[model_providers.proxy]") {
 		t.Fatalf("codex config = %q, want copied user config with project root markers disabled", string(codexConfig))
+	}
+	if strings.Contains(string(codexConfig), `service_tier = "default"`) {
+		t.Fatalf("codex config = %q, want unsupported default service_tier removed", string(codexConfig))
 	}
 	userConfigAfterPrepare, err := os.ReadFile(filepath.Join(userCodexHome, "config.toml"))
 	if err != nil {
@@ -373,6 +380,72 @@ func TestCodexConfigWithProjectRootMarkersDisabledKeepsExistingEmptyMarkers(t *t
 	}
 }
 
+func TestCodexConfigWithSupportedServiceTierSanitizesLegacyValues(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "removes default",
+			in: strings.Join([]string{
+				`model = "gpt-5.5"`,
+				`service_tier = "default"`,
+				`model_reasoning_effort = "high"`,
+			}, "\n"),
+			want: strings.Join([]string{
+				`model = "gpt-5.5"`,
+				`model_reasoning_effort = "high"`,
+			}, "\n"),
+		},
+		{
+			name: "normalizes priority",
+			in: strings.Join([]string{
+				`service_tier = "priority"`,
+				`model = "gpt-5.5"`,
+			}, "\n"),
+			want: strings.Join([]string{
+				`service_tier = "fast"`,
+				`model = "gpt-5.5"`,
+			}, "\n"),
+		},
+		{
+			name: "keeps flex",
+			in: strings.Join([]string{
+				`service_tier = "flex"`,
+				`model = "gpt-5.5"`,
+			}, "\n"),
+			want: strings.Join([]string{
+				`service_tier = "flex"`,
+				`model = "gpt-5.5"`,
+			}, "\n"),
+		},
+		{
+			name: "ignores nested config",
+			in: strings.Join([]string{
+				`model = "gpt-5.5"`,
+				"",
+				`[mcp_servers.example]`,
+				`service_tier = "default"`,
+			}, "\n"),
+			want: strings.Join([]string{
+				`model = "gpt-5.5"`,
+				"",
+				`[mcp_servers.example]`,
+				`service_tier = "default"`,
+			}, "\n"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _ := codexConfigWithSupportedServiceTier(tt.in)
+			if got != tt.want {
+				t.Fatalf("codexConfigWithSupportedServiceTier() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 	stateDir := t.TempDir()
@@ -552,6 +625,12 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	if !strings.Contains(string(tuttiSkill), "tutti issue list") {
 		t.Fatalf("claude cwd tutti provider skill content = %q", string(tuttiSkill))
 	}
+	if !strings.Contains(string(tuttiSkill), "fallback router") ||
+		!strings.Contains(string(tuttiSkill), "`mention://workspace-issue?...` -> `issue-manager`") ||
+		!strings.Contains(string(tuttiSkill), "`mention://workspace-app?...` -> `workspace-app`") ||
+		!strings.Contains(string(tuttiSkill), "`mention://agent-session?...` -> `tutti-cli`") {
+		t.Fatalf("claude cwd tutti provider skill content = %q, want mention router guidance", string(tuttiSkill))
+	}
 	issueSkillPath := filepath.Join(cwd, ".claude", "skills", "issue-manager", "SKILL.md")
 	issueSkill, err := os.ReadFile(issueSkillPath)
 	if err != nil {
@@ -576,8 +655,14 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(systemPrompt), "First, if provider-native skills are visible") ||
 		!strings.Contains(string(systemPrompt), "Provider-native skill names may be namespaced") ||
+		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
 		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="issue-manager", args="<full mention URI>")`) ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="workspace-app", args="<full mention URI>")`) ||
+		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli", args="<full mention URI>")`) ||
+		!strings.Contains(string(systemPrompt), "Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call") ||
+		!strings.Contains(string(systemPrompt), "Treat mention routing as higher priority than guessing the source platform from the display label") ||
 		!strings.Contains(string(systemPrompt), "you MUST use the relevant injected skill") ||
 		!strings.Contains(string(systemPrompt), "Treat `mention://...` links as internal Tutti references") ||
 		!strings.Contains(string(systemPrompt), "Do not try to open `mention://...` links in a browser") ||
@@ -631,7 +716,9 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		t.Fatalf("claude plugin skill missing: %v", err)
 	}
 	if !strings.Contains(string(pluginSkill), "tutti issue list") ||
-		!strings.Contains(string(pluginSkill), "mention://agent-session") {
+		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
+		!strings.Contains(string(pluginSkill), "`mention://workspace-issue?...` belongs to `issue-manager`") ||
+		!strings.Contains(string(pluginSkill), "`mention://workspace-app?...` belongs to `workspace-app`") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
 	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))
