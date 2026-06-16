@@ -99,7 +99,7 @@ export function flattenAgentMentionPaletteEntries(
     return state.categories.map((category) => ({
       key: `category:${category.id}`,
       type: "category",
-      categoryId: category.id
+      categoryId: category.id as AgentMentionFilterId
     }));
   }
   const entries: AgentMentionPaletteEntry[] = [];
@@ -112,7 +112,7 @@ export function flattenAgentMentionPaletteEntries(
             : item.targetId
         }`,
         type: "item",
-        groupId: group.id,
+        groupId: group.id as AgentMentionGroupId,
         item
       });
     }
@@ -120,7 +120,7 @@ export function flattenAgentMentionPaletteEntries(
       entries.push({
         key: `expand:${group.id}`,
         type: "expand",
-        groupId: group.id
+        groupId: group.id as AgentMentionGroupId
       });
     }
   }
@@ -173,7 +173,7 @@ export function AgentFileMentionPalette({
   const [loadingIndicatorVisible, setLoadingIndicatorVisible] = useState(
     state.status === "loading"
   );
-  const browseFilter = state.filter;
+  const browseFilter = state.filter as AgentMentionFilterId;
   const highlightedBrowseCategory = highlightedKey?.startsWith("category:")
     ? highlightedKey.slice("category:".length)
     : null;
@@ -273,8 +273,10 @@ export function AgentFileMentionPalette({
         <div className={paletteStyles.header}>
           <UnderlineTabs
             tabs={state.categories.map((category) => ({
-              value: category.id,
-              label: agentMentionFilterLabel(category.id)
+              value: category.id as AgentMentionFilterId,
+              label: agentMentionFilterLabel(
+                category.id as AgentMentionFilterId
+              )
             }))}
             value={browseFilter}
             onValueChange={onSelectCategory}
@@ -296,7 +298,7 @@ export function AgentFileMentionPalette({
               />
             ) : (
               renderMentionPaletteGroups({
-                filter: state.filter,
+                filter: state.filter as AgentMentionFilterId,
                 groups: state.groups,
                 highlightedKey,
                 highlightedOptionRef,
@@ -334,7 +336,7 @@ export function AgentFileMentionPalette({
             value: filter,
             label: agentMentionFilterLabel(filter)
           }))}
-          value={state.filter}
+          value={state.filter as AgentMentionFilterId}
           onValueChange={onSelectFilter}
           className="agent-gui-node__mention-palette-tabs"
           preventMouseDownDefault
@@ -351,14 +353,14 @@ export function AgentFileMentionPalette({
             <MentionPaletteEmptyState
               label={resolveMentionPaletteEmptyLabel({
                 emptyLabel,
-                filter: state.filter,
+                filter: state.filter as AgentMentionFilterId,
                 mode: state.mode,
                 query: state.query
               })}
             />
           ) : (
             renderMentionPaletteGroups({
-              filter: state.filter,
+              filter: state.filter as AgentMentionFilterId,
               groups: state.groups,
               highlightedKey,
               highlightedOptionRef,
@@ -823,12 +825,14 @@ function renderMentionGroups(
   onExpandGroup: (groupId: AgentMentionGroupId) => void
 ): React.JSX.Element[] {
   return groups.map((group, index) => {
+    const groupId = group.id as AgentMentionGroupId;
     const followsMySessions =
-      group.id === "collab_sessions" && groups[index - 1]?.id === "my_sessions";
+      groupId === "collab_sessions" &&
+      (groups[index - 1]?.id as AgentMentionGroupId) === "my_sessions";
     const showGroupLabel = shouldRenderMentionGroupLabel({
       filter,
       groupCount: groups.length,
-      groupId: group.id,
+      groupId,
       query
     });
     const showGroupDivider =
@@ -847,14 +851,14 @@ function renderMentionGroups(
         ) : null}
         {showGroupLabel ? (
           <div className="px-3 text-[13px] font-normal text-[var(--text-secondary)]">
-            {agentMentionGroupLabel(group.id)}
+            {agentMentionGroupLabel(groupId)}
           </div>
         ) : null}
         <div className="grid gap-1">
           {group.items.length === 0 &&
           !shouldSuppressFileSearchGroupChrome(filter, query) ? (
             <div className="px-3 py-1 text-[13px] font-normal text-[var(--text-tertiary)]">
-              {agentMentionEmptyGroupLabel(group.id, query)}
+              {agentMentionEmptyGroupLabel(groupId, query)}
             </div>
           ) : null}
           {group.items.map((item) => {
@@ -899,7 +903,7 @@ function renderMentionGroups(
               )}
               onMouseEnter={() => onHighlightChange(`expand:${group.id}`)}
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onExpandGroup(group.id)}
+              onClick={() => onExpandGroup(groupId)}
             >
               {translate("agentHost.agentGui.contextPickerExpandMore", {
                 count: mentionGroupExpandCount(group, filter)

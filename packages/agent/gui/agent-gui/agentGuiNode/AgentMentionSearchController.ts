@@ -14,6 +14,7 @@ import {
   shouldPrefetchBrowseFilter,
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
+import { agentMentionFilterLabel } from "./AgentMentionLabels";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import {
   buildAgentSessionMentionHref,
@@ -26,6 +27,10 @@ import type {
   AgentRichTextAtProvider
 } from "./agentRichTextAtProvider";
 import { AGENT_GUI_MENTION_PROVIDER_IDS } from "./agentRichTextAtProvider";
+import type {
+  MentionPaletteGroup,
+  MentionPaletteState
+} from "@tutti-os/ui-rich-text/at-panel";
 
 export type AgentMentionFilterId = "all" | "app" | "file" | "session" | "issue";
 export type AgentMentionGroupId =
@@ -41,45 +46,13 @@ type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
 
 export interface AgentMentionBrowseCategory {
   id: AgentMentionFilterId;
+  label: string;
 }
 
-export interface AgentMentionGroup {
-  id: AgentMentionGroupId;
-  items: AgentContextMentionItem[];
-  totalCount: number;
-  visibleCount: number;
-  hasMore: boolean;
-  emptyLabel?: string;
-}
+export type AgentMentionGroup = MentionPaletteGroup<AgentContextMentionItem>;
 
 export type AgentMentionSearchState =
-  | {
-      status: "idle";
-      query: string;
-      mode: "browse";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: null;
-    }
-  | {
-      status: "loading" | "ready";
-      query: string;
-      mode: "browse" | "results";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: null;
-    }
-  | {
-      status: "error";
-      query: string;
-      mode: "browse" | "results";
-      filter: AgentMentionFilterId;
-      categories: AgentMentionBrowseCategory[];
-      groups: AgentMentionGroup[];
-      error: string;
-    };
+  MentionPaletteState<AgentContextMentionItem>;
 
 interface AgentMentionSearchControllerOptions {
   richTextAtProviders?: readonly AgentRichTextAtProvider[];
@@ -98,7 +71,10 @@ const DEFAULT_SESSION_LIMIT = 30;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 3500;
 
 const BROWSE_CATEGORIES: AgentMentionBrowseCategory[] =
-  AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({ id }));
+  AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({
+    id,
+    label: agentMentionFilterLabel(id)
+  }));
 
 const {
   agentGeneratedFile: AGENT_GENERATED_FILE_PROVIDER_ID,

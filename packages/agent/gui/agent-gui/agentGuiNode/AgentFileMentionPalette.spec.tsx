@@ -627,11 +627,11 @@ describe("AgentFileMentionPalette", () => {
       mode: "browse",
       filter: "file",
       categories: [
-        { id: "all" },
-        { id: "file" },
-        { id: "app" },
-        { id: "session" },
-        { id: "issue" }
+        { id: "all", label: "All" },
+        { id: "file", label: "Files" },
+        { id: "app", label: "Apps" },
+        { id: "session", label: "Sessions" },
+        { id: "issue", label: "Issues" }
       ],
       groups: [
         {
@@ -693,11 +693,11 @@ describe("AgentFileMentionPalette", () => {
       mode: "browse",
       filter: "file",
       categories: [
-        { id: "all" },
-        { id: "file" },
-        { id: "app" },
-        { id: "session" },
-        { id: "issue" }
+        { id: "all", label: "All" },
+        { id: "file", label: "Files" },
+        { id: "app", label: "Apps" },
+        { id: "session", label: "Sessions" },
+        { id: "issue", label: "Issues" }
       ],
       groups: [
         {
@@ -1305,7 +1305,10 @@ describe("AgentFileMentionPalette", () => {
       query: "",
       mode: "browse",
       filter: "all",
-      categories: [{ id: "all" }, { id: "session" }],
+      categories: [
+        { id: "all", label: "All" },
+        { id: "session", label: "Sessions" }
+      ],
       groups: [
         {
           id: "my_sessions",
