@@ -72,6 +72,7 @@ type scriptedAppServerConnection struct {
 	goal                         map[string]any
 	goalStartsTurn               bool
 	goalCleared                  bool
+	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
 	closeOnce                    sync.Once
 }
 
@@ -249,6 +250,21 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			c.notify(appServerNotifyThreadStarted, map[string]any{
 				"thread": map[string]any{"id": "codex-thread-1"},
 			})
+			c.mu.Lock()
+			replayTokenUsage := c.replayTokenUsageOnResume && message.Method == appServerMethodThreadResume
+			c.mu.Unlock()
+			if replayTokenUsage {
+				// Real codex 0.140.0 replays thread/tokenUsage/updated during
+				// thread/resume so the GUI can show context fill before a new
+				// turn runs (modelContextWindow at top level, last.inputTokens).
+				c.notify(appServerNotifyTokenUsage, map[string]any{
+					"tokenUsage": map[string]any{
+						"modelContextWindow": 258400,
+						"last":               map[string]any{"inputTokens": 20453, "totalTokens": 20473},
+						"total":              map[string]any{"totalTokens": 20473},
+					},
+				})
+			}
 			c.sendJSON(map[string]any{
 				"id": message.ID,
 				"result": map[string]any{
@@ -793,6 +809,34 @@ func TestCodexAppServerAdapterResumeEmitsCommandSnapshot(t *testing.T) {
 		if !containsString(names, want) {
 			t.Fatalf("resume snapshot commands = %#v, want %q", names, want)
 		}
+	}
+}
+
+func TestCodexAppServerAdapterResumeRetainsReplayedContextUsage(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.replayTokenUsageOnResume = true
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+
+	state := adapter.SessionState(session)
+	usage, _ := state.RuntimeContext["usage"].(map[string]any)
+	contextWindow, _ := usage["contextWindow"].(map[string]any)
+
+	if contextWindow == nil {
+		t.Fatalf("resume dropped replayed token usage: usage=%#v", usage)
+	}
+	if got, _ := acpInt64Value(contextWindow["usedTokens"]); got != 20453 {
+		t.Fatalf("usedTokens = %d, want 20453", got)
+	}
+	if got, _ := acpInt64Value(contextWindow["totalTokens"]); got != 258400 {
+		t.Fatalf("totalTokens = %d, want 258400", got)
 	}
 }
 

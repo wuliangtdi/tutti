@@ -352,8 +352,23 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 
 	params := appServerThreadStartParams(session, a.sessionCWD(session))
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
+	// codex replays thread/tokenUsage/updated during thread/resume so the GUI
+	// can show context fill before a new turn runs. The resumed session is not
+	// stored yet, so applyTokenUsage cannot reach it; capture the replayed
+	// usage here and fold it into the live state below.
+	var replayedUsage acpUsageState
+	replayedUsageKnown := false
 	threadResult, err := client.CallWithTimeout(ctx, acpStartCallTimeout, appServerMethodThreadResume, params,
 		func(ctx context.Context, message acpMessage) error {
+			if message.Method == appServerNotifyTokenUsage && len(message.Params) > 0 {
+				tokenParams := map[string]any{}
+				if json.Unmarshal(message.Params, &tokenParams) == nil {
+					if usage, ok := appServerTokenUsageState(tokenParams); ok {
+						replayedUsage = usage
+						replayedUsageKnown = true
+					}
+				}
+			}
 			_, err := a.handleAppServerMessage(ctx, client, session, "", message, nil, nil, nil)
 			return err
 		})
@@ -367,6 +382,9 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) err
 	applyACPConfigOptionDescriptors(&liveState, codexAppServerConfigOptionDescriptors(models, session, threadResult))
 	if quotas := appServerRateLimitQuotas(rateLimits); len(quotas) > 0 {
 		liveState.usage = mergeACPUsageState(liveState.usage, acpUsageState{quotas: quotas})
+	}
+	if replayedUsageKnown {
+		liveState.usage = mergeACPUsageState(liveState.usage, replayedUsage)
 	}
 
 	started = true
