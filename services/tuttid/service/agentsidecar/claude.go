@@ -33,21 +33,6 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 	if err := installClaudeTuttiPlugin(pluginDir, input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, err
 	}
-	projectSkillRoot := providerSkillRoot(input.Cwd, input.Provider)
-	if projectSkillRoot != "" {
-		skillPaths, err := installProviderNativeSkillSpecs(
-			projectSkillRoot,
-			claudeProjectSkills(input.PrepareInput),
-		)
-		if err != nil {
-			return ProviderPrepareResult{}, fmt.Errorf("install claude project skills: %w", err)
-		}
-		if input.Manifest != nil {
-			for _, skillPath := range skillPaths {
-				input.Manifest.RecordManagedFile(skillPath, "provider-skill", true)
-			}
-		}
-	}
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(systemPromptPath, "provider-system-prompt", true)
 		input.Manifest.RecordManagedFile(pluginDir, "provider-plugin", true)
@@ -71,18 +56,6 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 		Cwd: input.Cwd,
 		Env: env,
 	}, nil
-}
-
-func claudeProjectSkills(input PrepareInput) []providerSkillSpec {
-	skills := providerSkills(input)
-	filtered := make([]providerSkillSpec, 0, len(skills))
-	for _, skill := range skills {
-		if skill.baseName == workspaceAppSkillName {
-			continue
-		}
-		filtered = append(filtered, skill)
-	}
-	return filtered
 }
 
 func installClaudePlanSettings(configDir string) error {
