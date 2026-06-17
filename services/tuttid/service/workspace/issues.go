@@ -465,7 +465,7 @@ func applyVisibleIssueSubtaskCount(issue *workspaceissues.Issue, tasks []workspa
 	issue.NotStartedCount = counts.NotStarted
 	issue.RunningCount = counts.Running
 	issue.PendingAcceptanceCount = counts.PendingAcceptance
-	issue.CompletedCount = counts.Completed
+	issue.CompletedCount = counts.Completed + counts.PendingAcceptance
 	issue.FailedCount = counts.Failed
 	issue.CanceledCount = counts.Canceled
 }

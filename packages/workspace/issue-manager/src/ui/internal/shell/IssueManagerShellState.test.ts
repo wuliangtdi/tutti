@@ -265,16 +265,17 @@ test("subtask progress from visible tasks is hidden when all subtasks are filter
   assert.equal(resolveIssueManagerSubtaskProgressFromTasks([]), null);
 });
 
-test("subtask progress from visible tasks counts only visible completed subtasks", () => {
+test("subtask progress from visible tasks counts review-ready subtasks as completed", () => {
   assert.deepEqual(
     resolveIssueManagerSubtaskProgressFromTasks([
       createTaskSummary({ status: "completed", taskId: "task-1" }),
-      createTaskSummary({ status: "running", taskId: "task-2" })
+      createTaskSummary({ status: "pending_acceptance", taskId: "task-2" }),
+      createTaskSummary({ status: "running", taskId: "task-3" })
     ]),
     {
-      completed: 1,
-      percent: 50,
-      total: 2
+      completed: 2,
+      percent: 66.66666666666666,
+      total: 3
     }
   );
 });

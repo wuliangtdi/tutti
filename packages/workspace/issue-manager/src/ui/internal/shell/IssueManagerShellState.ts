@@ -151,7 +151,10 @@ export function resolveIssueManagerSubtaskProgressFromTasks(
     return null;
   }
 
-  const completed = tasks.filter((task) => task.status === "completed").length;
+  const completed = tasks.filter(
+    (task) =>
+      task.status === "completed" || task.status === "pending_acceptance"
+  ).length;
 
   return {
     completed,

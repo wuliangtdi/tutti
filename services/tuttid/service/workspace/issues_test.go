@@ -280,6 +280,67 @@ func TestIssueManagerServiceHidesIssueRunTaskFromVisibleSubtaskCounts(t *testing
 	}
 }
 
+func TestIssueManagerServiceCountsPendingAcceptanceSubtasksAsCompletedProgress(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := openIssueServiceStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "workspace-1",
+		Name: "Workspace One",
+	}); err != nil {
+		t.Fatalf("Create() workspace error = %v", err)
+	}
+
+	service := IssueManagerService{Store: store}
+	if _, err := service.CreateIssue(ctx, "workspace-1", CreateIssueManagerIssueInput{
+		IssueID: "issue-1",
+		TopicID: workspaceissues.DefaultTopicID,
+		Title:   "Issue One",
+	}); err != nil {
+		t.Fatalf("CreateIssue() error = %v", err)
+	}
+	if _, err := service.CreateTask(ctx, "workspace-1", "issue-1", CreateIssueManagerTaskInput{
+		TaskID: "task-1",
+		Title:  "Task One",
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	run, err := service.CreateRun(ctx, "workspace-1", "issue-1", "task-1", CreateIssueManagerRunInput{
+		AgentProvider: "codex",
+		RunID:         "run-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun() error = %v", err)
+	}
+	if _, err := service.CompleteRun(ctx, "workspace-1", "issue-1", run.TaskID, run.RunID, CompleteIssueManagerRunInput{
+		Status: string(workspaceissues.StatusCompleted),
+	}); err != nil {
+		t.Fatalf("CompleteRun() error = %v", err)
+	}
+
+	detail, err := service.GetIssueDetail(ctx, "workspace-1", "issue-1")
+	if err != nil {
+		t.Fatalf("GetIssueDetail() error = %v", err)
+	}
+	if detail.Issue.TaskCount != 1 || detail.Issue.PendingAcceptanceCount != 1 || detail.Issue.CompletedCount != 1 {
+		t.Fatalf("detail issue visible subtask counts = %+v, want pending acceptance counted as completed progress", detail.Issue)
+	}
+
+	list, err := service.ListIssues(ctx, "workspace-1", ListIssueManagerItemsInput{
+		TopicID: workspaceissues.DefaultTopicID,
+	})
+	if err != nil {
+		t.Fatalf("ListIssues() error = %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("list items len = %d, want 1", len(list.Items))
+	}
+	if list.Items[0].TaskCount != 1 || list.Items[0].PendingAcceptanceCount != 1 || list.Items[0].CompletedCount != 1 {
+		t.Fatalf("list issue visible subtask counts = %+v, want pending acceptance counted as completed progress", list.Items[0])
+	}
+}
+
 func TestIssueRunReconcileCompletionWaitsGraceBeforeFailedSessionCompletion(t *testing.T) {
 	now := time.Now().UnixMilli()
 	run := workspaceissues.Run{
