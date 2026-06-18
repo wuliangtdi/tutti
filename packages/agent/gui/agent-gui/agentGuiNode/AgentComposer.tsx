@@ -168,6 +168,8 @@ export interface AgentComposerProps {
     send: string;
     modelLabel: string;
     modelSelectionLabel: string;
+    modelContextWindowSuffix: string;
+    modelTooltipVersionLabel: string;
     defaultModel: string;
     inheritedUnavailable: string;
     loadingConversation: string;
@@ -2661,6 +2663,8 @@ export function AgentComposer({
                   labels={{
                     modelLabel: labels.modelLabel,
                     modelSelectionLabel: labels.modelSelectionLabel,
+                    modelContextWindowSuffix: labels.modelContextWindowSuffix,
+                    modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
                     planModeLabel: labels.planModeLabel,
                     reasoningLabel: labels.reasoningLabel,
                     reasoningDegreeLabel: labels.reasoningDegreeLabel,

@@ -178,6 +178,8 @@ export interface AgentGUIViewLabels {
   send: string;
   modelLabel: string;
   modelSelectionLabel: string;
+  modelContextWindowSuffix: string;
+  modelTooltipVersionLabel: string;
   defaultModel: string;
   inheritedUnavailable: string;
   reasoningLabel: string;
@@ -1450,6 +1452,8 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       send: labels.send,
       modelLabel: labels.modelLabel,
       modelSelectionLabel: labels.modelSelectionLabel,
+      modelContextWindowSuffix: labels.modelContextWindowSuffix,
+      modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
       defaultModel: labels.defaultModel,
       inheritedUnavailable: labels.inheritedUnavailable,
       loadingConversation: labels.loadingConversation,
@@ -1524,8 +1528,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.inheritedUnavailable,
       labels.loadingConversation,
       labels.modelLabel,
+      labels.modelContextWindowSuffix,
       labels.modelDescriptions,
       labels.modelSelectionLabel,
+      labels.modelTooltipVersionLabel,
       labels.permissionLabel,
       labels.permissionModeAuto,
       labels.permissionModeFullAccess,

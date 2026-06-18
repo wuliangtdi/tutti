@@ -291,16 +291,32 @@ export function DesktopAgentGUIWorkbenchBody({
     },
     [agentProviderStatusService, context.host, workspaceId]
   );
-  const workbenchState = useMemo(
+  const rawWorkbenchState = useMemo(
     () =>
       normalizeDesktopAgentGUIWorkbenchState(
         context.externalNodeState ?? context.node.data.runtimeNodeState
       ),
     [context.externalNodeState, context.node.data.runtimeNodeState]
   );
+  // The workbench host returns a fresh externalNodeState object on every render
+  // (its store hands out a defensive copy). Pin it by reference so downstream
+  // memos and effects only react to real content changes.
+  const workbenchStateRef = useRef(rawWorkbenchState);
+  if (
+    !areDesktopAgentGUIWorkbenchStatesEqual(
+      workbenchStateRef.current,
+      rawWorkbenchState
+    )
+  ) {
+    workbenchStateRef.current = rawWorkbenchState;
+  }
+  const workbenchState = workbenchStateRef.current;
   const providerComposerDefaults =
     desktopPreferencesState.agentComposerDefaultsByProvider[provider] ?? null;
-  const normalizedExternalState = useMemo(
+  // Single source of truth: derive the node state directly from the workbench
+  // external store (plus a pure provider-default overlay). There is no local
+  // mirror, so the previous two-way binding and its render loop are gone.
+  const nodeState = useMemo(
     () =>
       withDesktopAgentGUIProviderComposerDefaults(
         normalizeDesktopAgentGUINodeState(workbenchState, provider),
@@ -309,9 +325,8 @@ export function DesktopAgentGUIWorkbenchBody({
       ),
     [workbenchState, provider, providerComposerDefaults]
   );
-  const [state, setState] = useState<DesktopAgentGUINodeState>(
-    normalizedExternalState
-  );
+  const nodeStateRef = useRef(nodeState);
+  nodeStateRef.current = nodeState;
   const [agentProbeDemandBySource, setAgentProbeDemandBySource] = useState<
     Record<string, string>
   >({});
@@ -322,12 +337,49 @@ export function DesktopAgentGUIWorkbenchBody({
   > | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
     useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
-  const lastRequestedWorkbenchStateRef =
-    useRef<DesktopAgentGUIWorkbenchState | null>(null);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);
   const handledPrefillPromptActivationSequenceRef = useRef<number | null>(null);
   const pendingComposerDefaultsWriteRef =
     useRef<DesktopAgentComposerDefaultsWriteIntent | null>(null);
+  // onStateChange is recreated on every host render; pin it so the writer stays
+  // referentially stable and effects don't resubscribe each render.
+  const onStateChangeRef = useRef(onStateChange);
+  onStateChangeRef.current = onStateChange;
+  // The only writer. Reads the live derived node state, applies the update,
+  // and persists to the workbench store via onStateChange when the projected
+  // workbench state actually changes.
+  const handleUpdateNode = useCallback(
+    (
+      updater: (current: DesktopAgentGUINodeState) => DesktopAgentGUINodeState
+    ) => {
+      const current = nodeStateRef.current;
+      const next = normalizeDesktopAgentGUINodeState(
+        updater(current),
+        provider
+      );
+      if (areDesktopAgentGUINodeStatesEqual(current, next)) {
+        return;
+      }
+      nodeStateRef.current = next;
+      const writeIntent = resolveDesktopAgentComposerDefaultsWriteIntent(
+        current,
+        next
+      );
+      if (writeIntent !== undefined) {
+        pendingComposerDefaultsWriteRef.current = writeIntent;
+      }
+      const nextWorkbenchState = projectDesktopAgentGUIWorkbenchState(next);
+      if (
+        !areDesktopAgentGUIWorkbenchStatesEqual(
+          projectDesktopAgentGUIWorkbenchState(current),
+          nextWorkbenchState
+        )
+      ) {
+        onStateChangeRef.current(nextWorkbenchState);
+      }
+    },
+    [provider]
+  );
   const agentProbeProviders = useMemo(
     () => Array.from(new Set(Object.values(agentProbeDemandBySource))).sort(),
     [agentProbeDemandBySource]
@@ -440,20 +492,6 @@ export function DesktopAgentGUIWorkbenchBody({
   ]);
 
   useEffect(() => {
-    setState((current) => {
-      const next = normalizeDesktopAgentGUINodeState(
-        {
-          ...current,
-          ...workbenchState,
-          provider
-        },
-        provider
-      );
-      return areDesktopAgentGUINodeStatesEqual(current, next) ? current : next;
-    });
-  }, [provider, workbenchState]);
-
-  useEffect(() => {
     consumeDesktopAgentGUIOpenSessionActivation({
       activation: context.activation,
       agentActivityRuntime,
@@ -465,10 +503,11 @@ export function DesktopAgentGUIWorkbenchBody({
       nodeId: context.node.id,
       onActivationError: handleOpenSessionActivationError,
       onOpenSessionRequest: setOpenSessionRequest,
-      onStateChange,
+      // Persistence is owned by handleUpdateNode (the single writer).
+      onStateChange: DESKTOP_AGENT_GUI_NOOP,
       provider,
       workspaceId,
-      updateNodeState: setState
+      updateNodeState: handleUpdateNode
     });
   }, [
     agentActivityRuntime,
@@ -476,7 +515,7 @@ export function DesktopAgentGUIWorkbenchBody({
     context.host,
     context.node.id,
     handleOpenSessionActivationError,
-    onStateChange,
+    handleUpdateNode,
     provider,
     workspaceId
   ]);
@@ -519,18 +558,10 @@ export function DesktopAgentGUIWorkbenchBody({
         return;
       }
 
-      setState((current) => {
-        const next = normalizeDesktopAgentGUINodeState(
-          {
-            ...current,
-            conversationRailCollapsed: toggle.conversationRailCollapsed
-          },
-          provider
-        );
-        return areDesktopAgentGUINodeStatesEqual(current, next)
-          ? current
-          : next;
-      });
+      handleUpdateNode((current) => ({
+        ...current,
+        conversationRailCollapsed: toggle.conversationRailCollapsed
+      }));
     };
 
     window.addEventListener(
@@ -543,44 +574,22 @@ export function DesktopAgentGUIWorkbenchBody({
         handleOptimisticConversationRailToggle
       );
     };
-  }, [context.instanceId, provider]);
+  }, [context.instanceId, handleUpdateNode]);
 
-  const handleUpdateNode = useCallback(
-    (
-      updater: (current: DesktopAgentGUINodeState) => DesktopAgentGUINodeState
-    ) =>
-      setState((current) => {
-        const next = normalizeDesktopAgentGUINodeState(
-          updater(current),
-          provider
-        );
-        if (areDesktopAgentGUINodeStatesEqual(current, next)) {
-          return current;
-        }
-        const writeIntent = resolveDesktopAgentComposerDefaultsWriteIntent(
-          current,
-          next
-        );
-        if (writeIntent !== undefined) {
-          pendingComposerDefaultsWriteRef.current = writeIntent;
-        }
-        return next;
-      }),
-    [provider]
-  );
-
+  const activeComposerSettings =
+    nodeState.composerOverridesByProvider?.[nodeState.provider] ??
+    nodeState.composerOverrides ??
+    null;
   useEffect(() => {
     if (previewMode) {
       return;
     }
-    const settings =
-      state.composerOverridesByProvider?.[state.provider] ??
-      state.composerOverrides ??
-      null;
-    if (!settings) {
+    if (!activeComposerSettings) {
       return;
     }
-    const defaults = desktopAgentComposerOverridesToDefaults(settings);
+    const defaults = desktopAgentComposerOverridesToDefaults(
+      activeComposerSettings
+    );
     if (!defaults) {
       return;
     }
@@ -589,7 +598,7 @@ export function DesktopAgentGUIWorkbenchBody({
       !shouldRememberDesktopAgentComposerDefaults({
         defaults,
         pendingWrite,
-        provider: state.provider
+        provider: nodeState.provider
       })
     ) {
       return;
@@ -599,12 +608,12 @@ export function DesktopAgentGUIWorkbenchBody({
       return;
     }
     void desktopPreferencesService
-      .rememberAgentComposerDefaults(state.provider, defaults)
+      .rememberAgentComposerDefaults(nodeState.provider, defaults)
       .then(() => {
         logAgentComposerDefaultsDiagnostic({
           defaults,
           event: "agent.gui.composer_defaults.remembered",
-          provider: state.provider,
+          provider: nodeState.provider,
           runtimeApi,
           workspaceId
         });
@@ -614,45 +623,20 @@ export function DesktopAgentGUIWorkbenchBody({
           defaults,
           error,
           event: "agent.gui.composer_defaults.remember_failed",
-          provider: state.provider,
+          provider: nodeState.provider,
           runtimeApi,
           workspaceId
         });
       });
   }, [
+    activeComposerSettings,
     desktopPreferencesService,
+    nodeState.provider,
     providerComposerDefaults,
     runtimeApi,
-    state.composerOverrides,
-    state.composerOverridesByProvider,
-    state.provider,
     previewMode,
     workspaceId
   ]);
-
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    const nextWorkbenchState = projectDesktopAgentGUIWorkbenchState(state);
-    if (
-      areDesktopAgentGUIWorkbenchStatesEqual(workbenchState, nextWorkbenchState)
-    ) {
-      lastRequestedWorkbenchStateRef.current = workbenchState;
-      return;
-    }
-    if (
-      lastRequestedWorkbenchStateRef.current &&
-      areDesktopAgentGUIWorkbenchStatesEqual(
-        lastRequestedWorkbenchStateRef.current,
-        nextWorkbenchState
-      )
-    ) {
-      return;
-    }
-    lastRequestedWorkbenchStateRef.current = nextWorkbenchState;
-    onStateChange(nextWorkbenchState);
-  }, [onStateChange, previewMode, state, workbenchState]);
 
   const frame = context.node.frame;
   const desktopSize = useMemo(
@@ -704,7 +688,7 @@ export function DesktopAgentGUIWorkbenchBody({
       position={DESKTOP_AGENT_GUI_POSITION}
       previewMode={previewMode}
       richTextAtProviders={effectiveRichTextAtProviders}
-      state={state}
+      state={nodeState}
       title={context.node.title}
       width={frame.width}
       workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}

@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  cloneElement,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type ReactElement
+} from "react";
 import { ChevronDown } from "lucide-react";
 import {
   WorkspaceUserProjectSelect,
@@ -404,6 +412,36 @@ export function AgentModelReasoningDropdown({
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = buildComposerModelMenuModel(composerSettings, labels);
   const menuDisabled = disabled || menu.disabled;
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  useEffect(() => {
+    // #region agent log
+    fetch("http://127.0.0.1:7808/ingest/f5ca3992-d942-4347-9378-897ee3300e86", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "19f915"
+      },
+      body: JSON.stringify({
+        sessionId: "19f915",
+        runId: "pre-fix",
+        hypothesisId: "H2-H3",
+        location: "AgentComposerSettingsMenus.tsx:AgentModelReasoningDropdown",
+        message: "model dropdown render",
+        data: {
+          renderCount: renderCountRef.current,
+          menuOpen,
+          menuDisabled,
+          isSettingsLoading: composerSettings.isSettingsLoading,
+          modelOptionsCount: menu.model.options.length,
+          triggerLabel: menu.trigger.combinedLabel || menu.trigger.modelLabel,
+          showModel: menu.model.show
+        },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+  });
   const applySettingsChange = (patch: {
     model?: string;
     reasoningEffort?: string;
@@ -414,7 +452,34 @@ export function AgentModelReasoningDropdown({
   };
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+    <DropdownMenu
+      open={menuOpen}
+      onOpenChange={(nextOpen) => {
+        // #region agent log
+        fetch(
+          "http://127.0.0.1:7808/ingest/f5ca3992-d942-4347-9378-897ee3300e86",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Debug-Session-Id": "19f915"
+            },
+            body: JSON.stringify({
+              sessionId: "19f915",
+              runId: "pre-fix",
+              hypothesisId: "H3",
+              location:
+                "AgentComposerSettingsMenus.tsx:AgentModelReasoningDropdown:onOpenChange",
+              message: "model dropdown open state change",
+              data: { from: menuOpen, to: nextOpen },
+              timestamp: Date.now()
+            })
+          }
+        ).catch(() => {});
+        // #endregion
+        setMenuOpen(nextOpen);
+      }}
+    >
       <DropdownMenuTrigger asChild disabled={menuDisabled}>
         <button
           type="button"
@@ -461,7 +526,7 @@ export function AgentModelReasoningDropdown({
         collisionPadding={16}
         className={cn(
           styles.composerMenuContent,
-          "w-max min-w-[240px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
+          "w-max min-w-[360px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
         )}
         data-agent-composer-settings-layout="model-primary"
       >
@@ -471,7 +536,7 @@ export function AgentModelReasoningDropdown({
             <ComposerMenuOptionItems
               options={menu.model.options}
               selectedValue={menu.model.selectedValue}
-              descriptionPresentation="tooltip"
+              descriptionPresentation="model-tooltip"
               onSelect={(value) => applySettingsChange({ model: value })}
             />
           </>
@@ -549,7 +614,7 @@ function ComposerMenuOptionItems({
 }: {
   options: ComposerMenuOption[];
   selectedValue: string;
-  descriptionPresentation?: "inline" | "none" | "tooltip";
+  descriptionPresentation?: "inline" | "model-tooltip" | "none" | "tooltip";
   onSelect: (value: string) => void;
 }): React.JSX.Element {
   return (
@@ -558,6 +623,7 @@ function ComposerMenuOptionItems({
         const hasDescription = Boolean(option.description);
         const showInlineDescription =
           descriptionPresentation === "inline" && hasDescription;
+        const showModelTooltip = descriptionPresentation === "model-tooltip";
         const showTooltipDescription =
           descriptionPresentation === "tooltip" && hasDescription;
         return (
@@ -566,8 +632,11 @@ function ComposerMenuOptionItems({
             className={cn(
               styles.composerMenuItem,
               "group/composer-option",
+              showModelTooltip &&
+                "min-h-[40px] max-w-full items-center px-3 py-2",
               showInlineDescription && "items-start"
             )}
+            data-agent-model-option={showModelTooltip ? "true" : undefined}
             onPointerDown={(event) => {
               if (event.button === 0 && !event.ctrlKey) {
                 event.preventDefault();
@@ -578,26 +647,50 @@ function ComposerMenuOptionItems({
               onSelect(option.value);
             }}
           >
-            <span
-              className={cn(
-                "flex min-w-0 flex-1 flex-col",
-                showInlineDescription ? "gap-0.5" : "gap-0"
-              )}
-            >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate leading-[1.15]">
-                  {option.label}
+            {showModelTooltip ? (
+              <ComposerModelOptionTooltip option={option}>
+                <span className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
+                  <span className="min-w-0 truncate leading-[1.15]">
+                    {option.label}
+                  </span>
+                  {option.summary && option.summary.length > 0 ? (
+                    <span className="flex min-w-0 shrink-0 items-baseline gap-1.5 overflow-hidden text-[var(--agent-gui-text-tertiary)]">
+                      {option.summary.map((summary) => (
+                        <span
+                          key={summary}
+                          className="max-w-[64px] truncate leading-[1.15]"
+                        >
+                          {summary}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                 </span>
-                {showTooltipDescription && option.description ? (
-                  <ComposerOptionInfoTooltip description={option.description} />
+              </ComposerModelOptionTooltip>
+            ) : (
+              <span
+                className={cn(
+                  "flex min-w-0 flex-1 flex-col",
+                  showInlineDescription ? "gap-0.5" : "gap-0"
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 truncate leading-[1.15]">
+                    {option.label}
+                  </span>
+                  {showTooltipDescription && option.description ? (
+                    <ComposerOptionInfoTooltip
+                      description={option.description}
+                    />
+                  ) : null}
+                </span>
+                {showInlineDescription && option.description ? (
+                  <span className="whitespace-normal text-[11px] leading-[1.2] text-[var(--text-tertiary)]">
+                    {option.description}
+                  </span>
                 ) : null}
               </span>
-              {showInlineDescription && option.description ? (
-                <span className="whitespace-normal text-[11px] leading-[1.2] text-[var(--text-tertiary)]">
-                  {option.description}
-                </span>
-              ) : null}
-            </span>
+            )}
             <CheckIcon
               aria-hidden
               className={cn(
@@ -609,5 +702,49 @@ function ComposerMenuOptionItems({
         );
       })}
     </>
+  );
+}
+
+function ComposerModelOptionTooltip({
+  children,
+  option
+}: {
+  children: ReactElement<HTMLAttributes<HTMLElement>>;
+  option: ComposerMenuOption;
+}): React.JSX.Element {
+  if (!option.tooltip) {
+    return children;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {cloneElement(children, {
+          "data-agent-model-option-tooltip-trigger": "true"
+        } as Partial<HTMLAttributes<HTMLElement>> &
+          Record<"data-agent-model-option-tooltip-trigger", string>)}
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={10}
+        className="w-[320px] max-w-[calc(100vw-32px)] whitespace-normal rounded-lg border border-[var(--line-2)] bg-[var(--background-fronted)] p-4 text-[13px] leading-[1.3] text-[var(--text-primary)] shadow-lg"
+        data-agent-model-option-tooltip="true"
+      >
+        <span className="block text-[15px] font-semibold leading-[1.2]">
+          {option.tooltip.title}
+        </span>
+        {option.tooltip.description ? (
+          <span className="mt-1.5 block text-[13px] leading-[1.35]">
+            {option.tooltip.description}
+          </span>
+        ) : null}
+        {option.tooltip.contextWindow ? (
+          <span className="mt-4 block">{option.tooltip.contextWindow}</span>
+        ) : null}
+        {option.tooltip.version ? (
+          <span className="mt-4 block italic">{option.tooltip.version}</span>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }

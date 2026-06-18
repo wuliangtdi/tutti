@@ -9,6 +9,8 @@ import {
 const labels: AgentComposerSettingsMenuLabels = {
   modelLabel: "Model",
   modelSelectionLabel: "Model selection",
+  modelContextWindowSuffix: "context window",
+  modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
   inheritedUnavailable: "Unavailable",
   loadingSettings: "Loading",
@@ -131,7 +133,13 @@ describe("buildComposerModelMenuModel", () => {
 
     expect(menu.trigger.isFast).toBe(true);
     expect(menu.speed.selectedLabel).toBe("Fast");
-    expect(menu.model.options[0]?.description).toBe("Frontier");
+    expect(menu.model.options[0]).toMatchObject({
+      description: "Frontier",
+      tooltip: {
+        description: "Frontier",
+        title: "GPT-5.5"
+      }
+    });
   });
 
   it("preserves Claude ACP model descriptions", () => {
@@ -155,7 +163,7 @@ describe("buildComposerModelMenuModel", () => {
           {
             value: "sonnet",
             label: "Sonnet",
-            description: "Sonnet 4.6 · Best for everyday tasks"
+            description: "Sonnet 4.6 · Best for everyday tasks · medium effort"
           }
         ]
       }),
@@ -165,13 +173,25 @@ describe("buildComposerModelMenuModel", () => {
     expect(menu.model.options).toEqual([
       {
         value: "default",
-        label: "Default (Recommended)",
-        description: "Opus 4.8 with 1M context · Most capable for complex work"
+        label: "Opus 4.8",
+        description: "Opus 4.8 with 1M context · Most capable for complex work",
+        summary: ["1M"],
+        tooltip: {
+          contextWindow: "1M context window",
+          description: "Most capable for complex work",
+          title: "Opus 4.8"
+        }
       },
       {
         value: "sonnet",
-        label: "Sonnet",
-        description: "Sonnet 4.6 · Best for everyday tasks"
+        label: "Sonnet 4.6",
+        description: "Sonnet 4.6 · Best for everyday tasks · medium effort",
+        summary: ["Medium"],
+        tooltip: {
+          description: "Best for everyday tasks",
+          title: "Sonnet 4.6",
+          version: "Version: medium effort"
+        }
       }
     ]);
   });

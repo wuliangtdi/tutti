@@ -1519,7 +1519,7 @@ describe("AgentModelReasoningDropdown", () => {
     expect(modelReasoningTrigger()).toHaveClass("animate-pulse");
   });
 
-  it("shows model descriptions in info tooltips", async () => {
+  it("shows model details in right-side row tooltips", async () => {
     render(
       <TooltipProvider>
         <AgentModelReasoningDropdown
@@ -1554,7 +1554,8 @@ describe("AgentModelReasoningDropdown", () => {
               {
                 value: "custom",
                 label: "Custom",
-                description: "Custom model description"
+                description:
+                  "Custom 1.0 with 1M context · Custom model description · high effort"
               }
             ],
             availableReasoningEfforts: [{ value: "high", label: "High" }]
@@ -1583,38 +1584,43 @@ describe("AgentModelReasoningDropdown", () => {
     const localizedOption = await screen.findByRole("menuitem", {
       name: /GPT-5\.5/
     });
-    const localizedInfoTrigger = localizedOption.querySelector(
-      '[data-agent-composer-option-info-trigger="true"]'
+    const localizedTooltipTrigger = localizedOption.querySelector(
+      '[data-agent-model-option-tooltip-trigger="true"]'
     );
-    if (!localizedInfoTrigger) {
-      throw new Error("Expected localized model info trigger");
+    if (!localizedTooltipTrigger) {
+      throw new Error("Expected localized model tooltip trigger");
     }
     fireEvent.mouseEnter(localizedOption);
-    fireEvent.pointerMove(localizedInfoTrigger, { pointerType: "mouse" });
+    fireEvent.pointerMove(localizedTooltipTrigger, { pointerType: "mouse" });
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "复杂编码模型说明"
     );
 
     const customOption = await screen.findByRole("menuitem", {
-      name: /Custom/
+      name: /Custom 1\.0/
     });
-    const customInfoTrigger = customOption.querySelector(
-      '[data-agent-composer-option-info-trigger="true"]'
+    expect(customOption).toHaveTextContent("1M");
+    expect(customOption).toHaveTextContent("High");
+    const customTooltipTrigger = customOption.querySelector(
+      '[data-agent-model-option-tooltip-trigger="true"]'
     );
-    if (!customInfoTrigger) {
-      throw new Error("Expected custom model info trigger");
+    if (!customTooltipTrigger) {
+      throw new Error("Expected custom model tooltip trigger");
     }
     fireEvent.mouseEnter(customOption);
-    fireEvent.pointerMove(customInfoTrigger, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Custom model description"
-    );
+    fireEvent.pointerMove(customTooltipTrigger, { pointerType: "mouse" });
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Custom model description");
+    expect(tooltip).toHaveTextContent("1M context window");
+    expect(tooltip).toHaveTextContent("Version: high effort");
   });
 });
 
 const labels = {
   modelLabel: "Model",
   modelSelectionLabel: "Model selection",
+  modelContextWindowSuffix: "context window",
+  modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
   inheritedUnavailable: "Unavailable",
   loadingSettings: "Loading conversation",

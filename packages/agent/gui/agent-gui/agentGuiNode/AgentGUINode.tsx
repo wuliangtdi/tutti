@@ -655,6 +655,12 @@ export const AgentGUINode = memo(function AgentGUINode({
       send: t("agentHost.agentGui.send"),
       modelLabel: t("agentHost.agentGui.modelLabel"),
       modelSelectionLabel: t("agentHost.agentGui.modelSelectionLabel"),
+      modelContextWindowSuffix: t(
+        "agentHost.agentGui.modelContextWindowSuffix"
+      ),
+      modelTooltipVersionLabel: t(
+        "agentHost.agentGui.modelTooltipVersionLabel"
+      ),
       defaultModel: t("agentHost.agentGui.defaultModel"),
       inheritedUnavailable: t("agentHost.agentGui.inheritedUnavailable"),
       reasoningLabel: t("agentHost.agentGui.reasoningLabel"),

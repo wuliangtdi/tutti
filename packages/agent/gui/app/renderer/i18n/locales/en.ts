@@ -475,6 +475,8 @@ export const en = {
           }
         }
       },
+      modelContextWindowSuffix: "context window",
+      modelTooltipVersionLabel: "Version",
       modelDescriptions: {
         frontierComplexCoding:
           "Frontier model for complex coding, research, and real-world work",

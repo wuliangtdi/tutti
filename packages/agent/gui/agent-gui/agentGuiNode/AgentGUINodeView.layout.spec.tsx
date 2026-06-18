@@ -1301,6 +1301,8 @@ function createLabels(): AgentGUIViewLabels {
     send: "send",
     modelLabel: "model",
     modelSelectionLabel: "modelSelectionLabel",
+    modelContextWindowSuffix: "context window",
+    modelTooltipVersionLabel: "Version",
     defaultModel: "defaultModel",
     inheritedUnavailable: "inheritedUnavailable",
     reasoningLabel: "reasoning",

@@ -337,10 +337,14 @@ export function setAgentSessionViewControlStateLoading(
   if (!normalized) {
     return;
   }
-  updateAgentSessionView(normalized, (current) => ({
-    ...current,
-    isLoadingControlState
-  }));
+  updateAgentSessionView(normalized, (current) =>
+    current.isLoadingControlState === isLoadingControlState
+      ? current
+      : {
+          ...current,
+          isLoadingControlState
+        }
+  );
 }
 
 export function setAgentSessionViewMessagesLoading(
@@ -351,10 +355,14 @@ export function setAgentSessionViewMessagesLoading(
   if (!normalized) {
     return;
   }
-  updateAgentSessionView(normalized, (current) => ({
-    ...current,
-    isLoadingMessages
-  }));
+  updateAgentSessionView(normalized, (current) =>
+    current.isLoadingMessages === isLoadingMessages
+      ? current
+      : {
+          ...current,
+          isLoadingMessages
+        }
+  );
 }
 
 export function setAgentSessionViewError(
@@ -365,10 +373,14 @@ export function setAgentSessionViewError(
   if (!normalized) {
     return;
   }
-  updateAgentSessionView(normalized, (current) => ({
-    ...current,
-    error
-  }));
+  updateAgentSessionView(normalized, (current) =>
+    current.error === error
+      ? current
+      : {
+          ...current,
+          error
+        }
+  );
 }
 
 export function deleteAgentSessionView(ref: AgentSessionViewRef): void {

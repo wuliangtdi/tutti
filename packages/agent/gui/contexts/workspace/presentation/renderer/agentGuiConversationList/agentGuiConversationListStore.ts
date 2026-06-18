@@ -912,6 +912,24 @@ export function ensureAgentGUIConversationListQuery(
   ensureQueryState(query);
 }
 
+export function isAgentGUIConversationListRefreshing(
+  query: AgentGUIConversationListQuery | null
+): boolean {
+  if (!query) return false;
+  const key = createAgentGUIConversationListQueryKey(query);
+  return key !== null && inflightRefreshByQueryKey.has(key);
+}
+
+export function getDeletedAgentGUIConversationIds(
+  query: AgentGUIConversationListQuery | null
+): ReadonlySet<string> {
+  if (!query) return new Set();
+  const key = createAgentGUIConversationListQueryKey(query);
+  return key !== null
+    ? (deletedConversationIdsByQueryKey.get(key) ?? new Set())
+    : new Set();
+}
+
 export function scheduleAgentGUIConversationListProjection(
   query: AgentGUIConversationListQuery,
   reason: RefreshReason
