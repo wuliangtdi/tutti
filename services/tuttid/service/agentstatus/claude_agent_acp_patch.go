@@ -4,6 +4,9 @@ import (
 	"context"
 	_ "embed"
 	"os"
+	"path/filepath"
+
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // claudeAgentACPPatchScript is the idempotent codemod that teaches the
@@ -17,7 +20,10 @@ var claudeAgentACPPatchScript []byte
 
 // runClaudeAgentACPPatch writes the embedded codemod to a temp file and runs it
 // with node. Mirrors runOfficialScriptInstaller's temp-file pattern.
-func (s Service) runClaudeAgentACPPatch(ctx context.Context) (InstallCommandResult, error) {
+func (s Service) runClaudeAgentACPPatch(
+	ctx context.Context,
+	spec InstallerSpec,
+) (InstallCommandResult, error) {
 	scriptFile, err := os.CreateTemp("", "tutti-patch-claude-agent-acp-*.mjs")
 	if err != nil {
 		return InstallCommandResult{ExitCode: 1}, err
@@ -33,6 +39,17 @@ func (s Service) runClaudeAgentACPPatch(ctx context.Context) (InstallCommandResu
 	if err := scriptFile.Close(); err != nil {
 		return InstallCommandResult{ExitCode: 1}, err
 	}
+	if spec.RegistryNPM != nil {
+		appRuntime, err := s.managedRuntimeResolver().Resolve(ctx)
+		if err != nil {
+			return InstallCommandResult{ExitCode: 1}, err
+		}
+		distPath := filepath.Join(spec.RegistryNPM.PackageDir, "dist", "acp-agent.js")
+		return s.installCommand(ctx, InstallCommandInput{
+			Command: joinShellCommand([]string{appRuntime.Node, scriptPath, "--dist", distPath}),
+			Env:     managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(spec.RegistryNPM.Env)...)...),
+		})
+	}
 	return s.installCommand(ctx, InstallCommandInput{
 		Command: joinShellCommand([]string{"node", scriptPath}),
 		Env:     s.commandResolver().Env(nil),
@@ -45,13 +62,13 @@ func (s Service) runClaudeAgentACPPatch(ctx context.Context) (InstallCommandResu
 // the patch only enables the orthogonal `fast` control).
 func (s Service) applyInstallerPostStep(
 	ctx context.Context,
-	step InstallerPostStep,
+	spec InstallerSpec,
 	result InstallCommandResult,
 ) InstallCommandResult {
-	if step != InstallerPostStepPatchClaudeAgentACP {
+	if spec.PostInstall != InstallerPostStepPatchClaudeAgentACP {
 		return result
 	}
-	patchResult, err := s.runClaudeAgentACPPatch(ctx)
+	patchResult, err := s.runClaudeAgentACPPatch(ctx, spec)
 	if err == nil && patchResult.ExitCode == 0 {
 		return result
 	}

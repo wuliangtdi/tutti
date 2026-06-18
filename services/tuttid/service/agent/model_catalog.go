@@ -68,13 +68,6 @@ func NewAgentModelCatalog() *CachedAgentModelCatalog {
 func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider string) (AgentModelCatalogResult, error) {
 	provider = agentprovider.Normalize(provider)
 	switch provider {
-	case agentprovider.ClaudeCode:
-		return AgentModelCatalogResult{
-			Provider:  provider,
-			Source:    "claude-static",
-			FetchedAt: c.now(),
-			Models:    listClaudeCodeModels(),
-		}, nil
 	case agentprovider.Codex:
 		return c.listCodexModels(ctx)
 	case agentprovider.Gemini:

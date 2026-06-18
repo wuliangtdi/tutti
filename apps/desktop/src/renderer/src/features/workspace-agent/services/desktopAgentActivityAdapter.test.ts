@@ -467,43 +467,35 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
   ]);
 });
 
-test("desktop agent activity adapter prefers live model list over static catalog", async () => {
+test("desktop agent activity adapter uses Claude draft live model list", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
-      async getAgentProviderComposerOptions(provider) {
-        return {
-          provider,
-          effectiveSettings: {},
-          modelConfig: {
-            configurable: true,
-            currentValue: "default",
-            options: [
-              { id: "default", value: "default", label: "default" },
-              { id: "opus", value: "opus", label: "opus" }
-            ]
-          },
-          permissionConfig: {
-            configurable: false,
-            modes: []
-          },
-          reasoningConfig: {
-            configurable: true,
-            options: []
-          },
+      async createWorkspaceAgentSession(_workspaceId, request) {
+        return createSession({
+          id: request.agentSessionId,
+          provider: "claude-code",
           runtimeContext: {
             configOptions: [
               {
                 id: "model",
                 currentValue: "default",
                 options: [
-                  { value: "default", name: "Default" },
-                  { value: "claude-opus-4-6", name: "Opus 4.6" }
+                  {
+                    value: "default",
+                    name: "Default",
+                    description: "Opus 4.8 with 1M context"
+                  },
+                  {
+                    value: "claude-opus-4-6",
+                    name: "Opus 4.6",
+                    description: "Most capable for complex work"
+                  }
                 ]
               }
             ]
           },
-          skills: []
-        };
+          visible: false
+        });
       }
     }),
     runtimeApi: createRuntimeApi()
@@ -515,9 +507,209 @@ test("desktop agent activity adapter prefers live model list over static catalog
   });
 
   assert.deepEqual(options.models, [
-    { value: "default", label: "Default" },
-    { value: "claude-opus-4-6", label: "Opus 4.6" }
+    {
+      value: "default",
+      label: "Default",
+      description: "Opus 4.8 with 1M context"
+    },
+    {
+      value: "claude-opus-4-6",
+      label: "Opus 4.6",
+      description: "Most capable for complex work"
+    }
   ]);
+});
+
+test("desktop agent activity adapter flattens grouped runtime config options", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, request) {
+        return createSession({
+          id: request.agentSessionId,
+          provider: "claude-code",
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "sonnet",
+                options: [
+                  {
+                    group: "claude",
+                    name: "Claude",
+                    options: [
+                      {
+                        value: "sonnet",
+                        name: "Sonnet",
+                        description: "Best for everyday tasks"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          visible: false
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    workspaceId,
+    provider: "claude-code"
+  });
+
+  assert.deepEqual(options.models, [
+    {
+      value: "sonnet",
+      label: "Sonnet",
+      description: "Best for everyday tasks"
+    }
+  ]);
+});
+
+test("desktop agent activity adapter loads Claude models from draft session", async () => {
+  const createCalls: unknown[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(requestWorkspaceId, request) {
+        createCalls.push({ request, workspaceId: requestWorkspaceId });
+        return createSession({
+          id: request.agentSessionId,
+          provider: "claude-code",
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "default",
+                options: [
+                  {
+                    value: "default",
+                    name: "Default",
+                    description: "Opus 4.8 with 1M context"
+                  },
+                  {
+                    value: "opus",
+                    name: "Opus",
+                    description: "Most capable"
+                  }
+                ]
+              }
+            ]
+          },
+          visible: false
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const options = await adapter.loadComposerOptions({
+    cwd: "/repo",
+    provider: "claude-code",
+    workspaceId
+  });
+
+  assert.equal(createCalls.length, 1);
+  assert.deepEqual(
+    (
+      createCalls[0] as {
+        request: { initialContent: unknown[]; visible: boolean };
+      }
+    ).request.initialContent,
+    []
+  );
+  assert.equal(
+    (createCalls[0] as { request: { visible: boolean } }).request.visible,
+    false
+  );
+  assert.equal(options.modelConfigurable, true);
+  assert.deepEqual(options.models, [
+    {
+      value: "default",
+      label: "Default",
+      description: "Opus 4.8 with 1M context"
+    },
+    { value: "opus", label: "Opus", description: "Most capable" }
+  ]);
+  assert.equal(typeof options.runtimeContext?.draftAgentSessionId, "string");
+});
+
+test("desktop agent activity adapter promotes Claude draft on first prompt", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, request) {
+        calls.push(
+          `create:${request.visible === false ? "hidden" : "visible"}`
+        );
+        return createSession({
+          id: request.agentSessionId,
+          provider: "claude-code",
+          runtimeContext: {
+            configOptions: [
+              {
+                id: "model",
+                currentValue: "opus",
+                options: [{ value: "opus", name: "Opus" }]
+              }
+            ]
+          },
+          visible: false
+        });
+      },
+      async updateWorkspaceAgentSessionVisibility(
+        _workspaceId,
+        agentSessionId,
+        request
+      ) {
+        calls.push(`visibility:${agentSessionId}:${request.visible}`);
+        return createSession({
+          id: agentSessionId,
+          provider: "claude-code",
+          visible: request.visible
+        });
+      },
+      async sendWorkspaceAgentSessionInput(
+        _workspaceId,
+        agentSessionId,
+        request
+      ) {
+        calls.push(`send:${agentSessionId}:${request.content[0]?.text}`);
+        return createSession({
+          id: agentSessionId,
+          provider: "claude-code",
+          status: "running",
+          visible: true
+        });
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+  const options = await adapter.loadComposerOptions({
+    provider: "claude-code",
+    workspaceId
+  });
+  const draftAgentSessionId = String(
+    options.runtimeContext?.draftAgentSessionId
+  );
+
+  const session = await adapter.createSession({
+    agentSessionId: draftAgentSessionId,
+    initialContent: [{ type: "text", text: "hello" }],
+    provider: "claude-code",
+    workspaceId
+  });
+
+  assert.deepEqual(calls, [
+    "create:hidden",
+    `visibility:${draftAgentSessionId}:true`,
+    `send:${draftAgentSessionId}:hello`
+  ]);
+  assert.equal(session.agentSessionId, draftAgentSessionId);
+  assert.equal(session.status, "running");
+  assert.equal(session.visible, true);
 });
 
 function createTuttidClient(
@@ -578,6 +770,13 @@ function createTuttidClient(
     },
     async sendWorkspaceAgentSessionInput() {
       return createSession({ status: "running" });
+    },
+    async updateWorkspaceAgentSessionVisibility(
+      _workspaceId: string,
+      agentSessionId: string,
+      request: { visible: boolean }
+    ) {
+      return createSession({ id: agentSessionId, visible: request.visible });
     },
     ...overrides
   } as unknown as TuttidClient;

@@ -353,9 +353,35 @@ delimited by ---`, and the composer skill picker may show partial or
   Run `pnpm lint:go` plus `cd services/tuttid && go test ./... && go build ./...`.
   Then trigger two install actions in quick succession and confirm the second
   waits for the first instead of starting another global npm mutation.
+
+### ACP adapter appears stale after external registry migration
+
+- Symptom:
+  Claude Agent provider status is not ready, or live ACP options do not match
+  the package version advertised by the ACP External Agent Registry.
+- Quick checks:
+  Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
+  and the package manifest under
+  `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
+  `which claude-agent-acp` only describes a user/global shim and is no longer
+  the Tutti-owned Claude adapter source.
+- Root cause:
+  Tutti resolves Claude ACP from the external agent registry and installs the
+  npm adapter into a daemon-owned prefix with managed npm. A stale or missing
+  prefix package, stale registry cache, or unavailable managed Node runtime can
+  make the adapter unavailable even when a global `claude-agent-acp` exists.
+- Fix:
+  Run the provider install action so tuttid refreshes the registry, resolves the
+  managed Node runtime, and installs the npm package into the per-agent prefix.
+  Do not compensate by changing static model catalogs for behavior that should
+  come from the live ACP package.
+- Validation:
+  Run `go test ./services/tuttid/service/agentstatus`, then confirm a stale
+  global adapter is ignored and the install action uses managed npm with
+  `--prefix <state-dir>/agent-providers/external-agent-registry/packages/claude-acp`.
 - References:
   [service.go](../../services/tuttid/service/agentstatus/service.go)
-  [install_lock.go](../../services/tuttid/service/agentstatus/install_lock.go)
+  [store.go](../../services/tuttid/service/externalagentregistry/store.go)
 
 ### Published package runtime asset 404 because the consumer bundler never saw the file
 

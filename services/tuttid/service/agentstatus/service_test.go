@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 func TestServiceListReportsInstallActionWhenCLIMissing(t *testing.T) {
@@ -156,6 +160,68 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 	}
 	if action.Command == nil || action.Command.Input != "/usr/local/bin/codex login\n" {
 		t.Fatalf("login command = %#v", action.Command)
+	}
+}
+
+func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	claudePath := filepath.Join(binDir, "claude")
+	adapterPath := filepath.Join(binDir, "claude-agent-acp")
+	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, adapterPath, "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.42.0")
+
+	registryStore, _ := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	service := Service{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(_ string) (string, error) {
+			return "", errors.New("not found")
+		},
+		IsExecutableFile: isTestExecutableUnderHome(home),
+		Now: func() time.Time {
+			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+		},
+		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+			return AuthInfo{Status: AuthAuthenticated}, true
+		},
+		ExternalAgentRegistry: registryStore,
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.Availability.Status != AvailabilityNotInstalled {
+		t.Fatalf("Availability.Status = %q, want %q", status.Availability.Status, AvailabilityNotInstalled)
+	}
+	if status.Availability.ReasonCode != "acp_adapter_not_found" {
+		t.Fatalf("ReasonCode = %q, want acp_adapter_not_found", status.Availability.ReasonCode)
+	}
+	if status.Adapter.Installed {
+		t.Fatal("Adapter.Installed = true, want false when registry-managed prefix is empty")
+	}
+	if status.Adapter.BinaryPath == adapterPath {
+		t.Fatalf("Adapter.BinaryPath = %q, want global adapter path ignored", status.Adapter.BinaryPath)
+	}
+	if len(status.Adapter.Command) == 0 || status.Adapter.Command[0] != filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest()) {
+		t.Fatalf("Adapter.Command = %#v, want managed npm command", status.Adapter.Command)
+	}
+	action := firstAction(t, status.Actions)
+	if action.ID != ActionInstall || action.Kind != ActionKindDaemonAction {
+		t.Fatalf("first action = %#v, want daemon install action", action)
 	}
 }
 
@@ -543,6 +609,66 @@ func TestServiceRunActionReportsInstallTimeouts(t *testing.T) {
 	}
 }
 
+func TestServiceRunActionUpgradesStaleClaudeACPAdapter(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".nvm", "versions", "node", "v24.12.0", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	writeExecutable(t, filepath.Join(binDir, "claude"), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nsleep 5\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.42.0")
+
+	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	commands := []string{}
+	service := probeTestService(home)
+	service.ExternalAgentRegistry = registryStore
+	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		commands = append(commands, input.Command)
+		if strings.Contains(input.Command, "@agentclientprotocol/claude-agent-acp") {
+			if err := os.MkdirAll(packageDir, 0o755); err != nil {
+				t.Fatalf("mkdir package dir: %v", err)
+			}
+			writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
+
+	result, err := service.RunAction(context.Background(), RunActionInput{
+		Provider: "claude-code",
+		ActionID: ActionInstall,
+	})
+	if err != nil {
+		t.Fatalf("RunAction() error = %v", err)
+	}
+	if result.Status != RunActionCompleted {
+		t.Fatalf("Status = %q, want %q; result=%#v", result.Status, RunActionCompleted, result)
+	}
+	if len(commands) == 0 ||
+		!strings.Contains(commands[0], filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())) ||
+		!strings.Contains(commands[0], "--prefix") ||
+		!strings.Contains(commands[0], prefixDir) ||
+		!strings.Contains(commands[0], "install") ||
+		!strings.Contains(commands[0], "@agentclientprotocol/claude-agent-acp") {
+		t.Fatalf("commands = %#v, want managed npm prefix install", commands)
+	}
+	if len(commands) < 2 ||
+		!strings.Contains(commands[1], filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())) ||
+		!strings.Contains(commands[1], "--dist") ||
+		!strings.Contains(commands[1], filepath.Join(packageDir, "dist", "acp-agent.js")) {
+		t.Fatalf("commands = %#v, want managed node patch against registry package dir", commands)
+	}
+	if result.Probe == nil || result.Probe.Status != ProbeReady {
+		t.Fatalf("Probe = %#v, want ready probe after upgrade", result.Probe)
+	}
+}
+
 func TestServiceRunActionDoesNotInstallTemporarilyUnsupportedProvider(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
@@ -888,6 +1014,14 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("mkdir package dir: %v", err)
+	}
+	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
 
 	service := Service{
 		Environ: func() []string {
@@ -911,6 +1045,8 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 			}
 			return AuthInfo{Status: AuthRequired}, true
 		},
+		ExternalAgentRegistry: registryStore,
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
@@ -939,6 +1075,14 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 	claudePath := filepath.Join(binDir, "claude")
 	writeExecutable(t, claudePath, "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(binDir, "claude-agent-acp"), "#!/bin/sh\nexit 0\n")
+	writePackageManifest(t, binDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
+	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	packageDir := npmPackageInstallDir(prefixDir, "@agentclientprotocol/claude-agent-acp")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("mkdir package dir: %v", err)
+	}
+	writePackageManifest(t, packageDir, "@agentclientprotocol/claude-agent-acp", "0.46.0")
 	authStatusCommandCalls := 0
 
 	service := Service{
@@ -968,6 +1112,8 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 			}
 			return AuthInfo{Status: AuthAuthenticated, AccountLabel: "dev@example.com"}, true
 		},
+		ExternalAgentRegistry: registryStore,
+		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
@@ -1133,9 +1279,104 @@ func isTestExecutableUnderHome(home string) func(string) bool {
 
 func writeExecutable(t *testing.T, path string, contents string) {
 	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create executable parent %s: %v", path, err)
+	}
 	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
 		t.Fatalf("write executable %s: %v", path, err)
 	}
+}
+
+func writePackageManifest(t *testing.T, dir string, name string, version string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create package manifest dir: %v", err)
+	}
+	content := `{"name":` + quoteJSONString(name) + `,"version":` + quoteJSONString(version) + `}`
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write package manifest: %v", err)
+	}
+}
+
+func fakeClaudeExternalRegistry(t *testing.T) (externalagentregistry.Store, string) {
+	t.Helper()
+	root := t.TempDir()
+	sourcePath := filepath.Join(root, "registry.json")
+	content := `{
+  "version": "test",
+  "agents": [{
+    "id": "claude-acp",
+    "name": "Claude Agent",
+    "version": "0.46.0",
+    "description": "ACP wrapper for Anthropic's Claude",
+    "distribution": {
+      "npx": {
+        "package": "@agentclientprotocol/claude-agent-acp@0.46.0"
+      }
+    }
+  }]
+}`
+	if err := os.WriteFile(sourcePath, []byte(content), 0o644); err != nil {
+		t.Fatalf("write fake registry: %v", err)
+	}
+	store := externalagentregistry.Store{
+		SourceURL: sourcePath,
+		CacheRoot: filepath.Join(root, "cache"),
+		Now: func() time.Time {
+			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
+		},
+	}
+	return store, store.PackagePrefix("claude-acp")
+}
+
+func fakeManagedRuntimeRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	writeExecutable(t, filepath.Join(root, "python", "bin", pythonBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(root, "node", "bin", nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, filepath.Join(root, "node", "bin", npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
+	return root
+}
+
+func fakeManagedRuntimeResolver(t *testing.T, runtimeRoot string) managedruntime.DefaultResolver {
+	t.Helper()
+	cacheRoot := t.TempDir()
+	return managedruntime.DefaultResolver{
+		RuntimeRoot: runtimeRoot,
+		Environ: func() []string {
+			return []string{
+				"PATH=/usr/bin:/bin",
+				"TUTTI_APP_RUNTIME_CACHE_ROOT=" + cacheRoot,
+				"TUTTI_APP_RUNTIME_CATALOG=",
+			}
+		},
+	}
+}
+
+func pythonBinaryNameForTest() string {
+	if runtime.GOOS == "windows" {
+		return "python.exe"
+	}
+	return "python3"
+}
+
+func nodeBinaryNameForTest() string {
+	if runtime.GOOS == "windows" {
+		return "node.exe"
+	}
+	return "node"
+}
+
+func npmBinaryNameForTest() string {
+	if runtime.GOOS == "windows" {
+		return "npm.cmd"
+	}
+	return "npm"
+}
+
+func quoteJSONString(value string) string {
+	quoted, _ := json.Marshal(value)
+	return string(quoted)
 }
 
 func releaseBinaryArchive(t *testing.T, binaryName string, contents string) (string, string) {

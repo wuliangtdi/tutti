@@ -407,6 +407,24 @@ func writeUpdateWorkspaceAgentSessionPinError(err error) tuttigenerated.UpdateWo
 	}
 }
 
+func writeUpdateWorkspaceAgentSessionVisibilityError(err error) tuttigenerated.UpdateWorkspaceAgentSessionVisibilityResponseObject {
+	protocolErr := apierrors.Classify(err)
+	switch protocolErr.Code {
+	case tuttigenerated.WorkspaceNotFound:
+		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility404JSONResponse{
+			WorkspaceNotFoundErrorJSONResponse: workspaceNotFoundError(protocolErr),
+		}
+	case tuttigenerated.InvalidRequest:
+		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	default:
+		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
+		}
+	}
+}
+
 func writePutWorkspaceWorkbenchError(err error) tuttigenerated.PutWorkspaceWorkbenchResponseObject {
 	protocolErr := apierrors.Classify(err)
 	switch protocolErr.Code {

@@ -98,6 +98,14 @@ Migrated agent runtime state should derive from the same root:
       tutti/
         current/
           agent-context.json
+  agent-providers/
+    external-agent-registry/
+      cache/
+        registry.json
+      packages/
+        <agent-id>/
+      binaries/
+        <agent-id>/
 ```
 
 `agent/runs` stores per-session provider sidecar state that can be recreated or
@@ -105,6 +113,11 @@ cleaned up when the owning agent session is deleted. Provider-specific homes,
 generated skills, and cleanup manifests live under the matching run directory.
 
 The exact files may appear gradually as features are implemented, but new daemon-owned local files should follow this layout.
+
+`agent-providers/external-agent-registry` stores the ACP External Agent Registry
+cache plus daemon-managed adapter artifacts. npm-based adapters use
+`packages/<agent-id>` as their npm prefix so global npm shims cannot affect
+Tutti provider startup.
 
 ## Current Usage
 

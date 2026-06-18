@@ -435,6 +435,8 @@ export const zhCN = {
           }
         }
       },
+      modelContextWindowSuffix: "上下文窗口",
+      modelTooltipVersionLabel: "版本",
       modelDescriptions: {
         frontierComplexCoding: "适合复杂编码、研究和真实工作场景的前沿模型",
         everydayCoding: "适合日常编码的强力模型",

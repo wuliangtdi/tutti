@@ -316,6 +316,9 @@ import type {
   UpdateWorkspaceAgentSessionSettingsData,
   UpdateWorkspaceAgentSessionSettingsErrors,
   UpdateWorkspaceAgentSessionSettingsResponses,
+  UpdateWorkspaceAgentSessionVisibilityData,
+  UpdateWorkspaceAgentSessionVisibilityErrors,
+  UpdateWorkspaceAgentSessionVisibilityResponses,
   UpdateWorkspaceData,
   UpdateWorkspaceErrors,
   UpdateWorkspaceIssueData,
@@ -1462,6 +1465,28 @@ export const updateWorkspaceAgentSessionSettings = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Update one workspace agent session visibility
+ */
+export const updateWorkspaceAgentSessionVisibility = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<UpdateWorkspaceAgentSessionVisibilityData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    UpdateWorkspaceAgentSessionVisibilityResponses,
+    UpdateWorkspaceAgentSessionVisibilityErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility",
     ...options,
     headers: {
       "Content-Type": "application/json",

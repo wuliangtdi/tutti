@@ -1,4 +1,4 @@
-package workspace
+package managedruntime
 
 import (
 	"archive/zip"
@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestDefaultManagedAppRuntimeResolverInjectsBaselineRuntime(t *testing.T) {
+func TestDefaultResolverInjectsBaselineRuntime(t *testing.T) {
 	root := t.TempDir()
 	pythonBinDir := filepath.Join(root, "python", "bin")
 	nodeBinDir := filepath.Join(root, "node", "bin")
@@ -19,35 +19,35 @@ func TestDefaultManagedAppRuntimeResolverInjectsBaselineRuntime(t *testing.T) {
 			t.Fatalf("mkdir runtime bin dir: %v", err)
 		}
 	}
-	writeExecutable(t, filepath.Join(pythonBinDir, appRuntimePythonBinaryName()))
-	writeExecutable(t, filepath.Join(nodeBinDir, appRuntimeNodeBinaryName()))
-	writeExecutable(t, filepath.Join(nodeBinDir, appRuntimeNPMBinaryName()))
+	writeExecutable(t, filepath.Join(pythonBinDir, pythonBinaryName()))
+	writeExecutable(t, filepath.Join(nodeBinDir, nodeBinaryName()))
+	writeExecutable(t, filepath.Join(nodeBinDir, npmBinaryName()))
 
-	resolved, err := DefaultManagedAppRuntimeResolver{
+	resolved, err := DefaultResolver{
 		RuntimeRoot: root,
 		Environ:     func() []string { return []string{"PATH=/usr/bin:/bin"} },
 	}.Resolve(context.Background())
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	env := workspaceAppProcessEnv(append([]string{"TUTTI_APP_ID=test"}, resolved.EnvOverrides...)...)
-	pathEnv := appRuntimeEnvValue(env, "PATH")
+	env := ProcessEnv(append([]string{"TUTTI_APP_ID=test"}, resolved.EnvOverrides...)...)
+	pathEnv := EnvValue(env, "PATH")
 	if !strings.HasPrefix(pathEnv, pythonBinDir+string(os.PathListSeparator)+nodeBinDir) {
 		t.Fatalf("PATH = %q, want managed runtime bins first", pathEnv)
 	}
-	if appRuntimeEnvValue(env, "TUTTI_APP_PYTHON") != filepath.Join(pythonBinDir, appRuntimePythonBinaryName()) {
-		t.Fatalf("TUTTI_APP_PYTHON = %q", appRuntimeEnvValue(env, "TUTTI_APP_PYTHON"))
+	if EnvValue(env, "TUTTI_APP_PYTHON") != filepath.Join(pythonBinDir, pythonBinaryName()) {
+		t.Fatalf("TUTTI_APP_PYTHON = %q", EnvValue(env, "TUTTI_APP_PYTHON"))
 	}
-	if appRuntimeEnvValue(env, "TUTTI_APP_NODE") != filepath.Join(nodeBinDir, appRuntimeNodeBinaryName()) {
-		t.Fatalf("TUTTI_APP_NODE = %q", appRuntimeEnvValue(env, "TUTTI_APP_NODE"))
+	if EnvValue(env, "TUTTI_APP_NODE") != filepath.Join(nodeBinDir, nodeBinaryName()) {
+		t.Fatalf("TUTTI_APP_NODE = %q", EnvValue(env, "TUTTI_APP_NODE"))
 	}
 	if !strings.Contains(pathEnv, "/usr/bin") {
 		t.Fatalf("PATH = %q, want original path preserved", pathEnv)
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverRejectsMissingRuntime(t *testing.T) {
-	_, err := DefaultManagedAppRuntimeResolver{
+func TestDefaultResolverRejectsMissingRuntime(t *testing.T) {
+	_, err := DefaultResolver{
 		Environ: func() []string {
 			return []string{
 				tuttiAppRuntimeCacheRootEnv + "=" + t.TempDir(),
@@ -60,19 +60,19 @@ func TestDefaultManagedAppRuntimeResolverRejectsMissingRuntime(t *testing.T) {
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverUsesDaemonCacheRoot(t *testing.T) {
+func TestDefaultResolverUsesDaemonCacheRoot(t *testing.T) {
 	cacheRoot := t.TempDir()
-	root := defaultManagedAppRuntimeRoot([]string{
+	root := DefaultRoot([]string{
 		tuttiAppRuntimeCacheRootEnv + "=" + cacheRoot,
 	})
 
 	if root != filepath.Join(cacheRoot, appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH)) {
-		t.Fatalf("defaultManagedAppRuntimeRoot() = %q", root)
+		t.Fatalf("DefaultRoot() = %q", root)
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverUsesDefaultCatalogWhenUnset(t *testing.T) {
-	source := DefaultManagedAppRuntimeResolver{
+func TestDefaultResolverUsesDefaultCatalogWhenUnset(t *testing.T) {
+	source := DefaultResolver{
 		Environ: func() []string {
 			return []string{"PATH=/usr/bin:/bin"}
 		},
@@ -83,8 +83,8 @@ func TestDefaultManagedAppRuntimeResolverUsesDefaultCatalogWhenUnset(t *testing.
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverAllowsEmptyCatalogOverride(t *testing.T) {
-	source := DefaultManagedAppRuntimeResolver{
+func TestDefaultResolverAllowsEmptyCatalogOverride(t *testing.T) {
+	source := DefaultResolver{
 		Environ: func() []string {
 			return []string{
 				tuttiAppRuntimeCatalogEnv + "=",
@@ -98,7 +98,7 @@ func TestDefaultManagedAppRuntimeResolverAllowsEmptyCatalogOverride(t *testing.T
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverDownloadsRuntimeFromCatalog(t *testing.T) {
+func TestDefaultResolverDownloadsRuntimeFromCatalog(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")
 	pythonSHA256, _, err := fileSHA256AndSize(pythonArtifactPath)
@@ -138,7 +138,7 @@ func TestDefaultManagedAppRuntimeResolverDownloadsRuntimeFromCatalog(t *testing.
 		t.Fatalf("write catalog: %v", err)
 	}
 
-	resolved, err := DefaultManagedAppRuntimeResolver{
+	resolved, err := DefaultResolver{
 		Environ: func() []string {
 			return []string{
 				tuttiAppRuntimeCacheRootEnv + "=" + cacheRoot,
@@ -165,7 +165,7 @@ func TestDefaultManagedAppRuntimeResolverDownloadsRuntimeFromCatalog(t *testing.
 	}
 }
 
-func TestDefaultManagedAppRuntimeResolverRejectsRuntimeShaMismatch(t *testing.T) {
+func TestDefaultResolverRejectsRuntimeShaMismatch(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")
 	nodeArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "node")
@@ -201,7 +201,7 @@ func TestDefaultManagedAppRuntimeResolverRejectsRuntimeShaMismatch(t *testing.T)
 		t.Fatalf("write catalog: %v", err)
 	}
 
-	_, err = DefaultManagedAppRuntimeResolver{
+	_, err = DefaultResolver{
 		Environ: func() []string {
 			return []string{
 				tuttiAppRuntimeCacheRootEnv + "=" + cacheRoot,
@@ -236,10 +236,10 @@ func createManagedRuntimeComponentArchiveForTest(t *testing.T, componentName str
 	sourceDir := t.TempDir()
 	switch componentName {
 	case "python":
-		writeExecutable(t, filepath.Join(sourceDir, "python", "bin", appRuntimePythonBinaryName()))
+		writeExecutable(t, filepath.Join(sourceDir, "python", "bin", pythonBinaryName()))
 	case "node":
-		writeExecutable(t, filepath.Join(sourceDir, "node", "bin", appRuntimeNodeBinaryName()))
-		writeExecutable(t, filepath.Join(sourceDir, "node", "bin", appRuntimeNPMBinaryName()))
+		writeExecutable(t, filepath.Join(sourceDir, "node", "bin", nodeBinaryName()))
+		writeExecutable(t, filepath.Join(sourceDir, "node", "bin", npmBinaryName()))
 	default:
 		t.Fatalf("unsupported runtime component %q", componentName)
 	}

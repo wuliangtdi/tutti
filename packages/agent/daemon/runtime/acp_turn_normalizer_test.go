@@ -35,6 +35,56 @@ func TestFinalizeThinkingItemReplacesWordTokenStream(t *testing.T) {
 	}
 }
 
+func TestAppendAssistantChunkIgnoresDuplicateSnapshotChunk(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	fullText := "你好！有什么可以帮你的吗？"
+
+	for _, chunk := range []string{"你好", "！有什么", "可以帮你的吗？"} {
+		events := normalizer.AppendAssistantChunk(session, "turn-1", chunk)
+		if len(events) != 1 {
+			t.Fatalf("AppendAssistantChunk(%q) events = %d, want 1", chunk, len(events))
+		}
+	}
+
+	events := normalizer.AppendAssistantChunk(session, "turn-1", fullText)
+	if len(events) != 1 {
+		t.Fatalf("duplicate snapshot chunk events = %d, want 1", len(events))
+	}
+	if got := events[0].Payload.Content; got != fullText {
+		t.Fatalf("content = %q, want single authoritative snapshot without duplication", got)
+	}
+
+	normalizer.ApplyAssistantFinalText(fullText)
+	completed := normalizer.FinishCompleted(session, "turn-1")
+	for _, event := range completed {
+		if event.Type != EventMessage {
+			continue
+		}
+		if got := event.Payload.Content; got != fullText {
+			t.Fatalf("completed content = %q, want %q", got, fullText)
+		}
+	}
+}
+
+func TestAppendAssistantChunkReplacesCumulativeSnapshotChunk(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	_ = normalizer.AppendAssistantChunk(session, "turn-1", "Hello")
+
+	events := normalizer.AppendAssistantChunk(session, "turn-1", "Hello world")
+	if len(events) != 1 {
+		t.Fatalf("cumulative snapshot chunk events = %d, want 1", len(events))
+	}
+	if got := events[0].Payload.Content; got != "Hello world" {
+		t.Fatalf("content = %q, want cumulative snapshot replacement", got)
+	}
+}
+
 func TestAppendThinkingChunkStillStreamsWithoutReviewPresentation(t *testing.T) {
 	t.Parallel()
 

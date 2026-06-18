@@ -1,6 +1,8 @@
 # Workspace App Runtime
 
-Workspace App Center apps run against a daemon-managed runtime baseline. App packages must not bundle or declare Python/Node versions; Tutti injects the managed runtime paths at launch.
+Workspace App Center apps and daemon-managed ACP npm adapters run against a
+daemon-managed runtime baseline. App packages must not bundle or declare
+Python/Node versions; Tutti injects the managed runtime paths at launch.
 
 ## Runtime Baseline
 
@@ -124,6 +126,9 @@ Supported daemon overrides:
 - `TUTTI_APP_RUNTIME_ROOT`: exact prepared runtime root, mainly for tests and local debugging.
 
 App packages must not set these variables. The runner injects `TUTTI_APP_PYTHON`, `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and `PATH` for app processes.
+Agent provider installers may also use the managed `TUTTI_APP_NPM` path to
+install ACP npm adapters into daemon-owned per-agent prefixes instead of npm
+global locations.
 
 Runtime artifacts must make `node/bin/npm` and `node/bin/npx` standalone
 wrappers that execute the packaged Node binary with npm's packaged CLI scripts.

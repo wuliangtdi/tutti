@@ -1904,7 +1904,14 @@ func TestCodexAppServerAdapterRateLimitNotificationUpdatesUsage(t *testing.T) {
 		state := adapter.SessionState(session)
 		usage, _ := state.RuntimeContext["usage"].(map[string]any)
 		quotas, _ := usage["quotas"].([]map[string]any)
-		return len(quotas) == 2
+		for _, quota := range quotas {
+			if asString(quota["quotaType"]) != "session" {
+				continue
+			}
+			remaining, _ := acpFloatValue(quota["percentRemaining"])
+			return remaining == 60
+		}
+		return false
 	})
 	state := adapter.SessionState(session)
 	usage, _ := state.RuntimeContext["usage"].(map[string]any)

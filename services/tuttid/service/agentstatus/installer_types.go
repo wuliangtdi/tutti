@@ -9,9 +9,10 @@ import (
 type InstallerKind string
 
 const (
-	InstallerKindShellCommand        InstallerKind = "shell_command"
-	InstallerKindOfficialScript      InstallerKind = "official_script"
-	InstallerKindGitHubReleaseBinary InstallerKind = "github_release_binary"
+	InstallerKindShellCommand             InstallerKind = "shell_command"
+	InstallerKindOfficialScript           InstallerKind = "official_script"
+	InstallerKindGitHubReleaseBinary      InstallerKind = "github_release_binary"
+	InstallerKindExternalAgentRegistryNPM InstallerKind = "external_agent_registry_npm"
 )
 
 // InstallerPostStep names an optional, idempotent step run after a successful
@@ -32,12 +33,24 @@ type InstallerSpec struct {
 	ScriptURL      string
 	ScriptShell    string
 	ReleaseBinary  *ReleaseBinaryInstallerSpec
+	RegistryNPM    *ExternalAgentRegistryNPMInstallerSpec
 	PostInstall    InstallerPostStep
+}
+
+type ExternalAgentRegistryNPMInstallerSpec struct {
+	AgentID    string
+	Package    string
+	Args       []string
+	Env        map[string]string
+	PrefixDir  string
+	PackageDir string
+	Version    string
 }
 
 type ReleaseBinaryInstallerSpec struct {
 	BinaryName string
 	Version    string
+	InstallDir string
 	Assets     map[string]ReleaseBinaryAsset
 }
 
@@ -55,6 +68,11 @@ func (s InstallerSpec) displayCommand() string {
 	case InstallerKindGitHubReleaseBinary:
 		if asset, ok := s.releaseAsset(runtime.GOOS, runtime.GOARCH); ok {
 			return firstNonBlank(s.DisplayCommand, asset.URL)
+		}
+		return strings.TrimSpace(s.DisplayCommand)
+	case InstallerKindExternalAgentRegistryNPM:
+		if s.RegistryNPM != nil {
+			return firstNonBlank(s.DisplayCommand, "Install "+s.RegistryNPM.Package+" from ACP External Agent Registry")
 		}
 		return strings.TrimSpace(s.DisplayCommand)
 	default:
@@ -99,6 +117,19 @@ func validateInstallerSpec(spec InstallerSpec) error {
 		}
 		if _, ok := spec.releaseAsset(runtime.GOOS, runtime.GOARCH); !ok {
 			return fmt.Errorf("release binary installer asset is unavailable for %s", releaseBinaryPlatformKey(runtime.GOOS, runtime.GOARCH))
+		}
+	case InstallerKindExternalAgentRegistryNPM:
+		if spec.RegistryNPM == nil {
+			return fmt.Errorf("external agent registry npm installer config is required")
+		}
+		if strings.TrimSpace(spec.RegistryNPM.AgentID) == "" {
+			return fmt.Errorf("external agent registry npm installer agent id is required")
+		}
+		if strings.TrimSpace(spec.RegistryNPM.Package) == "" {
+			return fmt.Errorf("external agent registry npm installer package is required")
+		}
+		if strings.TrimSpace(spec.RegistryNPM.PrefixDir) == "" {
+			return fmt.Errorf("external agent registry npm installer prefix dir is required")
 		}
 	default:
 		return fmt.Errorf("unsupported installer kind %q", spec.Kind)

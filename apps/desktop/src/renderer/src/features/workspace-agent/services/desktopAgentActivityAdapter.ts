@@ -24,6 +24,118 @@ export function createDesktopAgentActivityAdapter({
   tuttidClient,
   runtimeApi
 }: CreateDesktopAgentActivityAdapterInput): AgentActivityAdapter {
+  const claudeDrafts = new Map<string, ClaudeDraftSessionEntry>();
+
+  const deleteClaudeDraft = (entry: ClaudeDraftSessionEntry): void => {
+    if (entry.status === "promoted") {
+      return;
+    }
+    entry.status = "disposed";
+    claudeDrafts.delete(entry.key);
+    void entry.promise
+      .then((session) =>
+        tuttidClient.deleteWorkspaceAgentSession(entry.workspaceId, session.id)
+      )
+      .catch(() => undefined);
+  };
+
+  const ensureClaudeDraft = (
+    input: ClaudeDraftInput
+  ): Promise<WorkspaceAgentSession> => {
+    const key = claudeDraftKey(input);
+    const existing = claudeDrafts.get(key);
+    if (
+      existing &&
+      existing.status !== "disposed" &&
+      existing.status !== "failed"
+    ) {
+      return existing.promise;
+    }
+    for (const entry of claudeDrafts.values()) {
+      if (entry.workspaceId === input.workspaceId && entry.key !== key) {
+        deleteClaudeDraft(entry);
+      }
+    }
+    const agentSessionId = createDesktopAgentActivitySessionId();
+    const promise = tuttidClient
+      .createWorkspaceAgentSession(input.workspaceId, {
+        agentSessionId,
+        cwd: input.cwd ?? null,
+        initialContent: [],
+        model: input.settings.model,
+        permissionModeId: input.settings.permissionModeId,
+        planMode: input.settings.planMode,
+        provider: "claude-code",
+        reasoningEffort: input.settings.reasoningEffort,
+        speed: input.settings.speed,
+        title: null,
+        visible: false
+      })
+      .then((session) => sessionWithClaudeDraftContext(session, key));
+    const entry: ClaudeDraftSessionEntry = {
+      key,
+      promise,
+      sessionId: agentSessionId,
+      status: "starting",
+      workspaceId: input.workspaceId
+    };
+    claudeDrafts.set(key, entry);
+    void promise.then(
+      (session) => {
+        if (entry.status === "starting") {
+          entry.status = "ready";
+          entry.sessionId = session.id;
+        }
+      },
+      () => {
+        entry.status = "failed";
+        claudeDrafts.delete(key);
+      }
+    );
+    return promise;
+  };
+
+  const promoteClaudeDraft = async (
+    input: Parameters<AgentActivityAdapter["createSession"]>[0]
+  ): Promise<AgentActivitySession | null> => {
+    const agentSessionId = input.agentSessionId?.trim();
+    const initialContent = input.initialContent ?? [];
+    if (
+      workspaceAgentProvider(input.provider) !== "claude-code" ||
+      !agentSessionId ||
+      initialContent.length === 0
+    ) {
+      return null;
+    }
+    const entry = [...claudeDrafts.values()].find(
+      (draft) =>
+        draft.workspaceId === input.workspaceId &&
+        draft.sessionId === agentSessionId &&
+        draft.status !== "disposed" &&
+        draft.status !== "failed"
+    );
+    if (!entry) {
+      return null;
+    }
+    await entry.promise;
+    if (entry.status === "disposed" || entry.status === "failed") {
+      return null;
+    }
+    await tuttidClient.updateWorkspaceAgentSessionVisibility(
+      input.workspaceId,
+      agentSessionId,
+      { visible: true }
+    );
+    entry.status = "promoted";
+    claudeDrafts.delete(entry.key);
+    const session = await tuttidClient.sendWorkspaceAgentSessionInput(
+      input.workspaceId,
+      agentSessionId,
+      { content: initialContent }
+    );
+    return agentActivitySessionFromTuttidSession(input.workspaceId, session);
+  };
+
   return {
     async listSessions(input) {
       const response = await tuttidClient.listWorkspaceAgentSessions(
@@ -56,6 +168,23 @@ export function createDesktopAgentActivityAdapter({
     },
     async loadComposerOptions(input) {
       const cwd = input.cwd?.trim();
+      if (workspaceAgentProvider(input.provider) === "claude-code") {
+        try {
+          const session = await ensureClaudeDraft({
+            cwd: cwd || null,
+            settings: normalizedClaudeDraftSettings(input.settings),
+            workspaceId: input.workspaceId
+          });
+          return agentActivityComposerOptionsFromTuttidResult(input.provider, {
+            permissionConfig: session.permissionConfig,
+            provider: session.provider,
+            runtimeContext: session.runtimeContext
+          });
+        } catch {
+          // Fall through to daemon composer options. Claude no longer gets a
+          // static model list there; this only preserves capabilities/skills.
+        }
+      }
       const result = await tuttidClient.getAgentProviderComposerOptions(
         workspaceAgentProvider(input.provider),
         {
@@ -82,6 +211,10 @@ export function createDesktopAgentActivityAdapter({
       );
     },
     async createSession(input) {
+      const promoted = await promoteClaudeDraft(input);
+      if (promoted) {
+        return promoted;
+      }
       const session = await tuttidClient.createWorkspaceAgentSession(
         input.workspaceId,
         {
@@ -147,12 +280,84 @@ export function createDesktopAgentActivityAdapter({
   };
 }
 
-function createDesktopAgentActivitySessionId(): string {
+export function createDesktopAgentActivitySessionId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
   const fallbackHex = Math.random().toString(16).slice(2).padEnd(12, "0");
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
+}
+
+type ClaudeDraftStatus =
+  | "starting"
+  | "ready"
+  | "failed"
+  | "promoted"
+  | "disposed";
+
+interface ClaudeDraftSettings {
+  model: string | null;
+  permissionModeId: string | null;
+  planMode: boolean | null;
+  reasoningEffort: string | null;
+  speed: string | null;
+}
+
+interface ClaudeDraftInput {
+  cwd: string | null;
+  settings: ClaudeDraftSettings;
+  workspaceId: string;
+}
+
+interface ClaudeDraftSessionEntry {
+  key: string;
+  promise: Promise<WorkspaceAgentSession>;
+  sessionId: string;
+  status: ClaudeDraftStatus;
+  workspaceId: string;
+}
+
+function normalizedClaudeDraftSettings(
+  settings:
+    | {
+        model?: string | null;
+        permissionModeId?: string | null;
+        planMode?: boolean | null;
+        reasoningEffort?: string | null;
+        speed?: string | null;
+      }
+    | null
+    | undefined
+): ClaudeDraftSettings {
+  return {
+    model: normalizeText(settings?.model) ?? null,
+    permissionModeId: normalizeText(settings?.permissionModeId) ?? null,
+    planMode: settings?.planMode ?? null,
+    reasoningEffort: normalizeText(settings?.reasoningEffort) ?? null,
+    speed: normalizeText(settings?.speed) ?? null
+  };
+}
+
+function claudeDraftKey(input: ClaudeDraftInput): string {
+  return JSON.stringify({
+    cwd: input.cwd ?? "",
+    settings: input.settings,
+    workspaceId: input.workspaceId
+  });
+}
+
+function sessionWithClaudeDraftContext(
+  session: WorkspaceAgentSession,
+  draftKey: string
+): WorkspaceAgentSession {
+  return {
+    ...session,
+    runtimeContext: {
+      ...recordValue(session.runtimeContext),
+      draftAgentSessionId: session.id,
+      draftKey
+    }
+  };
 }
 
 export function agentActivitySessionFromTuttidSession(
@@ -226,7 +431,7 @@ function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? { ...value } : {};
 }
 
-function agentActivityComposerOptionsFromTuttidResult(
+export function agentActivityComposerOptionsFromTuttidResult(
   provider: string,
   value: unknown
 ): AgentActivityComposerOptions {
@@ -239,17 +444,23 @@ function agentActivityComposerOptionsFromTuttidResult(
   const reasoningConfig = recordValue(result.reasoningConfig);
   const speedConfig = recordValue(result.speedConfig);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
-  // The live agent's advertised model list reflects the models the running
-  // session can actually use (e.g. concrete ids like Opus 4.6), so it takes
-  // precedence over the pre-session static catalog when present. The static
-  // list remains the fallback before a session has advertised its options.
+  // The live agent's advertised model list reflects what the running session
+  // can actually use, so it takes precedence when present.
   const modelsFromLiveConfig = settingOptionsFromConfigOption(
     rawConfigOptions,
     ["model"]
   );
   const reasoningEffortsFromConfig =
     settingOptionsFromComposerConfig(reasoningConfig);
+  const reasoningEffortsFromLiveConfig = settingOptionsFromConfigOption(
+    rawConfigOptions,
+    ["reasoning_effort", "model_reasoning_effort", "effort"]
+  );
   const speedsFromConfig = settingOptionsFromComposerConfig(speedConfig);
+  const speedsFromLiveConfig = settingOptionsFromConfigOption(
+    rawConfigOptions,
+    ["service_tier", "speed", "fast"]
+  );
   const skillsFromResult = skillOptionsFromValue(result.skills);
   const skillsFromRuntimeContext = skillOptionsFromValue(runtimeContext.skills);
   return {
@@ -259,22 +470,21 @@ function agentActivityComposerOptionsFromTuttidResult(
     reasoningEfforts:
       reasoningEffortsFromConfig.length > 0
         ? reasoningEffortsFromConfig
-        : settingOptionsFromConfigOption(rawConfigOptions, [
-            "reasoning_effort",
-            "model_reasoning_effort",
-            "effort"
-          ]),
+        : reasoningEffortsFromLiveConfig,
     speeds:
-      speedsFromConfig.length > 0
-        ? speedsFromConfig
-        : settingOptionsFromConfigOption(rawConfigOptions, [
-            "service_tier",
-            "speed",
-            "fast"
-          ]),
-    modelConfigurable: modelConfig.configurable === true,
-    reasoningConfigurable: reasoningConfig.configurable === true,
-    speedConfigurable: speedConfig.configurable === true,
+      speedsFromConfig.length > 0 ? speedsFromConfig : speedsFromLiveConfig,
+    modelConfigurable:
+      modelConfig.configurable === true ||
+      (modelConfig.configurable === undefined &&
+        modelsFromLiveConfig.length > 0),
+    reasoningConfigurable:
+      reasoningConfig.configurable === true ||
+      (reasoningConfig.configurable === undefined &&
+        reasoningEffortsFromLiveConfig.length > 0),
+    speedConfigurable:
+      speedConfig.configurable === true ||
+      (speedConfig.configurable === undefined &&
+        speedsFromLiveConfig.length > 0),
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     runtimeContext,
     skills:
@@ -326,12 +536,9 @@ function settingOptionsFromRawOptions(
     valueKeys: readonly string[];
   }
 ): AgentActivityComposerSettingOption[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
   const options: AgentActivityComposerSettingOption[] = [];
   const seen = new Set<string>();
-  for (const item of value) {
+  for (const item of flattenRawSettingOptions(value)) {
     const record = recordValue(item);
     const optionValue = firstTextValue(record, keys.valueKeys);
     if (!optionValue || seen.has(optionValue)) {
@@ -347,6 +554,22 @@ function settingOptionsFromRawOptions(
     });
   }
   return options;
+}
+
+function flattenRawSettingOptions(value: unknown): unknown[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const flattened: unknown[] = [];
+  for (const item of value as unknown[]) {
+    const record = recordValue(item);
+    if (Array.isArray(record.options)) {
+      flattened.push(...flattenRawSettingOptions(record.options));
+    } else {
+      flattened.push(item);
+    }
+  }
+  return flattened;
 }
 
 function appendCurrentOption(

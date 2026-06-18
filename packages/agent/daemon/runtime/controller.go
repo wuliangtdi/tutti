@@ -114,7 +114,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	return NewController(
 		[]Adapter{
-			NewClaudeCodeAdapterWithHostMetadata(transport, host),
+			newClaudeCodeAdapterWithHostMetadata(transport, host, options.ProviderCommandResolver),
 			NewCodexAppServerAdapterWithHostMetadata(transport, host),
 			NewNexightAdapterWithHostMetadata(transport, host),
 			NewGeminiAdapterWithHostMetadata(transport, host),

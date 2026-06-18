@@ -1,6 +1,9 @@
 package agentruntime
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 const (
 	defaultWorkspaceEnvName         = "TUTTI_WORKSPACE_ID"
@@ -20,8 +23,16 @@ type HostMetadata struct {
 }
 
 type ControllerOptions struct {
-	HostMetadata HostMetadata
+	HostMetadata            HostMetadata
+	ProviderCommandResolver ProviderCommandResolver
 }
+
+type ProviderCommand struct {
+	Command []string
+	Env     []string
+}
+
+type ProviderCommandResolver func(context.Context, string) (ProviderCommand, error)
 
 func LegacyHostMetadata() HostMetadata {
 	return HostMetadata{

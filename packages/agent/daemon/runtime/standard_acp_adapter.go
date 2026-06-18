@@ -33,6 +33,7 @@ type standardACPConfig struct {
 	setModeParams      func(Session) map[string]any
 	failOnSetModeError bool
 	env                func(Session) []string
+	commandResolver    ProviderCommandResolver
 	beforeNewSession   func(context.Context, *acpClient, Session, json.RawMessage) error
 }
 
@@ -383,6 +384,14 @@ func NewClaudeCodeAdapter(transport ProcessTransport) *standardACPAdapter {
 }
 
 func NewClaudeCodeAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
+	return newClaudeCodeAdapterWithHostMetadata(transport, host, nil)
+}
+
+func newClaudeCodeAdapterWithHostMetadata(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) *standardACPAdapter {
 	return &standardACPAdapter{
 		config: standardACPConfig{
 			provider:            ProviderClaudeCode,
@@ -395,6 +404,7 @@ func NewClaudeCodeAdapterWithHostMetadata(transport ProcessTransport, host HostM
 			initializeParams:    func() map[string]any { return claudeACPInitializeParams(host) },
 			failOnSetModeError:  true,
 			env:                 func(session Session) []string { return claudeACPEnv(session, host) },
+			commandResolver:     commandResolver,
 		},
 		transport: transport,
 		host:      host,
@@ -635,12 +645,24 @@ func (a *standardACPAdapter) startInitializedClient(
 	if a == nil || a.transport == nil {
 		return nil, nil, errors.New("ACP process transport is unavailable")
 	}
+	command := append([]string(nil), a.config.command...)
+	env := append(a.config.env(session), session.Env...)
+	if a.config.commandResolver != nil {
+		resolved, err := a.config.commandResolver(ctx, a.config.provider)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resolved.Command) > 0 {
+			command = append([]string(nil), resolved.Command...)
+		}
+		env = append(env, resolved.Env...)
+	}
 	processStartedAt := time.Now()
 	a.logHermesStartupDiagnostics("process_start.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              session.CWD,
-		"command":          a.config.command,
+		"command":          command,
 		"direct_start":     a.config.provider == ProviderClaudeCode,
 	})
 	conn, err := a.transport.Start(ctx, ProcessSpec{
@@ -648,8 +670,8 @@ func (a *standardACPAdapter) startInitializedClient(
 		AgentSessionID:       session.AgentSessionID,
 		RoomID:               session.RoomID,
 		CWD:                  session.CWD,
-		Command:              append([]string(nil), a.config.command...),
-		Env:                  append(a.config.env(session), session.Env...),
+		Command:              command,
+		Env:                  env,
 		OpenclawGatewayReady: session.OpenclawGatewayReady,
 		DirectStart:          a.config.provider == ProviderClaudeCode,
 	})

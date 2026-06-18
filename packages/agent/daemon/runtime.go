@@ -16,12 +16,15 @@ type ClientInfo = agentruntime.ClientInfo
 type Controller = agentruntime.Controller
 type HostMetadata = agentruntime.HostMetadata
 type ProcessTransport = agentruntime.ProcessTransport
+type ProviderCommand = agentruntime.ProviderCommand
+type ProviderCommandResolver = agentruntime.ProviderCommandResolver
 
 type Config struct {
-	Reporter         ActivityReporter
-	ProcessTransport ProcessTransport
-	HostMetadata     HostMetadata
-	Adapters         []Adapter
+	Reporter                ActivityReporter
+	ProcessTransport        ProcessTransport
+	HostMetadata            HostMetadata
+	ProviderCommandResolver ProviderCommandResolver
+	Adapters                []Adapter
 }
 
 type Runtime struct {
@@ -42,7 +45,10 @@ func NewRuntime(config Config) (*Runtime, error) {
 		controller = agentruntime.NewDefaultControllerWithOptions(
 			config.Reporter,
 			config.ProcessTransport,
-			agentruntime.ControllerOptions{HostMetadata: config.HostMetadata},
+			agentruntime.ControllerOptions{
+				HostMetadata:            config.HostMetadata,
+				ProviderCommandResolver: config.ProviderCommandResolver,
+			},
 		)
 	}
 	return &Runtime{controller: controller}, nil

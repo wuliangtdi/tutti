@@ -1190,7 +1190,7 @@ describe("AgentPermissionModeDropdown", () => {
 
     const option = await screen.findByRole("option", { name: "Full access" });
     const infoTrigger = option.querySelector(
-      '[data-agent-permission-info-trigger="true"]'
+      '[data-agent-composer-option-info-trigger="true"]'
     );
     if (!infoTrigger) {
       throw new Error("Expected permission option info trigger");
@@ -1198,7 +1198,7 @@ describe("AgentPermissionModeDropdown", () => {
 
     expect(infoTrigger.className).toContain("opacity-0");
     expect(infoTrigger.className).toContain(
-      "group-hover/permission-option:opacity-100"
+      "group-hover/composer-option:opacity-100"
     );
 
     fireEvent.mouseEnter(option);
@@ -1519,71 +1519,115 @@ describe("AgentModelReasoningDropdown", () => {
     expect(modelReasoningTrigger()).toHaveClass("animate-pulse");
   });
 
-  it("localizes known model descriptions while preserving custom descriptions", async () => {
+  it("shows model details in right-side row tooltips", async () => {
     render(
-      <AgentModelReasoningDropdown
-        composerSettings={{
-          sessionSettings: null,
-          draftSettings: {
-            model: "gpt-5.5",
-            reasoningEffort: "high",
-            speed: "standard",
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          supportsModel: true,
-          supportsReasoningEffort: true,
-          supportsSpeed: false,
-          speedUnavailable: false,
-          availableSpeeds: [],
-          supportsPlanMode: false,
-          isSettingsLoading: false,
-          modelUnavailable: false,
-          reasoningUnavailable: false,
-          planUnavailable: false,
-          selectedModelValue: "gpt-5.5",
-          selectedReasoningEffortValue: "high",
-          availableModels: [
-            {
-              value: "gpt-5.5",
-              label: "GPT-5.5",
-              description:
-                "Frontier model for complex coding, research, and real-world work."
+      <TooltipProvider>
+        <AgentModelReasoningDropdown
+          composerSettings={{
+            sessionSettings: null,
+            draftSettings: {
+              model: "gpt-5.5",
+              reasoningEffort: "high",
+              speed: "standard",
+              planMode: false,
+              permissionModeId: "preset"
             },
-            {
-              value: "custom",
-              label: "Custom",
-              description: "Custom model description"
+            supportsModel: true,
+            supportsReasoningEffort: true,
+            supportsSpeed: false,
+            speedUnavailable: false,
+            availableSpeeds: [],
+            supportsPlanMode: false,
+            isSettingsLoading: false,
+            modelUnavailable: false,
+            reasoningUnavailable: false,
+            planUnavailable: false,
+            selectedModelValue: "gpt-5.5",
+            selectedReasoningEffortValue: "high",
+            availableModels: [
+              {
+                value: "gpt-5.5",
+                label: "GPT-5.5",
+                description:
+                  "Frontier model for complex coding, research, and real-world work."
+              },
+              {
+                value: "custom",
+                label: "Custom",
+                description:
+                  "Custom 1.0 with 1M context · Custom model description · high effort"
+              }
+            ],
+            availableReasoningEfforts: [{ value: "high", label: "High" }]
+          }}
+          labels={{
+            ...labels,
+            modelDescriptions: {
+              ...labels.modelDescriptions,
+              frontierComplexCoding: "复杂编码模型说明"
             }
-          ],
-          availableReasoningEfforts: [{ value: "high", label: "High" }]
-        }}
-        labels={{
-          ...labels,
-          modelDescriptions: {
-            ...labels.modelDescriptions,
-            frontierComplexCoding: "复杂编码模型说明"
-          }
-        }}
-        onSettingsChange={vi.fn()}
-      />
+          }}
+          onSettingsChange={vi.fn()}
+        />
+      </TooltipProvider>
     );
 
     openModelReasoningMenu();
 
-    expect(await screen.findByText("复杂编码模型说明")).toBeTruthy();
+    expect(screen.queryByText("复杂编码模型说明")).toBeNull();
     expect(
       screen.queryByText(
         "Frontier model for complex coding, research, and real-world work."
       )
     ).toBeNull();
-    expect(screen.getByText("Custom model description")).toBeTruthy();
+
+    const localizedOption = await screen.findByRole("menuitem", {
+      name: /GPT-5\.5/
+    });
+    expect(localizedOption).toHaveAttribute(
+      "data-agent-model-option-tooltip-trigger",
+      "true"
+    );
+    fireEvent.mouseEnter(localizedOption);
+    fireEvent.pointerMove(localizedOption, { pointerType: "mouse" });
+    const localizedTooltip = await screen.findByRole("tooltip");
+    expect(localizedTooltip).toHaveTextContent("复杂编码模型说明");
+    const localizedTooltipSurface = document.querySelector(
+      '[data-agent-model-option-tooltip="true"]'
+    );
+    if (!localizedTooltipSurface) {
+      throw new Error("Expected localized model tooltip surface");
+    }
+    expect(localizedTooltipSurface).toHaveClass(
+      "flex",
+      "flex-col",
+      "items-start",
+      "gap-0"
+    );
+
+    const customOption = await screen.findByRole("menuitem", {
+      name: /Custom/
+    });
+    expect(customOption).toHaveTextContent("1M");
+    expect(customOption).toHaveTextContent("High");
+    expect(customOption).toHaveAttribute(
+      "data-agent-model-option-tooltip-trigger",
+      "true"
+    );
+    fireEvent.mouseEnter(customOption);
+    fireEvent.pointerMove(customOption, { pointerType: "mouse" });
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Custom model description");
+    expect(tooltip).toHaveTextContent("1M context window");
+    expect(tooltip).toHaveTextContent("Version: high effort");
   });
 });
 
 const labels = {
   modelLabel: "Model",
   modelSelectionLabel: "Model selection",
+  modelContextWindowSuffix: "context window",
+  modelTooltipVersionLabel: "Version",
   defaultModel: "Default model",
   inheritedUnavailable: "Unavailable",
   loadingSettings: "Loading conversation",

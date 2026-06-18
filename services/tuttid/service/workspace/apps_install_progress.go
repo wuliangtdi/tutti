@@ -9,6 +9,7 @@ import (
 
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 const (
@@ -20,7 +21,6 @@ const (
 )
 
 type appArtifactDownloadProgressKey struct{}
-type appArtifactRuntimeComponentProgressKey struct{}
 
 type AppArtifactDownloadProgress struct {
 	DownloadedBytes int64
@@ -112,8 +112,8 @@ func (s *AppCenterService) installNeedsRuntimeDownload() bool {
 	if !ok {
 		return false
 	}
-	root := defaultManagedAppRuntimeRoot(managed.environ())
-	return !managedAppRuntimeRootReady(root)
+	root := managed.DefaultRoot()
+	return !managedruntime.RootReady(root)
 }
 
 func ContextWithAppArtifactDownloadProgress(ctx context.Context, report func(AppArtifactDownloadProgress)) context.Context {
@@ -127,7 +127,12 @@ func ContextWithAppArtifactRuntimeComponentProgress(ctx context.Context, report 
 	if report == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, appArtifactRuntimeComponentProgressKey{}, report)
+	return managedruntime.ContextWithComponentDownloadProgress(ctx, func(name string, progress managedruntime.DownloadProgress) {
+		report(name, AppArtifactDownloadProgress{
+			DownloadedBytes: progress.DownloadedBytes,
+			TotalBytes:      progress.TotalBytes,
+		})
+	})
 }
 
 func appArtifactDownloadProgressFromContext(ctx context.Context) func(AppArtifactDownloadProgress) {
@@ -135,14 +140,6 @@ func appArtifactDownloadProgressFromContext(ctx context.Context) func(AppArtifac
 		return nil
 	}
 	report, _ := ctx.Value(appArtifactDownloadProgressKey{}).(func(AppArtifactDownloadProgress))
-	return report
-}
-
-func appArtifactRuntimeComponentProgressFromContext(ctx context.Context) func(string, AppArtifactDownloadProgress) {
-	if ctx == nil {
-		return nil
-	}
-	report, _ := ctx.Value(appArtifactRuntimeComponentProgressKey{}).(func(string, AppArtifactDownloadProgress))
 	return report
 }
 

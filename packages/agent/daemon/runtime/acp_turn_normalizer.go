@@ -52,7 +52,7 @@ func (n *acpTurnNormalizer) AppendAssistantChunk(session Session, turnID string,
 		n.assistantContent.Reset()
 		n.assistantSegmentCompleted = false
 	}
-	_, _ = n.assistantContent.WriteString(chunk)
+	n.mergeAssistantText(chunk)
 	return []activityshared.Event{n.assistantSnapshotEvent(session, turnID, messageStreamStateStreaming)}
 }
 
@@ -82,22 +82,33 @@ func (n *acpTurnNormalizer) ApplyAssistantFinalText(finalText string) {
 	if finalText == "" {
 		return
 	}
-	current := n.assistantContent.String()
-	switch {
-	case current == "":
+	if n.assistantMessageID == "" || n.assistantSegmentCompleted {
 		n.assistantMessageID = newID()
 		n.assistantContent.Reset()
-		_, _ = n.assistantContent.WriteString(finalText)
 		n.assistantSegmentCompleted = false
-	case finalText == strings.TrimSpace(current):
+	}
+	n.mergeAssistantText(finalText)
+}
+
+func (n *acpTurnNormalizer) mergeAssistantText(next string) {
+	if n == nil || next == "" {
 		return
-	case strings.HasPrefix(finalText, current):
+	}
+	current := n.assistantContent.String()
+	trimmedCurrent := strings.TrimSpace(current)
+	trimmedNext := strings.TrimSpace(next)
+	switch {
+	case current == "":
+		_, _ = n.assistantContent.WriteString(next)
+	case next == current || trimmedNext == trimmedCurrent:
+		return
+	case strings.HasPrefix(next, current) || strings.HasPrefix(trimmedNext, trimmedCurrent):
 		n.assistantContent.Reset()
-		_, _ = n.assistantContent.WriteString(finalText)
-		n.assistantSegmentCompleted = false
-	case !strings.Contains(current, finalText):
-		_, _ = n.assistantContent.WriteString(finalText)
-		n.assistantSegmentCompleted = false
+		_, _ = n.assistantContent.WriteString(next)
+	case strings.HasPrefix(current, next) || strings.HasPrefix(trimmedCurrent, trimmedNext):
+		return
+	default:
+		_, _ = n.assistantContent.WriteString(next)
 	}
 }
 

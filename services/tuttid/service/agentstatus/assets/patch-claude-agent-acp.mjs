@@ -1,19 +1,19 @@
 #!/usr/bin/env node
-// Patches the globally-installed @agentclientprotocol/claude-agent-acp bridge to
-// expose an orthogonal "fast" config option backed by the Claude Agent SDK's
+// Patches the @agentclientprotocol/claude-agent-acp bridge bundle to expose an
+// orthogonal "fast" config option backed by the Claude Agent SDK's
 // `Settings.fastMode` (via `query.applyFlagSettings({ fastMode })`) — the same
 // flag-layer path the bridge already uses for `effortLevel`.
 //
 // Why a codemod and not a unified diff: the bridge ships only a bundled
-// `dist/acp-agent.js` and is provisioned via `npm install -g` (see
-// services/tuttid/service/agentstatus/registry.go), so there is no source tree
-// to patch. The string anchors below are stable across 0.42.x–0.44.x. The
+// `dist/acp-agent.js` and is provisioned from the ACP external agent registry,
+// so there is no source tree to patch. The string anchors below are stable
+// across 0.42.x–0.46.x. The
 // script is idempotent (skips if a `fast` option is already present).
 //
 // Applied automatically after the bridge installs (InstallerPostStep in
-// installer.go embeds this file). Run manually after installing/upgrading the
-// bridge with:  pnpm patch:claude-agent-acp
-// Override the target with --dist <path> or CLAUDE_AGENT_ACP_DIST.
+// installer.go embeds this file). Pass --dist <path> or CLAUDE_AGENT_ACP_DIST
+// to target a managed package installation. Without an explicit target, the
+// script falls back to global npm locations for manual maintenance only.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -121,7 +121,7 @@ const distPath = resolveDistPath();
 if (!existsSync(distPath)) {
   console.error(`claude-agent-acp bundle not found at: ${distPath}`);
   console.error(
-    "Install it first (npm install -g @agentclientprotocol/claude-agent-acp) or pass --dist <path>."
+    "Install it first from the ACP external agent registry or pass --dist <path>."
   );
   process.exit(1);
 }

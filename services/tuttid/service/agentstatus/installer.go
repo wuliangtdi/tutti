@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,13 +18,18 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 type providerRuntimeResolution struct {
-	CLIPath     string
-	AdapterPath string
-	InstallDir  string
-	Env         []string
+	CLIPath        string
+	AdapterPath    string
+	AdapterVersion string
+	AdapterCommand []string
+	AdapterEnv     []string
+	ReasonCode     string
+	InstallDir     string
+	Env            []string
 }
 
 type installerExecutionSummary struct {
@@ -33,14 +39,112 @@ type installerExecutionSummary struct {
 	ExitCode *int
 }
 
-func (s Service) resolveProviderRuntime(spec ProviderSpec) providerRuntimeResolution {
+func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) providerRuntimeResolution {
 	resolver := s.commandResolver()
-	env := resolver.Env(nil)
-	return providerRuntimeResolution{
-		CLIPath:     resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
-		AdapterPath: resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), nil),
-		Env:         env,
+	env := resolver.Env(spec.AdapterEnv)
+	if strings.TrimSpace(spec.ExternalRegistryID) != "" {
+		return s.resolveExternalProviderRuntime(ctx, spec, resolver, env)
 	}
+	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), nil)
+	return providerRuntimeResolution{
+		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
+		AdapterPath:    adapterPath,
+		AdapterVersion: resolveAdapterPackageVersion(adapterPath, spec.AdapterPackage),
+		AdapterCommand: cloneStrings(spec.AdapterCommand),
+		AdapterEnv:     cloneStrings(spec.AdapterEnv),
+		Env:            env,
+	}
+}
+
+func (s Service) resolveExternalProviderRuntime(
+	_ context.Context,
+	spec ProviderSpec,
+	resolver runtimecmd.Resolver,
+	env []string,
+) providerRuntimeResolution {
+	result := providerRuntimeResolution{
+		CLIPath:        resolveBinaryWithResolver(resolver, spec.BinaryNames, nil),
+		AdapterCommand: cloneStrings(spec.AdapterCommand),
+		AdapterEnv:     cloneStrings(spec.AdapterEnv),
+		ReasonCode:     spec.AdapterUnavailableReasonCode,
+		Env:            env,
+	}
+	if spec.AdapterInstall.RegistryNPM != nil {
+		npm := spec.AdapterInstall.RegistryNPM
+		result.AdapterPath = strings.TrimSpace(npm.PackageDir)
+		result.AdapterVersion = installedNPMPackageVersion(npm.PackageDir, spec.AdapterPackage.Name)
+		if result.AdapterVersion == "" || len(spec.AdapterCommand) == 0 {
+			result.AdapterPath = ""
+		}
+		return result
+	}
+	if len(spec.AdapterCommand) > 0 {
+		path := strings.TrimSpace(spec.AdapterCommand[0])
+		if path != "" && s.executableFile(path) {
+			result.AdapterPath = path
+			result.AdapterVersion = spec.AdapterPackage.Version
+		}
+	}
+	return result
+}
+
+func resolveAdapterPackageVersion(adapterPath string, requirement AdapterPackageRequirement) string {
+	if strings.TrimSpace(adapterPath) == "" || strings.TrimSpace(requirement.Name) == "" {
+		return ""
+	}
+	packageJSONPath := findAdapterPackageJSON(adapterPath, requirement.Name)
+	if packageJSONPath == "" {
+		return ""
+	}
+	content, err := os.ReadFile(packageJSONPath)
+	if err != nil {
+		return ""
+	}
+	var manifest struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return ""
+	}
+	if strings.TrimSpace(manifest.Name) != strings.TrimSpace(requirement.Name) {
+		return ""
+	}
+	return strings.TrimSpace(manifest.Version)
+}
+
+func findAdapterPackageJSON(adapterPath string, packageName string) string {
+	resolvedPath := strings.TrimSpace(adapterPath)
+	if resolved, err := filepath.EvalSymlinks(resolvedPath); err == nil {
+		resolvedPath = resolved
+	}
+	dir := filepath.Dir(resolvedPath)
+	for range 8 {
+		candidate := filepath.Join(dir, "package.json")
+		if packageJSONHasName(candidate, packageName) {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+func packageJSONHasName(path string, packageName string) bool {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var manifest struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return false
+	}
+	return strings.TrimSpace(manifest.Name) == strings.TrimSpace(packageName)
 }
 
 func resolveBinaryWithResolver(resolver runtimecmd.Resolver, binaryNames []string, overrides []string) string {
@@ -98,7 +202,8 @@ func (s Service) installMissingProviderRuntime(
 			return summary, current, nil
 		}
 		selectedInstallDir := current.InstallDir
-		current = s.resolveProviderRuntime(spec)
+		resolvedSpec, _ := s.resolveProviderSpec(ctx, spec, false)
+		current = s.resolveProviderRuntime(ctx, resolvedSpec)
 		current.InstallDir = selectedInstallDir
 	}
 }
@@ -114,11 +219,33 @@ func nextMissingInstaller(spec ProviderSpec, runtime providerRuntimeResolution) 
 		if spec.AdapterInstall.Kind != "" {
 			return spec.AdapterInstall, true, "adapter"
 		}
+		if strings.TrimSpace(spec.ExternalRegistryID) != "" {
+			return InstallerSpec{}, false, ""
+		}
+		if spec.Install.Kind != "" {
+			return spec.Install, true, "adapter"
+		}
+	}
+	if !adapterPackageRequirementSatisfied(spec.AdapterPackage, runtime.AdapterVersion) {
+		if spec.AdapterInstall.Kind != "" {
+			return spec.AdapterInstall, true, "adapter"
+		}
+		if strings.TrimSpace(spec.ExternalRegistryID) != "" {
+			return InstallerSpec{}, false, ""
+		}
 		if spec.Install.Kind != "" {
 			return spec.Install, true, "adapter"
 		}
 	}
 	return InstallerSpec{}, false, ""
+}
+
+func adapterPackageRequirementSatisfied(requirement AdapterPackageRequirement, version string) bool {
+	requiredVersion := strings.TrimSpace(requirement.Version)
+	if requiredVersion == "" {
+		return true
+	}
+	return strings.TrimSpace(version) == requiredVersion
 }
 
 func (s Service) executeInstaller(
@@ -156,21 +283,38 @@ func (s Service) executeInstaller(
 			Env:     s.commandResolver().Env(nil),
 		})
 		if err == nil && result.ExitCode == 0 {
-			result = s.applyInstallerPostStep(installCtx, spec.PostInstall, result)
+			result = s.applyInstallerPostStep(installCtx, spec, result)
 		}
 		return runResult(result, err)
 	case InstallerKindOfficialScript:
 		result, err := s.runOfficialScriptInstaller(installCtx, spec)
 		return runResult(result, err)
 	case InstallerKindGitHubReleaseBinary:
-		if runtime != nil && strings.TrimSpace(runtime.InstallDir) == "" {
-			installDir, err := s.selectInstallDir()
+		installDir := ""
+		if spec.ReleaseBinary != nil {
+			installDir = strings.TrimSpace(spec.ReleaseBinary.InstallDir)
+		}
+		if runtime != nil && strings.TrimSpace(runtime.InstallDir) != "" {
+			installDir = strings.TrimSpace(runtime.InstallDir)
+		}
+		if installDir == "" {
+			installDir, err = s.selectInstallDir()
 			if err != nil {
 				return command, InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
 			}
+			if runtime != nil {
+				runtime.InstallDir = installDir
+			}
+		} else if runtime != nil {
 			runtime.InstallDir = installDir
 		}
-		result, err := s.runReleaseBinaryInstaller(installCtx, spec, strings.TrimSpace(runtime.InstallDir))
+		result, err := s.runReleaseBinaryInstaller(installCtx, spec, installDir)
+		return runResult(result, err)
+	case InstallerKindExternalAgentRegistryNPM:
+		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, spec)
+		if err == nil && result.ExitCode == 0 {
+			result = s.applyInstallerPostStep(installCtx, spec, result)
+		}
 		return runResult(result, err)
 	default:
 		return command, InstallCommandResult{ExitCode: 1, Stderr: fmt.Sprintf("unsupported installer kind %q", spec.Kind)}, nil
@@ -180,6 +324,9 @@ func (s Service) executeInstaller(
 func installerLockCommand(spec InstallerSpec) string {
 	if spec.Kind == InstallerKindShellCommand {
 		return spec.ShellCommand
+	}
+	if spec.Kind == InstallerKindExternalAgentRegistryNPM && spec.RegistryNPM != nil {
+		return string(spec.Kind) + ":" + spec.RegistryNPM.AgentID + ":" + spec.RegistryNPM.Package
 	}
 	return ""
 }
@@ -271,6 +418,33 @@ func (s Service) runReleaseBinaryInstaller(
 			destinationPath,
 		),
 	}, nil
+}
+
+func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec InstallerSpec) (InstallCommandResult, error) {
+	if spec.RegistryNPM == nil {
+		return InstallCommandResult{ExitCode: 1, Stderr: "external agent registry npm installer config is required"}, nil
+	}
+	npmSpec := spec.RegistryNPM
+	if err := os.MkdirAll(npmSpec.PrefixDir, 0o755); err != nil {
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
+	appRuntime, err := s.managedRuntimeResolver().Resolve(ctx)
+	if err != nil {
+		return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
+	}
+	packageSpec := boundedNPMPackageSpec(npmSpec.Package)
+	command := joinShellCommand([]string{
+		appRuntime.NPM,
+		"--prefix",
+		npmSpec.PrefixDir,
+		"install",
+		packageSpec,
+	})
+	env := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
+	return s.installCommand(ctx, InstallCommandInput{
+		Command: command,
+		Env:     env,
+	})
 }
 
 func (s Service) selectInstallDir() (string, error) {

@@ -97,23 +97,30 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	if codex.Model != "gpt-5.3-codex" || codex.ReasoningEffort != "high" {
 		t.Fatalf("codex settings clamped unexpectedly: %+v", codex)
 	}
+	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
+		Model: "opus",
+	})
+	if claude.Model != "default" {
+		t.Fatalf("claude legacy opus model = %q, want default", claude.Model)
+	}
 }
 
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	t.Parallel()
-	// Pins the backend configurable flags to the legacy GUI hardcoded table so
-	// the GUI can derive support from data instead of provider names.
+	// Pins the backend configurable flags so the GUI can derive support from
+	// data instead of provider names.
 	cases := []struct {
 		provider   string
 		model      bool
+		reasoning  bool
 		permission bool
 	}{
-		{"claude-code", true, true},
-		{"codex", true, true},
-		{"gemini", true, false},
-		{"hermes", false, false},
-		{"nexight", false, true},
-		{"openclaw", false, false},
+		{"claude-code", false, true, true},
+		{"codex", true, true, true},
+		{"gemini", true, true, false},
+		{"hermes", false, false, false},
+		{"nexight", false, false, true},
+		{"openclaw", false, false, false},
 	}
 	for _, tc := range cases {
 		model := composerModelConfig(tc.provider, "", nil)
@@ -122,8 +129,8 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 		if model.Configurable != tc.model {
 			t.Fatalf("%s modelConfig.configurable = %v, want %v", tc.provider, model.Configurable, tc.model)
 		}
-		if reasoning.Configurable != tc.model {
-			t.Fatalf("%s reasoningConfig.configurable = %v, want %v", tc.provider, reasoning.Configurable, tc.model)
+		if reasoning.Configurable != tc.reasoning {
+			t.Fatalf("%s reasoningConfig.configurable = %v, want %v", tc.provider, reasoning.Configurable, tc.reasoning)
 		}
 		if permission.Configurable != tc.permission {
 			t.Fatalf("%s permissionConfig.configurable = %v, want %v", tc.provider, permission.Configurable, tc.permission)

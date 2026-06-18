@@ -28,6 +28,7 @@ type AgentSessionService interface {
 	Cancel(context.Context, string, string) (agentservice.CancelSessionResult, error)
 	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
 	UpdatePin(context.Context, string, string, bool) (agentservice.Session, error)
+	UpdateVisible(context.Context, string, string, bool) (agentservice.Session, error)
 	UpdateSettings(context.Context, string, string, agentservice.ComposerSettingsPatch) (agentservice.Session, error)
 	SubmitInteractive(context.Context, string, string, string, agentservice.SubmitInteractiveInput) (agentservice.Session, error)
 }
@@ -372,6 +373,31 @@ func (api DaemonAPI) UpdateWorkspaceAgentSessionPin(ctx context.Context, request
 		return writeUpdateWorkspaceAgentSessionPinError(err), nil
 	}
 	return tuttigenerated.UpdateWorkspaceAgentSessionPin200JSONResponse{
+		Session: generatedAgentSession(session),
+	}, nil
+}
+
+func (api DaemonAPI) UpdateWorkspaceAgentSessionVisibility(ctx context.Context, request tuttigenerated.UpdateWorkspaceAgentSessionVisibilityRequestObject) (tuttigenerated.UpdateWorkspaceAgentSessionVisibilityResponseObject, error) {
+	if api.AgentSessionService == nil {
+		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
+		}, nil
+	}
+	if request.Body == nil {
+		return tuttigenerated.UpdateWorkspaceAgentSessionVisibility400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(apierrors.EmptyBody(apierrors.WithDeveloperMessage("empty body"))),
+		}, nil
+	}
+	session, err := api.AgentSessionService.UpdateVisible(
+		ctx,
+		string(request.WorkspaceID),
+		string(request.AgentSessionID),
+		request.Body.Visible,
+	)
+	if err != nil {
+		return writeUpdateWorkspaceAgentSessionVisibilityError(err), nil
+	}
+	return tuttigenerated.UpdateWorkspaceAgentSessionVisibility200JSONResponse{
 		Session: generatedAgentSession(session),
 	}, nil
 }

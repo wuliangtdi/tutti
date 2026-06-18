@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"time"
@@ -27,6 +28,7 @@ import (
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	preferencesservice "github.com/tutti-os/tutti/services/tuttid/service/preferences"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	userprojectservice "github.com/tutti-os/tutti/services/tuttid/service/userproject"
@@ -204,10 +206,23 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	)
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
 	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
-	agentStatusService := agentstatusservice.Service{}
+	managedRuntimeResolver := managedruntime.DefaultResolver{}
+	agentStatusService := agentstatusservice.Service{
+		ManagedRuntime: managedRuntimeResolver,
+	}
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter:         agentActivityProjection,
 		ProcessTransport: agentdaemon.NewLocalProcessTransport(),
+		ProviderCommandResolver: func(ctx context.Context, provider string) (agentdaemon.ProviderCommand, error) {
+			resolved, err := agentStatusService.ResolveProviderCommand(ctx, provider)
+			if err != nil {
+				return agentdaemon.ProviderCommand{}, err
+			}
+			return agentdaemon.ProviderCommand{
+				Command: resolved.Command,
+				Env:     resolved.Env,
+			}, nil
+		},
 		HostMetadata: agentdaemon.HostMetadata{
 			ClientInfo: agentdaemon.ClientInfo{
 				Name:    "tutti-desktop",
@@ -259,10 +274,15 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AppFactoryStore:       appFactoryStore,
 		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
 		WorkspaceStore:        store,
-		Runner:                &workspaceservice.AppRunner{},
+		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
 		StateDir:              tuttitypes.DefaultStateDir(),
 		Publisher:             eventstreamservice.WorkspaceAppPublisher{Service: events},
 	}
+	go func() {
+		if _, err := managedRuntimeResolver.Resolve(context.Background()); err != nil {
+			slog.Warn("managed runtime preload failed", "event", "tutti.managed_runtime.preload_failed", "error", err)
+		}
+	}()
 	appCLIRegistry := appclicli.NewRegistry(workspaceService, appCenterService)
 	appCenterService.AppCLIRegistry = appCLIRegistry
 	if err := appCenterService.InitBuiltinPackages(ctx); err != nil {
@@ -278,7 +298,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		AgentMessageReader:    agentActivityProjection,
 		AgentSessionReader:    agentActivityProjection,
 		AgentSessionState:     agentActivityProjection,
-		Runner:                &workspaceservice.AppRunner{},
+		Runner:                &workspaceservice.AppRunner{RuntimeResolver: managedRuntimeResolver},
 		StateDir:              tuttitypes.DefaultStateDir(),
 		Publisher:             eventstreamservice.WorkspaceAppFactoryPublisher{Service: events},
 	}

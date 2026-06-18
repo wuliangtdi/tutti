@@ -16,17 +16,26 @@ const (
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
 
 type ProviderSpec struct {
-	Provider           string
-	SupportStatus      ProviderSupportStatus
-	DisabledReasonCode string
-	BinaryNames        []string
-	AdapterBinaryNames []string
-	AdapterCommand     []string
-	AuthStatusCommand  []string
-	AuthMarkerPaths    []string
-	Install            InstallerSpec
-	AdapterInstall     InstallerSpec
-	LoginArgs          []string
+	Provider                     string
+	SupportStatus                ProviderSupportStatus
+	DisabledReasonCode           string
+	BinaryNames                  []string
+	AdapterBinaryNames           []string
+	AdapterCommand               []string
+	AdapterEnv                   []string
+	ExternalRegistryID           string
+	AdapterUnavailableReasonCode string
+	AdapterPackage               AdapterPackageRequirement
+	AuthStatusCommand            []string
+	AuthMarkerPaths              []string
+	Install                      InstallerSpec
+	AdapterInstall               InstallerSpec
+	LoginArgs                    []string
+}
+
+type AdapterPackageRequirement struct {
+	Name    string
+	Version string
 }
 
 func (r Registry) Select(providers []string) ([]ProviderSpec, error) {
@@ -75,8 +84,7 @@ func DefaultRegistry() Registry {
 		agentprovider.ClaudeCode: {
 			Provider:           agentprovider.ClaudeCode,
 			BinaryNames:        []string{"claude"},
-			AdapterBinaryNames: []string{"claude-agent-acp"},
-			AdapterCommand:     []string{"claude-agent-acp"},
+			ExternalRegistryID: "claude-acp",
 			AuthStatusCommand:  []string{"auth", "status"},
 			Install: InstallerSpec{
 				Kind:           InstallerKindOfficialScript,
@@ -85,9 +93,8 @@ func DefaultRegistry() Registry {
 				ScriptShell:    "bash",
 			},
 			AdapterInstall: InstallerSpec{
-				Kind:           InstallerKindShellCommand,
-				DisplayCommand: "npm install -g @agentclientprotocol/claude-agent-acp@0.42.0",
-				ShellCommand:   "npm install -g @agentclientprotocol/claude-agent-acp@0.42.0",
+				Kind:           InstallerKindExternalAgentRegistryNPM,
+				DisplayCommand: "Install claude-acp from ACP External Agent Registry",
 				// Auto-apply the fast-mode bridge patch after a successful install.
 				PostInstall: InstallerPostStepPatchClaudeAgentACP,
 			},

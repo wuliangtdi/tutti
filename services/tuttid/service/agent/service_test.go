@@ -437,6 +437,36 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	visible := false
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		Provider:       "claude-code",
+		Visible:        &visible,
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session id = %q, want session-1", session.ID)
+	}
+	if session.Visible {
+		t.Fatal("session visible = true, want false")
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if len(runtime.validateCalls) != 0 {
+		t.Fatalf("validate calls = %d, want 0", len(runtime.validateCalls))
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want 0", len(runtime.execCalls))
+	}
+}
+
 func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -454,6 +484,35 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 	}
 	if runtime.execCalls[0].DisplayPrompt != "" {
 		t.Fatalf("runtime display prompt = %q, want empty explicit display prompt", runtime.execCalls[0].DisplayPrompt)
+	}
+}
+
+func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	visible := false
+	created, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		Provider:       "claude-code",
+		Visible:        &visible,
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if created.Visible {
+		t.Fatal("created visible = true, want false")
+	}
+
+	session, err := service.UpdateVisible(context.Background(), "ws-1", "session-1", true)
+	if err != nil {
+		t.Fatalf("UpdateVisible error = %v", err)
+	}
+	if !session.Visible {
+		t.Fatal("updated visible = false, want true")
+	}
+	runtimeSession, ok := runtime.Session("ws-1", "session-1")
+	if !ok || !runtimeSession.Visible {
+		t.Fatalf("runtime session = %#v, ok=%v; want visible true", runtimeSession, ok)
 	}
 }
 
@@ -790,12 +849,22 @@ func TestServiceGetsComposerOptionsNormalizesCodexMinimalReasoningEffort(t *test
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
-	if !ok || len(configOptions) < 2 {
+	if !ok || len(configOptions) < 1 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	var reasoningOption map[string]any
+	for _, option := range configOptions {
+		if option["id"] == "reasoning_effort" {
+			reasoningOption = option
+			break
+		}
+	}
+	if reasoningOption == nil {
+		t.Fatalf("configOptions = %#v, want reasoning_effort option", configOptions)
+	}
+	reasoningOptions, ok := reasoningOption["options"].([]map[string]string)
 	if !ok {
-		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+		t.Fatalf("reasoning options = %#v", reasoningOption["options"])
 	}
 	for _, option := range reasoningOptions {
 		if option["value"] == "minimal" {
@@ -821,12 +890,15 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
-	if !ok || len(configOptions) < 2 {
+	if !ok || len(configOptions) < 1 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	if configOptions[0]["id"] != "effort" {
+		t.Fatalf("first config option = %#v, want effort", configOptions[0])
+	}
+	reasoningOptions, ok := configOptions[0]["options"].([]map[string]string)
 	if !ok {
-		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+		t.Fatalf("reasoning options = %#v", configOptions[0]["options"])
 	}
 	for _, option := range reasoningOptions {
 		if option["value"] == "minimal" {
@@ -835,16 +907,17 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 	}
 }
 
-func TestServiceGetsComposerOptionsWithResolvedClaudeDefaultModel(t *testing.T) {
+func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "claude-code",
-			Source:   "claude-static",
+			Source:   "test-ignored",
 			Models: []AgentModelOption{
 				{ID: "sonnet", DisplayName: "sonnet"},
-				{ID: "opus", DisplayName: "opus", IsDefault: true},
+				{ID: "default", DisplayName: "default", IsDefault: true},
 			},
 		},
 	}
@@ -855,11 +928,23 @@ func TestServiceGetsComposerOptionsWithResolvedClaudeDefaultModel(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "opus" {
-		t.Fatalf("effectiveSettings.model = %q, want opus", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "" {
+		t.Fatalf("effectiveSettings.model = %q, want empty", options.EffectiveSettings.Model)
 	}
 	if options.EffectiveSettings.ReasoningEffort != "high" {
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != nil {
+		t.Fatalf("modelCatalogSource = %#v, want nil", options.RuntimeContext["modelCatalogSource"])
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
+	}
+	for _, option := range configOptions {
+		if option["id"] == "model" {
+			t.Fatalf("configOptions = %#v, want no static Claude model option", configOptions)
+		}
 	}
 }
 
@@ -2271,6 +2356,18 @@ func (f *fakeRuntime) Session(workspaceID string, agentSessionID string) (Runtim
 	return session, ok
 }
 
+func (f *fakeRuntime) SetVisible(_ context.Context, input RuntimeSetVisibleInput) (RuntimeSession, error) {
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, ok := f.sessions[key]
+	if !ok {
+		return RuntimeSession{}, ErrSessionNotFound
+	}
+	session.Visible = input.Visible
+	session.UpdatedAtUnixMS = time.Now().UnixMilli()
+	f.sessions[key] = session
+	return session, nil
+}
+
 func (f *fakeRuntime) Sessions(workspaceID string) []RuntimeSession {
 	result := make([]RuntimeSession, 0)
 	for _, session := range f.sessions {
@@ -2341,6 +2438,7 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		},
 		Status:          "ready",
 		Title:           input.Title,
+		Visible:         input.Visible == nil || *input.Visible,
 		WorkspaceID:     input.WorkspaceID,
 		CreatedAtUnixMS: now,
 		UpdatedAtUnixMS: now,

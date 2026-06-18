@@ -110,6 +110,9 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	locale := normalizeComposerLocale(input.Locale)
 	permissionConfig := composerPermissionConfig(provider, effectiveSettings.PermissionModeID, locale)
 	modelOptions := composerSelectedModelOptions(effectiveSettings.Model)
+	if provider == agentprovider.ClaudeCode {
+		modelOptions = []map[string]string{}
+	}
 	runtimeContext := map[string]any{
 		"capabilities":     composerProviderCapabilities(provider),
 		"configOptions":    composerConfigOptions(provider, effectiveSettings, modelOptions),
@@ -120,7 +123,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
 	runtimeContext["skills"] = composerSkillOptionsRuntimeContext(skills)
-	if composerOptionsProviderSupportsSettings(provider) {
+	if composerOptionsProviderUsesModelCatalog(provider) {
 		if catalogOptions, source, ok := composerModelOptionsFromCatalog(ctx, s.ModelCatalog, provider, effectiveSettings.Model); ok {
 			modelOptions = catalogOptions
 			runtimeContext["configOptions"] = composerConfigOptions(provider, effectiveSettings, catalogOptions)
@@ -233,7 +236,7 @@ func composerDefaultModel(
 	provider string,
 	catalog AgentModelCatalog,
 ) string {
-	if catalog != nil {
+	if composerOptionsProviderUsesModelCatalog(provider) && catalog != nil {
 		result, err := catalog.ListModels(ctx, provider)
 		if err == nil {
 			for _, model := range result.Models {
@@ -261,18 +264,19 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 	if modelOptions == nil {
 		modelOptions = composerSelectedModelOptions(settings.Model)
 	}
-	options := []map[string]any{
-		{
+	options := make([]map[string]any, 0, 3)
+	if len(modelOptions) > 0 {
+		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Model),
 			"id":           "model",
 			"options":      modelOptions,
-		},
-		{
-			"currentValue": nullableString(settings.ReasoningEffort),
-			"id":           reasoningConfigOptionID(provider),
-			"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
-		},
+		})
 	}
+	options = append(options, map[string]any{
+		"currentValue": nullableString(settings.ReasoningEffort),
+		"id":           reasoningConfigOptionID(provider),
+		"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
+	})
 	if speedProviderSupportsSpeed(provider) {
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Speed),
@@ -316,8 +320,23 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	settings.ReasoningEffort = normalizeReasoningEffortForProvider(provider, settings.ReasoningEffort)
 	settings.Speed = normalizeSpeedForProvider(provider, settings.Speed)
 	settings.Model = clampComposerModelForProvider(provider, settings.Model)
+	settings.Model = normalizeComposerModelForProvider(provider, settings.Model)
 	settings.PlanMode = clampComposerPlanModeForProvider(provider, settings.PlanMode)
 	return settings
+}
+
+func normalizeComposerModelForProvider(provider string, model string) string {
+	if agentprovider.Normalize(provider) != agentprovider.ClaudeCode {
+		return strings.TrimSpace(model)
+	}
+	switch strings.TrimSpace(model) {
+	case "opus", "opusplan":
+		// Retired Claude Code aliases; Opus tier is exposed as "default" in
+		// newer claude-agent-acp builds.
+		return "default"
+	default:
+		return strings.TrimSpace(model)
+	}
 }
 
 // clampComposerModelForProvider clears model overrides for providers without
@@ -470,7 +489,19 @@ func composerOptionsProviderSupportsSettings(provider string) bool {
 	return agentprovider.SupportsComposerSettings(provider)
 }
 
+func composerOptionsProviderUsesModelCatalog(provider string) bool {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.Gemini:
+		return true
+	default:
+		return false
+	}
+}
+
 func composerModelConfig(provider string, selected string, options []map[string]string) ComposerConfigOption {
+	if agentprovider.Normalize(provider) == agentprovider.ClaudeCode {
+		return ComposerConfigOption{}
+	}
 	values := make([]ComposerConfigOptionValue, 0, len(options))
 	for _, option := range options {
 		value := strings.TrimSpace(option["value"])

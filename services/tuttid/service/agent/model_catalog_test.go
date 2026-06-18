@@ -2,26 +2,20 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
 
-func TestAgentModelCatalogReturnsClaudeStaticModels(t *testing.T) {
+func TestAgentModelCatalogDoesNotReturnClaudeStaticModels(t *testing.T) {
 	catalog := &CachedAgentModelCatalog{
 		Now: func() time.Time {
 			return time.UnixMilli(1000)
 		},
 	}
 
-	result, err := catalog.ListModels(context.Background(), "claude-code")
-	if err != nil {
-		t.Fatalf("ListModels returned error: %v", err)
-	}
-	if result.Source != "claude-static" {
-		t.Fatalf("source = %q, want claude-static", result.Source)
-	}
-	if len(result.Models) == 0 || result.Models[0].ID != "default" {
-		t.Fatalf("models = %#v", result.Models)
+	if _, err := catalog.ListModels(context.Background(), "claude-code"); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("ListModels error = %v, want ErrInvalidArgument", err)
 	}
 }
 

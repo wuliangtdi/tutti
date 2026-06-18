@@ -99,9 +99,13 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		input.PermissionModeID = nil
 	}
 	input.AgentSessionID = agentSessionIDOrNew(input.AgentSessionID)
-	normalizedContent, _, err := normalizePromptContent(input.InitialContent)
-	if err != nil {
-		return Session{}, err
+	var normalizedContent []PromptContentBlock
+	if len(input.InitialContent) > 0 {
+		var err error
+		normalizedContent, _, err = normalizePromptContent(input.InitialContent)
+		if err != nil {
+			return Session{}, err
+		}
 	}
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
@@ -142,6 +146,13 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	})
 	if err != nil {
 		return Session{}, cleanupPrepared(normalizeRuntimeError(err))
+	}
+	if len(normalizedContent) == 0 {
+		return serviceSessionWithComposerSkillOptions(
+			session,
+			s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
+			s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
+		), nil
 	}
 	if err := s.validatePromptContentForExec(ctx, workspaceID, session.ID, normalizedContent); err != nil {
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
@@ -274,32 +285,6 @@ func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentS
 		return PromptAttachment{}, ErrSessionNotFound
 	}
 	return store.ReadAttachment(workspaceID, agentSessionID, attachmentID)
-}
-
-func (s *Service) ListGitBranches(ctx context.Context, workspaceID string, agentSessionID string) (GitBranches, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	agentSessionID = strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return GitBranches{}, ErrInvalidArgument
-	}
-	session, err := s.get(ctx, workspaceID, agentSessionID, false)
-	if err != nil {
-		return GitBranches{}, err
-	}
-	return listGitBranches(ctx, session.Cwd)
-}
-
-// ListGitBranchesForPath lists local git branches for a workspace working
-// directory before any agent session exists (e.g. the empty-hero composer's
-// selected project path). It mirrors the graceful degradation of the
-// session-scoped path: a non-git or missing directory yields an empty result.
-func (*Service) ListGitBranchesForPath(ctx context.Context, workspaceID string, workingDirectory string) (GitBranches, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	workingDirectory = strings.TrimSpace(workingDirectory)
-	if workspaceID == "" || workingDirectory == "" {
-		return GitBranches{}, ErrInvalidArgument
-	}
-	return listGitBranches(ctx, workingDirectory)
 }
 
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {

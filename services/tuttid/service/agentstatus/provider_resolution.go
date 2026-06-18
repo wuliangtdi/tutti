@@ -1,0 +1,280 @@
+package agentstatus
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+
+	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
+)
+
+const ReasonExternalAgentRegistryUnavailable = "external_agent_registry_unavailable"
+const ReasonManagedRuntimeUnavailable = "managed_runtime_unavailable"
+
+type ProviderCommandResolution struct {
+	Command []string
+	Env     []string
+}
+
+func (s Service) selectProviderSpecs(ctx context.Context, providers []string, requireManagedRuntime bool) ([]ProviderSpec, error) {
+	specs, err := s.registry().Select(providers)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ProviderSpec, 0, len(specs))
+	for _, spec := range specs {
+		resolved, err := s.resolveProviderSpec(ctx, spec, requireManagedRuntime)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resolved)
+	}
+	return result, nil
+}
+
+func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (ProviderCommandResolution, error) {
+	specs, err := s.selectProviderSpecs(ctx, []string{provider}, true)
+	if err != nil {
+		return ProviderCommandResolution{}, err
+	}
+	if len(specs) == 0 {
+		return ProviderCommandResolution{}, ErrInvalidProvider
+	}
+	spec := specs[0]
+	if len(spec.AdapterCommand) == 0 || strings.TrimSpace(spec.AdapterCommand[0]) == "" {
+		reason := firstNonBlank(spec.AdapterUnavailableReasonCode, "acp_adapter_not_found")
+		return ProviderCommandResolution{}, fmt.Errorf("%s", reason)
+	}
+	return ProviderCommandResolution{
+		Command: cloneStrings(spec.AdapterCommand),
+		Env:     cloneStrings(spec.AdapterEnv),
+	}, nil
+}
+
+func (s Service) resolveProviderSpec(ctx context.Context, spec ProviderSpec, requireManagedRuntime bool) (ProviderSpec, error) {
+	if strings.TrimSpace(spec.ExternalRegistryID) == "" {
+		return spec, nil
+	}
+	agent, err := s.externalAgentRegistry().Agent(ctx, spec.ExternalRegistryID)
+	if err != nil {
+		spec.AdapterUnavailableReasonCode = ReasonExternalAgentRegistryUnavailable
+		return spec, nil
+	}
+	if agent.Distribution.NPM != nil {
+		return s.resolveExternalRegistryNPMSpec(ctx, spec, agent, *agent.Distribution.NPM, requireManagedRuntime), nil
+	}
+	if len(agent.Distribution.Binary) > 0 {
+		return s.resolveExternalRegistryBinarySpec(spec, agent), nil
+	}
+	spec.AdapterUnavailableReasonCode = "external_agent_registry_distribution_unavailable"
+	return spec, nil
+}
+
+func (s Service) resolveExternalRegistryNPMSpec(
+	ctx context.Context,
+	spec ProviderSpec,
+	agent externalagentregistry.Agent,
+	distribution externalagentregistry.NPMDistribution,
+	requireManagedRuntime bool,
+) ProviderSpec {
+	registry := s.externalAgentRegistry()
+	prefixDir := registry.PackagePrefix(agent.ID)
+	packageName, packageVersion := splitNPMPackageSpec(distribution.Package)
+	packageDir := npmPackageInstallDir(prefixDir, packageName)
+	spec.AdapterPackage = AdapterPackageRequirement{
+		Name:    packageName,
+		Version: firstNonBlank(packageVersion, agent.Version),
+	}
+	spec.AdapterInstall = InstallerSpec{
+		Kind:           InstallerKindExternalAgentRegistryNPM,
+		DisplayCommand: "Install " + agent.ID + " from ACP External Agent Registry",
+		RegistryNPM: &ExternalAgentRegistryNPMInstallerSpec{
+			AgentID:    agent.ID,
+			Package:    distribution.Package,
+			Args:       cloneStrings(distribution.Args),
+			Env:        cloneStringMap(distribution.Env),
+			PrefixDir:  prefixDir,
+			PackageDir: packageDir,
+			Version:    firstNonBlank(packageVersion, agent.Version),
+		},
+		PostInstall: spec.AdapterInstall.PostInstall,
+	}
+	appRuntime, ok := s.resolveManagedRuntimeForProvider(ctx, requireManagedRuntime)
+	if !ok {
+		spec.AdapterCommand = nil
+		spec.AdapterEnv = nil
+		spec.AdapterUnavailableReasonCode = ReasonManagedRuntimeUnavailable
+		return spec
+	}
+	command := []string{
+		appRuntime.NPM,
+		"--prefix",
+		prefixDir,
+		"exec",
+		"--yes",
+		"--",
+		boundedNPMPackageSpec(distribution.Package),
+	}
+	command = append(command, distribution.Args...)
+	spec.AdapterCommand = command
+	spec.AdapterEnv = append(appRuntime.EnvOverrides, envMapToList(distribution.Env)...)
+	return spec
+}
+
+func (s Service) resolveExternalRegistryBinarySpec(spec ProviderSpec, agent externalagentregistry.Agent) ProviderSpec {
+	target, ok := agent.Distribution.Binary[externalagentregistry.CurrentPlatformKey()]
+	if !ok {
+		spec.AdapterUnavailableReasonCode = "external_agent_registry_platform_unavailable"
+		return spec
+	}
+	installDir := s.externalAgentRegistry().BinaryInstallDir(agent.ID)
+	binaryName := filepath.Base(strings.TrimPrefix(strings.TrimPrefix(target.Command, "./"), ".\\"))
+	spec.AdapterInstall = InstallerSpec{
+		Kind:           InstallerKindGitHubReleaseBinary,
+		DisplayCommand: "Install " + agent.ID + " from ACP External Agent Registry",
+		ReleaseBinary: &ReleaseBinaryInstallerSpec{
+			BinaryName: binaryName,
+			Version:    agent.Version,
+			InstallDir: installDir,
+			Assets: map[string]ReleaseBinaryAsset{
+				releaseBinaryPlatformKey(runtimeGOOS(), runtimeGOARCH()): {
+					URL:    target.Archive,
+					SHA256: target.SHA256,
+				},
+			},
+		},
+	}
+	command := []string{filepath.Join(installDir, binaryName)}
+	command = append(command, target.Args...)
+	spec.AdapterCommand = command
+	spec.AdapterEnv = envMapToList(target.Env)
+	return spec
+}
+
+func (s Service) resolveManagedRuntimeForProvider(ctx context.Context, require bool) (managedruntime.ResolvedRuntime, bool) {
+	resolver := s.managedRuntimeResolver()
+	if !require {
+		if managed, ok := resolver.(managedruntime.DefaultResolver); ok {
+			root := strings.TrimSpace(managed.RuntimeRoot)
+			if root == "" {
+				root = managed.DefaultRoot()
+			}
+			if !managedruntime.RootReady(root) {
+				return managedruntime.ResolvedRuntime{}, false
+			}
+		}
+	}
+	runtime, err := resolver.Resolve(ctx)
+	if err != nil {
+		return managedruntime.ResolvedRuntime{}, false
+	}
+	return runtime, true
+}
+
+func (s Service) externalAgentRegistry() externalagentregistry.Store {
+	registry := s.ExternalAgentRegistry
+	if registry.HTTPClient == nil {
+		registry.HTTPClient = s.httpClient()
+	}
+	return registry
+}
+
+func (s Service) managedRuntimeResolver() managedruntime.Resolver {
+	if s.ManagedRuntime != nil {
+		return s.ManagedRuntime
+	}
+	return managedruntime.DefaultResolver{
+		Environ:    s.Environ,
+		HTTPClient: s.httpClient(),
+	}
+}
+
+func installedNPMPackageVersion(packageDir string, packageName string) string {
+	if strings.TrimSpace(packageDir) == "" || strings.TrimSpace(packageName) == "" {
+		return ""
+	}
+	content, err := os.ReadFile(filepath.Join(packageDir, "package.json"))
+	if err != nil {
+		return ""
+	}
+	var manifest struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		return ""
+	}
+	if strings.TrimSpace(manifest.Name) != strings.TrimSpace(packageName) {
+		return ""
+	}
+	return strings.TrimSpace(manifest.Version)
+}
+
+func npmPackageInstallDir(prefixDir string, packageName string) string {
+	packageName = strings.TrimSpace(packageName)
+	if strings.HasPrefix(packageName, "@") {
+		scope, name, ok := strings.Cut(packageName, "/")
+		if ok {
+			return filepath.Join(prefixDir, "node_modules", scope, name)
+		}
+	}
+	return filepath.Join(prefixDir, "node_modules", packageName)
+}
+
+func splitNPMPackageSpec(packageSpec string) (string, string) {
+	packageSpec = strings.TrimSpace(packageSpec)
+	index := strings.LastIndex(packageSpec, "@")
+	if index <= 0 {
+		return packageSpec, ""
+	}
+	return packageSpec[:index], packageSpec[index+1:]
+}
+
+var npmSemverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$`)
+
+func boundedNPMPackageSpec(packageSpec string) string {
+	name, version := splitNPMPackageSpec(packageSpec)
+	if strings.TrimSpace(name) == "" || !npmSemverPattern.MatchString(strings.TrimSpace(version)) {
+		return strings.TrimSpace(packageSpec)
+	}
+	return strings.TrimSpace(name) + "@0.0.0 - " + strings.TrimSpace(version)
+}
+
+func envMapToList(env map[string]string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(env))
+	for key, value := range env {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		result = append(result, key+"="+value)
+	}
+	return result
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]string, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
+}
+
+func runtimeGOOS() string {
+	return runtime.GOOS
+}
+
+func runtimeGOARCH() string {
+	return runtime.GOARCH
+}

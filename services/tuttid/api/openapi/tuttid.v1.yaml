@@ -1790,6 +1790,40 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: updateWorkspaceAgentSessionVisibility
+      tags:
+        - agent-session
+      summary: Update one workspace agent session visibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceAgentSessionVisibilityRequest"
+      responses:
+        "200":
+          description: Workspace agent session visibility updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/pin:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -5125,6 +5159,14 @@ components:
         - pinned
       properties:
         pinned:
+          type: boolean
+    UpdateWorkspaceAgentSessionVisibilityRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - visible
+      properties:
+        visible:
           type: boolean
     CreateWorkspaceAgentSessionRequest:
       type: object

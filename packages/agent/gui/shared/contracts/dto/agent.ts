@@ -8,7 +8,6 @@ export type AgentProviderId =
   | "hermes";
 
 export type AgentModelCatalogSource =
-  | "claude-static"
   | "codex-cli"
   | "nexight-cli"
   | "opencode-cli"

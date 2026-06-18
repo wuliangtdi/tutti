@@ -6649,9 +6649,8 @@ describe("useAgentGUINodeController", () => {
             speed: null,
             // Sent as-is; tuttid clamps planMode for codex at session create.
             planMode: true,
-            // Browser use defaults on and is sent as-is; the daemon clamps per
-            // provider support.
-            browserUse: true,
+            // Browser use is tri-state and omitted until explicitly changed;
+            // the daemon applies provider defaults and clamps support.
             permissionModeId: "full-access"
           }
         })

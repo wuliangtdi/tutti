@@ -468,6 +468,7 @@ function createDependenciesStub(): {
       createWorkspaceIssueRun: fail,
       createWorkspace: fail,
       createWorkspaceAgentSession: fail,
+      updateWorkspaceAgentSessionVisibility: fail,
       createWorkspaceAppFactoryJob: fail,
       createWorkspaceFile: fail,
       createWorkspaceFileDirectory: fail,

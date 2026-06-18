@@ -171,19 +171,30 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 	if err != nil {
 		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
 	}
-	return agentRuntimeSession(session), nil
+	return a.runtimeSessionWithState(session), nil
 }
 
 func (a agentRuntimeAdapter) Session(workspaceID string, agentSessionID string) (agentservice.RuntimeSession, bool) {
 	session, ok := a.controller.Session(workspaceID, agentSessionID)
-	return agentRuntimeSession(session), ok
+	if !ok {
+		return agentservice.RuntimeSession{}, false
+	}
+	return a.runtimeSessionWithState(session), true
+}
+
+func (a agentRuntimeAdapter) SetVisible(ctx context.Context, input agentservice.RuntimeSetVisibleInput) (agentservice.RuntimeSession, error) {
+	session, err := a.controller.SetVisible(ctx, input.WorkspaceID, input.AgentSessionID, input.Visible)
+	if err != nil {
+		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
+	}
+	return a.runtimeSessionWithState(session), nil
 }
 
 func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.RuntimeSession {
 	sessions := a.controller.Sessions(workspaceID)
 	result := make([]agentservice.RuntimeSession, 0, len(sessions))
 	for _, session := range sessions {
-		result = append(result, agentRuntimeSession(session))
+		result = append(result, a.runtimeSessionWithState(session))
 	}
 	return result
 }
@@ -210,7 +221,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 	if err != nil {
 		return agentservice.RuntimeSession{}, mapAgentRuntimeError(err)
 	}
-	return agentRuntimeSession(result.Session), nil
+	return a.runtimeSessionWithState(result.Session), nil
 }
 
 func (a agentRuntimeAdapter) Subscribe(workspaceID string, agentSessionID string) (<-chan agentservice.RuntimeStreamEvent, func(), bool) {
@@ -250,6 +261,28 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.RuntimeSessi
 	}
 }
 
+func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.RuntimeSession {
+	result := agentRuntimeSession(session)
+	state, err := a.controller.State(session.RoomID, session.AgentSessionID)
+	if err != nil {
+		return result
+	}
+	if state.ProviderSessionID != "" {
+		result.ProviderSessionID = state.ProviderSessionID
+	}
+	if state.Status != "" {
+		result.Status = state.Status
+	}
+	if state.Settings != nil {
+		result.Settings = agentRuntimeComposerSettings(state.Settings)
+	}
+	result.RuntimeContext = cloneRuntimeContext(state.RuntimeContext)
+	if state.UpdatedAtUnixMS > 0 {
+		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS
+	}
+	return result
+}
+
 func agentRuntimeComposerSettings(settings *agentruntime.SessionSettings) *agentservice.ComposerSettings {
 	if settings == nil {
 		return nil
@@ -262,6 +295,17 @@ func agentRuntimeComposerSettings(settings *agentruntime.SessionSettings) *agent
 		ReasoningEffort:  settings.ReasoningEffort,
 		Speed:            settings.Speed,
 	}
+}
+
+func cloneRuntimeContext(value map[string]any) map[string]any {
+	if len(value) == 0 {
+		return nil
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
 }
 
 func cloneOptionalBool(value *bool) *bool {

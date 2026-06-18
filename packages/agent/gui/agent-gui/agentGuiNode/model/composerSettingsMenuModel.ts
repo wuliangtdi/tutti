@@ -6,6 +6,8 @@ import type { AgentGUIComposerSettingsVM } from "./agentGuiNodeTypes";
 export type AgentComposerSettingsMenuLabels = {
   modelLabel: string;
   modelSelectionLabel: string;
+  modelContextWindowSuffix: string;
+  modelTooltipVersionLabel: string;
   defaultModel: string;
   inheritedUnavailable: string;
   loadingSettings: string;
@@ -39,6 +41,15 @@ export interface ComposerMenuOption {
   value: string;
   label: string;
   description?: string;
+  summary?: string[];
+  tooltip?: ComposerModelOptionTooltip;
+}
+
+export interface ComposerModelOptionTooltip {
+  title: string;
+  description?: string;
+  contextWindow?: string;
+  version?: string;
 }
 
 export interface ComposerMenuSection {
@@ -127,11 +138,9 @@ export function buildComposerModelMenuModel(
       show: showModel,
       selectedValue: selectedModelValue,
       selectedLabel: modelLabel,
-      options: modelItems.map((option) => ({
-        value: option.value,
-        label: formatModelDisplayLabel(option.label),
-        description: resolveModelDescription(option.description, labels)
-      }))
+      options: modelItems.map((option) =>
+        modelMenuOptionFromSettingOption(option, labels)
+      )
     },
     reasoning: {
       show: showReasoning,
@@ -155,6 +164,193 @@ export function buildComposerModelMenuModel(
   };
 }
 
+function modelMenuOptionFromSettingOption(
+  option: AgentGUIComposerSettingsVM["availableModels"][number],
+  labels: AgentComposerSettingsMenuLabels
+): ComposerMenuOption {
+  const displayLabel = formatModelDisplayLabel(option.label);
+  const description = resolveModelDescription(option.description, labels);
+  const presentation = modelOptionPresentation({
+    description,
+    label: displayLabel,
+    labels
+  });
+  return {
+    value: option.value,
+    label: presentation.label,
+    ...(description ? { description } : {}),
+    ...(presentation.summary.length > 0
+      ? { summary: presentation.summary }
+      : {}),
+    ...(presentation.tooltip ? { tooltip: presentation.tooltip } : {})
+  };
+}
+
+function modelOptionPresentation(input: {
+  description: string | undefined;
+  label: string;
+  labels: Pick<
+    AgentComposerSettingsMenuLabels,
+    | "modelContextWindowSuffix"
+    | "modelTooltipVersionLabel"
+    | "reasoningOptionMinimal"
+    | "reasoningOptionLow"
+    | "reasoningOptionMedium"
+    | "reasoningOptionHigh"
+    | "reasoningOptionXHigh"
+    | "speedOptionFast"
+  >;
+}): {
+  label: string;
+  summary: string[];
+  tooltip?: ComposerModelOptionTooltip;
+} {
+  const description = input.description?.trim() || "";
+  const parsed = parseModelDescription(description);
+  const label = shortModelDisplayLabel(input.label);
+  const summary = uniqueNonEmpty([
+    parsed.contextWindow?.summary,
+    parsed.effort
+      ? reasoningSummaryLabel(parsed.effort.summaryValue, input.labels)
+      : null,
+    parsed.speed === "fast" ? input.labels.speedOptionFast : null
+  ]);
+  const tooltipDescription =
+    parsed.body || (description && !parsed.title ? description : "");
+  const tooltip =
+    description || summary.length > 0
+      ? {
+          title: parsed.title ?? label,
+          ...(tooltipDescription ? { description: tooltipDescription } : {}),
+          ...(parsed.contextWindow
+            ? {
+                contextWindow: `${parsed.contextWindow.summary} ${input.labels.modelContextWindowSuffix}`
+              }
+            : {}),
+          ...(parsed.effort
+            ? {
+                version: `${input.labels.modelTooltipVersionLabel}: ${parsed.effort.version}`
+              }
+            : {})
+        }
+      : undefined;
+  return { label, summary, ...(tooltip ? { tooltip } : {}) };
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function reasoningSummaryLabel(
+  effort: string,
+  labels: Pick<
+    AgentComposerSettingsMenuLabels,
+    | "reasoningOptionMinimal"
+    | "reasoningOptionLow"
+    | "reasoningOptionMedium"
+    | "reasoningOptionHigh"
+    | "reasoningOptionXHigh"
+  >
+): string {
+  return resolveReasoningOptionLabel(effort, labels);
+}
+
+function parseModelDescription(description: string): {
+  body: string;
+  contextWindow?: { summary: string };
+  effort?: { summaryValue: string; version: string };
+  speed?: "fast";
+  title?: string;
+} {
+  const parts = description
+    .split(/[·•\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const firstPart = parts[0] ?? description.trim();
+  const contextWindow = contextWindowSummaryFromText(description);
+  const effort = effortFromText(description);
+  const speed = speedFromText(description);
+  const title = titleFromDescriptionPrefix(firstPart, contextWindow?.raw);
+  const bodyParts = (title ? parts.slice(1) : parts).filter(
+    (part) => !effortFromText(part)
+  );
+  return {
+    body: bodyParts.join(" · "),
+    ...(contextWindow
+      ? { contextWindow: { summary: contextWindow.summary } }
+      : {}),
+    ...(effort ? { effort } : {}),
+    ...(speed ? { speed } : {}),
+    ...(title ? { title } : {})
+  };
+}
+
+function contextWindowSummaryFromText(
+  text: string
+): { raw: string; summary: string } | null {
+  const match = text.match(
+    /\b(\d+(?:\.\d+)?\s*[kKmM])\s+(?:token\s+)?context(?:\s+window)?\b/
+  );
+  if (!match?.[1]) {
+    return null;
+  }
+  return {
+    raw: match[0],
+    summary: match[1].replace(/\s+/g, "").toUpperCase()
+  };
+}
+
+function titleFromDescriptionPrefix(
+  firstPart: string,
+  contextText: string | undefined
+): string | undefined {
+  if (contextText) {
+    const contextIndex = firstPart
+      .toLowerCase()
+      .indexOf(contextText.toLowerCase());
+    if (contextIndex > 0) {
+      const title = firstPart
+        .slice(0, contextIndex)
+        .replace(/\bwith\s*$/i, "")
+        .trim();
+      return title ? formatModelDisplayLabel(title) : undefined;
+    }
+  }
+  if (/^[A-Za-z][A-Za-z0-9 ._-]*\d(?:[A-Za-z0-9 ._-]*)?$/.test(firstPart)) {
+    return formatModelDisplayLabel(firstPart);
+  }
+  return undefined;
+}
+
+function effortFromText(
+  text: string
+): { summaryValue: string; version: string } | undefined {
+  const effortMatch = text
+    .toLowerCase()
+    .match(/\b(minimal|low|medium|high|x[-\s]?high)\s+effort\b/);
+  if (!effortMatch?.[1]) {
+    return undefined;
+  }
+  return {
+    summaryValue: effortMatch[1].replace(/\s+/g, "").replace("-", ""),
+    version: effortMatch[0]
+  };
+}
+
+function speedFromText(text: string): "fast" | undefined {
+  return /\bfast\b/i.test(text) ? "fast" : undefined;
+}
+
 export function formatModelDisplayLabel(label: string): string {
   const trimmed = label.trim();
   if (!trimmed) {
@@ -166,6 +362,20 @@ export function formatModelDisplayLabel(label: string): string {
       `${prefix}${letter.toUpperCase()}`
   );
   return capitalized.replace(/gpt/gi, "GPT");
+}
+
+function shortModelDisplayLabel(label: string): string {
+  const formatted = formatModelDisplayLabel(label.replace(/\([^)]*\)/g, ""));
+  const family = formatted.trim().split(/\s+/)[0];
+  switch (family?.toLowerCase()) {
+    case "default":
+    case "opus":
+    case "sonnet":
+    case "haiku":
+      return family;
+    default:
+      return formatted.trim() || label;
+  }
 }
 
 export function resolveModelDescription(
@@ -202,7 +412,7 @@ function resolveSelectedModelLabel(
     (option) => option.value === selectedValue
   );
   if (selected) {
-    return formatModelDisplayLabel(selected.label);
+    return shortModelDisplayLabel(selected.label);
   }
   if (composerSettings.modelUnavailable) {
     return labels.inheritedUnavailable;
@@ -212,7 +422,7 @@ function resolveSelectedModelLabel(
   }
   const firstAvailableModel = composerSettings.availableModels[0]?.label;
   if (firstAvailableModel) {
-    return formatModelDisplayLabel(firstAvailableModel);
+    return shortModelDisplayLabel(firstAvailableModel);
   }
   return labels.defaultModel;
 }
