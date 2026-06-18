@@ -57,6 +57,16 @@ import {
   registerWorkspaceIssueManagerLaunchHandler,
   type WorkspaceIssueManagerLaunchRequest
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import {
+  buildGroupChatDeepLinkUrl,
+  registerGroupChatLaunchHandler,
+  type GroupChatLaunchRequest
+} from "../services/groupChatLaunchCoordinator.ts";
+import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center/services/workspaceAppCenterService.interface";
+import {
+  findWorkspaceApp,
+  workspaceAppWebviewTypeID
+} from "@renderer/features/workspace-app-center";
 import { workspaceLaunchpadDockActionId } from "../services/workspaceLaunchpadModel.ts";
 import { requestWorkspaceMessageCenterOpen } from "../services/workspaceMessageCenterCoordinator.ts";
 import { workspaceBrowserNodeID } from "../services/workspaceWorkbenchNodeIds.ts";
@@ -158,6 +168,7 @@ function ReadyWorkspaceWorkbench({
   const unregisterBrowserLaunchRef = useRef<(() => void) | null>(null);
   const unregisterFilesLaunchRef = useRef<(() => void) | null>(null);
   const unregisterIssueManagerLaunchRef = useRef<(() => void) | null>(null);
+  const unregisterGroupChatLaunchRef = useRef<(() => void) | null>(null);
   const openedOnboardingWorkspacesRef = useRef(new Set<string>());
   const closeLaunchpad = useCallback(() => {
     setLaunchpadOpen(false);
@@ -207,6 +218,8 @@ function ReadyWorkspaceWorkbench({
       unregisterFilesLaunchRef.current = null;
       unregisterIssueManagerLaunchRef.current?.();
       unregisterIssueManagerLaunchRef.current = null;
+      unregisterGroupChatLaunchRef.current?.();
+      unregisterGroupChatLaunchRef.current = null;
 
       if (!host) {
         return;
@@ -217,6 +230,7 @@ function ReadyWorkspaceWorkbench({
           state.workspace.id,
           async ({
             agentSessionId,
+            autoSubmit,
             draftPrompt,
             provider,
             userProjectPath
@@ -225,6 +239,7 @@ function ReadyWorkspaceWorkbench({
             await host.launchNode(
               normalizedDraftPrompt
                 ? createWorkspaceAgentGuiDraftLaunchRequest({
+                    autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
                     provider,
                     userProjectPath
@@ -249,6 +264,12 @@ function ReadyWorkspaceWorkbench({
             return openWorkspaceIssueManagerNode(host, request);
           }
         );
+      unregisterGroupChatLaunchRef.current = registerGroupChatLaunchHandler(
+        state.workspace.id,
+        async (request) => {
+          return openGroupChatNode(host, appCenterService, request);
+        }
+      );
       unregisterBrowserLaunchRef.current =
         registerWorkspaceBrowserLaunchHandler(
           state.workspace.id,
@@ -257,7 +278,7 @@ function ReadyWorkspaceWorkbench({
           }
         );
     },
-    [runtime, state.workspace.id]
+    [appCenterService, runtime, state.workspace.id]
   );
 
   useEffect(() => {
@@ -270,6 +291,8 @@ function ReadyWorkspaceWorkbench({
       unregisterFilesLaunchRef.current = null;
       unregisterIssueManagerLaunchRef.current?.();
       unregisterIssueManagerLaunchRef.current = null;
+      unregisterGroupChatLaunchRef.current?.();
+      unregisterGroupChatLaunchRef.current = null;
     };
   }, []);
 
@@ -309,7 +332,13 @@ function ReadyWorkspaceWorkbench({
         });
         void requestWorkspaceAgentGuiLaunch({
           provider: preferred,
-          workspaceId
+          workspaceId,
+          ...(request.draftPrompt?.trim()
+            ? {
+                autoSubmit: request.autoSubmit === true,
+                draftPrompt: request.draftPrompt.trim()
+              }
+            : {})
         }).catch(() => {});
         return;
       }
@@ -557,6 +586,45 @@ async function openWorkspaceFilesNode(
         path: request.path
       },
       type: "reveal-file"
+    }
+  );
+  return true;
+}
+
+async function openGroupChatNode(
+  host: WorkbenchHostHandle,
+  appCenterService: IWorkspaceAppCenterService,
+  request: GroupChatLaunchRequest
+): Promise<boolean> {
+  const app = findWorkspaceApp(appCenterService, "group-chat");
+  const launchUrl = app?.launchUrl?.trim() ?? "";
+  if (!launchUrl) {
+    return false;
+  }
+
+  const nodeId = await host.launchNode({
+    launchSource: "agent_command",
+    payload: { appId: "group-chat" },
+    reason: "host",
+    typeId: workspaceAppWebviewTypeID
+  });
+  if (!nodeId) {
+    return false;
+  }
+
+  const deepLinkUrl = buildGroupChatDeepLinkUrl(launchUrl, request);
+  if (deepLinkUrl === launchUrl) {
+    return true;
+  }
+
+  host.activateNode(
+    { nodeId },
+    {
+      payload: {
+        appId: "group-chat",
+        url: deepLinkUrl
+      },
+      type: "open-url"
     }
   );
   return true;
