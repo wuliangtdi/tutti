@@ -30,10 +30,12 @@ import type {
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
   TuttiExternalFileSelectResult,
+  TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
   TuttiExternalRendererRequest,
-  TuttiExternalSettingsOpenInput
+  TuttiExternalSettingsOpenInput,
+  TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 
 export const desktopIpcChannels = {
@@ -47,16 +49,20 @@ export const desktopIpcChannels = {
     changed: "workspace-app-context:changed",
     diagnostic: "workspace-app-context:diagnostic",
     get: "workspace-app-context:get",
+    openFeatureRequested: "workspace-app-feature:open-requested",
+    openFileRequested: "workspace-app-files:open-requested",
     openUrl: "workspace-app:open-url"
   },
   appExternal: {
     atQuery: "workspace-app-at:query",
     filesOpen: "workspace-app-files:open",
     filesSelect: "workspace-app-files:select",
+    logsWrite: "workspace-app-logs:write",
     permissionsRequest: "workspace-app-permissions:request",
     rendererRequest: "workspace-app-external:renderer-request",
     rendererResponse: "workspace-app-external:renderer-response",
-    settingsOpen: "workspace-app-settings:open"
+    settingsOpen: "workspace-app-settings:open",
+    workspaceFeatureOpen: "workspace-app-feature:open"
   },
   browser: {
     activate: "browser:activate",
@@ -123,6 +129,7 @@ export const desktopIpcChannels = {
       revealWorkspaceFile: "host:files:revealWorkspaceFile",
       openTerminalLink: "host:files:openTerminalLink",
       readLocalFileText: "host:files:readLocalFileText",
+      readLocalPreviewFile: "host:files:readLocalPreviewFile",
       readPreviewFile: "host:files:readPreviewFile",
       resolveEntryIcon: "host:files:resolveEntryIcon",
       selectAppArchive: "host:files:selectAppArchive",
@@ -275,6 +282,43 @@ export interface DesktopWorkspaceAppContext {
   issuer?: string;
   locale: DesktopLocale;
   workspaceId?: string;
+}
+
+export type DesktopWorkspaceOpenFeatureRequest =
+  TuttiExternalWorkspaceOpenFeatureInput;
+
+export type DesktopWorkspaceAppFrontendLogPayload = TuttiExternalLogInput;
+
+export type DesktopWorkspaceAppOpenFileMode = "auto" | "preview" | "reveal";
+
+export type DesktopWorkspaceAppOpenFileLocationType =
+  | "app-data-relative"
+  | "app-package-relative"
+  | "workspace-relative";
+
+export interface DesktopWorkspaceAppOpenFileLocation {
+  path: string;
+  type: DesktopWorkspaceAppOpenFileLocationType;
+}
+
+export interface DesktopWorkspaceAppOpenFileRequest {
+  location?: DesktopWorkspaceAppOpenFileLocation;
+  mode?: DesktopWorkspaceAppOpenFileMode;
+  mtimeMs?: number | null;
+  name?: string;
+  packageVersion?: string | null;
+  path: string;
+  sizeBytes?: number | null;
+}
+
+export interface DesktopWorkspaceAppOpenFileResolvedPayload {
+  absolutePath: string;
+  appId: string;
+  mode: DesktopWorkspaceAppOpenFileMode;
+  mtimeMs: number | null;
+  name: string;
+  sizeBytes: number | null;
+  workspaceId: string;
 }
 
 export interface DesktopBackendConfig {
@@ -507,6 +551,8 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestInput;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;
+  [desktopIpcChannels.appExternal
+    .workspaceFeatureOpen]: DesktopWorkspaceOpenFeatureRequest;
   [desktopIpcChannels.browser.activate]: BrowserNodeActivationInput;
   [desktopIpcChannels.browser.capturePreview]: BrowserNodeNodeIdInput;
   [desktopIpcChannels.browser.close]: BrowserNodeNodeIdInput;
@@ -566,6 +612,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.files
     .openTerminalLink]: DesktopTerminalLinkPathPayload;
   [desktopIpcChannels.host.files.readLocalFileText]: string;
+  [desktopIpcChannels.host.files.readLocalPreviewFile]: string;
   [desktopIpcChannels.host.files
     .readPreviewFile]: DesktopWorkspaceFilePathPayload;
   [desktopIpcChannels.host.files
@@ -599,6 +646,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestResult;
   [desktopIpcChannels.appExternal.settingsOpen]: void;
+  [desktopIpcChannels.appExternal.workspaceFeatureOpen]: void;
   [desktopIpcChannels.browser.activate]: void;
   [desktopIpcChannels.browser.capturePreview]: string | null;
   [desktopIpcChannels.browser.close]: void;
@@ -648,6 +696,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.revealWorkspaceFile]: void;
   [desktopIpcChannels.host.files.openTerminalLink]: void;
   [desktopIpcChannels.host.files.readLocalFileText]: DesktopLocalFileTextResult;
+  [desktopIpcChannels.host.files.readLocalPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files.readPreviewFile]: Uint8Array;
   [desktopIpcChannels.host.files.resolveEntryIcon]: string | null;
   [desktopIpcChannels.host.files.selectAppArchive]: string | null;

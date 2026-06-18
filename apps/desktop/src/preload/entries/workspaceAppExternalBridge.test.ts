@@ -7,6 +7,10 @@ import {
 } from "./workspaceAppExternalBridge.ts";
 import type { DesktopWorkspaceAppContext } from "../../shared/contracts/ipc.ts";
 
+function unexpectedSend(): void {
+  throw new Error("unexpected send");
+}
+
 test("workspace app external bridge proxies app context", async () => {
   const context: DesktopWorkspaceAppContext = {
     appId: "automation",
@@ -23,6 +27,7 @@ test("workspace app external bridge proxies app context", async () => {
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -48,6 +53,7 @@ test("workspace app external bridge subscribes to app context", () => {
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -73,6 +79,7 @@ test("workspace app external bridge invokes at query without user activation", a
       }
     },
     isUserActivationActive: () => false,
+    send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return [
@@ -110,6 +117,58 @@ test("workspace app external bridge invokes at query without user activation", a
   ]);
 });
 
+test("workspace app external bridge invokes workspace feature open", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send: unexpectedSend,
+    async invoke<TResult>(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+      return undefined as TResult;
+    }
+  });
+
+  await bridge.workspace.openFeature({ feature: "message-center" });
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.workspaceFeatureOpen,
+      payload: { feature: "message-center" }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for workspace feature open", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.workspace.openFeature({ feature: "message-center" }),
+    /workspace\.openFeature requires a user action/
+  );
+});
+
 test("workspace app external bridge requires activation for file select", async () => {
   const bridge = createWorkspaceAppExternalBridge({
     appContext: {
@@ -121,6 +180,7 @@ test("workspace app external bridge requires activation for file select", async 
       }
     },
     isUserActivationActive: () => false,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -143,6 +203,7 @@ test("workspace app external bridge requires activation for file open", async ()
       }
     },
     isUserActivationActive: () => false,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -166,6 +227,7 @@ test("workspace app external bridge invokes file select with activation", async 
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return [
@@ -203,6 +265,7 @@ test("workspace app external bridge invokes file open with activation", async ()
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return undefined as TResult;
@@ -237,6 +300,7 @@ test("workspace app external bridge requires activation for permission request",
       }
     },
     isUserActivationActive: () => false,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -266,6 +330,7 @@ test("workspace app external bridge invokes permission request with activation",
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return { code: "grant-code-1" } as TResult;
@@ -307,6 +372,7 @@ test("workspace app external bridge requires activation for settings open", () =
       }
     },
     isUserActivationActive: () => false,
+    send: unexpectedSend,
     async invoke() {
       throw new Error("unexpected invoke");
     }
@@ -330,6 +396,7 @@ test("workspace app external bridge invokes settings open with activation", asyn
       }
     },
     isUserActivationActive: () => true,
+    send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
       return undefined as TResult;
@@ -343,6 +410,68 @@ test("workspace app external bridge invokes settings open with activation", asyn
       payload: { provider: "openai", tab: "models" }
     }
   ]);
+});
+
+test("workspace app external bridge sends logs without user activation", () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send(channel, payload) {
+      calls.push({ channel, payload });
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  bridge.logs.write({
+    event: "page.loaded",
+    level: "info",
+    details: { route: "/home" }
+  });
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.logsWrite,
+      payload: {
+        event: "page.loaded",
+        level: "info",
+        details: { route: "/home" }
+      }
+    }
+  ]);
+});
+
+test("workspace app external bridge ignores invalid log payloads", () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send(channel, payload) {
+      calls.push({ channel, payload });
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.doesNotThrow(() => bridge.logs.write({ event: "" } as never));
+  assert.deepEqual(calls, []);
 });
 
 test("requireUserActivation throws only when inactive", () => {

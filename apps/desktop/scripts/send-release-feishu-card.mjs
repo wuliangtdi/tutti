@@ -118,9 +118,25 @@ async function loadRelease(repository, tag, githubToken) {
   return response.json();
 }
 
+function findPreferredAssetName(assetNames, pattern) {
+  const matchingAssetNames = assetNames.filter((candidate) => {
+    pattern.lastIndex = 0;
+    return pattern.test(candidate);
+  });
+  return (
+    matchingAssetNames.find((candidate) =>
+      /-mac-universal\.dmg$/i.test(candidate)
+    ) ?? matchingAssetNames[0]
+  );
+}
+
 function findAssetUrl(release, pattern, releaseAssetBaseUrl = "") {
   const assets = Array.isArray(release.assets) ? release.assets : [];
-  const asset = assets.find((candidate) => pattern.test(candidate.name ?? ""));
+  const assetName = findPreferredAssetName(
+    assets.map((candidate) => candidate.name ?? ""),
+    pattern
+  );
+  const asset = assets.find((candidate) => candidate.name === assetName);
   if (!asset?.browser_download_url) {
     return "";
   }
@@ -157,7 +173,7 @@ function resolveMirroredAssetUrl(
     return "";
   }
 
-  const assetName = assetNames.find((candidate) => pattern.test(candidate));
+  const assetName = findPreferredAssetName(assetNames, pattern);
   if (!assetName) {
     return "";
   }
@@ -353,6 +369,7 @@ if (
 
 export {
   buildCardPayload,
+  findPreferredAssetName,
   listAssetNames,
   resolveMirroredAssetUrl,
   resolveIntroText,

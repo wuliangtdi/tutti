@@ -12,7 +12,8 @@ import type { DesktopDaemonEndpoint } from "../transport/paths";
 import { registerBrowserIpc } from "./browser";
 import { registerComputerUseIpc } from "./computerUse";
 import { registerDockPreviewCacheIpc } from "./dockPreviewCache";
-import type { DesktopLogger } from "../logging";
+import { getDesktopLogSessionID, type DesktopLogger } from "../logging";
+import { resolveDesktopDefaultsFromEnv } from "../defaults";
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
 import type { DesktopWorkspaceAppPayload } from "../../shared/contracts/ipc";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
@@ -46,11 +47,11 @@ export interface IpcRegistrationDependencies {
 }
 
 export function registerIpcHandlers(deps: IpcRegistrationDependencies): void {
-  registerWorkspaceAppContextIpc(
-    deps.daemonEndpoint,
-    deps.preferences,
-    deps.logger
-  );
+  registerWorkspaceAppContextIpc(deps.daemonEndpoint, deps.preferences, {
+    logger: deps.logger,
+    sessionID: getDesktopLogSessionID(),
+    stateRootDir: resolveDesktopDefaultsFromEnv().state.rootDir
+  });
   registerBrowserIpc(deps.preferences);
   registerComputerUseIpc();
   registerDockPreviewCacheIpc();

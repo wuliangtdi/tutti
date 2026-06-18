@@ -6,10 +6,13 @@ import type {
   TuttiExternalFileOpenInput,
   TuttiExternalFileSelectInput,
   TuttiExternalFileSelectResult,
+  TuttiExternalLogInput,
   TuttiExternalPermissionRequestInput,
   TuttiExternalPermissionRequestResult,
-  TuttiExternalSettingsOpenInput
+  TuttiExternalSettingsOpenInput,
+  TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
+import { normalizeTuttiExternalLogInput } from "@tutti-os/workspace-external-core/core";
 
 export interface WorkspaceAppExternalBridgeDependencies {
   appContext: {
@@ -20,14 +23,17 @@ export interface WorkspaceAppExternalBridgeDependencies {
   };
   invoke<TResult>(channel: string, payload?: unknown): Promise<TResult>;
   isUserActivationActive(): boolean;
+  send(channel: string, payload?: unknown): void;
 }
 
 export const workspaceAppExternalChannels = {
   atQuery: "workspace-app-at:query",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
+  logsWrite: "workspace-app-logs:write",
   permissionsRequest: "workspace-app-permissions:request",
-  settingsOpen: "workspace-app-settings:open"
+  settingsOpen: "workspace-app-settings:open",
+  workspaceFeatureOpen: "workspace-app-feature:open"
 } as const;
 
 export function createWorkspaceAppExternalBridge(
@@ -94,6 +100,30 @@ export function createWorkspaceAppExternalBridge(
           workspaceAppExternalChannels.settingsOpen,
           input ?? {}
         );
+      }
+    },
+    workspace: {
+      openFeature(input: TuttiExternalWorkspaceOpenFeatureInput) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "workspace.openFeature"
+        );
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.workspaceFeatureOpen,
+          input
+        );
+      }
+    },
+    logs: {
+      write(input: TuttiExternalLogInput) {
+        try {
+          dependencies.send(
+            workspaceAppExternalChannels.logsWrite,
+            normalizeTuttiExternalLogInput(input)
+          );
+        } catch {
+          // Fire-and-forget: invalid app payloads are silently ignored.
+        }
       }
     }
   };

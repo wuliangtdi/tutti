@@ -346,7 +346,7 @@ export const zhCN = {
       speedOptionStandard: "标准",
       speedOptionFast: "快速",
       permissionModeReadOnly: "请求批准",
-      permissionModeAuto: "代我批准",
+      permissionModeAuto: "替我审批",
       permissionModeFullAccess: "完全访问权限",
       permissionSemantics: {
         "ask-before-write": {
@@ -362,7 +362,7 @@ export const zhCN = {
           description: "不会弹出确认；未获允许的操作会被直接拒绝"
         },
         auto: {
-          label: "代我批准",
+          label: "替我审批",
           description: "仅在检测到可能不安全的操作时询问你"
         },
         "full-access": {
@@ -381,7 +381,7 @@ export const zhCN = {
             description: "编辑外部文件或使用互联网前始终询问你"
           },
           auto: {
-            label: "代我批准",
+            label: "替我审批",
             description: "仅在检测到可能不安全的操作时询问你"
           },
           "full-access": {
@@ -395,7 +395,7 @@ export const zhCN = {
             description: "编辑外部文件或使用互联网前始终询问你"
           },
           auto: {
-            label: "代我批准",
+            label: "替我审批",
             description: "仅在检测到可能不安全的操作时询问你"
           },
           "full-access": {
@@ -767,22 +767,40 @@ export const zhCN = {
       addReference: "添加引用",
       referenceWorkspaceFiles: "引用空间文件",
       referencePicker: {
+        clearFilter: "清除筛选",
         confirm: "使用已选引用",
         emptyDirectory: "当前目录为空",
+        emptyPreview: "选择一个文件查看详情",
         emptySearch: "没有匹配的文件或文件夹",
+        fileTypeAll: "全部类型",
+        fileTypeDocument: "文档",
+        fileTypeImage: "图片",
+        fileTypeOther: "其他",
+        fileTypeSeparator: "、",
+        fileTypeVideo: "视频",
+        fileTypeWebpage: "网页",
+        loadMore: "加载更多",
+        loadMoreGroups: "拉取更多",
         loading: "正在加载",
         previewBinary: "这个文件更像二进制内容",
         previewDecodeFailed: "暂时无法按 UTF-8 文本解码这个文件",
         previewError: "加载预览失败",
         previewFileTooLarge: "这个文件超过了 {{maxSize}}",
         previewFolder: "暂不支持预览文件夹",
+        previewHierarchy: "所属层级",
         previewLoading: "正在加载预览",
+        previewModified: "产出时间",
+        previewSize: "文件大小",
+        previewSource: "产出来源",
         previewTextTooLarge: "这个文本文件超过了 {{maxSize}}",
+        previewTooLarge: "文件过大，无法预览",
         previewUnavailable: "当前工作区无法预览文件",
         previewUnsupported: "暂不支持预览这种文件类型",
         searchPlaceholder: "搜索文件和文件夹",
+        selectGroupHint: "从左侧选择一个目录",
         selectedCount: "已选择 {{count}} 项",
-        title: "选择工作区引用"
+        title: "选择工作区引用",
+        workspaceRootGroup: "工作区"
       },
       projectLocked: "会话开始后项目不可更改",
       projectMissingDescription: "此对话的工作目录已不存在",

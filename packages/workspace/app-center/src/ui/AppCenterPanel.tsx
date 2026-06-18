@@ -60,7 +60,13 @@ import {
   type AppCenterHostActions
 } from "./AppCard.tsx";
 
-type FactoryTemplateID = "weather" | "lookup" | "system" | "news" | "gomoku";
+type FactoryTemplateID =
+  | "lovart"
+  | "weather"
+  | "lookup"
+  | "system"
+  | "news"
+  | "gomoku";
 export type AppCenterAppTab = "recommended" | "my";
 type RecommendedCategoryTabID =
   | "all"
@@ -78,6 +84,12 @@ interface FactoryTemplate {
 }
 
 const factoryTemplates: readonly FactoryTemplate[] = [
+  {
+    defaultNameKey: "factory.templates.lovart.defaultName",
+    id: "lovart",
+    promptKey: "factory.templates.lovart.prompt",
+    titleKey: "factory.templates.lovart.title"
+  },
   {
     defaultNameKey: "factory.templates.weather.defaultName",
     id: "weather",
@@ -1011,7 +1023,7 @@ function FactoryProviderSelect({
     <Select
       disabled={options.length === 0}
       open={open}
-      value={selectedOption?.provider}
+      value={selectedProvider}
       onOpenChange={onOpenChange}
       onValueChange={onSelectProvider}
     >
@@ -1091,7 +1103,7 @@ function FactoryPermissionDropdown({
     <Select
       disabled={disabled}
       open={open}
-      value={selectedOption?.value}
+      value={selectedPermissionModeId}
       onOpenChange={onOpenChange}
       onValueChange={onSelectPermissionMode}
     >
@@ -1183,10 +1195,10 @@ function FactoryModelReasoningDropdown({
   const selectedValue = showModelSection
     ? selectedModel
       ? `model:${selectedModel}`
-      : undefined
+      : ""
     : selectedReasoningEffort
       ? `reasoning:${selectedReasoningEffort}`
-      : undefined;
+      : "";
   const applySettingsValue = (nextValue: string): void => {
     if (nextValue.startsWith("reasoning:")) {
       onSelectReasoningEffort(nextValue.slice("reasoning:".length));

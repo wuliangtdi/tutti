@@ -85,6 +85,8 @@ Before running `electron-builder`, the script builds `services/tuttid` and place
 apps/desktop/build/tuttid/
 ```
 
+For macOS packages, the bundled `tuttid` daemon and `tutti` CLI must be universal binaries. Build both `darwin/arm64` and `darwin/amd64`, merge them with `lipo`, and verify the resulting binary contains `arm64` and `x86_64` slices before packaging.
+
 `electron-builder` then packages that daemon into the desktop app as:
 
 ```text
@@ -95,12 +97,14 @@ On Windows the bundled daemon filename is `tuttid.exe`.
 
 Expected release artifacts include:
 
-- macOS `.dmg`
-- macOS `.zip`
+- macOS x64, arm64, and universal `.dmg`
+- macOS x64, arm64, and universal `.zip`
 - Windows `.exe`
 - Linux `.AppImage`
 - update metadata such as `.yml` and `.blockmap`
 - `SHA256SUMS.txt`
+
+Release notes and Feishu notifications should point the primary macOS download at the universal `.dmg`. The x64 and arm64 artifacts remain attached to the GitHub Release for users or deployment tools that want an architecture-specific installer.
 
 ## Auto Update
 
@@ -113,6 +117,10 @@ Current updater behavior:
 - default policy is `prompt`
 - scheduled update check interval is six hours
 - macOS update checks are disabled for unsupported unsigned or ad-hoc bundles
+
+macOS auto-update metadata must keep x64, arm64, and universal zip entries in `latest-mac.yml`. The file names must include `${arch}` so `electron-updater` can distinguish `mac-x64`, `mac-arm64`, and `mac-universal` assets.
+
+For automatic updates, electron-updater should download the same-architecture zip first: Intel Macs use `mac-x64.zip`, Apple Silicon Macs use `mac-arm64.zip`, and `mac-universal.zip` remains a fallback and the primary manual download. Do not make universal the only auto-update zip while architecture-specific packages exist.
 
 Policy meanings:
 

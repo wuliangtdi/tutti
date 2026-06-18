@@ -75,3 +75,19 @@ const isDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
 ```
 
 Do not read `theme`, `themeSource`, `locale`, or `lang` from URL search params for host settings.
+
+## Browser Frontend Diagnostics
+
+When a workspace app runs inside Tutti Desktop, prefer writing browser-side diagnostics through the optional host bridge instead of posting to an app-owned `/api/log` route:
+
+```js
+window.tuttiExternal?.logs?.write?.({
+  event: "page.loaded",
+  level: "info",
+  details: { route: location.pathname }
+});
+```
+
+`logs.write()` is fire-and-forget. Invalid payloads and write failures are ignored in the app. Use optional chaining so the same frontend keeps working when opened directly in a normal browser.
+
+Tutti Desktop appends these entries to the workspace app log directory as `web.log`, alongside `runtime.log`. Reserve `$TUTTI_APP_LOG_DIR` for backend/server-side logs written by the app process itself.

@@ -495,6 +495,24 @@ func TestDaemonAPIGeneratedRoutesWorkspaceTerminalsReturnServiceUnavailable(t *t
 	)
 }
 
+func TestDaemonAPIGeneratedRoutesSearchWorkspaceIssueReferencesReturnServiceUnavailable(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/workspaces/ws-1/issue-references/search", map[string]any{"query": "login"})
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusServiceUnavailable, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.ServiceUnavailable,
+		apierrors.ReasonWorkspaceIssueServiceUnavailable,
+		"workspace issue-manager service is unavailable",
+	)
+}
+
 func TestDaemonAPIGeneratedRoutesAgentSessionsReturnServiceUnavailable(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{}))
@@ -871,7 +889,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 						DefaultValue: "auto",
 						Modes: []agentservice.PermissionModeOption{{
 							ID:          "auto",
-							Label:       "代我批准",
+							Label:       "替我审批",
 							Description: "仅在检测到可能不安全的操作时询问你",
 							Semantic:    agentservice.PermissionModeSemanticAuto,
 						}},
@@ -933,7 +951,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	if response.ModelConfig.CurrentValue == nil || *response.ModelConfig.CurrentValue != "gpt-5" {
 		t.Fatalf("modelConfig = %#v", response.ModelConfig)
 	}
-	if response.PermissionConfig.DefaultValue == nil || *response.PermissionConfig.DefaultValue != "auto" || response.PermissionConfig.Modes[0].Label != "代我批准" {
+	if response.PermissionConfig.DefaultValue == nil || *response.PermissionConfig.DefaultValue != "auto" || response.PermissionConfig.Modes[0].Label != "替我审批" {
 		t.Fatalf("permissionConfig = %#v", response.PermissionConfig)
 	}
 	if response.ReasoningConfig.Options[0].Label != "高" {

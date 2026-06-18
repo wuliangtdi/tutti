@@ -85,7 +85,10 @@ const tuttiExternal = createWorkspaceAppExternalBridge({
   appContext,
   invoke: invokeWorkspaceApp,
   isUserActivationActive: () =>
-    globalThis.navigator.userActivation?.isActive === true
+    globalThis.navigator.userActivation?.isActive === true,
+  send(channel, payload) {
+    ipcRenderer.send(channel, payload);
+  }
 });
 
 ipcRenderer.on(
