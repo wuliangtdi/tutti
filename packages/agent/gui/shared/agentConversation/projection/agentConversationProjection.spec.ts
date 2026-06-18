@@ -131,16 +131,25 @@ describe("projectAgentConversationVM", () => {
     expect(toolRows.every((row) => row.grouped === false)).toBe(true);
   });
 
-  it("collapses the tail to a single live row while the latest tail tool runs", () => {
-    // The latest tail tool is still active: keep showing only the live row.
+  it("keeps completed tail tools visible while the latest tail tool runs", () => {
+    // Regression for the Codex tool-rendering flicker: Codex emits long runs of
+    // short, sequential tool calls. Previously, while the newest tail tool was
+    // still active every already-completed predecessor was collapsed into a
+    // single live row, so the transcript jumped between showing one tool and
+    // many as the burst advanced (and again when interleaved reasoning broke the
+    // trailing run). Completed tools must stay visible alongside the live one so
+    // the streaming transcript only grows instead of toggling.
     const toolRows = tailChainConversation({
       status: "Running",
       statusKind: "working"
     });
 
-    expect(toolRows).toHaveLength(1);
-    expect(toolRows[0]?.grouped).toBe(false);
-    expect(toolRows[0]?.calls[0]?.id).toBe("call:3");
+    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+      "call:1",
+      "call:2",
+      "call:3"
+    ]);
+    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
   });
 
   it("keeps Codex transport retry notices out of the working processing label", () => {

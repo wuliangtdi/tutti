@@ -95,9 +95,16 @@ export function computeAgentToolGroups(
 ): AgentComputedToolGroupInfoVM {
   const groups = new Map<number, AgentComputedToolGroupVM>();
   const groupedIndices = new Set<number>();
-  const suppressedIndices = allowTrailingFinalization
-    ? new Set<number>()
-    : findActiveTailSuppressedToolIndices(sequence);
+  // Nothing is hidden anymore. While a session streams a burst of sequential
+  // tool calls (e.g. Codex), the trailing run whose newest tool is still active
+  // is rendered as individual, always-visible rows instead of grouping or
+  // collapsing it. Grouping that run while the tail tool kept changing was what
+  // made the transcript flicker between "one tool" and "many" as the burst
+  // advanced. Items before the active trailing run still group as usual.
+  const suppressedIndices = new Set<number>();
+  const splitFromIndex = allowTrailingFinalization
+    ? -1
+    : findActiveTailRunStartIndex(sequence);
 
   let currentCalls: AgentToolCallVM[] = [];
   let currentEntries: AgentToolGroupEntryVM[] = [];
@@ -134,7 +141,11 @@ export function computeAgentToolGroups(
     if (!item) {
       continue;
     }
-    if (suppressedIndices.has(index)) {
+    // Once we reach the still-streaming trailing run, stop grouping: close any
+    // open group and let every remaining item fall through to its own visible
+    // row so the live view only ever appends.
+    if (splitFromIndex >= 0 && index >= splitFromIndex) {
+      finalizeGroup();
       continue;
     }
     if (item.kind === "tool-call" && isGroupableToolCall(item.call)) {
@@ -179,11 +190,56 @@ export function computeAgentToolGroups(
     finalizeGroup();
   }
 
+  debugLogToolGrouping(sequence, {
+    allowTrailingFinalization,
+    splitFromIndex,
+    groups
+  });
+
   return {
     groups,
     groupedIndices,
     suppressedIndices
   };
+}
+
+/**
+ * Opt-in diagnostic for the Codex tool-rendering flicker. Off by default so the
+ * hot streaming projection path stays allocation-free; enable it from the
+ * renderer devtools console with
+ * `globalThis.__TUTTI_DEBUG_TOOL_GROUPING = true` and reproduce the burst to see,
+ * per projection pass, the tool statuses, the active trailing-run boundary, and
+ * the groups produced. A stable boundary / row count across passes confirms the
+ * jump is gone.
+ */
+function debugLogToolGrouping(
+  sequence: readonly AgentTurnSequenceItemVM[],
+  info: {
+    allowTrailingFinalization: boolean;
+    splitFromIndex: number;
+    groups: ReadonlyMap<number, AgentComputedToolGroupVM>;
+  }
+): void {
+  const flag = (globalThis as { __TUTTI_DEBUG_TOOL_GROUPING?: unknown })
+    .__TUTTI_DEBUG_TOOL_GROUPING;
+  if (flag !== true || typeof console === "undefined") {
+    return;
+  }
+  const tools = sequence
+    .map((item, index) =>
+      item?.kind === "tool-call"
+        ? `${index}:${item.call.id}:${item.call.statusKind ?? "?"}`
+        : null
+    )
+    .filter((entry): entry is string => entry !== null);
+  // eslint-disable-next-line no-console
+  console.debug("[tool-grouping]", {
+    sequenceLength: sequence.length,
+    tools,
+    allowTrailingFinalization: info.allowTrailingFinalization,
+    splitFromIndex: info.splitFromIndex,
+    groupStartIndices: [...info.groups.keys()]
+  });
 }
 
 export function projectAgentToolGroupRowFromGroup(
@@ -287,32 +343,31 @@ function isGroupableToolCall(call: AgentToolCallVM): boolean {
   }
 }
 
-function findActiveTailSuppressedToolIndices(
+/**
+ * Index where the still-streaming trailing tool run begins, or -1 when there
+ * is none. The run is the contiguous block of tool calls at the end of the
+ * sequence whose newest (tail) tool is still active. Returning its start lets
+ * the projection keep that whole run as individual, always-visible rows while
+ * the burst is in flight, instead of grouping (and previously hiding) it.
+ */
+function findActiveTailRunStartIndex(
   sequence: readonly AgentTurnSequenceItemVM[]
-): Set<number> {
-  const suppressedIndices = new Set<number>();
-  let latestTailToolIndex = -1;
+): number {
+  let tailIndex = -1;
   for (let index = sequence.length - 1; index >= 0; index -= 1) {
     const item = sequence[index];
     if (!item) {
       continue;
     }
-    if (item.kind !== "tool-call") {
-      break;
-    }
-    latestTailToolIndex = Math.max(latestTailToolIndex, index);
+    tailIndex = index;
+    break;
   }
-  if (latestTailToolIndex < 0) {
-    return suppressedIndices;
+  const tailItem = tailIndex >= 0 ? sequence[tailIndex] : undefined;
+  if (tailItem?.kind !== "tool-call" || !isActiveTailTool(tailItem.call)) {
+    return -1;
   }
-  const latestTailTool = sequence[latestTailToolIndex];
-  if (
-    latestTailTool?.kind !== "tool-call" ||
-    !isSuppressingActiveTailTool(latestTailTool.call)
-  ) {
-    return suppressedIndices;
-  }
-  for (let index = latestTailToolIndex - 1; index >= 0; index -= 1) {
+  let startIndex = tailIndex;
+  for (let index = tailIndex - 1; index >= 0; index -= 1) {
     const item = sequence[index];
     if (!item) {
       continue;
@@ -320,15 +375,15 @@ function findActiveTailSuppressedToolIndices(
     if (item.kind !== "tool-call") {
       break;
     }
-    suppressedIndices.add(index);
+    startIndex = index;
   }
-  return suppressedIndices;
+  return startIndex;
 }
 
-function isSuppressingActiveTailTool(call: AgentToolCallVM): boolean {
-  // Only an actively running tail tool collapses the tools before it into a
-  // single live row. Once the latest tail tool has finished, the completed
-  // tools stay visible instead of vanishing behind it.
+function isActiveTailTool(call: AgentToolCallVM): boolean {
+  // Only an actively running tail tool keeps its trailing run in the live,
+  // ungrouped state. Once the latest tail tool has finished, the run finalizes
+  // and groups like any other completed run.
   if (call.statusKind !== "working" && call.statusKind !== "waiting") {
     return false;
   }
