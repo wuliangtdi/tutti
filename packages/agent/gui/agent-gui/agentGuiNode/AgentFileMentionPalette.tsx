@@ -497,7 +497,7 @@ function agentMentionItemToRowItem(
     };
   }
 
-  if (item.kind === "workspace-app-bundle") {
+  if (item.kind === "workspace-reference") {
     return {
       kind: "app",
       name: item.name,

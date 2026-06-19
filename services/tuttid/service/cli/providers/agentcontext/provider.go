@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"strings"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -101,6 +102,65 @@ func (p Provider) Commands() []cliservice.Command {
 		p.newSessionSummaryCommand(),
 		p.newActivePeersCommand(),
 	}
+}
+
+func (p Provider) FilterCapabilities(ctx context.Context, _ cliservice.InvokeContext, capabilities []cliservice.Capability) []cliservice.Capability {
+	if len(capabilities) == 0 || !hasProviderAgentAppCapability(capabilities) {
+		return capabilities
+	}
+	availableProviders := p.availableProviders(ctx)
+	result := make([]cliservice.Capability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		provider, ok := providerAgentAppCapabilityProvider(capability)
+		if !ok || availableProviders[provider] {
+			result = append(result, capability)
+		}
+	}
+	return result
+}
+
+func hasProviderAgentAppCapability(capabilities []cliservice.Capability) bool {
+	for _, capability := range capabilities {
+		if _, ok := providerAgentAppCapabilityProvider(capability); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func providerAgentAppCapabilityProvider(capability cliservice.Capability) (string, bool) {
+	if capability.Source.Kind != cliservice.CapabilitySourceApp {
+		return "", false
+	}
+	switch strings.TrimSpace(capability.Source.AppID) {
+	case codexAgentAppID:
+		return agentproviderbiz.Codex, true
+	case claudeCodeAgentAppID:
+		return agentproviderbiz.ClaudeCode, true
+	default:
+		return "", false
+	}
+}
+
+func (p Provider) availableProviders(ctx context.Context) map[string]bool {
+	available := map[string]bool{}
+	if p.sessions == nil {
+		return available
+	}
+	items, err := p.sessions.ListProviderAvailability(ctx, agentservice.ProviderAvailabilityInput{})
+	if err != nil {
+		return available
+	}
+	for _, item := range items {
+		if item.Status != agentservice.ProviderAvailabilityAvailable {
+			continue
+		}
+		provider := agentproviderbiz.Normalize(item.Provider)
+		if provider != "" {
+			available[provider] = true
+		}
+	}
+	return available
 }
 
 func (p Provider) requireSessions() error {

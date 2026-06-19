@@ -1,21 +1,29 @@
 import { useEffect, useState, type JSX, type MouseEvent } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { MentionPill } from "@tutti-os/ui-system/components";
+import {
+  MentionPill,
+  TruncatingPillLabel
+} from "@tutti-os/ui-system/components";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
 import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
-import { parseBundleFilesJson } from "./agentFileMentionExtension";
 
 type AgentMentionNodeViewKind =
   | "file"
   | "session"
   | "workspace-app"
-  | "workspace-app-bundle"
+  | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue";
+
+function parseFileCountAttr(value: unknown): number {
+  const parsed =
+    typeof value === "string" ? Number.parseInt(value.trim(), 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
 
 interface AgentMentionNodeViewModel {
   ariaLabel: string;
@@ -27,7 +35,7 @@ interface AgentMentionNodeViewModel {
   label: string;
   summary?: string;
   thumbnailUrl?: string;
-  /** bundle 文件数量(workspace-app-bundle 专用)。 */
+  /** 引用文件数量(workspace-reference 专用)。 */
   fileCount?: number;
 }
 
@@ -46,8 +54,8 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   if (value === "workspace-app") {
     return "workspace-app";
   }
-  if (value === "workspace-app-bundle") {
-    return "workspace-app-bundle";
+  if (value === "workspace-reference") {
+    return "workspace-reference";
   }
   if (value === "workspace-app-factory") {
     return "workspace-app-factory";
@@ -59,6 +67,7 @@ function buildMentionHref(
   resource:
     | "agent-session"
     | "workspace-app"
+    | "workspace-reference"
     | "workspace-app-factory"
     | "workspace-issue",
   attrs: Record<string, unknown>
@@ -68,6 +77,15 @@ function buildMentionHref(
   if (resource === "workspace-issue") {
     return buildAgentGenericMentionHref(resource, targetId, {
       topicId: attrString(attrs, "topicId").trim(),
+      workspaceId
+    });
+  }
+  if (resource === "workspace-reference") {
+    return buildAgentGenericMentionHref(resource, targetId, {
+      source: attrString(attrs, "source").trim(),
+      groupId: attrString(attrs, "groupId").trim(),
+      icon: attrString(attrs, "iconUrl").trim(),
+      count: attrString(attrs, "fileCount").trim(),
       workspaceId
     });
   }
@@ -221,16 +239,16 @@ function mentionViewModel(
     };
   }
 
-  if (kind === "workspace-app-bundle") {
+  if (kind === "workspace-reference") {
     return {
       ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
       directoryPath: "",
       entryKind: "",
-      href: href || buildMentionHref("workspace-app", attrs),
+      href: href || buildMentionHref("workspace-reference", attrs),
       iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
       kind,
       label: name,
-      fileCount: parseBundleFilesJson(attrs.filesJson).length
+      fileCount: parseFileCountAttr(attrs.fileCount)
     };
   }
 
@@ -462,13 +480,13 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
 
   if (
     mention.kind === "workspace-app" ||
-    mention.kind === "workspace-app-bundle"
+    mention.kind === "workspace-reference"
   ) {
     return (
       <NodeViewWrapper
         as="span"
         aria-label={mention.ariaLabel}
-        className={`inline-flex max-w-full align-baseline ${
+        className={`inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-baseline ${
           selected ? "is-selected" : ""
         }`}
         contentEditable={false}
@@ -478,7 +496,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
         data-agent-mention-kind={mention.kind}
       >
         <span
-          className="group relative top-[3px] inline-flex max-w-full cursor-default items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0.5 align-baseline text-[13px] font-medium leading-5 text-[var(--accent)] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
+          className="group relative top-[3px] inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-default items-center gap-1 overflow-hidden rounded-[4px] border border-transparent bg-transparent px-1 py-0.5 align-baseline text-[13px] font-medium leading-5 text-[var(--accent)] no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]"
           data-agent-mention-kind={mention.kind}
           data-slot="mention-pill"
         >
@@ -521,16 +539,9 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
               </button>
             ) : null}
           </span>
-          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+          <TruncatingPillLabel tooltip={mention.label}>
             {mention.label}
-          </span>
-          {mention.kind === "workspace-app-bundle" &&
-          mention.fileCount != null &&
-          mention.fileCount >= 0 ? (
-            <span className="shrink-0 tabular-nums text-[var(--text-secondary)]">
-              {mention.fileCount}
-            </span>
-          ) : null}
+          </TruncatingPillLabel>
         </span>
       </NodeViewWrapper>
     );
@@ -539,7 +550,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
   return (
     <NodeViewWrapper
       as="span"
-      className={`inline-flex max-w-full align-baseline ${
+      className={`inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] align-baseline ${
         selected ? "is-selected" : ""
       }`}
       contentEditable={false}

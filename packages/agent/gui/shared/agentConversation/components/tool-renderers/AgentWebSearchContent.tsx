@@ -15,14 +15,25 @@ const MAX_SUMMARY_LENGTH = 3000;
 export function AgentWebSearchContent({
   call,
   onLinkClick
-}: AgentToolRendererProps): JSX.Element {
+}: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const web = getWebSearchRenderData(call);
   const queries = web.queries;
-  const outputText = web.output ?? "";
+  const outputText = web.output;
   const links = normalizeLinks(call.output?.links, outputText);
   const summary = extractSummary(outputText) ?? (call.summary.trim() || null);
   const visibleSummary = summary ? summary.slice(0, MAX_SUMMARY_LENGTH) : null;
+
+  const hasRenderableContent = Boolean(
+    web.query ||
+    queries.length > 0 ||
+    links.length > 0 ||
+    visibleSummary ||
+    web.error
+  );
+  if (!hasRenderableContent) {
+    return null;
+  }
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">

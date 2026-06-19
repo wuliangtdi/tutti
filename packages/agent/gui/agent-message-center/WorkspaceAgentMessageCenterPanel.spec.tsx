@@ -1493,6 +1493,43 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(recentSection).not.toHaveTextContent("Finished long ago");
   });
 
+  it("splits failed items out of the needs-attention group in the priority view", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "attention-session",
+            title: "Awaiting input",
+            status: "working",
+            needsAttentionKind: "question",
+            needsAttentionSummary: "Needs a decision"
+          }),
+          createMessageCenterItem({
+            agentSessionId: "failed-session",
+            title: "Request failed",
+            status: "failed"
+          })
+        ])}
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Needs attention · 1" })
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Error · 1" })).toBeTruthy();
+
+    const attentionSection = screen
+      .getByRole("heading", { name: "Needs attention · 1" })
+      .closest("section");
+    expect(attentionSection).not.toBeNull();
+    expect(attentionSection).toHaveTextContent("Awaiting input");
+    expect(attentionSection).not.toHaveTextContent("Request failed");
+  });
+
   it("shows a filtered empty state with a clear filters action", () => {
     render(
       <WorkspaceAgentMessageCenterPanel

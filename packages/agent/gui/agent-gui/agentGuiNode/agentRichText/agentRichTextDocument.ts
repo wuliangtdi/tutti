@@ -3,8 +3,7 @@ import {
   attrsToMentionItem,
   formatAgentMentionMarkdown,
   mentionItemToAttrs,
-  parseAgentMentionMarkdown,
-  type AgentMentionSerializeMode
+  parseAgentMentionMarkdown
 } from "./agentFileMentionExtension";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import { parseAgentSkillToken } from "./agentSkillTokenExtension";
@@ -55,8 +54,8 @@ function createParagraphFromText(
       flushTextBuffer();
       content.push({
         type: "agentFileMention",
-        // 转成规范 node attrs(如 bundle 的 filesJson),否则只读回显里的
-        // bundle chip 拿不到文件数 → 不显示「N 个文件」角标。
+        // 转成规范 node attrs(如 workspace-reference 的 source/groupId/fileCount),
+        // 否则只读回显里的 reference chip 拿不到文件数 → 不显示「N 个文件」角标。
         attrs: mentionItemToAttrs(parsedMention.item)
       });
       index = parsedMention.end;
@@ -124,39 +123,27 @@ export function plainTextToAgentRichTextInlineContent(
   return paragraph.content ?? [];
 }
 
-export function agentRichTextDocToPromptText(
-  doc: JSONContent,
-  mode: AgentMentionSerializeMode = "display"
-): string {
+export function agentRichTextDocToPromptText(doc: JSONContent): string {
   if (doc.type !== "doc") {
-    return nodeToPromptText(doc, mode);
+    return nodeToPromptText(doc);
   }
   const blocks = doc.content ?? [];
   if (blocks.length === 0) {
     return "";
   }
-  return blocks.map((block) => nodeToPromptText(block, mode)).join("\n");
+  return blocks.map((block) => nodeToPromptText(block)).join("\n");
 }
 
-export function editorToPromptText(
-  editor: Editor,
-  mode: AgentMentionSerializeMode = "display"
-): string {
-  return agentRichTextDocToPromptText(editor.getJSON(), mode);
+export function editorToPromptText(editor: Editor): string {
+  return agentRichTextDocToPromptText(editor.getJSON());
 }
 
-function nodeToPromptText(
-  node: JSONContent,
-  mode: AgentMentionSerializeMode
-): string {
+function nodeToPromptText(node: JSONContent): string {
   if (node.type === "text") {
     return node.text ?? "";
   }
   if (node.type === "agentFileMention") {
-    return formatAgentMentionMarkdown(
-      attrsToMentionItem(node.attrs ?? {}),
-      mode
-    );
+    return formatAgentMentionMarkdown(attrsToMentionItem(node.attrs ?? {}));
   }
   if (node.type === "agentSkillToken") {
     return typeof node.attrs?.trigger === "string" ? node.attrs.trigger : "";
@@ -170,5 +157,5 @@ function nodeToPromptText(
   if (!node.content || node.content.length === 0) {
     return "";
   }
-  return node.content.map((child) => nodeToPromptText(child, mode)).join("");
+  return node.content.map((child) => nodeToPromptText(child)).join("");
 }

@@ -3374,7 +3374,8 @@ aside.workspace-agents-status-panel
 
 .tsh-agent-object-token {
   min-width: 0;
-  max-width: 100%;
+  /* 超出最大展示宽度时截断为省略号(标签 __main 已有 ellipsis);hover 经原生 title 看完整文本。 */
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   text-decoration: none;
 }
 

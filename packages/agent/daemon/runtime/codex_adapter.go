@@ -2058,7 +2058,8 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	content := acpSanitizeImagePayload(update["content"])
 	toolName := acpToolName(callID, name, kind, rawInput)
 	eventType := EventCallStarted
-	callBody := acpNormalizeToolInput(rawInput, kind, locations)
+	inputBody := acpNormalizeToolInput(rawInput, kind, locations)
+	callBody := inputBody
 	switch normalizedCallStatus(status) {
 	case messageStreamStateCompleted:
 		eventType = EventCallCompleted
@@ -2094,6 +2095,13 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	}
 	if content != nil {
 		payload["content"] = content
+	}
+	// Some tools (notably Codex web search) stream an empty input on the
+	// `started` event and only populate the real input — the search query — on
+	// the `completed` event. The terminal event must therefore carry the input
+	// too, otherwise the empty start payload wins the merge and the query is lost.
+	if eventType != EventCallStarted && len(inputBody) > 0 {
+		payload["input"] = inputBody
 	}
 	if len(callBody) > 0 {
 		switch eventType {

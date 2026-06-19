@@ -8,7 +8,8 @@ import {
   getFileChangeRenderData,
   getImageGenerationRenderData,
   getToolFallbackText,
-  getWebFetchRenderData
+  getWebFetchRenderData,
+  getWebSearchRenderData
 } from "./render-data/agentToolRenderData";
 import { CollapsibleReveal } from "../CollapsibleReveal";
 import { fileRange } from "./AgentReadContent";
@@ -174,8 +175,9 @@ export function hasAgentToolContent(call: AgentToolCallVM): boolean {
       return hasEditContent(call);
     case "bash":
     case "search":
-    case "web-search":
       return hasGenericStructuredContent(call);
+    case "web-search":
+      return hasWebSearchContent(call);
     case "web-fetch":
       return hasWebFetchContent(call) || hasGenericStructuredContent(call);
     case "image-generation": {
@@ -211,6 +213,20 @@ function hasGenericStructuredContent(call: AgentToolCallVM): boolean {
 function hasWebFetchContent(call: AgentToolCallVM): boolean {
   const web = getWebFetchRenderData(call);
   return Boolean(web.url || web.visibleContent);
+}
+
+function hasWebSearchContent(call: AgentToolCallVM): boolean {
+  // Mirror what AgentWebSearchContent can actually render. Web search payloads
+  // (notably the Codex path) often carry only a query and no results, so guard
+  // against treating an empty payload as renderable detail.
+  const web = getWebSearchRenderData(call);
+  return Boolean(
+    web.query ||
+    web.queries.length > 0 ||
+    web.output.trim() ||
+    web.error ||
+    arrayValue(call.output?.links)?.length
+  );
 }
 
 function hasReadContent(call: AgentToolCallVM): boolean {

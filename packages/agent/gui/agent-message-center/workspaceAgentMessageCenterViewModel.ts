@@ -223,9 +223,12 @@ export function groupMessageCenterItems(
         {
           id: "needs-attention",
           label: t("agentHost.workspaceAgentMessageCenterGroupNeedsAttention"),
-          match: (item) =>
-            messageCenterStatusFilterValue(item) === "waiting" ||
-            messageCenterStatusFilterValue(item) === "failed"
+          match: (item) => messageCenterStatusFilterValue(item) === "waiting"
+        },
+        {
+          id: "failed",
+          label: t("agentHost.workspaceAgentMessageCenterFilterFailed"),
+          match: (item) => messageCenterStatusFilterValue(item) === "failed"
         },
         {
           id: "working",

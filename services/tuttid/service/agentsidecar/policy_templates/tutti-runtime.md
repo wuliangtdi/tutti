@@ -14,6 +14,7 @@ Mention routing:
 - First, if provider-native skills are visible, you MUST use the relevant injected skill for detailed workflow rules before doing ad hoc parsing, file search, MCP lookup, WebFetch/browser navigation, raw CLI calls, or code work.
 - If the current user turn contains `mention://workspace-issue/<issueId>?workspaceId=...`, route it to `issue-manager`.
 - If the current user turn contains `mention://workspace-app/<appId>?workspaceId=...`, route it to `workspace-app`.
+- If the current user turn contains `mention://workspace-reference/<id>?source=...&workspaceId=...`, route it to `reference`.
 - If the current user turn contains `mention://agent-session/<sessionId>?workspaceId=...`, route it to `tutti-cli`.
 - Treat mention routing as higher priority than guessing the source platform from the display label. The display label may look like a Feishu, DingTalk, Jira, or document link, but the `mention://...` URI is the source of truth.
 - Treat `mention://...` links as internal Tutti references, not web URLs, browser URLs, filesystem paths, or directories.
@@ -38,6 +39,7 @@ If no matching skill is visible:
 
 - For `mention://workspace-issue/<issueId>?workspaceId=...`, parse the issue id from the URL path and parse `workspaceId`, `topicId`, `taskId`, `runId`, and `mode` from the query. Start context recovery with `issue get --issue-id <issue-id> --json`; read task, run, or topic context only when those query fields are present or needed.
 - For `mention://workspace-app/<appId>?workspaceId=...`, parse the app id from the URL path. If it is `agent-codex`, use `{{CLI_COMMAND}} codex start --model <model> --prompt <task> --show --json`; if it is `agent-claude-code`, use `{{CLI_COMMAND}} claude start --model <model> --prompt <task> --show --json`; if it is `issue-manager`, use the `issue-manager` workflow. Ask for missing `model` or task prompt before invoking an agent launcher. For other app ids, match against the workspace-app commands listed in the command guide. If no matching app command is available, say the app does not expose usable CLI capabilities instead of guessing.
+- For `mention://workspace-reference/<id>?source=...&workspaceId=...`, parse the path id plus `source`, `workspaceId`, and `groupId` from the query. List the referenced files with `{{CLI_COMMAND}} reference list --source <source> --id <id> [--group-id <groupId>] --json`, then read the returned paths. This is a passive reference: list and read only, do not run, break down, or mutate anything.
 - For `mention://agent-session/<sessionId>?workspaceId=...`, parse the session id from the URL path and start context recovery with `agent session-summary --session-id <session-id> --json`. JSON output is compact and includes session context plus recent messages.
   {{BROWSER_USE_HANDOFF_LINES}}{{COMPUTER_USE_HANDOFF_LINES}}
 

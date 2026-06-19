@@ -8,7 +8,10 @@ import {
   base64UrlDecode,
   base64UrlEncode
 } from "@tutti-os/workspace-file-reference/core";
-import type { ReferenceScope } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceHandle,
+  ReferenceScope
+} from "@tutti-os/workspace-file-reference/contracts";
 
 /**
  * 应用产物的引用列表 backend(遵循统一协议)。
@@ -156,13 +159,33 @@ export function createAppReferenceListBackend(
       };
     },
 
-    // 定位:应用是根层级分组(`app:${appId}`),一步到位。
+    // 定位:应用是根层级分组(`app:${appId}`);带 groupId 时再下钻到该子分组
+    // (`app:${appId}|grp:${b64(groupId)}`),供点击引用 chip 一键定位到具体项目。
     locate(_scope, params): Promise<string[] | null> {
       const appId = params.appId?.trim();
       if (!appId) {
         return Promise.resolve(null);
       }
-      return Promise.resolve([`${APP_MARKER}${appId}`]);
+      const appPath = `${APP_MARKER}${appId}`;
+      const groupId = params.groupId?.trim();
+      return Promise.resolve(
+        groupId
+          ? [appPath, `${appPath}${GROUP_MARKER}${base64UrlEncode(groupId)}`]
+          : [appPath]
+      );
+    },
+
+    // 句柄解码:`app:${appId}` / `app:${appId}|grp:${groupId}` → { source:"app", id:appId, groupId? }。
+    describeHandle(groupId): ReferenceHandle | null {
+      const { appId, groupId: subGroupId } = decodeAppGroupId(groupId);
+      if (!appId) {
+        return null;
+      }
+      return {
+        source: "app",
+        id: appId,
+        ...(subGroupId ? { groupId: subGroupId } : {})
+      };
     }
   };
 }

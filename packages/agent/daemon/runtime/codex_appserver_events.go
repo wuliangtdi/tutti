@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
@@ -319,12 +320,63 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 			}
 		}
 	case "webSearch":
-		query := asStringRaw(item["query"])
-		update["title"] = "Searching for: " + query
+		// Per the Codex app-server schema, a webSearch item is {id, query, action?}
+		// and for a `search` action the real query lives in action.query or the
+		// action.queries[] array; the top-level `query` is often empty. Read the
+		// action first and fall back to the top-level field so the query is not
+		// silently dropped (which previously rendered an empty web-search row).
+		action := payloadObject(item["action"])
+		queries := appServerSearchQueries(action["queries"])
+		query := firstNonEmpty(
+			firstAppServerQuery(queries),
+			asString(action["query"]),
+			asString(item["query"]),
+		)
+		url := asString(action["url"])
+		actionType := firstNonEmpty(asString(action["type"]), "search")
+
+		rawInput := map[string]any{}
+		if query != "" {
+			rawInput["query"] = query
+		}
+		if len(queries) > 0 {
+			rawInput["search_query"] = queries
+		}
+		actionOut := map[string]any{"type": actionType}
+		if query != "" {
+			actionOut["query"] = query
+		}
+		if len(queries) > 0 {
+			actionOut["queries"] = queries
+		}
+		if url != "" {
+			actionOut["url"] = url
+		}
+		rawInput["action"] = actionOut
+
+		switch {
+		case query != "":
+			update["title"] = "Searching for: " + query
+		case url != "":
+			update["title"] = "Visiting: " + url
+		default:
+			update["title"] = "WebSearch"
+		}
 		update["kind"] = "fetch"
-		update["rawInput"] = map[string]any{
-			"query":  query,
-			"action": map[string]any{"type": "search", "query": query},
+		update["rawInput"] = rawInput
+
+		if query == "" && url == "" && len(queries) == 0 {
+			// Confirmed via exported logs: the Codex app-server streams web-search
+			// items as {query:"", action:{type:"other"}} for some models (e.g.
+			// gpt-5.x) — it never sends the query or results, so there is nothing
+			// for the daemon or GUI to render. Keep this at debug level (it can fire
+			// once per search) to aid future diagnosis without flooding info logs.
+			slog.Debug(
+				"agent session app-server web search has no query/results from provider",
+				"itemId", itemID,
+				"status", status,
+				"rawItem", appServerItemJSON(item),
+			)
 		}
 	case "dynamicToolCall":
 		update["title"] = firstNonEmpty(asString(item["tool"]), "Tool")
@@ -1457,6 +1509,46 @@ func truthyBool(value any) bool {
 func asStringRaw(value any) string {
 	typed, _ := value.(string)
 	return typed
+}
+
+// appServerSearchQueries reads action.queries[] (Codex app-server webSearch
+// schema) into a []any of non-empty trimmed strings, suitable for the GUI's
+// search_query rendering. Returns nil when absent or empty.
+func appServerSearchQueries(value any) []any {
+	raw, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]any, 0, len(raw))
+	for _, entry := range raw {
+		if text := asString(entry); text != "" {
+			out = append(out, text)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// firstAppServerQuery returns the first non-empty query string from a
+// search_query list produced by appServerSearchQueries.
+func firstAppServerQuery(queries []any) string {
+	for _, q := range queries {
+		if text := asString(q); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+// appServerItemJSON renders a raw thread item as compact JSON for diagnostics,
+// falling back to Go formatting if the item is not JSON-serializable.
+func appServerItemJSON(item map[string]any) string {
+	if encoded, err := json.Marshal(item); err == nil {
+		return string(encoded)
+	}
+	return fmt.Sprintf("%+v", item)
 }
 
 // appServerReasoningText pulls the human-readable text out of a completed

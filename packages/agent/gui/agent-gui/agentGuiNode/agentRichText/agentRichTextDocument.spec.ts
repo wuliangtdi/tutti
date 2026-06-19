@@ -4,7 +4,7 @@ import {
   plainTextToAgentRichTextDoc,
   plainTextToAgentRichTextInlineContent
 } from "./agentRichTextDocument";
-import { buildAgentWorkspaceAppBundleMentionHref } from "./agentFileMentionExtension";
+import { buildAgentWorkspaceReferenceMentionHref } from "./agentFileMentionExtension";
 
 describe("agentRichTextDocument", () => {
   it("round-trips plain text and newlines", () => {
@@ -105,24 +105,19 @@ describe("agentRichTextDocument", () => {
     });
   });
 
-  it("hydrates an app bundle mention with filesJson so the file count renders", () => {
-    // 回归:对话流里的用户气泡用 AgentRichTextReadonly 渲染,bundle chip 的
-    // 「N 个文件」角标取自 node attr filesJson —— 解析时必须从 href 的 files 还原。
-    const files = [
-      { path: "/proj/a.ts", name: "a.ts" },
-      { path: "/proj/b.ts", name: "b.ts" },
-      { path: "/proj/c.ts", name: "c.ts" }
-    ];
-    const href = buildAgentWorkspaceAppBundleMentionHref(
+  it("hydrates a workspace-reference mention with its handle + file count", () => {
+    // 回归:对话流里的用户气泡用 AgentRichTextReadonly 渲染,reference chip 的
+    // 「N 个文件」角标取自 href 的 count 参数,句柄取自 source/id/groupId。
+    const href = buildAgentWorkspaceReferenceMentionHref(
       "ws1",
-      "node-123",
-      files,
-      "https://x.png"
+      { source: "task", id: "topic-1", groupId: "issue-1" },
+      { iconUrl: "https://x.png", fileCount: 3 }
     );
     const doc = plainTextToAgentRichTextDoc(`[@我的小项目](${href})`);
     const mention = doc.content?.[0]?.content?.[0];
-    expect(mention?.attrs?.kind).toBe("workspace-app-bundle");
-    expect(JSON.parse(String(mention?.attrs?.filesJson))).toHaveLength(3);
+    expect(mention?.attrs?.kind).toBe("workspace-reference");
+    expect(mention?.attrs?.source).toBe("task");
+    expect(mention?.attrs?.fileCount).toBe("3");
   });
 
   it("round-trips session and issue mentions as typed mention nodes", () => {

@@ -5,6 +5,7 @@ import {
 } from "@tutti-os/agent-gui/context-mention-provider";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { appCenterI18nResources } from "@tutti-os/workspace-app-center/i18n";
+import { compareDesktopWorkspaceAppMentionItems } from "./desktopWorkspaceAppMentionOrdering.ts";
 
 export interface DesktopWorkspaceAppMentionItem {
   readonly appId: string;
@@ -99,7 +100,7 @@ export function createDesktopWorkspaceAppMentionProvider({
           matchesWorkspaceAppMentionKeyword(item, normalizedKeyword)
         );
       return [...fromBase, ...fromAppCenter].sort((left, right) =>
-        left.displayName.localeCompare(right.displayName, locale)
+        compareDesktopWorkspaceAppMentionItems(left, right, locale)
       );
     },
     toInsertResult: (item) => ({

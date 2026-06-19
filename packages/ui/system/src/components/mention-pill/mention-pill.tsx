@@ -9,6 +9,7 @@ import {
   IssueIcon
 } from "#icons/system-icons";
 import { cn } from "#lib/utils";
+import { TruncatingPillLabel } from "./truncating-pill-label";
 
 type MentionPillKind = "app" | "issue" | "session" | "file";
 type MentionPillFileKind = "file" | "folder";
@@ -71,10 +72,17 @@ function MentionPill({
   const iconSizeClassName = "size-4";
   const iconShellClassName = isFile ? "size-4" : "size-[18px]";
 
+  // 超出最大展示宽度时,标签截断为省略号;溢出时 hover 弹设计系统 Tooltip 看完整文本。
+  const tooltipText = [label, summary]
+    .filter(
+      (part): part is string => typeof part === "string" && part.trim() !== ""
+    )
+    .join(" ");
+
   return (
     <span
       className={cn(
-        "group relative top-[3px] inline-flex max-w-full cursor-default items-center overflow-hidden rounded-[4px] border border-transparent bg-transparent py-0.5 align-baseline text-[13px] font-medium leading-5 no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]",
+        "group relative top-[3px] inline-flex max-w-[min(100%,var(--agent-mention-max-width,16rem))] cursor-default items-center overflow-hidden rounded-[4px] border border-transparent bg-transparent py-0.5 align-baseline text-[13px] font-medium leading-5 no-underline transition-colors hover:border-transparent hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)]",
         isFile ? "gap-1.5 px-1.5" : "gap-1 px-1",
         className
       )}
@@ -129,10 +137,10 @@ function MentionPill({
           </button>
         ) : null}
       </span>
-      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+      <TruncatingPillLabel tooltip={tooltipText}>
         <span>{label}</span>
         {summary ? <span className="text-current"> {summary}</span> : null}
-      </span>
+      </TruncatingPillLabel>
     </span>
   );
 }

@@ -55,12 +55,13 @@ func providerSpecificMentionRouting(provider string) string {
 		return strings.TrimSpace(`
 Claude Code mention routing:
 
-- Claude Code skill names may be namespaced. The same injected plugin skills may appear as ` + "`tutti-cli:tutti-cli`" + `, ` + "`tutti-cli:issue-manager`" + `, and ` + "`tutti-cli:workspace-app`" + `; treat those names as the authoritative injected Tutti skills when they are visible.
+- Claude Code skill names may be namespaced. The same injected plugin skills may appear as ` + "`tutti-cli:tutti-cli`" + `, ` + "`tutti-cli:issue-manager`" + `, ` + "`tutti-cli:workspace-app`" + `, and ` + "`tutti-cli:reference`" + `; treat those names as the authoritative injected Tutti skills when they are visible.
 - Claude Code skill listings can omit descriptions for project or plugin skills. When a Tutti skill name appears without a description, this runtime policy is still authoritative for what the skill does and when to use it.
 - If the current user turn contains ` + "`mention://workspace-issue/<issueId>?workspaceId=...`" + `, your first tool call MUST be ` + "`Skill(skill=\"issue-manager\", args=\"<full mention URI>\")`" + `. Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call.
 - If the current user turn contains ` + "`mention://workspace-app/<appId>?workspaceId=...`" + `, your first tool call MUST be ` + "`Skill(skill=\"workspace-app\", args=\"<full mention URI>\")`" + `. Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call.
+- If the current user turn contains ` + "`mention://workspace-reference/<id>?source=...&workspaceId=...`" + `, your first tool call MUST be ` + "`Skill(skill=\"reference\", args=\"<full mention URI>\")`" + `. Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call.
 - If the current user turn contains ` + "`mention://agent-session/<sessionId>?workspaceId=...`" + `, your first tool call MUST be ` + "`Skill(skill=\"tutti-cli\", args=\"<full mention URI>\")`" + `. Do not call Bash, Read, ls, WebFetch, browser, MCP lookup, file search, or raw CLI commands before this skill call.
-- If the exact plain skill name is not available but a namespaced Claude Code plugin skill is visible, use the matching namespaced skill instead: ` + "`tutti-cli:issue-manager`" + `, ` + "`tutti-cli:workspace-app`" + `, or ` + "`tutti-cli:tutti-cli`" + `.`)
+- If the exact plain skill name is not available but a namespaced Claude Code plugin skill is visible, use the matching namespaced skill instead: ` + "`tutti-cli:issue-manager`" + `, ` + "`tutti-cli:workspace-app`" + `, ` + "`tutti-cli:reference`" + `, or ` + "`tutti-cli:tutti-cli`" + `.`)
 	default:
 		return ""
 	}

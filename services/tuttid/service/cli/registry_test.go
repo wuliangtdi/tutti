@@ -103,6 +103,100 @@ func TestRegistryCapabilitiesKeepRegistrationOrder(t *testing.T) {
 	}
 }
 
+func TestRegistryProviderCapabilityFilterHidesStaticCapabilitiesOnlyFromList(t *testing.T) {
+	provider := &filteringTestProvider{
+		testProvider: testProvider{
+			appID: "diagnostics",
+			commands: []Command{
+				testCommandWithPath("diagnostics.hidden", []string{"hidden"}),
+				testCommandWithPath("diagnostics.second", []string{"second"}),
+				testCommandWithPath("diagnostics.first", []string{"first"}),
+			},
+		},
+		visibleIDs: map[string]bool{
+			"diagnostics.second": true,
+			"diagnostics.first":  true,
+		},
+	}
+	registry, err := NewRegistryFromProviders(provider)
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+	registry.AppCommands = fakeDynamicCommandRegistry{
+		capabilities: []Capability{{
+			ID:      "dynamic.app.run",
+			Path:    []string{"app", "run"},
+			Summary: "Run dynamic app command",
+			Source:  CapabilitySource{Kind: CapabilitySourceApp, AppID: "dynamic-app"},
+		}},
+	}
+
+	capabilities := registry.Capabilities(context.Background(), InvokeContext{Source: "cli", WorkspaceID: "ws-1"})
+	if got, want := capabilityIDs(capabilities), []string{"diagnostics.second", "diagnostics.first", "dynamic.app.run"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids = %#v, want %#v", got, want)
+	}
+	if len(provider.contexts) != 1 || provider.contexts[0].WorkspaceID != "ws-1" {
+		t.Fatalf("filter contexts = %#v, want workspace ws-1", provider.contexts)
+	}
+
+	output, err := registry.Invoke(context.Background(), InvokeRequest{CommandID: "diagnostics.hidden"})
+	if err != nil {
+		t.Fatalf("Invoke hidden command: %v", err)
+	}
+	if output.Kind != OutputModePlain || output.Text != "ok" {
+		t.Fatalf("hidden command output = %#v", output)
+	}
+}
+
+type filteringTestProvider struct {
+	testProvider
+	visibleIDs map[string]bool
+	contexts   []InvokeContext
+}
+
+func (p *filteringTestProvider) FilterCapabilities(_ context.Context, invokeContext InvokeContext, capabilities []Capability) []Capability {
+	p.contexts = append(p.contexts, invokeContext)
+	result := make([]Capability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if p.visibleIDs[capability.ID] {
+			result = append(result, capability)
+		}
+	}
+	return result
+}
+
+type fakeDynamicCommandRegistry struct {
+	capabilities []Capability
+}
+
+func (f fakeDynamicCommandRegistry) Capabilities(context.Context, InvokeContext) []Capability {
+	return append([]Capability(nil), f.capabilities...)
+}
+
+func (fakeDynamicCommandRegistry) Invoke(context.Context, InvokeRequest) (CommandOutput, error) {
+	return CommandOutput{}, ErrCommandNotFound
+}
+
+func capabilityIDs(capabilities []Capability) []string {
+	ids := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		ids = append(ids, capability.ID)
+	}
+	return ids
+}
+
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func testCommand(id string) Command {
 	return testCommandWithPath(id, []string{"doctor", "ping"})
 }

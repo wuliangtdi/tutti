@@ -600,13 +600,27 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
   });
 
   assert.equal(items.length, 2);
-  const claudeItem = items[0];
-  const codexItem = items[1];
+  const codexItem = items[0];
+  const claudeItem = items[1];
   const claudeIconUrl = iconUrlFromProviderItem(claudeItem);
   const codexIconUrl = iconUrlFromProviderItem(codexItem);
   assert.equal(claudeIconUrl, tuttiAgentAssetUrls.claudeCode);
   assert.equal(codexIconUrl, tuttiAgentAssetUrls.codex);
   assert.deepEqual(items, [
+    {
+      appId: "agent-codex",
+      commandCount: 1,
+      commandDescriptions: [
+        "Start a Codex agent session in the current workspace."
+      ],
+      commandPaths: ["codex start"],
+      description: "Start a Codex agent session in the current workspace.",
+      commandSummaries: ["Start a Codex agent session"],
+      displayName: "Codex",
+      iconUrl: tuttiAgentAssetUrls.codex,
+      scopes: ["codex"],
+      workspaceId: "workspace-1"
+    },
     {
       appId: "agent-claude-code",
       commandCount: 1,
@@ -620,20 +634,6 @@ test("desktop rich text @ service assembles provider agent mention apps from cap
       displayName: "Claude Code",
       iconUrl: tuttiAgentAssetUrls.claudeCode,
       scopes: ["claude"],
-      workspaceId: "workspace-1"
-    },
-    {
-      appId: "agent-codex",
-      commandCount: 1,
-      commandDescriptions: [
-        "Start a Codex agent session in the current workspace."
-      ],
-      commandPaths: ["codex start"],
-      description: "Start a Codex agent session in the current workspace.",
-      commandSummaries: ["Start a Codex agent session"],
-      displayName: "Codex",
-      iconUrl: tuttiAgentAssetUrls.codex,
-      scopes: ["codex"],
       workspaceId: "workspace-1"
     }
   ]);

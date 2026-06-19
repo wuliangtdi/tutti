@@ -227,13 +227,13 @@ export function getSearchRenderData(
           : [],
     lines: outputLines,
     output,
-    error: firstString(
-      stringValue(call.error?.aggregated_output),
-      stringValue(call.error?.stdout),
-      stringValue(call.error?.formatted_output),
-      stringValue(call.error?.message),
-      ""
-    )!
+    error:
+      firstString(
+        stringValue(call.error?.aggregated_output),
+        stringValue(call.error?.stdout),
+        stringValue(call.error?.formatted_output),
+        stringValue(call.error?.message)
+      ) ?? ""
   };
 }
 
@@ -257,17 +257,18 @@ export function getWebSearchRenderData(
       stringValue(call.input?.url),
       stringValue(recordValue(call.input?.action)?.url)
     ),
-    output: firstString(
-      stringValue(call.output?.stdout),
-      stringValue(call.output?.output),
-      stringValue(call.output?.content),
-      ""
-    )!,
-    error: firstString(
-      stringValue(call.error?.message),
-      stringValue(call.error?.stdout),
-      ""
-    )!
+    output:
+      firstString(
+        stringValue(call.output?.stdout),
+        stringValue(call.output?.output),
+        stringValue(call.output?.content),
+        contentText(call.output?.content)
+      ) ?? "",
+    error:
+      firstString(
+        stringValue(call.error?.message),
+        stringValue(call.error?.stdout)
+      ) ?? ""
   };
 }
 
@@ -325,12 +326,12 @@ export function getMcpRenderData(call: AgentToolCallVM): AgentMcpRenderData {
     ),
     tool: call.toolName,
     summary: stringValue(call.summary),
-    output: firstString(
-      stringValue(call.output?.content),
-      stringValue(call.output?.output),
-      stringValue(call.output?.stdout),
-      ""
-    )!
+    output:
+      firstString(
+        stringValue(call.output?.content),
+        stringValue(call.output?.output),
+        stringValue(call.output?.stdout)
+      ) ?? ""
   };
 }
 

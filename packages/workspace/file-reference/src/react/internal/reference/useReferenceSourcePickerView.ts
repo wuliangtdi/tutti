@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSnapshot } from "valtio";
 import type {
+  ReferenceHandle,
   ReferenceLocateTarget,
   ReferenceNode,
   ReferenceScope,
@@ -60,7 +61,13 @@ export interface ReferenceBundleSelection {
   nodeId: string;
   displayName: string;
   iconUrl?: string | null;
-  files: WorkspaceFileReference[];
+  /**
+   * 可被 agent 解析的领域句柄(见 ReferenceHandle)。发给 agent 的
+   * `mention://workspace-reference/...` 由它构造;源未解码出句柄时为 null。
+   */
+  handle: ReferenceHandle | null;
+  /** 该 bundle 下文件数(展示用,取节点 childCount;不再展开文件)。 */
+  fileCount: number;
 }
 
 export interface ReferenceGroupedSelection {
@@ -498,7 +505,9 @@ export function useReferenceSourcePickerView({
             nodeId: bundle.root.ref.nodeId,
             displayName: bundle.root.displayName,
             iconUrl: bundle.root.iconUrl ?? null,
-            files: bundle.files.map(selectedReferenceToWorkspaceFileReference)
+            handle: bundle.handle,
+            // 展示用文件数:取节点 childCount(不再展开文件);缺省回退 0。
+            fileCount: bundle.root.childCount ?? 0
           }))
         });
       } else {

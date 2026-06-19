@@ -3,6 +3,7 @@ package agentcontext
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +48,9 @@ type fakeAgentSessions struct {
 	sendInput       agentservice.SendInput
 	getSession      agentservice.Session
 	getErr          error
+	availability    []agentservice.ProviderAvailability
+	availabilityErr error
+	availabilityIn  []agentservice.ProviderAvailabilityInput
 }
 
 func (f *fakeAgentSessions) Cancel(_ context.Context, workspaceID string, sessionID string) (agentservice.CancelSessionResult, error) {
@@ -164,17 +168,45 @@ func (f *fakeAgentSessions) ListActivePeers(_ context.Context, workspaceID strin
 	}, nil
 }
 
-func (*fakeAgentSessions) ListProviderAvailability(_ context.Context, input agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error) {
-	return []agentservice.ProviderAvailability{{
-		Provider: input.Provider,
-		Status:   agentservice.ProviderAvailabilityAvailable,
+func (f *fakeAgentSessions) ListProviderAvailability(_ context.Context, input agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error) {
+	f.availabilityIn = append(f.availabilityIn, input)
+	if f.availabilityErr != nil {
+		return nil, f.availabilityErr
+	}
+	items := f.availability
+	if items == nil {
+		items = []agentservice.ProviderAvailability{
+			availableProvider("codex"),
+			availableProvider("claude-code"),
+		}
+	}
+	if strings.TrimSpace(input.Provider) == "" {
+		return append([]agentservice.ProviderAvailability(nil), items...), nil
+	}
+	filtered := make([]agentservice.ProviderAvailability, 0, len(items))
+	for _, item := range items {
+		if strings.TrimSpace(item.Provider) == strings.TrimSpace(input.Provider) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
+func availableProvider(provider string) agentservice.ProviderAvailability {
+	return providerAvailability(provider, agentservice.ProviderAvailabilityAvailable)
+}
+
+func providerAvailability(provider string, status string) agentservice.ProviderAvailability {
+	return agentservice.ProviderAvailability{
+		Provider: provider,
+		Status:   status,
 		Checks: []agentservice.ProviderAvailabilityCheck{{
 			Name:   "runtime_command",
-			Passed: true,
-			Detail: "codex found",
+			Passed: status == agentservice.ProviderAvailabilityAvailable,
+			Detail: provider + " status",
 		}},
 		CapturedAt: time.Unix(3, 0).UTC(),
-	}}, nil
+	}
 }
 
 func (f *fakeAgentSessions) ListMessages(_ context.Context, workspaceID string, sessionID string, input agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error) {
@@ -224,6 +256,46 @@ func commandByID(t *testing.T, commands []cliservice.Command, commandID string) 
 	}
 	t.Fatalf("command %q not found", commandID)
 	return cliservice.Command{}
+}
+
+func capabilityIDs(capabilities []cliservice.Capability) []string {
+	ids := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		ids = append(ids, capability.ID)
+	}
+	return ids
+}
+
+func providerAgentAppIDs(capabilities []cliservice.Capability) []string {
+	ids := []string{}
+	for _, capability := range capabilities {
+		if capability.Source.Kind == cliservice.CapabilitySourceApp &&
+			(capability.Source.AppID == codexAgentAppID || capability.Source.AppID == claudeCodeAgentAppID) {
+			ids = append(ids, capability.Source.AppID)
+		}
+	}
+	return ids
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func equalStrings(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
@@ -625,6 +697,155 @@ func TestProviderStartCommandsExposeAgentAppsAndFixProvider(t *testing.T) {
 		if sessions.createInput.Provider != tc.want {
 			t.Fatalf("%s provider = %q, want %q", name, sessions.createInput.Provider, tc.want)
 		}
+	}
+}
+
+func TestProviderCapabilitiesFilterAgentAppsByAvailability(t *testing.T) {
+	for name, tc := range map[string]struct {
+		availability    []agentservice.ProviderAvailability
+		availabilityErr error
+		wantAppIDs      []string
+	}{
+		"both available": {
+			availability: []agentservice.ProviderAvailability{
+				availableProvider("codex"),
+				availableProvider("claude-code"),
+			},
+			wantAppIDs: []string{codexAgentAppID, claudeCodeAgentAppID},
+		},
+		"codex unavailable": {
+			availability: []agentservice.ProviderAvailability{
+				providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
+				availableProvider("claude-code"),
+			},
+			wantAppIDs: []string{claudeCodeAgentAppID},
+		},
+		"claude unavailable": {
+			availability: []agentservice.ProviderAvailability{
+				availableProvider("codex"),
+				providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
+			},
+			wantAppIDs: []string{codexAgentAppID},
+		},
+		"unknown hidden": {
+			availability: []agentservice.ProviderAvailability{
+				providerAvailability("codex", agentservice.ProviderAvailabilityUnknown),
+				availableProvider("claude-code"),
+			},
+			wantAppIDs: []string{claudeCodeAgentAppID},
+		},
+		"missing hidden": {
+			availability: []agentservice.ProviderAvailability{
+				availableProvider("codex"),
+			},
+			wantAppIDs: []string{codexAgentAppID},
+		},
+		"availability error hides both": {
+			availabilityErr: errors.New("availability failed"),
+			wantAppIDs:      []string{},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sessions := &fakeAgentSessions{
+				availability:    tc.availability,
+				availabilityErr: tc.availabilityErr,
+			}
+			registry, err := cliservice.NewRegistryFromProviders(
+				NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
+			)
+			if err != nil {
+				t.Fatalf("NewRegistryFromProviders: %v", err)
+			}
+
+			capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
+			if got := providerAgentAppIDs(capabilities); !equalStrings(got, tc.wantAppIDs) {
+				t.Fatalf("provider agent app ids = %#v, want %#v; capabilities=%#v", got, tc.wantAppIDs, capabilityIDs(capabilities))
+			}
+			if !containsString(capabilityIDs(capabilities), appID+".agent.start") {
+				t.Fatalf("generic agent start capability missing: %#v", capabilityIDs(capabilities))
+			}
+			if len(sessions.availabilityIn) != 1 || sessions.availabilityIn[0].Provider != "" {
+				t.Fatalf("availability inputs = %#v, want one unfiltered request", sessions.availabilityIn)
+			}
+		})
+	}
+}
+
+func TestProviderCapabilitiesHideAgentAppsWithoutSessions(t *testing.T) {
+	registry, err := cliservice.NewRegistryFromProviders(
+		NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, nil),
+	)
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
+	if got := providerAgentAppIDs(capabilities); len(got) != 0 {
+		t.Fatalf("provider agent app ids = %#v, want none", got)
+	}
+	if !containsString(capabilityIDs(capabilities), appID+".agent.start") {
+		t.Fatalf("generic agent start capability missing: %#v", capabilityIDs(capabilities))
+	}
+}
+
+func TestProviderCapabilityFilterKeepsGenericAndNonAgentAppCapabilities(t *testing.T) {
+	provider := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{
+		availability: []agentservice.ProviderAvailability{
+			providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
+			providerAvailability("claude-code", agentservice.ProviderAvailabilityUnavailable),
+		},
+	})
+
+	capabilities := []cliservice.Capability{
+		{
+			ID:     appID + ".codex.start",
+			Source: cliservice.CapabilitySource{Kind: cliservice.CapabilitySourceApp, AppID: codexAgentAppID},
+		},
+		{
+			ID:     appID + ".agent.start",
+			Source: cliservice.CapabilitySource{Kind: cliservice.CapabilitySourceBuiltin},
+		},
+		{
+			ID:     "workspace.other.start",
+			Source: cliservice.CapabilitySource{Kind: cliservice.CapabilitySourceApp, AppID: "other-app"},
+		},
+	}
+
+	filtered := provider.FilterCapabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"}, capabilities)
+	if got, want := capabilityIDs(filtered), []string{appID + ".agent.start", "workspace.other.start"}; !equalStrings(got, want) {
+		t.Fatalf("capability ids = %#v, want %#v", got, want)
+	}
+}
+
+func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		availability: []agentservice.ProviderAvailability{
+			providerAvailability("codex", agentservice.ProviderAvailabilityUnavailable),
+			availableProvider("claude-code"),
+		},
+	}
+	registry, err := cliservice.NewRegistryFromProviders(
+		NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions),
+	)
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
+	if got := providerAgentAppIDs(capabilities); !equalStrings(got, []string{claudeCodeAgentAppID}) {
+		t.Fatalf("provider agent app ids = %#v, want claude only", got)
+	}
+
+	if _, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: appID + ".codex.start",
+		Input: map[string]any{
+			"model":  "gpt-5",
+			"prompt": "do work",
+		},
+	}); err != nil {
+		t.Fatalf("Invoke hidden codex command: %v", err)
+	}
+	if sessions.createInput.Provider != "codex" {
+		t.Fatalf("created provider = %q, want codex", sessions.createInput.Provider)
 	}
 }
 

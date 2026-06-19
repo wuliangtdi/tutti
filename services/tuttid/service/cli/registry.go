@@ -68,14 +68,20 @@ func InvokeErrorReason(err error) string {
 }
 
 type Registry struct {
-	commands    map[string]Command
-	order       []string
-	AppCommands DynamicCommandRegistry
+	commands          map[string]Command
+	order             []string
+	commandProviderID map[string]string
+	providerFilters   map[string]CapabilityFilterProvider
+	AppCommands       DynamicCommandRegistry
 }
 
 type Provider interface {
 	AppID() string
 	Commands() []Command
+}
+
+type CapabilityFilterProvider interface {
+	FilterCapabilities(context.Context, InvokeContext, []Capability) []Capability
 }
 
 type DynamicCommandRegistry interface {
@@ -84,7 +90,7 @@ type DynamicCommandRegistry interface {
 }
 
 func NewRegistry(commands ...Command) (*Registry, error) {
-	registry := &Registry{commands: map[string]Command{}, order: []string{}}
+	registry := newRegistry()
 	for _, command := range commands {
 		if err := registry.Register(command); err != nil {
 			return nil, err
@@ -94,16 +100,20 @@ func NewRegistry(commands ...Command) (*Registry, error) {
 }
 
 func NewRegistryFromProviders(providers ...Provider) (*Registry, error) {
-	registry := &Registry{commands: map[string]Command{}, order: []string{}}
+	registry := newRegistry()
 	for _, provider := range providers {
 		if provider == nil {
 			return nil, fmt.Errorf("%w: provider is nil", ErrInvalidCommand)
 		}
-		if strings.TrimSpace(provider.AppID()) == "" {
+		providerID := strings.TrimSpace(provider.AppID())
+		if providerID == "" {
 			return nil, fmt.Errorf("%w: provider app id is required", ErrInvalidCommand)
 		}
+		if filter, ok := provider.(CapabilityFilterProvider); ok {
+			registry.providerFilters[providerID] = filter
+		}
 		for _, command := range provider.Commands() {
-			if err := registry.Register(command); err != nil {
+			if err := registry.register(command, providerID); err != nil {
 				return nil, err
 			}
 		}
@@ -111,7 +121,20 @@ func NewRegistryFromProviders(providers ...Provider) (*Registry, error) {
 	return registry, nil
 }
 
+func newRegistry() *Registry {
+	return &Registry{
+		commands:          map[string]Command{},
+		order:             []string{},
+		commandProviderID: map[string]string{},
+		providerFilters:   map[string]CapabilityFilterProvider{},
+	}
+}
+
 func (r *Registry) Register(command Command) error {
+	return r.register(command, "")
+}
+
+func (r *Registry) register(command Command, providerID string) error {
 	if r == nil {
 		return fmt.Errorf("%w: registry is nil", ErrInvalidCommand)
 	}
@@ -137,6 +160,9 @@ func (r *Registry) Register(command Command) error {
 	}
 	r.commands[id] = command
 	r.order = append(r.order, id)
+	if providerID != "" {
+		r.commandProviderID[id] = providerID
+	}
 	return nil
 }
 
@@ -147,9 +173,13 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 		}
 		return []Capability{}
 	}
+	allowedByProvider := r.filteredCapabilityIDsByProvider(ctx, invokeContext)
 	result := make([]Capability, 0, len(r.commands))
 	for _, id := range r.order {
 		if command, ok := r.commands[id]; ok {
+			if !r.capabilityVisible(id, allowedByProvider) {
+				continue
+			}
 			result = append(result, command.Capability)
 		}
 	}
@@ -157,6 +187,56 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 		result = append(result, r.AppCommands.Capabilities(ctx, invokeContext)...)
 	}
 	return result
+}
+
+func (r *Registry) filteredCapabilityIDsByProvider(ctx context.Context, invokeContext InvokeContext) map[string]map[string]struct{} {
+	if r == nil || len(r.providerFilters) == 0 {
+		return nil
+	}
+	capabilitiesByProvider := map[string][]Capability{}
+	for _, id := range r.order {
+		providerID := r.commandProviderID[id]
+		if providerID == "" || r.providerFilters[providerID] == nil {
+			continue
+		}
+		command, ok := r.commands[id]
+		if !ok {
+			continue
+		}
+		capabilitiesByProvider[providerID] = append(capabilitiesByProvider[providerID], command.Capability)
+	}
+	if len(capabilitiesByProvider) == 0 {
+		return nil
+	}
+	allowedByProvider := map[string]map[string]struct{}{}
+	for providerID, capabilities := range capabilitiesByProvider {
+		filter := r.providerFilters[providerID]
+		allowed := map[string]struct{}{}
+		for _, capability := range filter.FilterCapabilities(ctx, invokeContext, append([]Capability(nil), capabilities...)) {
+			id := strings.TrimSpace(capability.ID)
+			if id != "" {
+				allowed[id] = struct{}{}
+			}
+		}
+		allowedByProvider[providerID] = allowed
+	}
+	return allowedByProvider
+}
+
+func (r *Registry) capabilityVisible(id string, allowedByProvider map[string]map[string]struct{}) bool {
+	if len(allowedByProvider) == 0 {
+		return true
+	}
+	providerID := r.commandProviderID[id]
+	if providerID == "" {
+		return true
+	}
+	allowed, ok := allowedByProvider[providerID]
+	if !ok {
+		return true
+	}
+	_, visible := allowed[id]
+	return visible
 }
 
 func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOutput, error) {

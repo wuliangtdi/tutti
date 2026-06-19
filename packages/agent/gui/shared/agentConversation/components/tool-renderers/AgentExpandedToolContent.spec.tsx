@@ -640,6 +640,51 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("agent renderer parity")).toBeTruthy();
   });
 
+  it("renders the query when web search carries no results payload", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    // Mirrors the Codex daemon path (codex_appserver_events.go): web search
+    // events carry only the query under input, never an output/results payload.
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebSearch",
+            payload: {
+              input: {
+                query: "agent renderer parity",
+                action: { type: "search", query: "agent renderer parity" }
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("agent renderer parity")).toBeTruthy();
+  });
+
+  it("does not render an empty body when web search has no results", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    const { container } = render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "WebSearch",
+            payload: { input: {}, output: {} }
+          })
+        )}
+      />
+    );
+
+    expect(
+      container.querySelector(
+        ".workspace-agents-status-panel__detail-tool-body"
+      )
+    ).toBeNull();
+  });
+
   it("renders web fetch content with truncation notice", async () => {
     setAgentGuiI18nTestLocale("en");
 

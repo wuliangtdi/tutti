@@ -137,6 +137,40 @@ describe("groupMessageCenterItems", () => {
       }
     ]);
   });
+
+  it("splits failed items into their own group in the priority view", () => {
+    const groups = groupMessageCenterItems(
+      [
+        item({
+          agentSessionId: "waiting-session",
+          status: "working",
+          needsAttentionKind: "question"
+        }),
+        item({
+          agentSessionId: "failed-session",
+          status: "failed"
+        })
+      ],
+      "priority",
+      (key) => key
+    );
+
+    expect(
+      groups.map((group) => ({
+        id: group.id,
+        sessionIds: group.items.map((entry) => entry.agentSessionId)
+      }))
+    ).toEqual([
+      {
+        id: "needs-attention",
+        sessionIds: ["waiting-session"]
+      },
+      {
+        id: "failed",
+        sessionIds: ["failed-session"]
+      }
+    ]);
+  });
 });
 
 function item(

@@ -32,6 +32,7 @@ import type {
 } from "../richTextAtService.interface";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import { createDesktopWorkspaceAppMentionProvider } from "../../providers/desktopWorkspaceAppMentionProvider.ts";
+import { compareDesktopWorkspaceAppMentionItems } from "../../providers/desktopWorkspaceAppMentionOrdering.ts";
 import {
   createDesktopAgentSessionMentionProvider,
   type DesktopAgentSessionStatusView
@@ -385,7 +386,7 @@ function workspaceAppAtItemsFromCapabilities(input: {
   const keyword = input.keyword.trim().toLowerCase();
   const apps = [...appsById.values()]
     .filter((app) => workspaceAppMatchesKeyword(app, keyword))
-    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    .sort(compareDesktopWorkspaceAppMentionItems);
   return apps;
 }
 

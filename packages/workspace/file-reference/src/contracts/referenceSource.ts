@@ -95,6 +95,21 @@ export interface SearchResult {
 export type ReferencePreview = WorkspaceFileReferencePreview;
 
 /**
+ * 选中的「分组节点」归一成的可被 agent 解析的引用句柄。
+ * 与发给 agent 的 `mention://workspace-reference/<id>?source=...` 一一对应:
+ *  - app:  { source:"app",  id: appId,   groupId? }(groupId = app 子分组)
+ *  - task: { source:"task", id: topicId, groupId? }(groupId = issueId;缺省 = 整个 topic)
+ * 各源把自家不透明 nodeId 解码成此领域句柄;picker 自身不解析。
+ */
+export interface ReferenceHandle {
+  source: "app" | "task";
+  /** 顶层容器 id:appId / topicId。 */
+  id: string;
+  /** 子级 id:app 子分组 / issueId。缺省表示整个容器。 */
+  groupId?: string;
+}
+
+/**
  * 「定位到某分组」目标:打开 picker 时直达某事项/应用分组用。
  * params 为源内不透明语义参数,由各源 backend 自行解释:
  *  - 应用产物源:{ appId }
@@ -170,6 +185,13 @@ export interface ReferenceSourceService {
     scope: ReferenceScope,
     params: Record<string, string>
   ): Promise<NodeRef[] | null>;
+
+  /**
+   * 可选:把一个「分组节点」解码成可被 agent 解析的领域句柄(见 ReferenceHandle)。
+   * navigable 源(app/task)实现;返回 null 表示该节点不是可引用的分组。
+   * 用于把选中的文件夹折叠成一条 `mention://workspace-reference/...`,而非展开成文件路径。
+   */
+  describeReferenceHandle?(node: ReferenceNode): ReferenceHandle | null;
 
   search?(scope: ReferenceScope, input: SearchInput): Promise<SearchResult>;
 

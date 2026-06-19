@@ -4,6 +4,8 @@
 适用面:AgentGui composer 左下角「+」打开的 `WorkspaceFileReferencePicker` 弹窗
 范围:本期只做 `+` picker;接口设计为将来可复用到 `@` mention palette
 
+> 增补:**选中之后发送给 agent 的产物解析**已另立设计,见 [`agent-reference-mention-resolution.md`](./agent-reference-mention-resolution.md)。该文把「§3.5 / §4.5 选中即把全部文件路径展开塞进 prompt」改为「发一条 `workspace-reference` mention,由 skill 驱动 agent 调 `tutti reference list` 按需解析」。读到本文「composer / 序列化 / agent 零改动」时,bundle 引用一支以增补文为准。
+
 ---
 
 ## 0. 背景与目标

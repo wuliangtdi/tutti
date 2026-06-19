@@ -32,7 +32,7 @@ function referenceMentionPath(item: WorkspaceFileReference): string {
 }
 
 /**
- * 把任意 mention item(file / workspace-app-bundle / …)建成可插入的节点内容。
+ * 把任意 mention item(file / workspace-reference / …)建成可插入的节点内容。
  * 每个 item 走 mentionItemToAttrs 归一为节点 attrs;item 之间补空格。
  */
 export function createAgentMentionContent(

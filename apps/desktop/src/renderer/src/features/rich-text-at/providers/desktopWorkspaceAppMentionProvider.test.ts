@@ -372,6 +372,57 @@ test("workspace app mention provider uses CLI command fields for search", async 
   assert.equal(provider.getItemLabel(items[0]!), "Automation");
 });
 
+test("workspace app mention provider orders ranked apps before unknown apps", async () => {
+  const provider = createDesktopWorkspaceAppMentionProvider({
+    apps: [
+      createWorkspaceApp({
+        appId: "vibe-design",
+        name: "Vibe Design"
+      }),
+      createWorkspaceApp({
+        appId: "automation",
+        name: "Automation"
+      })
+    ],
+    baseProvider: createBaseWorkspaceAppProvider([
+      {
+        appId: "unknown-z",
+        label: "Aardvark"
+      },
+      {
+        appId: "automation",
+        label: "Automation"
+      },
+      {
+        appId: "agent-codex",
+        label: "Codex"
+      },
+      {
+        appId: "vibe-design",
+        label: "Vibe Design"
+      },
+      {
+        appId: "unknown-a",
+        label: "Zebra"
+      }
+    ]),
+    locale: "en-US",
+    workspaceId: "workspace-1"
+  });
+
+  const items = await provider.query({
+    context: {},
+    trigger: "@",
+    keyword: "",
+    maxResults: 10
+  });
+
+  assert.deepEqual(
+    items.map((item) => item.appId),
+    ["agent-codex", "vibe-design", "automation", "unknown-z", "unknown-a"]
+  );
+});
+
 test("workspace app mention provider does not truncate CLI apps with maxResults", async () => {
   const requestedMaxResults: Array<number | undefined> = [];
   const provider = createDesktopWorkspaceAppMentionProvider({
