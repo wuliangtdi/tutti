@@ -41,11 +41,7 @@ import type {
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM
 } from "./model/agentGuiNodeTypes";
-import {
-  composerModeOptions,
-  composerModeSelectedValue,
-  composerModeSelectionPatch
-} from "./model/composerModeCycle";
+import { permissionModeSelectionPatch } from "./model/composerModeSelection";
 import {
   buildComposerModelMenuModel,
   type AgentComposerSettingsMenuLabels,
@@ -141,10 +137,7 @@ export function AgentPermissionModeDropdown({
 }: {
   composerSettings: AgentGUIComposerSettingsVM;
   disabled?: boolean;
-  labels: Pick<
-    AgentComposerSettingsMenuLabels,
-    "permissionLabel" | "planModeLabel"
-  >;
+  labels: Pick<AgentComposerSettingsMenuLabels, "permissionLabel">;
   onSettingsChange: (patch: {
     permissionModeId?: string | null;
     planMode?: boolean;
@@ -153,35 +146,22 @@ export function AgentPermissionModeDropdown({
   "use memo";
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const availableOptions = composerSettings.availablePermissionModes ?? [];
-  const planModeActive = Boolean(
-    composerSettings.supportsPlanMode &&
-    (composerSettings.effectivePlanMode ??
-      composerSettings.draftSettings.planMode)
-  );
-  const selectedPermissionValue =
+  const selectedValue =
     composerSettings.selectedPermissionModeValue ??
     composerSettings.draftSettings.permissionModeId;
-  const selectedValue = composerModeSelectedValue({
-    planModeActive,
-    selectedPermissionModeValue: selectedPermissionValue
-  });
-  // Plan mode rides the permission dropdown (Zed-style); the option list and
-  // selection mapping are shared with the Shift+Tab cycle.
-  const optionsWithPlan = composerModeOptions({
-    availablePermissionModes: permissionOptionsWithSelectedValue(
-      availableOptions,
-      selectedPermissionValue
-    ),
-    supportsPlanMode: composerSettings.supportsPlanMode,
-    planModeLabel: labels.planModeLabel
-  });
+  // Plan mode is no longer a dropdown option — it is an independent toggle
+  // (Shift+Tab / plan badge). The dropdown lists only real permission modes.
+  const permissionOptions = permissionOptionsWithSelectedValue(
+    availableOptions,
+    selectedValue
+  );
   const selectDisabled =
     disabled ||
     composerSettings.isSettingsLoading ||
     composerSettings.permissionModeUnavailable ||
-    optionsWithPlan.length === 0;
+    permissionOptions.length === 0;
   const selectedOption =
-    optionsWithPlan.find((option) => option.value === selectedValue) ?? null;
+    permissionOptions.find((option) => option.value === selectedValue) ?? null;
   const triggerLabel =
     selectedOption?.label ?? selectedValue?.trim() ?? labels.permissionLabel;
   const triggerTone = selectDisabled
@@ -192,7 +172,10 @@ export function AgentPermissionModeDropdown({
       return;
     }
     onSettingsChange(
-      composerModeSelectionPatch(permissionModeId, planModeActive)
+      permissionModeSelectionPatch(permissionModeId, {
+        clearsPlanMode:
+          composerSettings.planExclusiveWithPermissionMode === true
+      })
     );
   };
   const handleSelectedItemPointerDown = (
@@ -239,7 +222,7 @@ export function AgentPermissionModeDropdown({
             "w-max min-w-[220px] max-w-[calc(100vw-32px)] data-[side=top]:!translate-y-0"
           )}
         >
-          {optionsWithPlan.map((option) => (
+          {permissionOptions.map((option) => (
             <SelectItem
               key={option.value}
               value={option.value}

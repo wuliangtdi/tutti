@@ -31,7 +31,7 @@ import {
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
-import { X } from "lucide-react";
+import { ListChecks, X } from "lucide-react";
 import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
@@ -68,12 +68,6 @@ import {
   type AgentSlashCommandCapability,
   type SlashCommandSelectionEffect
 } from "./model/agentSlashCommandProviderPolicy";
-import {
-  composerModeOptions,
-  composerModeSelectedValue,
-  composerModeSelectionPatch,
-  nextComposerModeValue
-} from "./model/composerModeCycle";
 import {
   AgentSlashCommandPalette,
   type AgentSlashPaletteEntry
@@ -589,12 +583,14 @@ export function AgentComposer({
         commands: availableCommands,
         hasCompactableContext,
         compactSupported,
+        planSupported: composerSettings.supportsPlanMode,
         browserSupported: Boolean(composerSettings.supportsBrowser),
         computerSupported: Boolean(composerSettings.supportsComputerUse)
       }),
     [
       availableCommands,
       compactSupported,
+      composerSettings.supportsPlanMode,
       composerSettings.supportsBrowser,
       composerSettings.supportsComputerUse,
       hasCompactableContext,
@@ -906,10 +902,6 @@ export function AgentComposer({
         clearSlashCommandDraft();
         setIsSlashStatusPanelOpen(false);
         setIsReviewPickerOpen(true);
-        return;
-      }
-      if (effect.kind === "blockCommand") {
-        clearSlashCommandDraft();
         return;
       }
       if (effect.kind === "togglePlanMode") {
@@ -1303,9 +1295,11 @@ export function AgentComposer({
     ]
   );
 
-  // Shift+Tab cycles permission modes plus plan mode (CLI muscle memory),
-  // sharing the option list and selection mapping with the dropdown.
-  const handleModeCycleKeyDown = useCallback(
+  // Shift+Tab toggles plan mode (CLI muscle memory), unified across providers.
+  // Plan rides as an independent draft toggle; the daemon enforces provider
+  // semantics (claude-code: plan overrides the permission mode; codex: plan is
+  // an independent collaboration mode).
+  const handlePlanModeToggleKeyDown = useCallback(
     (event: KeyboardEvent): boolean => {
       if (
         event.key !== "Tab" ||
@@ -1317,6 +1311,7 @@ export function AgentComposer({
         return false;
       }
       if (
+        !composerSettings.supportsPlanMode ||
         isSendingTurn ||
         isSubmittingPrompt ||
         showStopButton ||
@@ -1324,44 +1319,14 @@ export function AgentComposer({
       ) {
         return false;
       }
-      const planModeActive = Boolean(
-        composerSettings.supportsPlanMode &&
-        (composerSettings.effectivePlanMode ??
-          composerSettings.draftSettings.planMode)
-      );
-      const options = composerModeOptions({
-        availablePermissionModes: composerSettings.supportsPermissionMode
-          ? (composerSettings.availablePermissionModes ?? [])
-          : [],
-        supportsPlanMode: composerSettings.supportsPlanMode,
-        planModeLabel: labels.planModeLabel
-      });
-      const next = nextComposerModeValue(
-        options,
-        composerModeSelectedValue({
-          planModeActive,
-          selectedPermissionModeValue:
-            composerSettings.selectedPermissionModeValue ??
-            composerSettings.draftSettings.permissionModeId
-        })
-      );
-      if (next === null) {
-        return false;
-      }
       event.preventDefault();
-      onSettingsChange(composerModeSelectionPatch(next, planModeActive));
+      onSettingsChange({ planMode: !composerSettings.draftSettings.planMode });
       return true;
     },
     [
-      composerSettings.availablePermissionModes,
-      composerSettings.draftSettings.permissionModeId,
       composerSettings.draftSettings.planMode,
-      composerSettings.effectivePlanMode,
       composerSettings.isSettingsLoading,
-      composerSettings.selectedPermissionModeValue,
-      composerSettings.supportsPermissionMode,
       composerSettings.supportsPlanMode,
-      labels.planModeLabel,
       onSettingsChange,
       isSendingTurn,
       isSubmittingPrompt,
@@ -1374,7 +1339,7 @@ export function AgentComposer({
       handleFileMentionKeyDown(event) ||
       handleSlashPaletteKeyDown(event) ||
       handleSlashCommandMenuKeyDown(event) ||
-      handleModeCycleKeyDown(event)
+      handlePlanModeToggleKeyDown(event)
   );
 
   useEffect(() => {
@@ -2288,16 +2253,37 @@ export function AgentComposer({
                   />
                 </SelectTrigger>
               </Select>
+              {composerSettings.supportsPlanMode &&
+              composerSettings.draftSettings.planMode ? (
+                <button
+                  type="button"
+                  disabled={settingsControlsDisabled}
+                  aria-label={labels.planModeLabel}
+                  title={labels.planModeLabel}
+                  data-agent-plan-mode-badge="true"
+                  className={cn(
+                    styles.composerMenuTrigger,
+                    "w-auto",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                  onClick={() => onSettingsChange({ planMode: false })}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    <ListChecks aria-hidden className="size-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">
+                      {labels.planModeLabel}
+                    </span>
+                  </span>
+                </button>
+              ) : null}
             </div>
             <div className={composerStyles.footerGroupRight}>
-              {composerSettings.supportsPermissionMode ||
-              composerSettings.supportsPlanMode ? (
+              {composerSettings.supportsPermissionMode ? (
                 <AgentPermissionModeDropdown
                   composerSettings={composerSettings}
                   disabled={settingsControlsDisabled}
                   labels={{
-                    permissionLabel: labels.permissionLabel,
-                    planModeLabel: labels.planModeLabel
+                    permissionLabel: labels.permissionLabel
                   }}
                   onSettingsChange={(patch) => onSettingsChange(patch)}
                 />

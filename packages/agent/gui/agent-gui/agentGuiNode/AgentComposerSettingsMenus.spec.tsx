@@ -1058,7 +1058,6 @@ function renderPermissionModeDropdown(permissionMode: string) {
           modelUnavailable: false,
           reasoningUnavailable: false,
           permissionModeUnavailable: false,
-          planUnavailable: false,
           availableModels: [],
           availableReasoningEfforts: [],
           availablePermissionModes: [
@@ -1215,6 +1214,7 @@ describe("AgentPermissionModeDropdown", () => {
 
   function renderPlanCapableDropdown(input: {
     planMode: boolean;
+    planExclusiveWithPermissionMode?: boolean;
     onSettingsChange?: (patch: {
       permissionModeId?: string | null;
       planMode?: boolean;
@@ -1232,7 +1232,6 @@ describe("AgentPermissionModeDropdown", () => {
               planMode: input.planMode,
               permissionModeId: "default"
             },
-            effectivePlanMode: input.planMode,
             supportsModel: false,
             supportsReasoningEffort: false,
             supportsSpeed: false,
@@ -1240,11 +1239,12 @@ describe("AgentPermissionModeDropdown", () => {
             availableSpeeds: [],
             supportsPermissionMode: true,
             supportsPlanMode: true,
+            planExclusiveWithPermissionMode:
+              input.planExclusiveWithPermissionMode ?? false,
             isSettingsLoading: false,
             modelUnavailable: false,
             reasoningUnavailable: false,
             permissionModeUnavailable: false,
-            planUnavailable: false,
             availableModels: [],
             availableReasoningEfforts: [],
             availablePermissionModes: [
@@ -1259,9 +1259,8 @@ describe("AgentPermissionModeDropdown", () => {
     );
   }
 
-  it("offers plan mode as a dropdown option and enables it on select", async () => {
-    const onSettingsChange = vi.fn();
-    renderPlanCapableDropdown({ planMode: false, onSettingsChange });
+  it("never surfaces plan mode as a dropdown option", async () => {
+    renderPlanCapableDropdown({ planMode: false });
 
     const trigger = screen.getByRole("combobox", { name: "Run permissions" });
     expect(trigger).toHaveTextContent("Ask for approval");
@@ -1272,20 +1271,22 @@ describe("AgentPermissionModeDropdown", () => {
       pointerId: 1,
       pointerType: "mouse"
     });
-    fireEvent.pointerDown(
-      await screen.findByRole("option", { name: "Plan Mode" }),
-      { button: 0, ctrlKey: false, pointerId: 2, pointerType: "mouse" }
-    );
 
-    expect(onSettingsChange).toHaveBeenCalledWith({ planMode: true });
+    await screen.findByRole("option", { name: "Ask for approval" });
+    expect(screen.queryByRole("option", { name: "Plan Mode" })).toBeNull();
   });
 
-  it("shows plan mode as selected and leaves it when a permission mode is picked", async () => {
+  it("clears plan mode on permission pick for mutually-exclusive providers (claude-code)", async () => {
     const onSettingsChange = vi.fn();
-    renderPlanCapableDropdown({ planMode: true, onSettingsChange });
+    renderPlanCapableDropdown({
+      planMode: true,
+      planExclusiveWithPermissionMode: true,
+      onSettingsChange
+    });
 
     const trigger = screen.getByRole("combobox", { name: "Run permissions" });
-    expect(trigger).toHaveTextContent("Plan Mode");
+    // Plan rides as a separate badge now; the trigger shows the permission mode.
+    expect(trigger).toHaveTextContent("Ask for approval");
 
     fireEvent.pointerDown(trigger, {
       button: 0,
@@ -1304,16 +1305,26 @@ describe("AgentPermissionModeDropdown", () => {
     });
   });
 
-  it("omits the plan mode option when the capability is not negotiated", async () => {
-    renderPermissionModeDropdown("read-only");
+  it("leaves plan mode intact on permission pick for independent providers (codex)", async () => {
+    const onSettingsChange = vi.fn();
+    renderPlanCapableDropdown({
+      planMode: true,
+      planExclusiveWithPermissionMode: false,
+      onSettingsChange
+    });
 
     fireEvent.pointerDown(
       screen.getByRole("combobox", { name: "Run permissions" }),
       { button: 0, ctrlKey: false, pointerId: 1, pointerType: "mouse" }
     );
+    fireEvent.pointerDown(
+      await screen.findByRole("option", { name: "Accept edits" }),
+      { button: 0, ctrlKey: false, pointerId: 2, pointerType: "mouse" }
+    );
 
-    await screen.findByRole("option", { name: "Ask for approval" });
-    expect(screen.queryByRole("option", { name: "Plan Mode" })).toBeNull();
+    expect(onSettingsChange).toHaveBeenCalledWith({
+      permissionModeId: "acceptEdits"
+    });
   });
 });
 
@@ -1347,7 +1358,6 @@ describe("AgentModelReasoningDropdown", () => {
       isSettingsLoading: false,
       modelUnavailable: false,
       reasoningUnavailable: false,
-      planUnavailable: false,
       availableModels: [
         { value: "gpt-5.5", label: "gpt-5.5" },
         { value: "gpt-5.4", label: "gpt-5.4" }
@@ -1545,7 +1555,6 @@ describe("AgentModelReasoningDropdown", () => {
             isSettingsLoading: false,
             modelUnavailable: false,
             reasoningUnavailable: false,
-            planUnavailable: false,
             selectedModelValue: "gpt-5.5",
             selectedReasoningEffortValue: "high",
             availableModels: [

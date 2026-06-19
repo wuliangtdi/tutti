@@ -1163,7 +1163,6 @@ function createViewModel(): AgentGUINodeViewModel {
       isSettingsLoading: false,
       modelUnavailable: false,
       reasoningUnavailable: false,
-      planUnavailable: false,
       availableModels: [],
       availableReasoningEfforts: []
     },

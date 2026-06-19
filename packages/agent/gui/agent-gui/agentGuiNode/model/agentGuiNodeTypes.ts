@@ -97,12 +97,15 @@ export interface AgentGUIComposerSettingsVM {
     computerUse?: boolean;
     permissionModeId?: string | null;
   };
-  effectivePlanMode?: boolean;
   supportsModel: boolean;
   supportsReasoningEffort: boolean;
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
   supportsPlanMode: boolean;
+  // claude-code: plan mode overrides the permission mode in the daemon, so the
+  // two are mutually exclusive and picking a permission mode clears plan. codex:
+  // plan is an independent collaboration mode left untouched by permission picks.
+  planExclusiveWithPermissionMode?: boolean;
   supportsBrowser?: boolean;
   supportsComputerUse?: boolean;
   isSettingsLoading: boolean;
@@ -110,7 +113,6 @@ export interface AgentGUIComposerSettingsVM {
   reasoningUnavailable: boolean;
   speedUnavailable: boolean;
   permissionModeUnavailable?: boolean;
-  planUnavailable: boolean;
   selectedModelValue?: string | null;
   selectedReasoningEffortValue?: AgentSessionReasoningEffort | null;
   selectedSpeedValue?: AgentSessionSpeed | null;

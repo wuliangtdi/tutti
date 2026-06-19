@@ -1365,7 +1365,6 @@ function areComposerSettingsVMsEqual(
   return (
     left.sessionSettings === right.sessionSettings &&
     areComposerSettingsDraftsEqual(left.draftSettings, right.draftSettings) &&
-    (left.effectivePlanMode ?? false) === (right.effectivePlanMode ?? false) &&
     left.supportsModel === right.supportsModel &&
     left.supportsReasoningEffort === right.supportsReasoningEffort &&
     left.supportsSpeed === right.supportsSpeed &&
@@ -1378,7 +1377,8 @@ function areComposerSettingsVMsEqual(
     left.speedUnavailable === right.speedUnavailable &&
     (left.permissionModeUnavailable ?? false) ===
       (right.permissionModeUnavailable ?? false) &&
-    left.planUnavailable === right.planUnavailable &&
+    (left.planExclusiveWithPermissionMode ?? false) ===
+      (right.planExclusiveWithPermissionMode ?? false) &&
     (left.selectedModelValue ?? null) === (right.selectedModelValue ?? null) &&
     (left.selectedReasoningEffortValue ?? null) ===
       (right.selectedReasoningEffortValue ?? null) &&
@@ -1775,118 +1775,6 @@ function conversationStatusFromTimelineItems(
     return "working";
   }
   return null;
-}
-
-interface AgentPlanModeObservedState {
-  planMode: boolean;
-  observedAtUnixMs: number;
-}
-
-function latestPlanModeStateFromTimelineItems(
-  timelineItems: readonly WorkspaceAgentActivityTimelineItem[]
-): AgentPlanModeObservedState | null {
-  let latest: AgentPlanModeObservedState | null = null;
-  for (const item of timelineItems) {
-    const toolName = normalizePlanModeToolName(
-      item.name ??
-        stringPayloadValue(item.payload, "toolName") ??
-        stringPayloadValue(item.payload, "name") ??
-        stringPayloadValue(item.payload, "title")
-    );
-    if (toolName !== "enterplanmode" && toolName !== "exitplanmode") {
-      continue;
-    }
-    const status = normalizePlanModeToolStatus(
-      item.status ?? stringPayloadValue(item.payload, "status")
-    );
-    if (status === "failed" || status === "canceled") {
-      continue;
-    }
-    if (toolName === "exitplanmode" && status !== "completed") {
-      continue;
-    }
-    const next = {
-      planMode: toolName === "enterplanmode",
-      observedAtUnixMs: timelineItemTime(item)
-    };
-    if (!latest || next.observedAtUnixMs >= latest.observedAtUnixMs) {
-      latest = next;
-    }
-  }
-  return latest;
-}
-
-function planModeStateFromSessionState(
-  state: AgentSessionState | null
-): AgentPlanModeObservedState | null {
-  if (!state) {
-    return null;
-  }
-  const runtimeMode = normalizePlanModeToolName(
-    typeof state.runtimeContext?.mode === "string"
-      ? state.runtimeContext.mode
-      : undefined
-  );
-  if (runtimeMode) {
-    return {
-      planMode: runtimeMode === "plan",
-      observedAtUnixMs: state.updatedAtUnixMs
-    };
-  }
-  if (state.settings?.planMode !== undefined) {
-    return {
-      planMode: Boolean(state.settings.planMode),
-      observedAtUnixMs: state.updatedAtUnixMs
-    };
-  }
-  return null;
-}
-
-function resolveEffectivePlanModeFromStates(input: {
-  sessionPlanModeState: AgentPlanModeObservedState | null;
-  timelinePlanModeState: AgentPlanModeObservedState | null;
-  fallbackPlanMode: boolean;
-}): boolean {
-  if (
-    input.timelinePlanModeState &&
-    (!input.sessionPlanModeState ||
-      input.timelinePlanModeState.observedAtUnixMs >=
-        input.sessionPlanModeState.observedAtUnixMs)
-  ) {
-    return input.timelinePlanModeState.planMode;
-  }
-  return input.sessionPlanModeState?.planMode ?? input.fallbackPlanMode;
-}
-
-function normalizePlanModeToolName(value: string | null | undefined): string {
-  return (value ?? "")
-    .replace(/[_\s-]+/g, "")
-    .trim()
-    .toLowerCase();
-}
-
-function normalizePlanModeToolStatus(
-  value: string | null | undefined
-): "completed" | "failed" | "canceled" | "other" {
-  switch (value?.trim().toLowerCase()) {
-    case "completed":
-    case "complete":
-    case "succeeded":
-    case "success":
-    case "done":
-      return "completed";
-    case "failed":
-    case "failure":
-    case "error":
-      return "failed";
-    case "canceled":
-    case "cancelled":
-    case "rejected":
-    case "aborted":
-      return "canceled";
-    default:
-      return "other";
-  }
 }
 
 function normalizeTimelineStatus(
@@ -5860,12 +5748,7 @@ export function useAgentGUINodeController({
           : undefined;
       const currentSpeed = sessionSettings?.speed ?? null;
       const nextPlanMode = supportedNextSettings.planMode;
-      const currentPlanMode = resolveEffectivePlanModeFromStates({
-        sessionPlanModeState: planModeStateFromSessionState(activeSessionState),
-        timelinePlanModeState:
-          latestPlanModeStateFromTimelineItems(activeTimelineItems),
-        fallbackPlanMode: sessionSettings?.planMode ?? false
-      });
+      const currentPlanMode = sessionSettings?.planMode ?? false;
       const nextBrowserUse = supportedNextSettings.browserUse;
       const currentBrowserUse = sessionSettings?.browserUse ?? true;
       const nextComputerUse = supportedNextSettings.computerUse;
@@ -7017,14 +6900,6 @@ export function useAgentGUINodeController({
   const draftPrompt = draftContent.prompt;
   const availableCommands =
     activeSessionView?.controlCommands ?? EMPTY_AGENT_GUI_AVAILABLE_COMMANDS;
-  const timelinePlanModeState = useMemo(
-    () => latestPlanModeStateFromTimelineItems(activeTimelineItems),
-    [activeTimelineItems]
-  );
-  const sessionPlanModeState = useMemo(
-    () => planModeStateFromSessionState(activeSessionState),
-    [activeSessionState]
-  );
   const availableSkills = useStableProviderSkillOptions(
     useMemo(
       () => providerSkillsFromComposerOptions(providerComposerOptions),
@@ -7352,15 +7227,6 @@ export function useAgentGUINodeController({
       speedSelectionFromComposerOptions(providerComposerOptions, draftSpeed),
     [draftSpeed, providerComposerOptions]
   );
-  const effectivePlanMode = useMemo(
-    () =>
-      resolveEffectivePlanModeFromStates({
-        sessionPlanModeState,
-        timelinePlanModeState,
-        fallbackPlanMode: Boolean(draftSettings.planMode)
-      }),
-    [draftSettings.planMode, sessionPlanModeState, timelinePlanModeState]
-  );
   const composerSettings = useMemo<AgentGUIComposerSettingsVM>(() => {
     const permissionConfig = permissionConfigFromComposerOptions(
       providerComposerOptions
@@ -7395,7 +7261,6 @@ export function useAgentGUINodeController({
           draftSettings.permissionModeId
         )
       },
-      effectivePlanMode: composerSupport.plan ? effectivePlanMode : false,
       supportsModel: composerSupport.model,
       supportsReasoningEffort: composerSupport.reasoning,
       supportsSpeed: composerSupport.speed,
@@ -7403,6 +7268,7 @@ export function useAgentGUINodeController({
       supportsComputerUse: composerSupport.computer,
       supportsPermissionMode,
       supportsPlanMode: composerSupport.plan,
+      planExclusiveWithPermissionMode: data.provider === "claude-code",
       isSettingsLoading,
       modelUnavailable:
         activeConversationId !== null &&
@@ -7424,11 +7290,6 @@ export function useAgentGUINodeController({
         sessionSettings === null &&
         supportsPermissionMode &&
         selectedPermissionModeValue === null,
-      planUnavailable:
-        activeConversationId !== null &&
-        sessionSettings === null &&
-        composerSupport.plan &&
-        !effectivePlanMode,
       selectedModelValue,
       selectedReasoningEffortValue,
       selectedSpeedValue,
@@ -7467,14 +7328,13 @@ export function useAgentGUINodeController({
     activeSessionModelSelection,
     activeSessionReasoningSelection,
     activeSessionSpeedSelection,
+    data.provider,
     draftSettings.permissionModeId,
     draftSettings.planMode,
-    effectivePlanMode,
     providerComposerOptions,
     sessionSettings,
     selectedProjectPath,
     composerSupport,
-    timelinePlanModeState,
     draftModel,
     draftReasoningEffort,
     draftSpeed

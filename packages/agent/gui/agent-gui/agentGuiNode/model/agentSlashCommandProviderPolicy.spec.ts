@@ -185,7 +185,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         command: { name: "plan" },
         currentDraft: "/pla"
       })
-    ).toEqual({ kind: "blockCommand" });
+    ).toEqual({ kind: "togglePlanMode" });
   });
 
   it("handles Claude Code local status without provider prompts", () => {
@@ -202,7 +202,7 @@ describe("agentSlashCommandProviderPolicy", () => {
         command: { name: "plan" },
         currentDraft: "/pla"
       })
-    ).toEqual({ kind: "blockCommand" });
+    ).toEqual({ kind: "togglePlanMode" });
   });
 
   it("submits advertised Claude Code compact command as provider-native prompt", () => {
@@ -225,10 +225,11 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual({ kind: "fillDraft", draft: "/goal " });
   });
 
-  it("parses manual Codex status and blocks plan submissions", () => {
+  it("parses manual Codex status and toggles plan mode on submit", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "codex",
-      commands: []
+      commands: [],
+      planSupported: true
     });
 
     expect(
@@ -244,13 +245,14 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands,
         draft: "/plan"
       })
-    ).toEqual({ kind: "blockCommand" });
+    ).toEqual({ kind: "togglePlanMode" });
   });
 
-  it("parses manual Claude Code status and blocks plan submissions", () => {
+  it("parses manual Claude Code status and toggles plan mode on submit", () => {
     const commands = resolveSlashCommandsForProvider({
       provider: "claude-code",
-      commands: []
+      commands: [],
+      planSupported: true
     });
 
     expect(
@@ -266,14 +268,31 @@ describe("agentSlashCommandProviderPolicy", () => {
         commands,
         draft: "/plan"
       })
-    ).toEqual({ kind: "blockCommand" });
+    ).toEqual({ kind: "togglePlanMode" });
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "claude-code",
         commands,
         draft: "/plan refactor auth"
       })
-    ).toEqual({ kind: "blockCommand" });
+    ).toEqual({ kind: "togglePlanMode" });
+  });
+
+  it("surfaces /plan only when plan mode is supported", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "codex",
+        commands: [{ name: "plan" }],
+        planSupported: false
+      }).some((command) => command.name === "plan")
+    ).toBe(false);
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "codex",
+        commands: [],
+        planSupported: true
+      }).filter((command) => command.name === "plan")
+    ).toHaveLength(1);
   });
 
   it("keeps non-plan advertised Claude Code controls provider-native", () => {

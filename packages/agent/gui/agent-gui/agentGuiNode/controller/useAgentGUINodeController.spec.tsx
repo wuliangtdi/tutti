@@ -2904,108 +2904,45 @@ describe("useAgentGUINodeController", () => {
     );
 
     await waitFor(() => {
-      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
+      expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
         false
       );
     });
-    expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
-      false
-    );
     expect(
       result.current.viewModel.composerSettings.draftSettings.planMode
     ).toBe(false);
 
     act(() => {
-      result.current.actions.updateComposerSettings({ planMode: false });
+      result.current.actions.updateComposerSettings({ planMode: true });
     });
 
     // Pass-through contract: the GUI no longer swallows planMode updates —
-    // the explicit false is sent and the daemon clamps per provider support.
+    // a real change is sent and the daemon clamps per provider support.
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledTimes(1);
     });
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        settings: expect.objectContaining({ planMode: false })
+        settings: expect.objectContaining({ planMode: true })
       })
     );
   });
 
-  it("uses a newer completed ExitPlanMode tool event as the effective plan mode", async () => {
-    installAgentHostApi({
-      list: vi.fn(async () => ({
-        presences: [],
-        sessions: [
-          workspaceAgentSession("session-1", {
-            provider: "claude-code",
-            title: "Claude Code"
-          })
-        ]
-      })),
-      listSessionTimeline: vi.fn(async () => ({
-        timelineItems: [
-          timelineToolCall({
-            agentSessionId: "session-1",
-            callId: "call-exit-plan",
-            name: "ExitPlanMode",
-            status: "completed",
-            occurredAtUnixMs: 20
-          })
-        ]
-      })),
-      subscribeEvents: vi.fn(() => vi.fn()),
-      getState: vi.fn(async () =>
-        agentSessionState("session-1", {
-          provider: "claude-code",
-          settings: {
-            planMode: true,
-            permissionModeId: "default"
-          },
-          updatedAtUnixMs: 10
-        })
-      )
-    });
-
-    const { result } = renderHook(() =>
-      useAgentGUINodeController({
-        workspaceId: "room-1",
-        currentUserId: "user-1",
-        workspacePath: "/workspace",
-        avoidGroupingEdits: false,
-        data: agentGuiData("session-1", "claude-code"),
-        onDataChange: vi.fn()
-      })
-    );
-
-    await waitFor(() => {
-      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
-        false
-      );
-    });
-    expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
-      false
-    );
-    expect(
-      result.current.viewModel.composerSettings.draftSettings.planMode
-    ).toBe(true);
-  });
-
-  describe("effective plan mode contract", () => {
-    // Contract: the composer's plan-mode indicator (effectivePlanMode) reflects
-    // the agent's most-recent real plan transition (Enter/ExitPlanMode tool
-    // calls), falling back to the stored session setting when there is no
-    // transition. These exercise the derivation with the support gate
-    // explicitly OPEN (supportsPlanMode === true) — the only path where the VM
-    // exposes the derived value. The suppressed-when-unsupported half of the
-    // contract is covered by the gated tests above.
+  describe("plan mode (draft-driven) contract", () => {
+    // Contract: plan mode is driven by the local draft, seeded from the stored
+    // session setting. It is NOT derived from runtimeContext.mode (which for
+    // codex carries the permission mode, not plan) nor pinned to the session
+    // snapshot once a conversation is active. These regression-guard the two
+    // bugs: codex plan being clobbered by runtimeContext.mode, and draft plan
+    // toggles being swallowed once a session exists.
     function renderPlanModeController({
-      timelineItems,
+      updateSettings,
       sessionPlanMode,
-      sessionUpdatedAtUnixMs
+      runtimeMode
     }: {
-      timelineItems: ReturnType<typeof timelineToolCall>[];
+      updateSettings?: ReturnType<typeof vi.fn>;
       sessionPlanMode: boolean;
-      sessionUpdatedAtUnixMs: number;
+      runtimeMode: string;
     }) {
       installAgentHostApi({
         list: vi.fn(async () => ({
@@ -3017,8 +2954,9 @@ describe("useAgentGUINodeController", () => {
             })
           ]
         })),
-        listSessionTimeline: vi.fn(async () => ({ timelineItems })),
+        listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
         subscribeEvents: vi.fn(() => vi.fn()),
+        ...(updateSettings ? { updateSettings } : {}),
         getComposerOptions: vi.fn(async () => ({
           provider: "codex",
           modelConfig: { configurable: true, options: [] },
@@ -3029,8 +2967,14 @@ describe("useAgentGUINodeController", () => {
           agentSessionState("session-1", {
             provider: "codex",
             settings: { planMode: sessionPlanMode, permissionModeId: "auto" },
-            runtimeContext: { capabilities: ["planMode"] },
-            updatedAtUnixMs: sessionUpdatedAtUnixMs
+            // codex reports the permission mode in runtimeContext.mode — this
+            // must not be mistaken for plan state.
+            runtimeContext: {
+              capabilities: ["planMode"],
+              mode: runtimeMode,
+              planMode: sessionPlanMode
+            },
+            updatedAtUnixMs: 10
           })
         )
       });
@@ -3046,19 +2990,31 @@ describe("useAgentGUINodeController", () => {
       );
     }
 
-    it("reflects the agent's latest EnterPlanMode transition over a stale 'off' session setting", async () => {
+    it("keeps codex plan on when the session stores planMode while runtimeContext.mode is a permission mode", async () => {
       const { result } = renderPlanModeController({
-        timelineItems: [
-          timelineToolCall({
-            agentSessionId: "session-1",
-            callId: "call-enter",
-            name: "EnterPlanMode",
-            status: "completed",
-            occurredAtUnixMs: 20
-          })
-        ],
+        sessionPlanMode: true,
+        runtimeMode: "auto"
+      });
+
+      await waitFor(() => {
+        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
+          true
+        );
+      });
+      // Bug #1 regression: runtimeContext.mode="auto" no longer clobbers plan.
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.planMode
+      ).toBe(true);
+    });
+
+    it("applies a draft plan toggle once a session is active instead of swallowing it", async () => {
+      const updateSettings = vi.fn(async () => ({
+        settings: { planMode: true, permissionModeId: "auto" }
+      }));
+      const { result } = renderPlanModeController({
+        updateSettings,
         sessionPlanMode: false,
-        sessionUpdatedAtUnixMs: 10
+        runtimeMode: "auto"
       });
 
       await waitFor(() => {
@@ -3066,51 +3022,25 @@ describe("useAgentGUINodeController", () => {
           true
         );
       });
-      // Gate open: the newer EnterPlanMode transition wins over stored false.
-      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
-        true
-      );
-    });
+      expect(
+        result.current.viewModel.composerSettings.draftSettings.planMode
+      ).toBe(false);
 
-    it("clears the indicator on a newer ExitPlanMode even when the session still stores planMode:true", async () => {
-      const { result } = renderPlanModeController({
-        timelineItems: [
-          timelineToolCall({
-            agentSessionId: "session-1",
-            callId: "call-exit",
-            name: "ExitPlanMode",
-            status: "completed",
-            occurredAtUnixMs: 20
-          })
-        ],
-        sessionPlanMode: true,
-        sessionUpdatedAtUnixMs: 10
+      act(() => {
+        result.current.actions.updateComposerSettings({ planMode: true });
       });
 
+      // Bug #2 regression: the toggle reaches the draft and is sent to the
+      // daemon rather than being overridden by the session snapshot.
       await waitFor(() => {
-        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
-          true
-        );
+        expect(
+          result.current.viewModel.composerSettings.draftSettings.planMode
+        ).toBe(true);
       });
-      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
-        false
-      );
-    });
-
-    it("falls back to the stored session plan setting when the timeline has no plan transition", async () => {
-      const { result } = renderPlanModeController({
-        timelineItems: [],
-        sessionPlanMode: true,
-        sessionUpdatedAtUnixMs: 10
-      });
-
-      await waitFor(() => {
-        expect(result.current.viewModel.composerSettings.supportsPlanMode).toBe(
-          true
-        );
-      });
-      expect(result.current.viewModel.composerSettings.effectivePlanMode).toBe(
-        true
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: expect.objectContaining({ planMode: true })
+        })
       );
     });
   });
@@ -6410,9 +6340,6 @@ describe("useAgentGUINodeController", () => {
       false
     );
     expect(result.current.viewModel.composerSettings.reasoningUnavailable).toBe(
-      false
-    );
-    expect(result.current.viewModel.composerSettings.planUnavailable).toBe(
       false
     );
     await waitFor(() => {

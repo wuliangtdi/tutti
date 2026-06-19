@@ -53,9 +53,6 @@ export type SlashCommandSelectionEffect =
     }
   | {
       kind: "toggleSpeed";
-    }
-  | {
-      kind: "blockCommand";
     };
 
 interface ResolveSlashCommandSelectionEffectInput {
@@ -82,8 +79,9 @@ interface ProviderSlashPolicy {
 const REVIEW_COMMAND = "review";
 // `compact` is locally handled and submitted immediately for every provider.
 const UNIVERSAL_IMMEDIATE_COMMANDS = new Set(["compact"]);
-// Commands blocked or handled locally across the ACP providers below.
-const ACP_BLOCKED_COMMANDS = new Set(["plan"]);
+// `/plan` toggles plan mode locally (a negotiated capability) rather than
+// reaching the agent as a prompt; surfaced only when plan mode is supported.
+const ACP_LOCAL_TOGGLE_PLAN_COMMANDS = new Set(["plan"]);
 const ACP_LOCAL_STATUS_COMMANDS = new Set(["status"]);
 // `/fast` toggles the orthogonal speed dimension locally rather than reaching
 // the agent as a prompt; supported for codex and claude-code.
@@ -114,6 +112,7 @@ const COMPUTER_USE_CAPABILITY_COMMAND: AgentSlashCommandCapability = {
   name: "computer",
   aliases: ["电脑"]
 };
+const PLAN_MODE_COMMAND: AgentSessionCommand = { name: "plan" };
 
 const PROVIDER_SLASH_POLICY: Record<
   "codex" | "claude-code",
@@ -148,6 +147,7 @@ export function resolveSlashCommandsForProvider({
   commands,
   hasCompactableContext = true,
   compactSupported,
+  planSupported = false,
   browserSupported = false,
   computerSupported = false
 }: {
@@ -160,21 +160,27 @@ export function resolveSlashCommandsForProvider({
    * keeps the legacy `hasCompactableContext` behavior.
    */
   compactSupported?: boolean | null;
+  planSupported?: boolean;
   browserSupported?: boolean;
   computerSupported?: boolean;
 }): AgentSlashCommand[] {
-  const commandEntries = mergeSlashCommands(
+  const mergedEntries = mergeSlashCommands(
     filterUnavailableSlashCommands(commands, {
       compactSupported,
-      hasCompactableContext,
-      provider
+      hasCompactableContext
     }),
     filterUnavailableSlashCommands(fallbackCommandsForProvider(provider), {
       compactSupported,
-      hasCompactableContext,
-      provider
+      hasCompactableContext
     })
   );
+  // `/plan` is a local plan-mode toggle, not an agent prompt: drop any
+  // agent-advertised `plan` and re-surface our own entry only when supported.
+  const commandEntries = mergedEntries.filter(
+    (entry) => normalizedCommandName(entry) !== "plan"
+  );
+  const planEntries =
+    planSupported && isACPProvider(provider) ? [PLAN_MODE_COMMAND] : [];
   const capabilityEntries: AgentSlashCommandCapability[] = [];
   if (browserSupported) {
     capabilityEntries.push(BROWSER_USE_CAPABILITY_COMMAND);
@@ -182,7 +188,7 @@ export function resolveSlashCommandsForProvider({
   if (computerSupported) {
     capabilityEntries.push(COMPUTER_USE_CAPABILITY_COMMAND);
   }
-  return [...commandEntries, ...capabilityEntries];
+  return [...commandEntries, ...planEntries, ...capabilityEntries];
 }
 
 export function resolveSlashCommandSelectionEffect({
@@ -203,8 +209,8 @@ export function resolveSlashCommandSelectionEffect({
     };
   }
   const commandName = normalizedCommandName(command);
-  if (isBlockedSlashCommand(provider, commandName)) {
-    return { kind: "blockCommand" };
+  if (isLocalTogglePlanCommand(provider, commandName)) {
+    return { kind: "togglePlanMode" };
   }
   if (isLocalToggleSpeedCommand(provider, commandName)) {
     return { kind: "toggleSpeed" };
@@ -269,9 +275,6 @@ export function resolveSlashCommandSubmitEffect({
   if (!invocation) {
     return null;
   }
-  if (isBlockedSlashCommand(provider, invocation.commandName)) {
-    return { kind: "blockCommand" };
-  }
   const command = commands.find((candidate) =>
     slashCommandMatchesInvocation(candidate, invocation.commandName)
   );
@@ -282,6 +285,9 @@ export function resolveSlashCommandSubmitEffect({
     return null;
   }
   const commandName = normalizedCommandName(command);
+  if (isLocalTogglePlanCommand(provider, commandName)) {
+    return { kind: "togglePlanMode" };
+  }
   if (isLocalToggleSpeedCommand(provider, commandName)) {
     return { kind: "toggleSpeed" };
   }
@@ -302,13 +308,13 @@ export function resolveSlashCommandSubmitEffect({
   return null;
 }
 
-function isBlockedSlashCommand(
+function isLocalTogglePlanCommand(
   provider: AgentSlashCommandProvider,
   commandName: string
 ): boolean {
   return (
     isACPProvider(provider) &&
-    ACP_BLOCKED_COMMANDS.has(commandName.trim().toLowerCase())
+    ACP_LOCAL_TOGGLE_PLAN_COMMANDS.has(commandName.trim().toLowerCase())
   );
 }
 
@@ -399,17 +405,10 @@ function filterUnavailableSlashCommands(
   input: {
     compactSupported?: boolean | null;
     hasCompactableContext: boolean;
-    provider: AgentSlashCommandProvider;
   }
 ): AgentSessionCommand[] {
   return commands.filter((command) => {
     const commandName = normalizedCommandName(command);
-    if (
-      isACPProvider(input.provider) &&
-      ACP_BLOCKED_COMMANDS.has(commandName)
-    ) {
-      return false;
-    }
     if (commandName === "compact") {
       if (input.compactSupported === false) {
         return false;

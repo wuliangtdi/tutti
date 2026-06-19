@@ -65,7 +65,6 @@ function vm(
     isSettingsLoading: false,
     modelUnavailable: false,
     reasoningUnavailable: false,
-    planUnavailable: false,
     availableModels: [
       { value: "gpt-5.5", label: "gpt-5.5" },
       { value: "gpt-5.4", label: "gpt-5.4" }

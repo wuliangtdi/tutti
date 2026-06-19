@@ -77,11 +77,13 @@ vi.mock("./agentRichText/AgentRichTextEditor", () => ({
   AgentRichTextEditor: ({
     disabled,
     onPasteImages,
+    onKeyDownForPalette,
     value,
     placeholder
   }: {
     disabled?: boolean;
     onPasteImages?: (images: unknown[]) => void;
+    onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
     value: string;
     placeholder: string;
   }) => (
@@ -91,6 +93,11 @@ vi.mock("./agentRichText/AgentRichTextEditor", () => ({
         placeholder={placeholder}
         disabled={disabled}
         readOnly
+        onKeyDown={(event) => {
+          if (onKeyDownForPalette?.(event.nativeEvent)) {
+            event.preventDefault();
+          }
+        }}
       />
       <button
         type="button"
@@ -144,12 +151,9 @@ vi.mock("./AgentComposerSettingsMenus", () => ({
   AgentPermissionModeDropdown: ({
     labels
   }: {
-    labels: { permissionLabel: string; planModeLabel: string };
+    labels: { permissionLabel: string };
   }) => (
-    <div
-      data-testid="agent-permission-mode-dropdown"
-      data-plan-mode-label={labels.planModeLabel}
-    >
+    <div data-testid="agent-permission-mode-dropdown">
       {labels.permissionLabel}
     </div>
   ),
@@ -293,7 +297,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the permission dropdown when only plan mode is supported", () => {
+  it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {
     render(
       <AgentComposer
         workspaceId="workspace-1"
@@ -328,10 +332,14 @@ describe("AgentComposer", () => {
       />
     );
 
-    // Plan mode rides the permission dropdown: the dropdown renders from the
-    // plan capability alone, with the plan label wired through.
-    const dropdown = screen.getByTestId("agent-permission-mode-dropdown");
-    expect(dropdown).toHaveAttribute("data-plan-mode-label", "Plan");
+    // The permission dropdown now renders only for permission capability, and
+    // plan rides as a separate badge that only appears while plan is active.
+    expect(
+      screen.queryByTestId("agent-permission-mode-dropdown")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Plan" })
+    ).not.toBeInTheDocument();
   });
 
   it("does not render the browser-use footer toggle when supported", () => {
@@ -741,7 +749,7 @@ describe("AgentComposer", () => {
     ).toBeTruthy();
   });
 
-  it("renders the permission dropdown while plan mode is enabled", () => {
+  it("renders the plan badge while plan mode is enabled and clears it on click", () => {
     const onSettingsChange = vi.fn();
     render(
       <AgentComposer
@@ -784,63 +792,73 @@ describe("AgentComposer", () => {
       />
     );
 
-    expect(
-      screen.getByTestId("agent-permission-mode-dropdown")
-    ).toBeInTheDocument();
-    void onSettingsChange;
+    const badge = screen.getByRole("button", { name: "Plan" });
+    expect(badge).toBeInTheDocument();
+
+    fireEvent.click(badge);
+    expect(onSettingsChange).toHaveBeenCalledWith({ planMode: false });
   });
 
-  it("shows effective plan mode even when draft settings are stale", () => {
-    const onSettingsChange = vi.fn();
-    render(
-      <AgentComposer
-        workspaceId="workspace-1"
-        currentUserId="user-1"
-        provider="claude-code"
-        draftContent={createDraft("")}
-        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
-        disabled={false}
-        submitDisabled={false}
-        placeholder="placeholder"
-        composerSettings={createComposerSettings({
-          draftSettings: {
-            model: null,
-            reasoningEffort: null,
-            speed: null,
-            planMode: false,
-            permissionModeId: "preset"
-          },
-          effectivePlanMode: true,
-          supportsPlanMode: true
-        })}
-        queuedPrompts={[]}
-        drainingQueuedPromptId={null}
-        canQueueWhileBusy={false}
-        showStopButton={false}
-        activePrompt={null}
-        isInterrupting={false}
-        isSendingTurn={false}
-        isSubmittingPrompt={false}
-        labels={createLabels()}
-        workspaceUserProjectI18n={workspaceUserProjectI18n}
-        onDraftContentChange={vi.fn()}
-        onSettingsChange={onSettingsChange}
-        onSubmit={vi.fn()}
-        onSendQueuedPromptNext={vi.fn()}
-        onRemoveQueuedPrompt={vi.fn()}
-        onEditQueuedPrompt={vi.fn()}
-        onInterruptCurrentTurn={vi.fn()}
-        onSubmitInteractivePrompt={vi.fn()}
-      />
-    );
+  it.each([
+    { provider: "codex" as const, planMode: false, expected: true },
+    { provider: "claude-code" as const, planMode: true, expected: false }
+  ])(
+    "toggles plan mode on Shift+Tab for $provider (draft-driven, unified)",
+    ({ provider, planMode, expected }) => {
+      const onSettingsChange = vi.fn();
+      render(
+        <AgentComposer
+          workspaceId="workspace-1"
+          currentUserId="user-1"
+          provider={provider}
+          draftContent={createDraft("")}
+          availableCommands={
+            [] satisfies readonly AgentHostAgentSessionCommand[]
+          }
+          disabled={false}
+          submitDisabled={false}
+          placeholder="placeholder"
+          composerSettings={createComposerSettings({
+            draftSettings: {
+              model: null,
+              reasoningEffort: null,
+              speed: null,
+              planMode,
+              permissionModeId: "preset"
+            },
+            supportsPlanMode: true
+          })}
+          queuedPrompts={[]}
+          drainingQueuedPromptId={null}
+          canQueueWhileBusy={false}
+          showStopButton={false}
+          activePrompt={null}
+          isInterrupting={false}
+          isSendingTurn={false}
+          isSubmittingPrompt={false}
+          labels={createLabels()}
+          workspaceUserProjectI18n={workspaceUserProjectI18n}
+          onDraftContentChange={vi.fn()}
+          onSettingsChange={onSettingsChange}
+          onSubmit={vi.fn()}
+          onSendQueuedPromptNext={vi.fn()}
+          onRemoveQueuedPrompt={vi.fn()}
+          onEditQueuedPrompt={vi.fn()}
+          onInterruptCurrentTurn={vi.fn()}
+          onSubmitInteractivePrompt={vi.fn()}
+        />
+      );
 
-    expect(
-      screen.getByTestId("agent-permission-mode-dropdown")
-    ).toBeInTheDocument();
-    void onSettingsChange;
-  });
+      fireEvent.keyDown(screen.getByRole("textbox"), {
+        key: "Tab",
+        shiftKey: true
+      });
 
-  it("blocks Claude Code plan slash command submissions", () => {
+      expect(onSettingsChange).toHaveBeenCalledWith({ planMode: expected });
+    }
+  );
+
+  it("toggles plan mode on /plan slash command submission", () => {
     const onDraftContentChange = vi.fn();
     const onSettingsChange = vi.fn();
     const onSubmit = vi.fn();
@@ -884,8 +902,9 @@ describe("AgentComposer", () => {
 
     fireEvent.submit(container.querySelector("form")!);
 
+    // /plan is a local plan-mode toggle, not an agent prompt.
+    expect(onSettingsChange).toHaveBeenCalledWith({ planMode: true });
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
-    expect(onSettingsChange).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
 
     unmount();
@@ -902,7 +921,9 @@ describe("AgentComposer", () => {
         disabled={false}
         submitDisabled={false}
         placeholder="placeholder"
-        composerSettings={createComposerSettings()}
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
         canQueueWhileBusy={false}
@@ -926,8 +947,9 @@ describe("AgentComposer", () => {
 
     fireEvent.submit(secondRender.container.querySelector("form")!);
 
+    // Trailing args are ignored — it stays a local toggle, never submitted.
+    expect(onSettingsChange).toHaveBeenCalledWith({ planMode: true });
     expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
-    expect(onSettingsChange).not.toHaveBeenCalled();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -2619,7 +2641,6 @@ function createComposerSettings(
     isSettingsLoading: false,
     modelUnavailable: false,
     reasoningUnavailable: false,
-    planUnavailable: false,
     availableModels: [{ value: "gpt-5.5", label: "GPT-5.5" }],
     availableReasoningEfforts: [{ value: "high", label: "高" }],
     ...overrides
