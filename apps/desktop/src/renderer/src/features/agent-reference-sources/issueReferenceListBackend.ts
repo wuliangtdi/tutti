@@ -9,7 +9,10 @@ import {
   base64UrlDecode,
   base64UrlEncode
 } from "@tutti-os/workspace-file-reference/core";
-import type { ReferenceScope } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceHandle,
+  ReferenceScope
+} from "@tutti-os/workspace-file-reference/contracts";
 // 「事项」应用图标:与 dock / workbench 节点同一份资源。引用 picker 的二级分组、
 // 以及折叠成 bundle 后在 agent GUI 面板里的 chip,都靠这个真实 iconUrl 展示应用图标
 // (与「引用 app 文件夹」一致——app 源同样在 group 上挂 iconUrl)。
@@ -25,7 +28,9 @@ const ISSUE_PAGE_SIZE = 50;
 
 type DecodedGroup =
   | { kind: "topic"; topicId: string }
-  | { kind: "issue"; issueId: string };
+  // issue 分组同时编进 topicId(顶层容器),供 describeHandle 产出 id=topicId。
+  // topicId 可能为空(旧/缺 topic 的 deep-link 句柄),resolution 时退回用 issueId。
+  | { kind: "issue"; issueId: string; topicId: string };
 
 export function createIssueReferenceListBackend(
   tuttidClient: TuttidClient
@@ -70,7 +75,7 @@ export function createIssueReferenceListBackend(
         return {
           items: response.topics.map((topic) => ({
             type: "group",
-            id: encodeGroup("t", topic.topicId),
+            id: encodeTopicGroup(topic.topicId),
             displayName: topic.title?.trim() || topic.topicId,
             iconUrl: issueAppIconUrl
           })),
@@ -98,7 +103,7 @@ export function createIssueReferenceListBackend(
             );
             return {
               type: "group",
-              id: encodeGroup("i", issue.issueId),
+              id: encodeIssueGroup(issue.issueId, decoded.topicId),
               displayName: issue.title?.trim() || issue.issueId,
               iconUrl: issueAppIconUrl,
               ...(referenceCount == null ? {} : { referenceCount })
@@ -171,31 +176,69 @@ export function createIssueReferenceListBackend(
     // 缺 topicId 时直接定位到事项分组(backend.list 对 `i:` 直接列产出,内容仍正确)。
     locate(_scope, params): Promise<string[] | null> {
       const issueId = params.issueId?.trim();
+      const topicId = params.topicId?.trim() ?? "";
       if (!issueId) {
-        return Promise.resolve(null);
+        // 仅 topic(引用了整个 topic):定位到 topic 分组。
+        return Promise.resolve(topicId ? [encodeTopicGroup(topicId)] : null);
       }
-      const topicId = params.topicId?.trim();
-      const issuePath = encodeGroup("i", issueId);
+      const issuePath = encodeIssueGroup(issueId, topicId);
       return Promise.resolve(
-        topicId ? [encodeGroup("t", topicId), issuePath] : [issuePath]
+        topicId ? [encodeTopicGroup(topicId), issuePath] : [issuePath]
       );
+    },
+
+    // 句柄解码:topic → { source:"task", id:topicId };issue → { id:topicId, groupId:issueId }。
+    // topicId 缺省时 id 退回 issueId(CLI 在 groupId 存在时只用 groupId 解析,id 不影响结果)。
+    describeHandle(groupId): ReferenceHandle | null {
+      let decoded: DecodedGroup;
+      try {
+        decoded = decodeGroup(groupId);
+      } catch {
+        return null;
+      }
+      if (decoded.kind === "topic") {
+        return { source: "task", id: decoded.topicId };
+      }
+      return {
+        source: "task",
+        id: decoded.topicId || decoded.issueId,
+        groupId: decoded.issueId
+      };
     }
   };
 }
 
-function encodeGroup(prefix: "t" | "i", id: string): string {
-  return `${prefix}:${base64UrlEncode(id)}`;
+function encodeTopicGroup(topicId: string): string {
+  return `t:${base64UrlEncode(topicId)}`;
+}
+
+// issue 分组编进 topicId:`i:<b64(issueId)>.<b64(topicId)>`。topicId 为空时省略点段,
+// 退化成 `i:<b64(issueId)>`(兼容旧句柄)。
+function encodeIssueGroup(issueId: string, topicId: string): string {
+  const issueSegment = base64UrlEncode(issueId);
+  return topicId
+    ? `i:${issueSegment}.${base64UrlEncode(topicId)}`
+    : `i:${issueSegment}`;
 }
 
 function decodeGroup(parentGroupId: string): DecodedGroup {
   const markerIndex = parentGroupId.indexOf(":");
   const prefix = parentGroupId.slice(0, markerIndex);
-  const id = base64UrlDecode(parentGroupId.slice(markerIndex + 1));
+  const body = parentGroupId.slice(markerIndex + 1);
   switch (prefix) {
     case "t":
-      return { kind: "topic", topicId: id };
-    case "i":
-      return { kind: "issue", issueId: id };
+      return { kind: "topic", topicId: base64UrlDecode(body) };
+    case "i": {
+      const dotIndex = body.indexOf(".");
+      if (dotIndex < 0) {
+        return { kind: "issue", issueId: base64UrlDecode(body), topicId: "" };
+      }
+      return {
+        kind: "issue",
+        issueId: base64UrlDecode(body.slice(0, dotIndex)),
+        topicId: base64UrlDecode(body.slice(dotIndex + 1))
+      };
+    }
     default:
       throw new Error(`invalid issue parentGroupId: ${parentGroupId}`);
   }

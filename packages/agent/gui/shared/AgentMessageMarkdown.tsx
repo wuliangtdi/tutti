@@ -31,6 +31,13 @@ import {
   workspaceFileName as basenameWorkspacePath
 } from "@tutti-os/workspace-file-manager/services";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  useTextOverflow
+} from "@tutti-os/ui-system/components";
+import {
   getOptionalAgentHostApi,
   useOptionalAgentHostApi
 } from "../agentActivityHost";
@@ -812,83 +819,97 @@ function MentionLink({
   onLinkClick?: (href: string) => void;
 }): JSX.Element {
   "use memo";
+  // 标签截断时,hover 用设计系统 Tooltip 展示完整文本。trigger = 整个 chip(<a>),
+  // 截断发生在内部 __main span,故在那上面测溢出。
+  const tooltipText =
+    mention.kind === "session"
+      ? `${mention.participant}${mention.summary ? ` ${mention.summary}` : ""}`.trim()
+      : mention.label;
+  const { ref: mainRef, overflowing } =
+    useTextOverflow<HTMLSpanElement>(tooltipText);
   return (
-    <a
-      {...props}
-      className={cn(
-        "tsh-agent-object-token tsh-agent-object-token--entity",
-        props.className
-      )}
-      data-agent-file-mention="true"
-      data-agent-link-href={href}
-      data-agent-mention-icon-url={mention.iconUrl}
-      data-agent-mention-href={href}
-      data-agent-mention-kind={mention.kind}
-      aria-label={mention.label}
-      role="link"
-      tabIndex={0}
-      onClick={(event) => {
-        activateMarkdownLink(event, href, onLinkClick);
-      }}
-      onPointerDown={(event) => {
-        activateMarkdownLinkFromPointer(event, href, onLinkClick);
-      }}
-      onKeyDown={(event) => {
-        activateMarkdownLinkFromKey(event, href, onLinkClick);
-      }}
-    >
-      {mention.kind === "workspace-app" ||
-      mention.kind === "workspace-app-bundle" ? (
-        <span
-          className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
-          aria-hidden="true"
-          data-agent-mention-app-icon="true"
-          data-workspace-app-icon="true"
-        >
-          {mention.iconUrl ? (
-            <img
-              src={mention.iconUrl}
-              alt=""
-              className="h-full w-full object-cover"
-              decoding="async"
-              loading="lazy"
-              draggable={false}
-            />
-          ) : (
-            <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
-          )}
-        </span>
-      ) : (
-        <span className="tsh-agent-object-token__kind" aria-hidden="true">
-          <span
-            className="tsh-agent-object-token__kind-icon"
-            aria-hidden="true"
-          />
-        </span>
-      )}
-      {mention.kind === "session" ? (
-        <span className="tsh-agent-object-token__main">
-          <span className="tsh-agent-object-token__participant">
-            {mention.participant}
-          </span>
-          {mention.summary ? (
-            <span className="tsh-agent-object-token__summary">
-              {" "}
-              {mention.summary}
-            </span>
-          ) : null}
-        </span>
-      ) : (
-        <span className="tsh-agent-object-token__main">{mention.label}</span>
-      )}
-      {mention.kind === "workspace-app-bundle" &&
-      mention.fileCount != null &&
-      mention.fileCount >= 0 ? (
-        <span className="shrink-0 tabular-nums text-[var(--text-secondary)]">
-          {mention.fileCount}
-        </span>
-      ) : null}
-    </a>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <a
+            {...props}
+            className={cn(
+              "tsh-agent-object-token tsh-agent-object-token--entity",
+              props.className
+            )}
+            data-agent-file-mention="true"
+            data-agent-link-href={href}
+            data-agent-mention-icon-url={mention.iconUrl}
+            data-agent-mention-href={href}
+            data-agent-mention-kind={mention.kind}
+            aria-label={mention.label}
+            role="link"
+            tabIndex={0}
+            onClick={(event) => {
+              activateMarkdownLink(event, href, onLinkClick);
+            }}
+            onPointerDown={(event) => {
+              activateMarkdownLinkFromPointer(event, href, onLinkClick);
+            }}
+            onKeyDown={(event) => {
+              activateMarkdownLinkFromKey(event, href, onLinkClick);
+            }}
+          >
+            {mention.kind === "workspace-app" ||
+            mention.kind === "workspace-reference" ? (
+              <span
+                className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
+                aria-hidden="true"
+                data-agent-mention-app-icon="true"
+                data-workspace-app-icon="true"
+              >
+                {mention.iconUrl ? (
+                  <img
+                    src={mention.iconUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    decoding="async"
+                    loading="lazy"
+                    draggable={false}
+                  />
+                ) : (
+                  <span className="tsh-agent-object-token__kind-icon h-4 w-4" />
+                )}
+              </span>
+            ) : (
+              <span className="tsh-agent-object-token__kind" aria-hidden="true">
+                <span
+                  className="tsh-agent-object-token__kind-icon"
+                  aria-hidden="true"
+                />
+              </span>
+            )}
+            {mention.kind === "session" ? (
+              <span className="tsh-agent-object-token__main" ref={mainRef}>
+                <span className="tsh-agent-object-token__participant">
+                  {mention.participant}
+                </span>
+                {mention.summary ? (
+                  <span className="tsh-agent-object-token__summary">
+                    {" "}
+                    {mention.summary}
+                  </span>
+                ) : null}
+              </span>
+            ) : (
+              <span className="tsh-agent-object-token__main" ref={mainRef}>
+                {mention.label}
+              </span>
+            )}
+          </a>
+        </TooltipTrigger>
+        {overflowing ? (
+          <TooltipContent className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]">
+            {tooltipText}
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -1480,7 +1501,7 @@ function markdownUrlTransform(value: string): string {
 type MentionKind =
   | "session"
   | "workspace-app"
-  | "workspace-app-bundle"
+  | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue";
 
@@ -1491,7 +1512,7 @@ interface ParsedMentionLink {
   iconUrl?: string;
   participant: string;
   summary: string;
-  /** bundle 文件数量(workspace-app-bundle 专用)。 */
+  /** 引用文件数量(workspace-reference 专用,来自 href 的 count 参数)。 */
   fileCount?: number;
 }
 
@@ -1516,8 +1537,8 @@ function parseMentionLink(
       ? "session"
       : resource === "workspace-app"
         ? "workspace-app"
-        : resource === "workspace-app-bundle"
-          ? "workspace-app-bundle"
+        : resource === "workspace-reference"
+          ? "workspace-reference"
           : resource === "workspace-app-factory"
             ? "workspace-app-factory"
             : resource === "workspace-issue"
@@ -1526,7 +1547,7 @@ function parseMentionLink(
   if (
     kind !== "session" &&
     kind !== "workspace-app" &&
-    kind !== "workspace-app-bundle" &&
+    kind !== "workspace-reference" &&
     kind !== "workspace-app-factory" &&
     kind !== "workspace-issue"
   ) {
@@ -1562,12 +1583,12 @@ function parseMentionLink(
       summary: ""
     };
   }
-  if (kind === "workspace-app-bundle") {
+  if (kind === "workspace-reference") {
     return {
       kind,
       label,
       iconUrl: url.searchParams.get("icon")?.trim() || undefined,
-      fileCount: bundleFileCountFromParam(url.searchParams.get("files")),
+      fileCount: referenceFileCountFromParam(url.searchParams.get("count")),
       participant: label,
       summary: ""
     };
@@ -1589,16 +1610,12 @@ function parseMentionLink(
   };
 }
 
-function bundleFileCountFromParam(value: string | null): number | undefined {
+function referenceFileCountFromParam(value: string | null): number | undefined {
   if (!value) {
     return undefined;
   }
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.length : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function hasLegacyMentionQueryParams(url: URL): boolean {

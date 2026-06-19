@@ -1,6 +1,7 @@
 import { proxy } from "valtio/vanilla";
 import type {
   NodeRef,
+  ReferenceHandle,
   ReferenceLocateTarget,
   ReferenceNode,
   ReferenceScope,
@@ -77,8 +78,12 @@ export interface ReferenceSourcePickerSnapshot {
 export interface ReferenceConfirmBundle {
   /** 被选中的文件夹节点(提供 displayName / iconUrl / ref 作为 bundle 身份)。 */
   root: ReferenceNode;
-  /** 该文件夹递归展开后的全部文件。 */
-  files: SelectedReference[];
+  /**
+   * 该 bundle 归一成的可被 agent 解析的领域句柄(见 ReferenceHandle)。
+   * 由所属源 describeReferenceHandle 解码;发给 agent 的 `mention://workspace-reference/...`
+   * 由它构造,替代把文件路径全部展开。源不支持解码时为 null。
+   */
+  handle: ReferenceHandle | null;
 }
 
 export interface ReferenceConfirmGroupedResult {
@@ -910,29 +915,19 @@ export function createReferenceSourcePickerController(
         files.push(ref);
       };
       for (const node of snapshot.selection) {
+        const source = aggregator.getLoadedSource(node.ref.sourceId);
         const navigable =
-          node.kind === "folder" &&
-          (aggregator.getLoadedSource(node.ref.sourceId)?.capabilities
-            .navigable ??
-            false);
+          node.kind === "folder" && (source?.capabilities.navigable ?? false);
         if (!navigable) {
           // 文件、或非 navigable 源的文件夹:保持单条引用。
           pushFile(aggregator.resolveSelection(node));
           continue;
         }
-        // navigable 源文件夹:递归展开,折叠成一个 bundle(bundle 内单独去重)。
-        const fileNodes = await collectFolderFiles(node);
-        const bundleSeen = new Set<string>();
-        const bundleFiles: SelectedReference[] = [];
-        for (const fileNode of fileNodes) {
-          const ref = aggregator.resolveSelection(fileNode);
-          if (bundleSeen.has(ref.path)) {
-            continue;
-          }
-          bundleSeen.add(ref.path);
-          bundleFiles.push(ref);
-        }
-        bundles.push({ root: node, files: bundleFiles });
+        // navigable 源文件夹:折叠成一个 bundle。句柄由源解码,供 agent 经
+        // `mention://workspace-reference/...` + CLI 按需解析。**不再递归展开文件**——
+        // agent 序列化走句柄、chip 数量取 childCount,故确认即时(大产物不再卡顿)。
+        const handle = source?.describeReferenceHandle?.(node) ?? null;
+        bundles.push({ root: node, handle });
       }
       return { files, bundles };
     }

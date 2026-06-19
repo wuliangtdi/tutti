@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attrsToMentionItem,
   buildAgentSessionMentionHref,
-  buildAgentWorkspaceAppBundleMentionHref,
+  buildAgentWorkspaceReferenceMentionHref,
   buildAgentWorkspaceAppFactoryMentionHref,
   buildAgentWorkspaceIssueMentionHref,
   formatAgentMentionMarkdown,
@@ -253,94 +253,77 @@ describe("attrsToMentionItem", () => {
     });
   });
 
-  it("parses app bundle attrs into a files array", () => {
+  it("parses workspace-reference attrs into a resolvable handle", () => {
     expect(
       attrsToMentionItem({
-        kind: "workspace-app-bundle",
+        kind: "workspace-reference",
         name: "Design",
-        appId: "app-1",
+        targetId: "topic-1",
+        source: "task",
+        groupId: "issue-1",
         workspaceId: "ws-1",
-        filesJson: JSON.stringify([
-          { path: "/p/a.txt", name: "a.txt" },
-          { path: "/p/sub/b.txt", name: "b.txt" }
-        ])
+        fileCount: "3"
       })
     ).toMatchObject({
-      kind: "workspace-app-bundle",
-      appId: "app-1",
+      kind: "workspace-reference",
+      source: "task",
+      targetId: "topic-1",
+      groupId: "issue-1",
       workspaceId: "ws-1",
-      files: [
-        { path: "/p/a.txt", name: "a.txt" },
-        { path: "/p/sub/b.txt", name: "b.txt" }
-      ]
+      fileCount: 3
     });
   });
 
-  it("tolerates malformed bundle filesJson by yielding no files", () => {
+  it("defaults a malformed fileCount to zero", () => {
     expect(
       attrsToMentionItem({
-        kind: "workspace-app-bundle",
+        kind: "workspace-reference",
         name: "Design",
-        appId: "app-1",
+        targetId: "app-1",
+        source: "app",
         workspaceId: "ws-1",
-        filesJson: "{not json"
+        fileCount: "nope"
       })
-    ).toMatchObject({ kind: "workspace-app-bundle", files: [] });
+    ).toMatchObject({
+      kind: "workspace-reference",
+      source: "app",
+      fileCount: 0
+    });
   });
 });
 
-describe("formatAgentMentionMarkdown — app bundle", () => {
-  const bundleItem = {
-    kind: "workspace-app-bundle" as const,
-    href: "mention://workspace-app-bundle/app-1?workspaceId=ws-1",
+describe("formatAgentMentionMarkdown — workspace reference", () => {
+  const referenceItem = {
+    kind: "workspace-reference" as const,
+    href: "mention://workspace-reference/app-1?source=app&workspaceId=ws-1",
     workspaceId: "ws-1",
     targetId: "app-1",
-    appId: "app-1",
+    source: "app" as const,
     name: "Design",
-    files: [
-      { path: "/p/a.txt", name: "a.txt" },
-      { path: "/p/sub/b.txt", name: "b.txt" }
-    ]
+    fileCount: 2
   };
 
-  it("display mode (default) renders one chip link", () => {
-    expect(formatAgentMentionMarkdown(bundleItem)).toBe(
-      "[@Design](mention://workspace-app-bundle/app-1?workspaceId=ws-1)"
+  it("renders one chip link (no expansion)", () => {
+    expect(formatAgentMentionMarkdown(referenceItem)).toBe(
+      "[@Design](mention://workspace-reference/app-1?source=app&workspaceId=ws-1)"
     );
   });
 
-  it("agent mode expands into one file mention per file", () => {
-    expect(formatAgentMentionMarkdown(bundleItem, "agent")).toBe(
-      "[@a.txt](/p/a.txt) [@b.txt](/p/sub/b.txt)"
-    );
-  });
-
-  it("agent mode of an empty bundle falls back to the chip link", () => {
-    // 空项目无文件可展开:退回 @项目名 链接,而不是空串(否则会留下空白节点)。
-    expect(
-      formatAgentMentionMarkdown({ ...bundleItem, files: [] }, "agent")
-    ).toBe("[@Design](mention://workspace-app-bundle/app-1?workspaceId=ws-1)");
-  });
-
-  it("round-trips files + icon through the href (build → parse)", () => {
-    const href = buildAgentWorkspaceAppBundleMentionHref(
+  it("round-trips the handle + icon + count through the href (build → parse)", () => {
+    const href = buildAgentWorkspaceReferenceMentionHref(
       "ws-1",
-      "app-1",
-      [
-        { path: "/p/a.txt", name: "a.txt" },
-        { path: "/p/sub/b.txt", name: "b.txt" }
-      ],
-      "https://icons/app-1.png"
+      { source: "task", id: "topic-1", groupId: "issue-1" },
+      { iconUrl: "https://icons/app-1.png", fileCount: 5 }
     );
     const parsed = parseAgentMentionMarkdown(`[@Design](${href})`);
     expect(parsed?.item).toMatchObject({
-      kind: "workspace-app-bundle",
+      kind: "workspace-reference",
       name: "Design",
+      source: "task",
+      targetId: "topic-1",
+      groupId: "issue-1",
       iconUrl: "https://icons/app-1.png",
-      files: [
-        { path: "/p/a.txt", name: "a.txt" },
-        { path: "/p/sub/b.txt", name: "b.txt" }
-      ]
+      fileCount: 5
     });
   });
 });

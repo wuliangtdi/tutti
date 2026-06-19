@@ -68,8 +68,6 @@ export interface AgentRichTextEditorHandle {
   getPromptTextBeforeSelection: () => string;
   insertWorkspaceReferences: (items: readonly WorkspaceFileReference[]) => void;
   insertMentionItems: (items: readonly AgentContextMentionItem[]) => void;
-  /** agent 侧序列化:bundle 展开成逐条 file mention(发送给 agent 的真正内容)。 */
-  getAgentExpandedText: () => string;
   replaceTextBeforeSelection: (length: number, text: string) => string | null;
 }
 
@@ -582,13 +580,6 @@ export const AgentRichTextEditor = forwardRef<
           .focus()
           .insertContent(createAgentMentionContent(items))
           .run();
-      },
-      getAgentExpandedText() {
-        const currentEditor = editorRef.current;
-        if (!currentEditor || currentEditor.isDestroyed) {
-          return "";
-        }
-        return editorToPromptText(currentEditor, "agent");
       },
       replaceTextBeforeSelection(length, text) {
         const currentEditor = editorRef.current;

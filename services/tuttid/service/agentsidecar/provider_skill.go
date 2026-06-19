@@ -11,6 +11,7 @@ import (
 const tuttiSkillName = "tutti-cli"
 const issueManagerSkillName = "issue-manager"
 const workspaceAppSkillName = "workspace-app"
+const referenceSkillName = "reference"
 const browserUseSkillName = "browser-use"
 const computerUseSkillName = "computer-use"
 
@@ -46,6 +47,15 @@ func issueManagerSkill(input PrepareInput) string {
 func workspaceAppSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/workspace-app.md",
+		map[string]string{
+			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
+		},
+	)
+}
+
+func referenceSkill(input PrepareInput) string {
+	return renderProviderSkillTemplate(
+		"skill_templates/reference.md",
 		map[string]string{
 			"{{CLI_COMMAND}}": normalizeCLICommandName(input.CLICommand),
 		},
@@ -95,6 +105,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 		{
 			baseName: workspaceAppSkillName,
 			files:    map[string]string{"SKILL.md": workspaceAppSkill(input)},
+		},
+		{
+			baseName: referenceSkillName,
+			files:    map[string]string{"SKILL.md": referenceSkill(input)},
 		},
 	}
 	// Browser use is a daemon-owned `tutti browser` CLI; inject its skill only

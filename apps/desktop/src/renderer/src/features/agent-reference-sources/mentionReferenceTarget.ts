@@ -34,5 +34,33 @@ export const resolveMentionReferenceTarget: MentionReferenceTargetResolver = (
     }
     return { sourceId: ISSUE_SOURCE_ID, params };
   }
+  // 项目/任务引用 chip:source=app → 应用产物源(appId + 可选 groupId 子分组);
+  // source=task → 议题源(topicId 顶层容器 + 可选 issueId 子分组)。
+  if (item.kind === "workspace-reference") {
+    const id = item.targetId?.trim();
+    const groupId = item.groupId?.trim();
+    if (item.source === "app") {
+      if (!id) {
+        return null;
+      }
+      const params: Record<string, string> = { appId: id };
+      if (groupId) {
+        params.groupId = groupId;
+      }
+      return { sourceId: APP_ARTIFACT_SOURCE_ID, params };
+    }
+    // source === "task":id = topicId,groupId = issueId。
+    const params: Record<string, string> = {};
+    if (id) {
+      params.topicId = id;
+    }
+    if (groupId) {
+      params.issueId = groupId;
+    }
+    if (!params.topicId && !params.issueId) {
+      return null;
+    }
+    return { sourceId: ISSUE_SOURCE_ID, params };
+  }
   return null;
 };

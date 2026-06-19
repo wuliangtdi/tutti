@@ -1,6 +1,7 @@
 import type {
   ListChildrenResult,
   NodeRef,
+  ReferenceHandle,
   ReferenceNode,
   ReferencePreview,
   ReferenceScope,
@@ -104,6 +105,11 @@ export interface ReferenceListBackend {
     scope: ReferenceScope,
     params: Record<string, string>
   ): Promise<string[] | null>;
+  /**
+   * 可选:把自家「不透明分组 id」解码成可被 agent 解析的领域句柄(见 ReferenceHandle)。
+   * navigable 源实现;wrapper 负责先剥掉 GROUP_PREFIX 再调本方法。
+   */
+  describeHandle?(groupId: string): ReferenceHandle | null;
 }
 
 export interface CreateReferenceListSourceInput {
@@ -205,6 +211,22 @@ export function createReferenceListSource(
         sourceId,
         nodeId: GROUP_PREFIX + base64UrlEncode(groupId)
       }));
+    };
+  }
+
+  // 仅当 backend 实现了句柄解码时才暴露 describeReferenceHandle:剥掉 GROUP_PREFIX
+  // 得到 backend 自家分组 id,交给 backend 解码成领域句柄。非分组节点(文件/源根)→ null。
+  const backendDescribeHandle = backend.describeHandle?.bind(backend);
+  if (backendDescribeHandle) {
+    service.describeReferenceHandle = (
+      node: ReferenceNode
+    ): ReferenceHandle | null => {
+      if (!node.ref.nodeId.startsWith(GROUP_PREFIX)) {
+        return null;
+      }
+      return backendDescribeHandle(
+        decodeSegment(GROUP_PREFIX, node.ref.nodeId)
+      );
     };
   }
 

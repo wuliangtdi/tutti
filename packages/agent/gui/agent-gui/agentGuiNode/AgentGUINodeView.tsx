@@ -118,15 +118,10 @@ import {
 import styles from "./AgentGUINode.styles";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import {
-  buildAgentWorkspaceAppBundleMentionHref,
+  buildAgentWorkspaceReferenceMentionHref,
   type AgentContextMentionItem,
-  type AgentMentionWorkspaceAppBundleItem
+  type AgentMentionWorkspaceReferenceItem
 } from "./agentRichText/agentFileMentionExtension";
-
-function referenceBasename(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts.length > 0 ? (parts[parts.length - 1] ?? path) : path;
-}
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -864,40 +859,37 @@ export function AgentGUINodeView({
     },
     [settleReferencePicker]
   );
-  // 「文件夹=一个 bundle 节点」确认:navigable 源文件夹折叠成 bundle mention item,
-  // 松散文件仍按 file mention 插入。
+  // 「文件夹=一个 reference 节点」确认:navigable 源文件夹折叠成 workspace-reference
+  // mention item(只携带可解析句柄 source+id+groupId,不展开文件);松散文件仍按 file
+  // mention 插入。agent 收到 `mention://workspace-reference/...` 后经 skill+CLI 按需解析。
   const confirmWorkspaceReferenceBundles = useCallback(
     (result: ReferenceGroupedSelection) => {
-      // 文件夹折叠成 bundle mention item;空项目(无产物 / app 未运行)同样保留,
-      // 渲染成 icon + 项目名 + count(0);agent 序列化退回单条 @项目名 链接,
-      // 不会再留下空白节点(见 formatAgentMentionMarkdown 的空 bundle 分支)。
-      const mentionItems: AgentMentionWorkspaceAppBundleItem[] =
-        result.bundles.map((bundle) => {
-          const files = bundle.files.map((file) => ({
-            path: file.path,
-            name: file.displayName?.trim() || referenceBasename(file.path)
-          }));
+      const mentionItems: AgentMentionWorkspaceReferenceItem[] = result.bundles
+        .filter((bundle) => bundle.handle != null)
+        .map((bundle) => {
+          const handle = bundle.handle!;
           const bundleIconUrl = bundle.iconUrl ?? undefined;
           return {
-            kind: "workspace-app-bundle",
-            href: buildAgentWorkspaceAppBundleMentionHref(
+            kind: "workspace-reference",
+            href: buildAgentWorkspaceReferenceMentionHref(
               viewModel.workspaceId,
-              bundle.nodeId,
-              files,
-              bundleIconUrl
+              handle,
+              { iconUrl: bundleIconUrl, fileCount: bundle.fileCount }
             ),
             workspaceId: viewModel.workspaceId,
-            targetId: bundle.nodeId,
+            targetId: handle.id,
+            source: handle.source,
+            ...(handle.groupId ? { groupId: handle.groupId } : {}),
             name: bundle.displayName,
             iconUrl: bundleIconUrl,
-            files
+            fileCount: bundle.fileCount
           };
         });
-      const addedFiles = [
-        ...result.files,
-        ...result.bundles.flatMap((bundle) => bundle.files)
-      ];
-      settleReferencePicker({ files: result.files, mentionItems }, addedFiles);
+      // bundle 不再展开文件,仅松散文件计入「最近引用」跟踪。
+      settleReferencePicker(
+        { files: result.files, mentionItems },
+        result.files
+      );
     },
     [settleReferencePicker, viewModel.workspaceId]
   );
