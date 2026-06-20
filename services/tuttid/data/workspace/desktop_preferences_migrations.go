@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS desktop_preferences (
   default_agent_provider TEXT NOT NULL DEFAULT 'codex',
   agent_composer_defaults_by_provider_json TEXT NOT NULL DEFAULT '{}',
   agent_gui_conversation_rail_collapsed_by_provider_json TEXT NOT NULL DEFAULT '{}',
+  file_default_openers_by_extension_json TEXT NOT NULL DEFAULT '{"htm":"appBrowser","html":"appBrowser","shtml":"appBrowser","xhtml":"appBrowser"}',
   locale TEXT NOT NULL,
   theme_source TEXT NOT NULL,
   sleep_prevention_mode TEXT NOT NULL DEFAULT 'never',
@@ -37,6 +38,38 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 `, schemaMigrationDesktopPreferencesV1, now)
 	if err != nil {
 		return fmt.Errorf("migrate workspace database for desktop preferences: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) applyDesktopPreferencesFileDefaultOpenersV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationDesktopPreferencesFileDefaultOpenersV1)
+	if err != nil {
+		return err
+	}
+	if applied {
+		return nil
+	}
+
+	now := unixMs(time.Now().UTC())
+	hasFileDefaultOpeners, err := s.hasColumn(ctx, "desktop_preferences", "file_default_openers_by_extension_json")
+	if err != nil {
+		return err
+	}
+	if !hasFileDefaultOpeners {
+		if _, err := s.db.ExecContext(ctx, `
+ALTER TABLE desktop_preferences
+  ADD COLUMN file_default_openers_by_extension_json TEXT NOT NULL DEFAULT '{"htm":"appBrowser","html":"appBrowser","shtml":"appBrowser","xhtml":"appBrowser"}';`); err != nil {
+			return fmt.Errorf("migrate workspace database for desktop file default openers: %w", err)
+		}
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationDesktopPreferencesFileDefaultOpenersV1, now)
+	if err != nil {
+		return fmt.Errorf("migrate workspace database for desktop file default openers: %w", err)
 	}
 
 	return nil

@@ -4819,7 +4819,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   color: var(--text-primary);
   font-size: 13px;
   line-height: 18px;
-  font-weight: 500;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

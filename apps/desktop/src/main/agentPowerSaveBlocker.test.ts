@@ -284,6 +284,9 @@ function createFakePreferences(
     getDockPlacement() {
       return "bottom";
     },
+    getFileDefaultOpenersByExtension() {
+      return { html: "defaultBrowser" };
+    },
     getLocale() {
       return "en";
     },

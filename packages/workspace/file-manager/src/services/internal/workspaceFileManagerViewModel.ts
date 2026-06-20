@@ -1,6 +1,7 @@
 import {
   buildWorkspaceFileBreadcrumbs,
-  normalizeWorkspaceFilePath
+  normalizeWorkspaceFilePath,
+  resolveWorkspaceFileActivationTarget
 } from "../workspaceFileManagerModel.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type {
@@ -80,6 +81,7 @@ export interface WorkspaceFileManagerContextMenuViewState {
   showMoveAction: boolean;
   showOpenInAppBrowserAction: boolean;
   showOpenInDefaultBrowserAction: boolean;
+  showOpenInFileViewerAction: boolean;
   showOpenWithAction: boolean;
   showOpenWithOtherAction: boolean;
   showRevealInFolderAction: boolean;
@@ -207,6 +209,10 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     showMoveAction: state.capabilities.canMove,
     showOpenInAppBrowserAction: state.capabilities.canOpenInAppBrowser,
     showOpenInDefaultBrowserAction: state.capabilities.canOpenInDefaultBrowser,
+    showOpenInFileViewerAction:
+      contextMenuEntry !== null &&
+      isContextMenuFile &&
+      resolveWorkspaceFileActivationTarget(contextMenuEntry) !== null,
     showOpenWithAction: state.capabilities.canOpenWith && isContextMenuFile,
     showOpenWithOtherAction:
       state.capabilities.canPickOtherOpenWithApplication && isContextMenuFile,

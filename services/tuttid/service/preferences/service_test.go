@@ -115,11 +115,18 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 		BrowserUseConnectionMode: " autoConnect ",
 		DockIconStyle:            "default",
 		DockPlacement:            " left ",
-		Locale:                   " zh-CN ",
-		SleepPreventionMode:      "whileAgentRunning",
-		ThemeSource:              " dark ",
-		UpdateChannel:            " rc ",
-		UpdatePolicy:             " auto ",
+		FileDefaultOpenersByExtension: map[string]string{
+			".HTML":   " fileViewer ",
+			"bad/ext": "defaultBrowser",
+			"pdf":     "defaultBrowser",
+			"txt":     "unknown",
+			"_tmp":    "system",
+		},
+		Locale:              " zh-CN ",
+		SleepPreventionMode: "whileAgentRunning",
+		ThemeSource:         " dark ",
+		UpdateChannel:       " rc ",
+		UpdatePolicy:        " auto ",
 	})
 	if err != nil {
 		t.Fatalf("Put() error = %v", err)
@@ -150,6 +157,11 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 	if store.putInput.UpdatePolicy != "auto" {
 		t.Fatalf("stored updatePolicy = %q, want auto", store.putInput.UpdatePolicy)
+	}
+	if store.putInput.FileDefaultOpenersByExtension["html"] != "fileViewer" ||
+		store.putInput.FileDefaultOpenersByExtension["pdf"] != "defaultBrowser" ||
+		len(store.putInput.FileDefaultOpenersByExtension) != 2 {
+		t.Fatalf("stored file openers = %#v, want normalized html/pdf", store.putInput.FileDefaultOpenersByExtension)
 	}
 	claudeDefaults := store.putInput.AgentComposerDefaultsByProvider["claude-code"]
 	if claudeDefaults.Model != "claude-3-5" ||

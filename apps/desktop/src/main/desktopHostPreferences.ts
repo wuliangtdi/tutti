@@ -16,13 +16,16 @@ import {
   defaultDesktopAgentProvider,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
+  desktopFileDefaultOpenersByExtensionEqual,
   type DesktopAgentProvider,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DesktopFileDefaultOpenersByExtension,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy
@@ -44,6 +47,7 @@ export interface DesktopHostPreferencesState {
   getDefaultAgentProvider(): DesktopAgentProvider;
   getDockIconStyle(): DesktopDockIconStyle;
   getDockPlacement(): DesktopDockPlacement;
+  getFileDefaultOpenersByExtension(): DesktopFileDefaultOpenersByExtension;
   getLocale(): DesktopLocale;
   getSleepPreventionMode(): DesktopSleepPreventionMode;
   getThemeSource(): DesktopThemeSource;
@@ -57,6 +61,7 @@ export interface DesktopHostPreferencesState {
     defaultAgentProvider?: DesktopAgentProvider;
     dockIconStyle?: DesktopDockIconStyle;
     dockPlacement?: DesktopDockPlacement;
+    fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale?: DesktopLocale;
     sleepPreventionMode?: DesktopSleepPreventionMode;
     themeSource?: DesktopThemeSource;
@@ -95,6 +100,9 @@ export async function createDesktopHostPreferencesState(
   let defaultAgentProvider = initialPreferences.defaultAgentProvider;
   let dockIconStyle = initialPreferences.dockIconStyle;
   let dockPlacement = initialPreferences.dockPlacement;
+  let fileDefaultOpenersByExtension =
+    initialPreferences.fileDefaultOpenersByExtension ??
+    defaultDesktopFileDefaultOpenersByExtension;
   let locale = initialPreferences.locale;
   let sleepPreventionMode = initialPreferences.sleepPreventionMode;
   let themeSource = initialPreferences.themeSource;
@@ -120,6 +128,9 @@ export async function createDesktopHostPreferencesState(
     },
     getDockPlacement() {
       return dockPlacement;
+    },
+    getFileDefaultOpenersByExtension() {
+      return fileDefaultOpenersByExtension;
     },
     getLocale() {
       return locale;
@@ -151,6 +162,8 @@ export async function createDesktopHostPreferencesState(
       const previousDefaultAgentProvider = defaultAgentProvider;
       const previousDockIconStyle = dockIconStyle;
       const previousDockPlacement = dockPlacement;
+      const previousFileDefaultOpenersByExtension =
+        fileDefaultOpenersByExtension;
       const previousLocale = locale;
       const previousSleepPreventionMode = sleepPreventionMode;
       const previousThemeSource = themeSource;
@@ -197,6 +210,18 @@ export async function createDesktopHostPreferencesState(
       if (input.dockPlacement) {
         dockPlacement = input.dockPlacement;
       }
+      if (input.fileDefaultOpenersByExtension) {
+        const nextFileDefaultOpenersByExtension =
+          input.fileDefaultOpenersByExtension;
+        if (
+          !desktopFileDefaultOpenersByExtensionEqual(
+            fileDefaultOpenersByExtension,
+            nextFileDefaultOpenersByExtension
+          )
+        ) {
+          fileDefaultOpenersByExtension = nextFileDefaultOpenersByExtension;
+        }
+      }
       if (input.locale) {
         locale = input.locale;
       }
@@ -221,6 +246,8 @@ export async function createDesktopHostPreferencesState(
         defaultAgentProvider !== previousDefaultAgentProvider ||
         dockIconStyle !== previousDockIconStyle ||
         dockPlacement !== previousDockPlacement ||
+        fileDefaultOpenersByExtension !==
+          previousFileDefaultOpenersByExtension ||
         locale !== previousLocale ||
         sleepPreventionMode !== previousSleepPreventionMode ||
         themeSource !== previousThemeSource ||
@@ -256,6 +283,8 @@ async function resolveInitialDesktopPreferences(
           defaultAgentProvider: defaultDesktopAgentProvider,
           dockIconStyle: defaultDesktopDockIconStyle,
           dockPlacement: defaultDesktopDockPlacement,
+          fileDefaultOpenersByExtension:
+            defaultDesktopFileDefaultOpenersByExtension,
           locale: options.fallbackLocale,
           sleepPreventionMode: defaultDesktopSleepPreventionMode,
           themeSource: defaultDesktopThemeSource,
@@ -275,6 +304,8 @@ async function resolveInitialDesktopPreferences(
       defaultAgentProvider: defaultDesktopAgentProvider,
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement: defaultDesktopDockPlacement,
+      fileDefaultOpenersByExtension:
+        defaultDesktopFileDefaultOpenersByExtension,
       locale: options.fallbackLocale,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       themeSource: defaultDesktopThemeSource,

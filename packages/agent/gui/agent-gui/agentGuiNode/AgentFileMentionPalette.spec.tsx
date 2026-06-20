@@ -1763,7 +1763,7 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__conversation-select\s*{[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*min-width:\s*0[^}]*overflow:\s*hidden/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__conversation-title\s*{[^}]*overflow:\s*hidden[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*13px[^}]*font-weight:\s*500[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+      /\.agent-gui-node__conversation-title\s*{[^}]*overflow:\s*hidden[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*13px[^}]*font-weight:\s*400[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__conversation-item:hover\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*0[\s\S]*?padding-right:\s*72px/s

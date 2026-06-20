@@ -31,6 +31,7 @@ test("DesktopPreferencesService bootstraps persisted preferences before connecti
 
           dockIconStyle: "default",
           dockPlacement: "bottom",
+          fileDefaultOpenersByExtension: { html: "defaultBrowser" },
           locale: "zh-CN",
           sleepPreventionMode: "never",
           themeSource: "dark",
@@ -89,6 +90,7 @@ test("DesktopPreferencesService keeps in-memory defaults when preferences are no
 
         dockIconStyle: "default",
         dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
         locale: "en",
         sleepPreventionMode: "never",
         themeSource: "system",
@@ -156,6 +158,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "system",
@@ -174,6 +177,7 @@ test("DesktopPreferencesService publishes locale writes and converges on the aut
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "zh-CN",
     sleepPreventionMode: "never",
     themeSource: "system",
@@ -247,6 +251,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -273,6 +278,7 @@ test("DesktopPreferencesService applies authoritative theme updates from the eve
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     themeSource: "dark",
@@ -363,6 +369,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "whileAgentRunning",
       themeSource: "system",
@@ -380,6 +387,7 @@ test("DesktopPreferencesService publishes prevent sleep preference writes", asyn
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "whileAgentRunning",
     themeSource: "system",
@@ -420,6 +428,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "system",
@@ -437,6 +446,7 @@ test("DesktopPreferencesService publishes update preference writes", async () =>
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     themeSource: "system",
@@ -484,6 +494,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
 
       dockIconStyle: "default",
       dockPlacement: "left",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "system",
@@ -501,6 +512,7 @@ test("DesktopPreferencesService publishes dock placement preference writes", asy
 
     dockIconStyle: "default",
     dockPlacement: "left",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     themeSource: "system",
@@ -526,6 +538,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
 
         dockIconStyle: "default",
         dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
         locale: "en",
         sleepPreventionMode: "never",
         themeSource: "system",
@@ -543,6 +556,7 @@ test("DesktopPreferencesService applies HTTP-confirmed authoritative preferences
 
         dockIconStyle: "default",
         dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
         locale: "zh-CN",
         sleepPreventionMode: "never",
         themeSource: "system",
@@ -628,6 +642,7 @@ test("DesktopPreferencesService remembers agent composer defaults per provider",
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     themeSource: "system",
@@ -678,6 +693,7 @@ test("DesktopPreferencesService remembers agent GUI conversation rail collapsed 
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     themeSource: "system",
@@ -773,6 +789,7 @@ function createDesktopPreferencesClient(
 
         dockIconStyle: "default",
         dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
         locale: "en",
         sleepPreventionMode: "never",
         themeSource: "system",

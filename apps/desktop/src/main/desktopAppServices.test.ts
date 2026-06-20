@@ -73,6 +73,9 @@ function createHostServices(): DesktopHostServices {
       getDockPlacement() {
         return "bottom";
       },
+      getFileDefaultOpenersByExtension() {
+        return { html: "defaultBrowser" };
+      },
       getLocale() {
         return "en";
       },

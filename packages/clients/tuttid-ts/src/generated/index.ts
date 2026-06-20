@@ -357,6 +357,8 @@ export type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFileDefaultOpener,
+  DesktopFileDefaultOpenersByExtension,
   DesktopLocale,
   DesktopPreferences,
   DesktopPreferencesStateResponse,

@@ -458,6 +458,19 @@ export const en = {
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
         exportingLogs: "Exporting...",
+        fileDefaultOpenerActionLabel: "Default opener for .{{extension}}",
+        fileDefaultOpenerExtensionLabel: "File extension",
+        fileDefaultOpenerExtensionPlaceholder: "html",
+        fileDefaultOpenerNewActionLabel: "New default opener",
+        fileDefaultOpenerOptions: {
+          appBrowser: "Built-in browser",
+          defaultBrowser: "Default browser",
+          fileViewer: "File viewer",
+          system: "System default"
+        },
+        fileDefaultOpenersDescription:
+          "Choose what opens first when a workspace file is activated by extension.",
+        fileDefaultOpenersLabel: "Default file openers",
         logMissing: "No file yet",
         logOpenFailed: "We couldn't open that log path right now.",
         logsCleared: "Cleared {{count}} log files ({{size}}).",
@@ -472,6 +485,8 @@ export const en = {
         openDaemonLog: "Open daemon log",
         openDesktopLog: "Open desktop log",
         openLogsDirectory: "Open logs folder",
+        addFileDefaultOpener: "Add",
+        removeFileDefaultOpener: "Remove .{{extension}}",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in General seven times to bring it back",
         visibilityLabel: "Show developer panel"

@@ -436,6 +436,19 @@ export const zhCN = {
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",
         exportingLogs: "导出中...",
+        fileDefaultOpenerActionLabel: ".{{extension}} 的默认打开方式",
+        fileDefaultOpenerExtensionLabel: "文件后缀",
+        fileDefaultOpenerExtensionPlaceholder: "html",
+        fileDefaultOpenerNewActionLabel: "新的默认打开方式",
+        fileDefaultOpenerOptions: {
+          appBrowser: "内置浏览器",
+          defaultBrowser: "默认浏览器",
+          fileViewer: "文件查看器",
+          system: "系统默认"
+        },
+        fileDefaultOpenersDescription:
+          "按文件后缀选择工作区文件激活时优先使用的打开方式。",
+        fileDefaultOpenersLabel: "默认文件打开方式",
         logMissing: "暂无文件",
         logOpenFailed: "暂时无法打开这个日志路径。",
         logsCleared: "已清理 {{count}} 个日志文件（{{size}}）。",
@@ -450,6 +463,8 @@ export const zhCN = {
         openDaemonLog: "打开 daemon 日志",
         openDesktopLog: "打开 desktop 日志",
         openLogsDirectory: "打开日志目录",
+        addFileDefaultOpener: "添加",
+        removeFileDefaultOpener: "移除 .{{extension}}",
         visibilityDescription:
           "在设置中隐藏此面板。在「通用」里连续点击版本号七次即可重新显示",
         visibilityLabel: "显示开发者面板"

@@ -40,6 +40,9 @@ func TestSQLiteStoreGetDesktopPreferencesDefaultsWhenUnset(t *testing.T) {
 	if preferences.BrowserUseConnectionMode != "isolated" {
 		t.Fatalf("GetDesktopPreferences() browserUseConnectionMode = %q, want isolated", preferences.BrowserUseConnectionMode)
 	}
+	if preferences.FileDefaultOpenersByExtension["html"] != "appBrowser" {
+		t.Fatalf("GetDesktopPreferences() html opener = %q, want appBrowser", preferences.FileDefaultOpenersByExtension["html"])
+	}
 	if len(preferences.AgentGUIConversationRailCollapsedByProvider) != 0 {
 		t.Fatalf("GetDesktopPreferences() rail collapsed preferences = %#v, want empty", preferences.AgentGUIConversationRailCollapsedByProvider)
 	}
@@ -74,12 +77,16 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 		BrowserUseConnectionMode: "autoConnect",
 		DockIconStyle:            "default",
 		DockPlacement:            "left",
-		Initialized:              true,
-		Locale:                   "zh-CN",
-		SleepPreventionMode:      "whileAgentRunning",
-		ThemeSource:              "dark",
-		UpdateChannel:            "rc",
-		UpdatePolicy:             "auto",
+		FileDefaultOpenersByExtension: map[string]string{
+			"html": "fileViewer",
+			"pdf":  "defaultBrowser",
+		},
+		Initialized:         true,
+		Locale:              "zh-CN",
+		SleepPreventionMode: "whileAgentRunning",
+		ThemeSource:         "dark",
+		UpdateChannel:       "rc",
+		UpdatePolicy:        "auto",
 	})
 	if err != nil {
 		t.Fatalf("PutDesktopPreferences() error = %v", err)
@@ -112,6 +119,9 @@ func TestSQLiteStorePutDesktopPreferencesPersistsValue(t *testing.T) {
 	}
 	if reloaded.BrowserUseConnectionMode != "autoConnect" {
 		t.Fatalf("GetDesktopPreferences() browserUseConnectionMode = %q, want autoConnect", reloaded.BrowserUseConnectionMode)
+	}
+	if reloaded.FileDefaultOpenersByExtension["html"] != "fileViewer" || reloaded.FileDefaultOpenersByExtension["pdf"] != "defaultBrowser" {
+		t.Fatalf("GetDesktopPreferences() file default openers = %#v, want html/pdf", reloaded.FileDefaultOpenersByExtension)
 	}
 	if !reloaded.AgentGUIConversationRailCollapsedByProvider["codex"] {
 		t.Fatalf("GetDesktopPreferences() codex rail collapsed = false, want true")

@@ -33,10 +33,14 @@ export function estimateOpenWithSubmenuHeight(input: {
   showExternalSection: boolean;
   showOpenInAppBrowser: boolean;
   showOpenInDefaultBrowser: boolean;
+  showOpenInFileViewer?: boolean;
   showOpenWithOther: boolean;
 }): number {
   let itemCount = 0;
 
+  if (input.showOpenInFileViewer) {
+    itemCount += 1;
+  }
   if (input.showOpenInAppBrowser) {
     itemCount += 1;
   }

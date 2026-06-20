@@ -418,6 +418,30 @@ func (e DesktopDockPlacement) Valid() bool {
 	}
 }
 
+// Defines values for DesktopFileDefaultOpener.
+const (
+	DesktopFileDefaultOpenerAppBrowser     DesktopFileDefaultOpener = "appBrowser"
+	DesktopFileDefaultOpenerDefaultBrowser DesktopFileDefaultOpener = "defaultBrowser"
+	DesktopFileDefaultOpenerFileViewer     DesktopFileDefaultOpener = "fileViewer"
+	DesktopFileDefaultOpenerSystem         DesktopFileDefaultOpener = "system"
+)
+
+// Valid indicates whether the value is a known member of the DesktopFileDefaultOpener enum.
+func (e DesktopFileDefaultOpener) Valid() bool {
+	switch e {
+	case DesktopFileDefaultOpenerAppBrowser:
+		return true
+	case DesktopFileDefaultOpenerDefaultBrowser:
+		return true
+	case DesktopFileDefaultOpenerFileViewer:
+		return true
+	case DesktopFileDefaultOpenerSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DesktopLocale.
 const (
 	En   DesktopLocale = "en"
@@ -459,19 +483,19 @@ func (e DesktopSleepPreventionMode) Valid() bool {
 
 // Defines values for DesktopThemeSource.
 const (
-	DesktopThemeSourceDark   DesktopThemeSource = "dark"
-	DesktopThemeSourceLight  DesktopThemeSource = "light"
-	DesktopThemeSourceSystem DesktopThemeSource = "system"
+	Dark   DesktopThemeSource = "dark"
+	Light  DesktopThemeSource = "light"
+	System DesktopThemeSource = "system"
 )
 
 // Valid indicates whether the value is a known member of the DesktopThemeSource enum.
 func (e DesktopThemeSource) Valid() bool {
 	switch e {
-	case DesktopThemeSourceDark:
+	case Dark:
 		return true
-	case DesktopThemeSourceLight:
+	case Light:
 		return true
-	case DesktopThemeSourceSystem:
+	case System:
 		return true
 	default:
 		return false
@@ -1845,6 +1869,12 @@ type DesktopDockIconStyle string
 // DesktopDockPlacement defines model for DesktopDockPlacement.
 type DesktopDockPlacement string
 
+// DesktopFileDefaultOpener defines model for DesktopFileDefaultOpener.
+type DesktopFileDefaultOpener string
+
+// DesktopFileDefaultOpenersByExtension defines model for DesktopFileDefaultOpenersByExtension.
+type DesktopFileDefaultOpenersByExtension map[string]DesktopFileDefaultOpener
+
 // DesktopLocale defines model for DesktopLocale.
 type DesktopLocale string
 
@@ -1856,6 +1886,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        WorkspaceAgentProvider                             `json:"defaultAgentProvider"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
+	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	SleepPreventionMode                         DesktopSleepPreventionMode                         `json:"sleepPreventionMode"`
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`

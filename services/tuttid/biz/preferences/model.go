@@ -1,6 +1,10 @@
 package preferences
 
-import agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+import (
+	"strings"
+
+	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+)
 
 const (
 	DefaultDesktopDefaultAgentProvider     = agentproviderbiz.Codex
@@ -21,6 +25,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	FileDefaultOpenersByExtension               map[string]string
 	Initialized                                 bool
 	Locale                                      string
 	SleepPreventionMode                         string
@@ -43,13 +48,46 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DefaultAgentProvider:                        DefaultDesktopDefaultAgentProvider,
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
-		Initialized:                                 false,
-		Locale:                                      DefaultDesktopLocale,
-		SleepPreventionMode:                         DefaultDesktopSleepPreventionMode,
-		ThemeSource:                                 DefaultDesktopThemeSource,
-		UpdateChannel:                               DefaultDesktopUpdateChannel,
-		UpdatePolicy:                                DefaultDesktopUpdatePolicy,
+		FileDefaultOpenersByExtension: map[string]string{
+			"htm":   "appBrowser",
+			"html":  "appBrowser",
+			"shtml": "appBrowser",
+			"xhtml": "appBrowser",
+		},
+		Initialized:         false,
+		Locale:              DefaultDesktopLocale,
+		SleepPreventionMode: DefaultDesktopSleepPreventionMode,
+		ThemeSource:         DefaultDesktopThemeSource,
+		UpdateChannel:       DefaultDesktopUpdateChannel,
+		UpdatePolicy:        DefaultDesktopUpdatePolicy,
 	}
+}
+
+func IsDesktopFileDefaultOpener(value string) bool {
+	switch value {
+	case "appBrowser", "defaultBrowser", "fileViewer", "system":
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeDesktopFileExtension(value string) string {
+	normalized := strings.TrimLeft(strings.ToLower(strings.TrimSpace(value)), ".")
+	if normalized == "" || len(normalized) > 32 {
+		return ""
+	}
+	for index, char := range normalized {
+		if (char >= 'a' && char <= 'z') ||
+			(char >= '0' && char <= '9') {
+			continue
+		}
+		if index > 0 && (char == '_' || char == '-') {
+			continue
+		}
+		return ""
+	}
+	return normalized
 }
 
 func IsDesktopDockIconStyle(value string) bool {

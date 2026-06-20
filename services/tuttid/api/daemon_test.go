@@ -1321,8 +1321,8 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 	if response.Preferences.DefaultAgentProvider != tuttigenerated.ClaudeCode {
 		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.ClaudeCode)
 	}
-	if response.Preferences.ThemeSource != tuttigenerated.DesktopThemeSourceDark {
-		t.Fatalf("themeSource = %q, want %q", response.Preferences.ThemeSource, tuttigenerated.DesktopThemeSourceDark)
+	if response.Preferences.ThemeSource != tuttigenerated.Dark {
+		t.Fatalf("themeSource = %q, want %q", response.Preferences.ThemeSource, tuttigenerated.Dark)
 	}
 	if response.Preferences.SleepPreventionMode != tuttigenerated.WhileAgentRunning {
 		t.Fatalf("sleepPreventionMode = %q, want %q", response.Preferences.SleepPreventionMode, tuttigenerated.WhileAgentRunning)

@@ -275,11 +275,14 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		DefaultAgentProvider:     defaultAgentProvider,
 		DockIconStyle:            dockIconStyle,
 		DockPlacement:            dockPlacement,
-		Locale:                   locale,
-		SleepPreventionMode:      sleepPreventionMode,
-		ThemeSource:              themeSource,
-		UpdateChannel:            updateChannel,
-		UpdatePolicy:             updatePolicy,
+		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
+			request.Body.Preferences.FileDefaultOpenersByExtension,
+		),
+		Locale:              locale,
+		SleepPreventionMode: sleepPreventionMode,
+		ThemeSource:         themeSource,
+		UpdateChannel:       updateChannel,
+		UpdatePolicy:        updatePolicy,
 	})
 	if err != nil {
 		return tuttigenerated.PutDesktopPreferences502JSONResponse{
@@ -292,6 +295,21 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 	return tuttigenerated.PutDesktopPreferences200JSONResponse(
 		preferencesapi.GeneratedDesktopPreferencesStateResponseFromBiz(preferences),
 	), nil
+}
+
+func fileDefaultOpenersByExtensionFromGenerated(
+	value tuttigenerated.DesktopFileDefaultOpenersByExtension,
+) map[string]string {
+	result := map[string]string{}
+	for extension, opener := range value {
+		normalizedExtension := preferencesbiz.NormalizeDesktopFileExtension(extension)
+		normalizedOpener := string(opener)
+		if normalizedExtension == "" || !preferencesbiz.IsDesktopFileDefaultOpener(normalizedOpener) {
+			continue
+		}
+		result[normalizedExtension] = normalizedOpener
+	}
+	return result
 }
 
 func agentGUIConversationRailCollapsedByProviderFromGenerated(

@@ -2,6 +2,7 @@ import type {
   WorkspaceFileDirectoryListing,
   WorkspaceFileEntry,
   WorkspaceFileEntryKind,
+  WorkspaceFileManagerFileDefaultOpener,
   WorkspaceFileOpenWithApplication,
   WorkspaceFileSearchInput,
   WorkspaceFileSearchResult
@@ -83,6 +84,10 @@ export interface WorkspaceFileManagerHost {
     path: string;
     workspaceID: string;
   }): Promise<void>;
+  openFileInSystemDefault?(input: {
+    path: string;
+    workspaceID: string;
+  }): Promise<void>;
   revealEntry?(input: { path: string; workspaceID: string }): Promise<void>;
   activateFile?(
     request: WorkspaceFileManagerFileActivationRequest,
@@ -129,5 +134,8 @@ export interface CreateWorkspaceFileManagerSessionInput {
     load?(): WorkspaceFileManagerPersistedState | null | undefined;
     save(state: WorkspaceFileManagerPersistedState): void;
   };
+  resolveFileDefaultOpener?: (
+    entry: WorkspaceFileEntry
+  ) => WorkspaceFileManagerFileDefaultOpener | null | undefined;
   workspaceID: string;
 }

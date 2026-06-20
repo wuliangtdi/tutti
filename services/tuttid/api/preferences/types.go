@@ -13,12 +13,25 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DefaultAgentProvider:                        tuttigenerated.WorkspaceAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
+		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		SleepPreventionMode:                         tuttigenerated.DesktopSleepPreventionMode(value.SleepPreventionMode),
 		ThemeSource:                                 tuttigenerated.DesktopThemeSource(value.ThemeSource),
 		UpdateChannel:                               tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
 		UpdatePolicy:                                tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
 	}
+}
+
+func generatedFileDefaultOpenersByExtension(value map[string]string) tuttigenerated.DesktopFileDefaultOpenersByExtension {
+	result := tuttigenerated.DesktopFileDefaultOpenersByExtension{}
+	for extension, opener := range value {
+		normalizedExtension := preferencesbiz.NormalizeDesktopFileExtension(extension)
+		if normalizedExtension == "" || !preferencesbiz.IsDesktopFileDefaultOpener(opener) {
+			continue
+		}
+		result[normalizedExtension] = tuttigenerated.DesktopFileDefaultOpener(opener)
+	}
+	return result
 }
 
 func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool) tuttigenerated.DesktopAgentGuiConversationRailCollapsedByProvider {

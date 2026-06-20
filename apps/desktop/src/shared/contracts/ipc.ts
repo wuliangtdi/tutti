@@ -8,6 +8,7 @@ import type {
   DesktopAgentComposerDefaultsByProvider,
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAgentProvider,
+  DesktopFileDefaultOpenersByExtension,
   DesktopSleepPreventionMode
 } from "../preferences/index.ts";
 import type {
@@ -272,6 +273,7 @@ export interface DesktopSelectAppArchiveExportPathInput {
 export interface DesktopHostPreferencesSyncPayload {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
+  fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
   defaultAgentProvider?: DesktopAgentProvider;
   locale?: DesktopLocale;
   sleepPreventionMode?: DesktopSleepPreventionMode;

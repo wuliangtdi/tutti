@@ -1,6 +1,8 @@
 import {
   createWorkspaceFileManagerService,
+  resolveWorkspaceFileExtension,
   type WorkspaceFileEntry,
+  type WorkspaceFileManagerFileDefaultOpener,
   type WorkspaceFileManagerI18nRuntime,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFileManagerMutationErrorMessage
@@ -23,6 +25,7 @@ import { FileManagerFileCreatedReporter } from "../../../analytics/reporters/fil
 import { FileManagerOpenedReporter } from "../../../analytics/reporters/file-manager-opened/fileManagerOpenedReporter.ts";
 import { createAnalyticsOpenedSourceParams } from "../../../analytics/reporters/openedSource.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
+import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 
 export interface WorkspaceFileManagerServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
@@ -31,6 +34,7 @@ export interface WorkspaceFileManagerServiceDependencies {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
+  desktopPreferencesService?: Pick<IDesktopPreferencesService, "store">;
   reporterService?: Pick<IReporterService, "trackEvents">;
 }
 
@@ -105,6 +109,11 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
         load: () => restoredState ?? null,
         save: () => this.notify(workspaceID)
       },
+      resolveFileDefaultOpener: (entry) =>
+        resolveDesktopFileDefaultOpener(
+          entry,
+          this.dependencies.desktopPreferencesService
+        ),
       workspaceID
     });
     this.sessions.set(workspaceID, session);
@@ -211,6 +220,21 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       }
     ).report();
   }
+}
+
+function resolveDesktopFileDefaultOpener(
+  entry: WorkspaceFileEntry,
+  desktopPreferencesService?: Pick<IDesktopPreferencesService, "store">
+): WorkspaceFileManagerFileDefaultOpener | null {
+  const extension = resolveWorkspaceFileExtension(entry.path || entry.name);
+  if (!extension) {
+    return null;
+  }
+
+  return (
+    desktopPreferencesService?.store.fileDefaultOpenersByExtension[extension] ??
+    null
+  );
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

@@ -206,6 +206,7 @@ export type DesktopPreferences = {
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   themeSource: DesktopThemeSource;
@@ -235,6 +236,16 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   gemini?: boolean;
   hermes?: boolean;
   openclaw?: boolean;
+};
+
+export type DesktopFileDefaultOpener =
+  | "appBrowser"
+  | "defaultBrowser"
+  | "fileViewer"
+  | "system";
+
+export type DesktopFileDefaultOpenersByExtension = {
+  [key: string]: DesktopFileDefaultOpener;
 };
 
 export type DesktopPreferencesStateResponse = {

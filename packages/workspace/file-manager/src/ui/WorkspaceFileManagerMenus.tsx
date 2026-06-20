@@ -63,6 +63,7 @@ export function WorkspaceFileManagerContextMenu({
   showExportAction,
   showOpenInAppBrowserAction,
   showOpenInDefaultBrowserAction,
+  showOpenInFileViewerAction,
   showOpenWithAction,
   showOpenWithOtherAction,
   showRevealInFolderAction,
@@ -81,6 +82,7 @@ export function WorkspaceFileManagerContextMenu({
   onOpen,
   onOpenInAppBrowser,
   onOpenInDefaultBrowser,
+  onOpenInFileViewer,
   onOpenWithApplication,
   onOpenWithOtherApplication,
   onImport,
@@ -104,6 +106,7 @@ export function WorkspaceFileManagerContextMenu({
   showExportAction: boolean;
   showOpenInAppBrowserAction: boolean;
   showOpenInDefaultBrowserAction: boolean;
+  showOpenInFileViewerAction: boolean;
   showOpenWithAction: boolean;
   showOpenWithOtherAction: boolean;
   showRevealInFolderAction: boolean;
@@ -121,6 +124,7 @@ export function WorkspaceFileManagerContextMenu({
   onOpen: () => Promise<void>;
   onOpenInAppBrowser: () => Promise<void>;
   onOpenInDefaultBrowser: () => Promise<void>;
+  onOpenInFileViewer: () => Promise<void>;
   onOpenWithApplication: (applicationPath: string) => Promise<void>;
   onOpenWithOtherApplication: () => Promise<void>;
   onImport: () => Promise<void>;
@@ -173,6 +177,7 @@ export function WorkspaceFileManagerContextMenu({
     showImportAction,
     showOpenInAppBrowserAction,
     showOpenInDefaultBrowserAction,
+    showOpenInFileViewerAction,
     showOpenWithAction,
     showOpenWithOtherAction,
     showRevealInFolderAction,
@@ -328,10 +333,12 @@ export function WorkspaceFileManagerContextMenu({
           resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
           showOpenInAppBrowser={showOpenInAppBrowserAction}
           showOpenInDefaultBrowser={showOpenInDefaultBrowserAction}
+          showOpenInFileViewer={showOpenInFileViewerAction}
           showOpenWithOther={showOpenWithOtherAction}
           onClose={onClose}
           onOpenInAppBrowser={onOpenInAppBrowser}
           onOpenInDefaultBrowser={onOpenInDefaultBrowser}
+          onOpenInFileViewer={onOpenInFileViewer}
           onOpenWithApplication={onOpenWithApplication}
           onOpenWithOtherApplication={onOpenWithOtherApplication}
         />
@@ -440,10 +447,12 @@ function OpenWithMenuItem({
   resolveOpenWithApplicationIcon,
   showOpenInAppBrowser,
   showOpenInDefaultBrowser,
+  showOpenInFileViewer,
   showOpenWithOther,
   onClose,
   onOpenInAppBrowser,
   onOpenInDefaultBrowser,
+  onOpenInFileViewer,
   onOpenWithApplication,
   onOpenWithOtherApplication
 }: {
@@ -457,10 +466,12 @@ function OpenWithMenuItem({
   ) => ReactElement | null;
   showOpenInAppBrowser: boolean;
   showOpenInDefaultBrowser: boolean;
+  showOpenInFileViewer: boolean;
   showOpenWithOther: boolean;
   onClose: () => void;
   onOpenInAppBrowser: () => Promise<void>;
   onOpenInDefaultBrowser: () => Promise<void>;
+  onOpenInFileViewer: () => Promise<void>;
   onOpenWithApplication: (applicationPath: string) => Promise<void>;
   onOpenWithOtherApplication: () => Promise<void>;
 }): ReactElement {
@@ -479,6 +490,7 @@ function OpenWithMenuItem({
     showExternalSection,
     showOpenInAppBrowser,
     showOpenInDefaultBrowser,
+    showOpenInFileViewer,
     showOpenWithOther
   });
 
@@ -586,6 +598,17 @@ function OpenWithMenuItem({
         onPointerEnter={openSubmenu}
         onPointerLeave={scheduleClose}
       >
+        {showOpenInFileViewer ? (
+          <ContextMenuActionButton
+            disabled={busy}
+            icon={<EyeIcon className="size-4" />}
+            label={copy.t("openInFileViewerLabel")}
+            onClick={() => {
+              onClose();
+              void onOpenInFileViewer();
+            }}
+          />
+        ) : null}
         {showOpenInAppBrowser ? (
           <ContextMenuActionButton
             disabled={busy}

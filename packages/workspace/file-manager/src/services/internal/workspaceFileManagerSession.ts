@@ -43,6 +43,7 @@ export interface WorkspaceFileManagerSessionInput {
     message: WorkspaceFileManagerMutationErrorMessage
   ) => boolean | void;
   persistence?: CreateWorkspaceFileManagerSessionInput["persistence"];
+  resolveFileDefaultOpener?: CreateWorkspaceFileManagerSessionInput["resolveFileDefaultOpener"];
   store: WorkspaceFileManagerState;
 }
 
@@ -101,6 +102,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       loadDirectory: (path) => this.navigationController.loadDirectory(path),
       resolveErrorMessage: (error, overrides) =>
         this.resolveErrorMessage(error, overrides),
+      resolveFileDefaultOpener: input.resolveFileDefaultOpener,
       store: this.store
     });
     this.mutationController = new WorkspaceFileManagerMutationController({
@@ -542,6 +544,22 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.store.contextMenu = null;
     this.store.contextMenuEntryPath = null;
     await this.host.openFileInDefaultBrowser({
+      path: entry.path,
+      workspaceID: this.store.workspaceID
+    });
+  }
+
+  async openFileInFileViewer(entry: WorkspaceFileEntry): Promise<void> {
+    await this.activationController.openFileInFileViewer(entry);
+  }
+
+  async openFileInSystemDefault(entry: WorkspaceFileEntry): Promise<void> {
+    if (!this.host.openFileInSystemDefault) {
+      return;
+    }
+    this.store.contextMenu = null;
+    this.store.contextMenuEntryPath = null;
+    await this.host.openFileInSystemDefault({
       path: entry.path,
       workspaceID: this.store.workspaceID
     });

@@ -227,6 +227,9 @@ function createPreferencesKey(
     preferences.defaultAgentProvider,
     preferences.dockIconStyle,
     preferences.dockPlacement,
+    stableFileDefaultOpenersByExtensionKey(
+      preferences.fileDefaultOpenersByExtension
+    ),
     preferences.locale,
     preferences.sleepPreventionMode,
     preferences.themeSource
@@ -251,6 +254,12 @@ function preferencesEqual(
     left.defaultAgentProvider === right.defaultAgentProvider &&
     left.dockIconStyle === right.dockIconStyle &&
     left.dockPlacement === right.dockPlacement &&
+    stableFileDefaultOpenersByExtensionKey(
+      left.fileDefaultOpenersByExtension
+    ) ===
+      stableFileDefaultOpenersByExtensionKey(
+        right.fileDefaultOpenersByExtension
+      ) &&
     left.locale === right.locale &&
     left.sleepPreventionMode === right.sleepPreventionMode &&
     left.themeSource === right.themeSource
@@ -303,6 +312,28 @@ function stableAgentGuiConversationRailCollapsedByProviderKey(
   for (const provider of desktopAgentProviderKeys) {
     if (typeof input[provider] === "boolean") {
       output[provider] = input[provider];
+    }
+  }
+  return JSON.stringify(output);
+}
+
+function stableFileDefaultOpenersByExtensionKey(value: unknown): string {
+  if (!value || typeof value !== "object") {
+    return "{}";
+  }
+  const input = value as Record<string, unknown>;
+  const output: Record<string, string> = {};
+  for (const extension of Object.keys(input).sort()) {
+    const normalizedExtension = extension
+      .trim()
+      .toLowerCase()
+      .replace(/^\.+/u, "");
+    const opener = input[extension];
+    if (
+      /^[a-z0-9][a-z0-9_-]{0,31}$/u.test(normalizedExtension) &&
+      typeof opener === "string"
+    ) {
+      output[normalizedExtension] = opener;
     }
   }
   return JSON.stringify(output);

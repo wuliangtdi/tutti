@@ -665,6 +665,7 @@ function WorkspaceFileManagerContextMenuContainer({
         !!view.contextMenu?.entry &&
         isWorkspaceFileBrowserOpenable(view.contextMenu.entry)
       }
+      showOpenInFileViewerAction={view.showOpenInFileViewerAction}
       showOpenWithAction={view.showOpenWithAction}
       showOpenWithOtherAction={view.showOpenWithOtherAction}
       showRevealInFolderAction={view.showRevealInFolderAction}
@@ -747,6 +748,13 @@ function WorkspaceFileManagerContextMenuContainer({
           return;
         }
         await session.openFileInDefaultBrowser(entry);
+      }}
+      onOpenInFileViewer={async () => {
+        const entry = view.contextMenu?.entry;
+        if (!entry) {
+          return;
+        }
+        await session.openFileInFileViewer(entry);
       }}
       onOpenWithApplication={async (applicationPath) => {
         const entry = view.contextMenu?.entry;

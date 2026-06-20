@@ -9,6 +9,11 @@ export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
 export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
 export type WorkspaceFilePreviewKind = "image" | "text" | "video";
+export type WorkspaceFileManagerFileDefaultOpener =
+  | "appBrowser"
+  | "defaultBrowser"
+  | "fileViewer"
+  | "system";
 export const workspaceFileManagerPersistedStateSchemaVersion = 2 as const;
 
 export interface WorkspaceFileEntry {

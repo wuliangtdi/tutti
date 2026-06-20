@@ -90,6 +90,29 @@ export type DesktopAgentGuiConversationRailCollapsedByProvider = Partial<
   Record<DesktopAgentProvider, boolean>
 >;
 
+export const desktopFileDefaultOpeners = [
+  "appBrowser",
+  "defaultBrowser",
+  "fileViewer",
+  "system"
+] as const;
+
+export type DesktopFileDefaultOpener =
+  (typeof desktopFileDefaultOpeners)[number];
+
+export type DesktopFileDefaultOpenersByExtension = Record<
+  string,
+  DesktopFileDefaultOpener
+>;
+
+export const defaultDesktopFileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension =
+  {
+    htm: "appBrowser",
+    html: "appBrowser",
+    shtml: "appBrowser",
+    xhtml: "appBrowser"
+  };
+
 export const desktopSleepPreventionModes = [
   "never",
   "whileAgentRunning",
@@ -148,6 +171,59 @@ export function isDesktopAgentProvider(
     typeof value === "string" &&
     desktopAgentProviders.includes(value as DesktopAgentProvider)
   );
+}
+
+export function isDesktopFileDefaultOpener(
+  value: unknown
+): value is DesktopFileDefaultOpener {
+  return (
+    typeof value === "string" &&
+    desktopFileDefaultOpeners.includes(value as DesktopFileDefaultOpener)
+  );
+}
+
+export function normalizeDesktopFileExtension(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/^\.+/u, "");
+  return /^[a-z0-9][a-z0-9_-]{0,31}$/u.test(normalized) ? normalized : null;
+}
+
+export function normalizeDesktopFileDefaultOpenersByExtension(
+  value: unknown
+): DesktopFileDefaultOpenersByExtension {
+  if (!isRecord(value)) {
+    return { ...defaultDesktopFileDefaultOpenersByExtension };
+  }
+
+  const result: DesktopFileDefaultOpenersByExtension = {};
+  for (const [extension, opener] of Object.entries(value)) {
+    const normalizedExtension = normalizeDesktopFileExtension(extension);
+    if (!normalizedExtension || !isDesktopFileDefaultOpener(opener)) {
+      continue;
+    }
+    result[normalizedExtension] = opener;
+  }
+  return result;
+}
+
+export function desktopFileDefaultOpenersByExtensionEqual(
+  left: DesktopFileDefaultOpenersByExtension | null | undefined,
+  right: DesktopFileDefaultOpenersByExtension | null | undefined
+): boolean {
+  const normalizedLeft = normalizeDesktopFileDefaultOpenersByExtension(left);
+  const normalizedRight = normalizeDesktopFileDefaultOpenersByExtension(right);
+  const keys = new Set([
+    ...Object.keys(normalizedLeft),
+    ...Object.keys(normalizedRight)
+  ]);
+  for (const key of keys) {
+    if (normalizedLeft[key] !== normalizedRight[key]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function normalizeDesktopAgentComposerDefaults(

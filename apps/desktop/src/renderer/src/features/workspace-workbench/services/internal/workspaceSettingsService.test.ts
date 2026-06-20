@@ -960,6 +960,7 @@ function createDesktopPreferencesService(input: {
   onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
   onSetDockPlacement?: IDesktopPreferencesService["setDockPlacement"];
+  onSetFileDefaultOpenersByExtension?: IDesktopPreferencesService["setFileDefaultOpenersByExtension"];
   onSetLocale?: IDesktopPreferencesService["setLocale"];
   onSetSleepPreventionMode?: IDesktopPreferencesService["setSleepPreventionMode"];
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
@@ -979,6 +980,9 @@ function createDesktopPreferencesService(input: {
     setDockIconStyle: input.onSetDockIconStyle ?? (async (style) => style),
     setDockPlacement:
       input.onSetDockPlacement ?? (async (placement) => placement),
+    setFileDefaultOpenersByExtension:
+      input.onSetFileDefaultOpenersByExtension ??
+      (async (openersByExtension) => openersByExtension),
     setLocale: input.onSetLocale ?? (async (locale) => locale),
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
@@ -1008,6 +1012,7 @@ function createPreferencesState(
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
     sleepPreventionMode: "never",
     theme: createTheme("system"),

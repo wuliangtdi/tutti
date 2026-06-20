@@ -90,6 +90,10 @@ export interface PreferencesDesktopPreferencesV1 {
     | "openclaw";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
+  fileDefaultOpenersByExtension: Record<
+    string,
+    "appBrowser" | "defaultBrowser" | "fileViewer" | "system"
+  >;
   locale: "en" | "zh-CN";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   themeSource: "system" | "dark" | "light";

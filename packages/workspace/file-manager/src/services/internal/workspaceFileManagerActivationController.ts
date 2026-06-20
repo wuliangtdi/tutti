@@ -8,6 +8,7 @@ import type {
 } from "../workspaceFileManagerHostTypes.ts";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileManagerFileDefaultOpener,
   WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
 
@@ -19,6 +20,9 @@ export interface WorkspaceFileManagerActivationControllerInput {
     error: unknown,
     overrides?: Record<string, string | undefined>
   ) => string;
+  resolveFileDefaultOpener?: (
+    entry: WorkspaceFileEntry
+  ) => WorkspaceFileManagerFileDefaultOpener | null | undefined;
   store: WorkspaceFileManagerState;
 }
 
@@ -30,6 +34,9 @@ export class WorkspaceFileManagerActivationController {
     error: unknown,
     overrides?: Record<string, string | undefined>
   ) => string;
+  private readonly resolveFileDefaultOpener?: (
+    entry: WorkspaceFileEntry
+  ) => WorkspaceFileManagerFileDefaultOpener | null | undefined;
   private readonly store: WorkspaceFileManagerState;
 
   constructor(input: WorkspaceFileManagerActivationControllerInput) {
@@ -37,6 +44,7 @@ export class WorkspaceFileManagerActivationController {
     this.host = input.host;
     this.loadDirectory = input.loadDirectory;
     this.resolveErrorMessage = input.resolveErrorMessage;
+    this.resolveFileDefaultOpener = input.resolveFileDefaultOpener;
     this.store = input.store;
   }
 
@@ -120,6 +128,7 @@ export class WorkspaceFileManagerActivationController {
 
   async openEntry(entry: WorkspaceFileEntry): Promise<void> {
     this.store.contextMenu = null;
+    this.store.contextMenuEntryPath = null;
 
     if (entry.kind === "directory") {
       this.store.pendingDirectoryPath = entry.path;
@@ -133,6 +142,20 @@ export class WorkspaceFileManagerActivationController {
       return;
     }
 
+    const opener = this.resolveFileDefaultOpener?.(entry) ?? null;
+    if (opener && opener !== "fileViewer") {
+      const handled = await this.openFileWithConfiguredOpener(entry, opener);
+      if (handled) {
+        return;
+      }
+    }
+
+    await this.openFileInFileViewer(entry);
+  }
+
+  async openFileInFileViewer(entry: WorkspaceFileEntry): Promise<void> {
+    this.store.contextMenu = null;
+    this.store.contextMenuEntryPath = null;
     this.store.busyAction = "view";
     try {
       const result = await this.activateFile({
@@ -142,6 +165,43 @@ export class WorkspaceFileManagerActivationController {
       this.applyActivationResult(result, entry);
     } finally {
       this.store.busyAction = null;
+    }
+  }
+
+  private async openFileWithConfiguredOpener(
+    entry: WorkspaceFileEntry,
+    opener: WorkspaceFileManagerFileDefaultOpener
+  ): Promise<boolean> {
+    switch (opener) {
+      case "appBrowser":
+        if (!this.host.openFileInAppBrowser) {
+          return false;
+        }
+        await this.host.openFileInAppBrowser({
+          path: entry.path,
+          workspaceID: this.store.workspaceID
+        });
+        return true;
+      case "defaultBrowser":
+        if (!this.host.openFileInDefaultBrowser) {
+          return false;
+        }
+        await this.host.openFileInDefaultBrowser({
+          path: entry.path,
+          workspaceID: this.store.workspaceID
+        });
+        return true;
+      case "system":
+        if (!this.host.openFileInSystemDefault) {
+          return false;
+        }
+        await this.host.openFileInSystemDefault({
+          path: entry.path,
+          workspaceID: this.store.workspaceID
+        });
+        return true;
+      case "fileViewer":
+        return false;
     }
   }
 

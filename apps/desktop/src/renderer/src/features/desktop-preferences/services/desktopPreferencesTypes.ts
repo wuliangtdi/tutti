@@ -6,6 +6,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFileDefaultOpenersByExtension,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -28,6 +29,7 @@ export interface DesktopPreferencesStoreState {
   defaultAgentProvider: DesktopAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   theme: DesktopThemeState;
@@ -51,6 +53,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly defaultAgentProvider: DesktopAgentProvider;
   readonly dockIconStyle: DesktopDockIconStyle;
   readonly dockPlacement: DesktopDockPlacement;
+  readonly fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   readonly locale: DesktopLocale;
   readonly sleepPreventionMode: DesktopSleepPreventionMode;
   readonly theme: DesktopThemeState;

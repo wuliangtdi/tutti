@@ -60,6 +60,7 @@ export {
   type WorkspaceFileImportSummaryReason,
   type WorkspaceFileImportSummaryReasonCount,
   type WorkspaceFileManagerCapabilities,
+  type WorkspaceFileManagerFileDefaultOpener,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFilePreviewKind,
   type WorkspaceFilePreviewState,

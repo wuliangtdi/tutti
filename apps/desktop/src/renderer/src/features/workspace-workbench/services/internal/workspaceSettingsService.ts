@@ -975,6 +975,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
+  fileDefaultOpenersByExtension: {},
   locale: "en",
   sleepPreventionMode: "never",
   theme: createNoopTheme("dark"),
@@ -996,6 +997,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setDockIconStyle(style) {
     return Promise.resolve(style);
+  },
+  setFileDefaultOpenersByExtension(openersByExtension) {
+    return Promise.resolve(openersByExtension);
   },
   setLocale(locale) {
     return Promise.resolve(locale);

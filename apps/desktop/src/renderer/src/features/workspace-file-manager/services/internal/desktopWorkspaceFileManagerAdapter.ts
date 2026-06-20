@@ -117,6 +117,10 @@ export function createDesktopWorkspaceFileManagerAdapter(
     async openFileInDefaultBrowser(input): Promise<void> {
       await hostFilesApi.openFileInBrowser(input.workspaceID, input.path);
     },
+    async openFileInSystemDefault(input): Promise<void> {
+      await hostFilesApi.openFile(input.workspaceID, input.path);
+      dependencies.reportFileOpened?.();
+    },
     async revealEntry(input): Promise<void> {
       try {
         await hostFilesApi.revealWorkspaceFile(input.workspaceID, input.path);

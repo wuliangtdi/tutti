@@ -35,11 +35,14 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			DefaultAgentProvider:     preferences.DefaultAgentProvider,
 			DockIconStyle:            preferences.DockIconStyle,
 			DockPlacement:            preferences.DockPlacement,
-			Locale:                   preferences.Locale,
-			SleepPreventionMode:      preferences.SleepPreventionMode,
-			ThemeSource:              preferences.ThemeSource,
-			UpdateChannel:            preferences.UpdateChannel,
-			UpdatePolicy:             preferences.UpdatePolicy,
+			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
+				preferences.FileDefaultOpenersByExtension,
+			),
+			Locale:              preferences.Locale,
+			SleepPreventionMode: preferences.SleepPreventionMode,
+			ThemeSource:         preferences.ThemeSource,
+			UpdateChannel:       preferences.UpdateChannel,
+			UpdatePolicy:        preferences.UpdatePolicy,
 		},
 	})
 	if err != nil {
@@ -66,6 +69,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
+			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			Locale:                                      decoded.Locale,
 			SleepPreventionMode:                         decoded.SleepPreventionMode,
 			ThemeSource:                                 decoded.ThemeSource,
@@ -86,6 +90,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	SleepPreventionMode                         string
 	ThemeSource                                 string
@@ -109,12 +114,46 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		DefaultAgentProvider:     decoded.Preferences.DefaultAgentProvider,
 		DockIconStyle:            decoded.Preferences.DockIconStyle,
 		DockPlacement:            decoded.Preferences.DockPlacement,
-		Locale:                   decoded.Preferences.Locale,
-		SleepPreventionMode:      decoded.Preferences.SleepPreventionMode,
-		ThemeSource:              decoded.Preferences.ThemeSource,
-		UpdateChannel:            decoded.Preferences.UpdateChannel,
-		UpdatePolicy:             decoded.Preferences.UpdatePolicy,
+		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
+			decoded.Preferences.FileDefaultOpenersByExtension,
+		),
+		Locale:              decoded.Preferences.Locale,
+		SleepPreventionMode: decoded.Preferences.SleepPreventionMode,
+		ThemeSource:         decoded.Preferences.ThemeSource,
+		UpdateChannel:       decoded.Preferences.UpdateChannel,
+		UpdatePolicy:        decoded.Preferences.UpdatePolicy,
 	}, nil
+}
+
+func fileDefaultOpenersByExtensionPayloadFromBiz(
+	openersByExtension map[string]string,
+) desktopFileDefaultOpenersByExtensionPayload {
+	payload := desktopFileDefaultOpenersByExtensionPayload{}
+	for extension, opener := range openersByExtension {
+		normalizedExtension := preferencesbiz.NormalizeDesktopFileExtension(extension)
+		if normalizedExtension == "" || !preferencesbiz.IsDesktopFileDefaultOpener(opener) {
+			continue
+		}
+		payload[normalizedExtension] = opener
+	}
+	return payload
+}
+
+func fileDefaultOpenersByExtensionFromPayload(
+	payload desktopFileDefaultOpenersByExtensionPayload,
+) map[string]string {
+	if payload == nil {
+		return nil
+	}
+	openersByExtension := map[string]string{}
+	for extension, opener := range payload {
+		normalizedExtension := preferencesbiz.NormalizeDesktopFileExtension(extension)
+		if normalizedExtension == "" || !preferencesbiz.IsDesktopFileDefaultOpener(opener) {
+			continue
+		}
+		openersByExtension[normalizedExtension] = opener
+	}
+	return openersByExtension
 }
 
 func agentGUIConversationRailCollapsedByProviderPayloadFromBiz(

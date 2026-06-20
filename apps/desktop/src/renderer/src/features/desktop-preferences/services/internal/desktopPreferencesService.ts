@@ -10,6 +10,7 @@ import {
   defaultDesktopBrowserUseConnectionMode,
   defaultDesktopDockIconStyle,
   defaultDesktopDockPlacement,
+  defaultDesktopFileDefaultOpenersByExtension,
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
@@ -17,7 +18,9 @@ import {
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaults,
   normalizeDesktopAgentComposerDefaultsByProvider,
+  normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
+  desktopFileDefaultOpenersByExtensionEqual,
   type DesktopAgentComposerDefaults,
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentGuiConversationRailCollapsedByProvider,
@@ -25,6 +28,7 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockIconStyle,
   type DesktopDockPlacement,
+  type DesktopFileDefaultOpenersByExtension,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
   type DesktopUpdatePolicy
@@ -58,6 +62,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       dockIconStyle: defaultDesktopDockIconStyle,
       dockPlacement:
         this.dependencies.initialDockPlacement ?? defaultDesktopDockPlacement,
+      fileDefaultOpenersByExtension:
+        defaultDesktopFileDefaultOpenersByExtension,
       locale: this.dependencies.initialLocale,
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       theme: this.dependencies.initialTheme,
@@ -191,6 +197,38 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       if (this.store.changingDockIconStyle === style) {
         this.store.changingDockIconStyle = null;
       }
+    }
+  }
+
+  async setFileDefaultOpenersByExtension(
+    openersByExtension: DesktopFileDefaultOpenersByExtension
+  ): Promise<DesktopFileDefaultOpenersByExtension> {
+    const nextOpenersByExtension =
+      normalizeDesktopFileDefaultOpenersByExtension(openersByExtension);
+    if (
+      desktopFileDefaultOpenersByExtensionEqual(
+        this.store.fileDefaultOpenersByExtension,
+        nextOpenersByExtension
+      )
+    ) {
+      return this.store.fileDefaultOpenersByExtension;
+    }
+
+    const previousOpenersByExtension = this.store.fileDefaultOpenersByExtension;
+    this.store.fileDefaultOpenersByExtension = nextOpenersByExtension;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            fileDefaultOpenersByExtension: nextOpenersByExtension
+          })
+        });
+      return normalizeDesktopFileDefaultOpenersByExtension(
+        authoritativePreferences.fileDefaultOpenersByExtension
+      );
+    } catch (error) {
+      this.store.fileDefaultOpenersByExtension = previousOpenersByExtension;
+      throw error;
     }
   }
 
@@ -447,6 +485,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     sleepPreventionMode: DesktopSleepPreventionMode;
     themeSource: DesktopThemeSource;
@@ -467,6 +506,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.store.defaultAgentProvider = preferences.defaultAgentProvider;
     this.store.dockIconStyle = preferences.dockIconStyle;
     this.store.dockPlacement = preferences.dockPlacement;
+    this.store.fileDefaultOpenersByExtension =
+      normalizeDesktopFileDefaultOpenersByExtension(
+        preferences.fileDefaultOpenersByExtension
+      );
     this.applyLocale(preferences.locale);
     this.store.sleepPreventionMode = preferences.sleepPreventionMode;
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
@@ -482,6 +525,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       defaultAgentProvider: DesktopAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
+      fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
       locale: DesktopLocale;
       sleepPreventionMode: DesktopSleepPreventionMode;
       themeSource: DesktopThemeSource;
@@ -495,6 +539,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     defaultAgentProvider: DesktopAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
+    fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
     locale: DesktopLocale;
     sleepPreventionMode: DesktopSleepPreventionMode;
     themeSource: DesktopThemeSource;
@@ -519,6 +564,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
       dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,
       dockPlacement: overrides.dockPlacement ?? this.store.dockPlacement,
+      fileDefaultOpenersByExtension:
+        normalizeDesktopFileDefaultOpenersByExtension(
+          overrides.fileDefaultOpenersByExtension ??
+            this.store.fileDefaultOpenersByExtension
+        ),
       locale: overrides.locale ?? this.store.locale,
       sleepPreventionMode:
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,

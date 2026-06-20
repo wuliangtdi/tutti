@@ -25,6 +25,7 @@ export class DefaultWorkspaceFileManagerService implements WorkspaceFileManagerS
       onHostActionMessage: input.onHostActionMessage,
       onMutationErrorMessage: input.onMutationErrorMessage,
       persistence: input.persistence,
+      resolveFileDefaultOpener: input.resolveFileDefaultOpener,
       store
     });
   }

@@ -24,6 +24,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
 
             dockIconStyle: "flat",
             dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
             locale: "en",
             sleepPreventionMode: "never",
             themeSource: "system",
@@ -52,6 +53,12 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
 
         dockIconStyle: "default",
         dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: {
+          htm: "appBrowser",
+          html: "appBrowser",
+          shtml: "appBrowser",
+          xhtml: "appBrowser"
+        },
         locale: "zh-CN",
         sleepPreventionMode: "never",
         themeSource: "dark",
@@ -87,6 +94,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
 
             dockIconStyle: "default",
             dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
             locale: "en",
             sleepPreventionMode: "never",
             themeSource: "system",
@@ -132,6 +140,7 @@ test("createDesktopHostPreferencesState migrates the old stable default update c
 
             dockIconStyle: "default",
             dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
             locale: "zh-CN",
             sleepPreventionMode: "never",
             themeSource: "dark",
@@ -196,6 +205,7 @@ test("createDesktopHostPreferencesState preserves stable after the update channe
 
             dockIconStyle: "default",
             dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
             locale: "zh-CN",
             sleepPreventionMode: "never",
             themeSource: "dark",
@@ -231,6 +241,7 @@ test("createDesktopHostPreferencesState notifies subscribers after sync changes"
 
             dockIconStyle: "default",
             dockPlacement: "bottom",
+            fileDefaultOpenersByExtension: { html: "defaultBrowser" },
             locale: "en",
             sleepPreventionMode: "never",
             themeSource: "system",

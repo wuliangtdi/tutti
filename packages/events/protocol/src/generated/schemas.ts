@@ -12,6 +12,7 @@ export const preferencesDesktopPreferencesSchema = {
     "defaultAgentProvider",
     "dockIconStyle",
     "dockPlacement",
+    "fileDefaultOpenersByExtension",
     "locale",
     "sleepPreventionMode",
     "themeSource",
@@ -154,6 +155,13 @@ export const preferencesDesktopPreferencesSchema = {
     dockPlacement: {
       type: "string",
       enum: ["bottom", "left"]
+    },
+    fileDefaultOpenersByExtension: {
+      type: "object",
+      additionalProperties: {
+        type: "string",
+        enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+      }
     },
     locale: {
       type: "string",
@@ -904,6 +912,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "fileDefaultOpenersByExtension",
         "locale",
         "sleepPreventionMode",
         "themeSource",
@@ -1053,6 +1062,13 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        fileDefaultOpenersByExtension: {
+          type: "object",
+          additionalProperties: {
+            type: "string",
+            enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+          }
         },
         locale: {
           type: "string",
@@ -1116,6 +1132,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "defaultAgentProvider",
         "dockIconStyle",
         "dockPlacement",
+        "fileDefaultOpenersByExtension",
         "locale",
         "sleepPreventionMode",
         "themeSource",
@@ -1265,6 +1282,13 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         dockPlacement: {
           type: "string",
           enum: ["bottom", "left"]
+        },
+        fileDefaultOpenersByExtension: {
+          type: "object",
+          additionalProperties: {
+            type: "string",
+            enum: ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+          }
         },
         locale: {
           type: "string",

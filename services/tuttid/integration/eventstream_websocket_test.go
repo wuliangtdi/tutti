@@ -270,8 +270,8 @@ func TestTuttidBlackBoxEventStreamPreferenceIntentPublishesUpdatedEvent(t *testi
 	if after.Preferences.DockPlacement != tuttigenerated.Bottom {
 		t.Fatalf("stored dockPlacement = %q, want %q", after.Preferences.DockPlacement, tuttigenerated.Bottom)
 	}
-	if after.Preferences.ThemeSource != tuttigenerated.DesktopThemeSourceDark {
-		t.Fatalf("stored themeSource = %q, want %q", after.Preferences.ThemeSource, tuttigenerated.DesktopThemeSourceDark)
+	if after.Preferences.ThemeSource != tuttigenerated.Dark {
+		t.Fatalf("stored themeSource = %q, want %q", after.Preferences.ThemeSource, tuttigenerated.Dark)
 	}
 }
 

@@ -26,6 +26,7 @@ type PutInput struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	SleepPreventionMode                         string
 	ThemeSource                                 string
@@ -53,6 +54,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		DefaultAgentProvider:                        agentproviderbiz.Normalize(input.DefaultAgentProvider),
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
+		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
 		Locale:                                      strings.TrimSpace(input.Locale),
 		SleepPreventionMode:                         strings.TrimSpace(input.SleepPreventionMode),
@@ -67,6 +69,25 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func normalizeFileDefaultOpenersByExtension(input map[string]string) map[string]string {
+	if input == nil {
+		return preferencesbiz.DefaultDesktopPreferences().FileDefaultOpenersByExtension
+	}
+	result := map[string]string{}
+	for extension, opener := range input {
+		normalizedExtension := preferencesbiz.NormalizeDesktopFileExtension(extension)
+		if normalizedExtension == "" {
+			continue
+		}
+		normalizedOpener := strings.TrimSpace(opener)
+		if !preferencesbiz.IsDesktopFileDefaultOpener(normalizedOpener) {
+			continue
+		}
+		result[normalizedExtension] = normalizedOpener
+	}
+	return result
 }
 
 func normalizeBrowserUseConnectionMode(value string) string {

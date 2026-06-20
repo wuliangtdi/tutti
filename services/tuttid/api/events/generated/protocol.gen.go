@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:7810c72f962eb593"
+	BusinessEventCatalogRevision = "sha256:a56ecd30f09220e0"
 )
 
 type Topic string
@@ -99,15 +99,16 @@ type PreferencesDesktopPreferences struct {
 		Hermes     *bool `json:"hermes,omitempty"`
 		Openclaw   *bool `json:"openclaw,omitempty"`
 	} `json:"agentGuiConversationRailCollapsedByProvider"`
-	BrowserUseConnectionMode *string `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider     string  `json:"defaultAgentProvider"`
-	DockIconStyle            string  `json:"dockIconStyle"`
-	DockPlacement            string  `json:"dockPlacement"`
-	Locale                   string  `json:"locale"`
-	SleepPreventionMode      string  `json:"sleepPreventionMode"`
-	ThemeSource              string  `json:"themeSource"`
-	UpdateChannel            string  `json:"updateChannel"`
-	UpdatePolicy             string  `json:"updatePolicy"`
+	BrowserUseConnectionMode      *string           `json:"browserUseConnectionMode,omitempty"`
+	DefaultAgentProvider          string            `json:"defaultAgentProvider"`
+	DockIconStyle                 string            `json:"dockIconStyle"`
+	DockPlacement                 string            `json:"dockPlacement"`
+	FileDefaultOpenersByExtension map[string]string `json:"fileDefaultOpenersByExtension"`
+	Locale                        string            `json:"locale"`
+	SleepPreventionMode           string            `json:"sleepPreventionMode"`
+	ThemeSource                   string            `json:"themeSource"`
+	UpdateChannel                 string            `json:"updateChannel"`
+	UpdatePolicy                  string            `json:"updatePolicy"`
 }
 
 type WorkspaceWorkspaceAppFactoryJob struct {

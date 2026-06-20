@@ -6,6 +6,7 @@ import type {
   DesktopBrowserUseConnectionMode,
   DesktopDockIconStyle,
   DesktopDockPlacement,
+  DesktopFileDefaultOpenersByExtension,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
   DesktopUpdatePolicy
@@ -21,6 +22,7 @@ export function createDesktopPreferencesStore(input: {
   defaultAgentProvider: DesktopAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   sleepPreventionMode: DesktopSleepPreventionMode;
   theme: DesktopThemeState;
@@ -45,6 +47,7 @@ export function createDesktopPreferencesStore(input: {
     defaultAgentProvider: input.defaultAgentProvider,
     dockIconStyle: input.dockIconStyle,
     dockPlacement: input.dockPlacement,
+    fileDefaultOpenersByExtension: input.fileDefaultOpenersByExtension,
     locale: input.locale,
     sleepPreventionMode: input.sleepPreventionMode,
     theme: input.theme,

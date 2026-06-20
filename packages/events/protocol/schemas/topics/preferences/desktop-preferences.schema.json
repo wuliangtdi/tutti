@@ -10,6 +10,7 @@
     "defaultAgentProvider",
     "dockIconStyle",
     "dockPlacement",
+    "fileDefaultOpenersByExtension",
     "locale",
     "sleepPreventionMode",
     "themeSource",
@@ -63,6 +64,13 @@
     "dockPlacement": {
       "type": "string",
       "enum": ["bottom", "left"]
+    },
+    "fileDefaultOpenersByExtension": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["appBrowser", "defaultBrowser", "fileViewer", "system"]
+      }
     },
     "locale": {
       "type": "string",

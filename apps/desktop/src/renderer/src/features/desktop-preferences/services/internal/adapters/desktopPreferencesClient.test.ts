@@ -24,6 +24,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -43,6 +44,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
 
           dockIconStyle: "default",
           dockPlacement: "bottom",
+          fileDefaultOpenersByExtension: { html: "defaultBrowser" },
           locale: "zh-CN",
           sleepPreventionMode: "never",
           themeSource: "dark",
@@ -64,6 +66,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -80,6 +83,7 @@ test("desktop preferences client resolves writes from the authoritative event", 
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "zh-CN",
     sleepPreventionMode: "never",
     themeSource: "dark",
@@ -108,6 +112,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -132,6 +137,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -154,6 +160,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -172,6 +179,7 @@ test("desktop preferences client distinguishes agent GUI conversation rail prefe
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "zh-CN",
     sleepPreventionMode: "never",
     themeSource: "dark",
@@ -206,6 +214,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -223,6 +232,7 @@ test("desktop preferences client fans out authoritative preference updates", asy
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -251,6 +261,7 @@ test("desktop preferences client rejects pending writes when disposed", async ()
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -276,6 +287,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -301,6 +313,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -317,6 +330,7 @@ test("desktop preferences client confirms writes from HTTP when the event does n
 
     dockIconStyle: "default",
     dockPlacement: "bottom",
+    fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "zh-CN",
     sleepPreventionMode: "never",
     themeSource: "dark",
@@ -339,6 +353,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -369,6 +384,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -386,6 +402,7 @@ test("desktop preferences client notifies subscribers when HTTP confirmation suc
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -408,6 +425,7 @@ test("desktop preferences client rejects writes when the authoritative state can
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "system",
@@ -433,6 +451,7 @@ test("desktop preferences client rejects writes when the authoritative state can
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -467,6 +486,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -483,6 +503,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -503,6 +524,7 @@ test("desktop preferences client coalesces concurrent identical writes", async (
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -531,6 +553,7 @@ function createFakeTuttidClient(
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "system",

@@ -18,6 +18,7 @@ import {
   DeleteIcon,
   EyeIcon,
   ImportLinedIcon,
+  Input,
   LinkIcon,
   LoadingIcon,
   Select,
@@ -55,9 +56,13 @@ import {
   type DesktopAgentProvider,
   desktopBrowserUseConnectionModes,
   desktopDockPlacements,
+  desktopFileDefaultOpeners,
   desktopSleepPreventionModes,
+  normalizeDesktopFileExtension,
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
+  type DesktopFileDefaultOpener,
+  type DesktopFileDefaultOpenersByExtension,
   type DesktopSleepPreventionMode
 } from "../../../../../shared/preferences/index.ts";
 import {
@@ -118,7 +123,8 @@ export function WorkspaceSettingsPanel({
     service: analyticsDebugPreferenceService,
     state: analyticsDebugPreferenceState
   } = useAnalyticsDebugPreferenceService();
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const { service: desktopPreferencesService, state: desktopPreferencesState } =
+    useDesktopPreferencesService();
   const { service: settingsService, state: settingsState } =
     useWorkspaceSettingsService();
   const versionTapCountRef = useRef(0);
@@ -342,6 +348,9 @@ export function WorkspaceSettingsPanel({
                 analyticsDebugEnabled={analyticsDebugPreferenceState.enabled}
                 developerLogs={settingsState.developerLogs}
                 developerPanelVisible={settingsState.developerPanelVisible}
+                fileDefaultOpenersByExtension={
+                  desktopPreferencesState.fileDefaultOpenersByExtension
+                }
                 onAnalyticsDebugEnabledChange={(enabled) => {
                   analyticsDebugPreferenceService.setEnabled(enabled);
                 }}
@@ -364,6 +373,11 @@ export function WorkspaceSettingsPanel({
                 }}
                 onExportLogs={() => {
                   void settingsService.exportDeveloperLogs();
+                }}
+                onFileDefaultOpenersChange={(openersByExtension) => {
+                  void desktopPreferencesService.setFileDefaultOpenersByExtension(
+                    openersByExtension
+                  );
                 }}
               />
             )}
@@ -1306,24 +1320,40 @@ function WorkspaceDeveloperSettingsSection({
   analyticsDebugEnabled,
   developerLogs,
   developerPanelVisible,
+  fileDefaultOpenersByExtension,
   onAnalyticsDebugEnabledChange,
   onClearConversationHistory,
   onClearLogs,
   onDeveloperPanelVisibleChange,
-  onExportLogs
+  onExportLogs,
+  onFileDefaultOpenersChange
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   developerPanelVisible: boolean;
+  fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onClearConversationHistory: () => void;
   onClearLogs: () => void;
   onDeveloperPanelVisibleChange: (visible: boolean) => void;
   onExportLogs: () => void;
+  onFileDefaultOpenersChange: (
+    openersByExtension: DesktopFileDefaultOpenersByExtension
+  ) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
+  const [newExtension, setNewExtension] = useState("");
+  const [newOpener, setNewOpener] =
+    useState<DesktopFileDefaultOpener>("fileViewer");
+  const normalizedNewExtension = normalizeDesktopFileExtension(newExtension);
+  const fileDefaultOpeners = Object.entries(fileDefaultOpenersByExtension).sort(
+    ([left], [right]) => left.localeCompare(right)
+  );
+  const canAddFileDefaultOpener =
+    normalizedNewExtension !== null &&
+    fileDefaultOpenersByExtension[normalizedNewExtension] === undefined;
 
   return (
     <SettingsRows>
@@ -1360,6 +1390,131 @@ function WorkspaceDeveloperSettingsSection({
           />
         </div>
       ) : null}
+
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.fileDefaultOpenersLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.fileDefaultOpenersDescription")}
+          </p>
+        </div>
+        <div className="grid gap-2">
+          {fileDefaultOpeners.map(([extension, opener]) => (
+            <div
+              key={extension}
+              className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]"
+            >
+              <span className="min-w-0 truncate text-[13px] text-[var(--text-primary)]">
+                .{extension}
+              </span>
+              <Select
+                value={opener}
+                onValueChange={(value) => {
+                  onFileDefaultOpenersChange({
+                    ...fileDefaultOpenersByExtension,
+                    [extension]: value as DesktopFileDefaultOpener
+                  });
+                }}
+              >
+                <SelectTrigger
+                  aria-label={t(
+                    "workspace.settings.developer.fileDefaultOpenerActionLabel",
+                    { extension }
+                  )}
+                  className={workspaceSettingsSelectTriggerClass}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent
+                  className={workspaceSettingsSelectContentClass}
+                  style={{ zIndex: "var(--z-panel-popover)" }}
+                >
+                  {desktopFileDefaultOpeners.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {t(workspaceSettingsFileDefaultOpenerLabelKey(candidate))}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                aria-label={t(
+                  "workspace.settings.developer.removeFileDefaultOpener",
+                  { extension }
+                )}
+                variant="ghost"
+                type="button"
+                onClick={() => {
+                  const { [extension]: _removed, ...remaining } =
+                    fileDefaultOpenersByExtension;
+                  onFileDefaultOpenersChange(remaining);
+                }}
+              >
+                <DeleteIcon className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+          <div className="grid grid-cols-[minmax(70px,0.7fr)_minmax(130px,1fr)_auto] items-center gap-2 max-[560px]:grid-cols-[1fr]">
+            <Input
+              aria-label={t(
+                "workspace.settings.developer.fileDefaultOpenerExtensionLabel"
+              )}
+              className={workspaceSettingsInputClass}
+              placeholder={t(
+                "workspace.settings.developer.fileDefaultOpenerExtensionPlaceholder"
+              )}
+              value={newExtension}
+              onChange={(event) => {
+                setNewExtension(event.currentTarget.value);
+              }}
+            />
+            <Select
+              value={newOpener}
+              onValueChange={(value) => {
+                setNewOpener(value as DesktopFileDefaultOpener);
+              }}
+            >
+              <SelectTrigger
+                aria-label={t(
+                  "workspace.settings.developer.fileDefaultOpenerNewActionLabel"
+                )}
+                className={workspaceSettingsSelectTriggerClass}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent
+                className={workspaceSettingsSelectContentClass}
+                style={{ zIndex: "var(--z-panel-popover)" }}
+              >
+                {desktopFileDefaultOpeners.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {t(workspaceSettingsFileDefaultOpenerLabelKey(candidate))}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              disabled={!canAddFileDefaultOpener}
+              variant="secondary"
+              type="button"
+              onClick={() => {
+                if (!normalizedNewExtension) {
+                  return;
+                }
+                onFileDefaultOpenersChange({
+                  ...fileDefaultOpenersByExtension,
+                  [normalizedNewExtension]: newOpener
+                });
+                setNewExtension("");
+              }}
+            >
+              <AddIcon className="size-3.5" />
+              {t("workspace.settings.developer.addFileDefaultOpener")}
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <SettingsRow label={t("workspace.settings.developer.logsSizeLabel")}>
         <p className="m-0 text-right text-[13px] leading-5 text-[var(--text-secondary)] max-[560px]:text-left">
@@ -1409,6 +1564,12 @@ function WorkspaceDeveloperSettingsSection({
       </SettingsRow>
     </SettingsRows>
   );
+}
+
+function workspaceSettingsFileDefaultOpenerLabelKey(
+  opener: DesktopFileDefaultOpener
+): DesktopI18nKey {
+  return `workspace.settings.developer.fileDefaultOpenerOptions.${opener}`;
 }
 
 function WorkspaceSettingsPanelPortal({

@@ -38,6 +38,33 @@ test("openEntry loads directories through the injected loader", async () => {
   assert.equal(store.busyAction, null);
 });
 
+test("openEntry uses configured browser opener before file viewer", async () => {
+  const store = createTestStore();
+  const entry = createFileEntry("/workspace/index.html");
+  const calls: string[] = [];
+  const controller = new WorkspaceFileManagerActivationController({
+    copy: createTestI18nRuntime,
+    host: createHost({
+      async activateFile() {
+        throw new Error("file viewer should not open");
+      },
+      async openFileInDefaultBrowser(input) {
+        calls.push(input.path);
+      }
+    }),
+    loadDirectory: async () => {},
+    resolveErrorMessage: defaultResolveErrorMessage,
+    resolveFileDefaultOpener: () => "defaultBrowser",
+    store
+  });
+
+  await controller.openEntry(entry);
+
+  assert.deepEqual(calls, [entry.path]);
+  assert.equal(store.busyAction, null);
+  assert.equal(store.unsupportedDialog, null);
+});
+
 test("activateFile wraps fallback action failures into unsupported results", async () => {
   const store = createTestStore();
   const entry = createFileEntry("/workspace/notes.txt");

@@ -1407,6 +1407,16 @@ function renderTSObjectLiteral(schema, options, depth) {
   const properties = Object.entries(schema.properties ?? {});
   const required = new Set(schema.required ?? []);
   if (properties.length === 0) {
+    if (
+      schema.additionalProperties &&
+      typeof schema.additionalProperties === "object"
+    ) {
+      return `Record<string, ${renderTSTypeExpression(
+        schema.additionalProperties,
+        options,
+        depth + 1
+      )}>`;
+    }
     return "Record<string, unknown>";
   }
 
@@ -1492,6 +1502,16 @@ function renderGoType(schema, optional, options = {}) {
         return optional ? "*map[string]any" : "map[string]any";
       }
       if (Object.keys(schema.properties ?? {}).length === 0) {
+        if (
+          schema.additionalProperties &&
+          typeof schema.additionalProperties === "object"
+        ) {
+          return `${optional ? "*" : ""}map[string]${renderGoType(
+            schema.additionalProperties,
+            false,
+            options
+          )}`;
+        }
         return optional ? "*map[string]any" : "map[string]any";
       }
       return optional

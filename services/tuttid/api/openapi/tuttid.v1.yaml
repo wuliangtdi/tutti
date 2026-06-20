@@ -3314,6 +3314,7 @@ components:
         - defaultAgentProvider
         - dockIconStyle
         - dockPlacement
+        - fileDefaultOpenersByExtension
         - locale
         - sleepPreventionMode
         - themeSource
@@ -3332,6 +3333,8 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
+        fileDefaultOpenersByExtension:
+          $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         sleepPreventionMode:
@@ -3384,6 +3387,17 @@ components:
           type: boolean
         openclaw:
           type: boolean
+    DesktopFileDefaultOpener:
+      type: string
+      enum:
+        - appBrowser
+        - defaultBrowser
+        - fileViewer
+        - system
+    DesktopFileDefaultOpenersByExtension:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DesktopFileDefaultOpener"
     DesktopPreferencesStateResponse:
       type: object
       additionalProperties: false

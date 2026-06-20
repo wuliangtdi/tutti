@@ -61,6 +61,8 @@ export interface WorkspaceFileManagerCommands {
   ): Promise<void>;
   openFileInAppBrowser(entry: WorkspaceFileEntry): Promise<void>;
   openFileInDefaultBrowser(entry: WorkspaceFileEntry): Promise<void>;
+  openFileInFileViewer(entry: WorkspaceFileEntry): Promise<void>;
+  openFileInSystemDefault(entry: WorkspaceFileEntry): Promise<void>;
   openFileWithOtherApplication(entry: WorkspaceFileEntry): Promise<void>;
   revealEntry(entry: WorkspaceFileEntry): Promise<void>;
   exportEntry(

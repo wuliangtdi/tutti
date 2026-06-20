@@ -264,6 +264,7 @@ type desktopPreferencesMutationPayload struct {
 		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 		DockIconStyle                               string                                                    `json:"dockIconStyle"`
 		DockPlacement                               string                                                    `json:"dockPlacement"`
+		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		Locale                                      string                                                    `json:"locale"`
 		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 		ThemeSource                                 string                                                    `json:"themeSource"`
@@ -384,6 +385,7 @@ type desktopPreferencesSettingsPayload struct {
 	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 	DockIconStyle                               string                                                    `json:"dockIconStyle"`
 	DockPlacement                               string                                                    `json:"dockPlacement"`
+	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      string                                                    `json:"locale"`
 	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
 	ThemeSource                                 string                                                    `json:"themeSource"`
@@ -394,6 +396,8 @@ type desktopPreferencesSettingsPayload struct {
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload
 
 type desktopAgentGUIConversationRailCollapsedByProviderPayload map[string]bool
+
+type desktopFileDefaultOpenersByExtensionPayload map[string]string
 
 type desktopAgentComposerDefaultsPayload struct {
 	Model            string `json:"model,omitempty"`
@@ -483,6 +487,14 @@ func validateDesktopPreferencesUpdateRequestedPayload(payload []byte) error {
 	if !preferencesbiz.IsDesktopUpdatePolicy(decoded.UpdatePolicy) {
 		return fmt.Errorf("preferences.updatePolicy is unsupported")
 	}
+	for extension, opener := range decoded.FileDefaultOpenersByExtension {
+		if preferencesbiz.NormalizeDesktopFileExtension(extension) == "" {
+			return fmt.Errorf("preferences.fileDefaultOpenersByExtension has unsupported extension")
+		}
+		if !preferencesbiz.IsDesktopFileDefaultOpener(opener) {
+			return fmt.Errorf("preferences.fileDefaultOpenersByExtension has unsupported opener")
+		}
+	}
 	return nil
 }
 
@@ -542,6 +554,14 @@ func validateDesktopPreferencesUpdatedPayload(payload []byte) error {
 	}
 	if !preferencesbiz.IsDesktopUpdatePolicy(decoded.Preferences.UpdatePolicy) {
 		return fmt.Errorf("preferences.updatePolicy is unsupported")
+	}
+	for extension, opener := range decoded.Preferences.FileDefaultOpenersByExtension {
+		if preferencesbiz.NormalizeDesktopFileExtension(extension) == "" {
+			return fmt.Errorf("preferences.fileDefaultOpenersByExtension has unsupported extension")
+		}
+		if !preferencesbiz.IsDesktopFileDefaultOpener(opener) {
+			return fmt.Errorf("preferences.fileDefaultOpenersByExtension has unsupported opener")
+		}
 	}
 	return nil
 }

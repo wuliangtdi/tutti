@@ -40,6 +40,7 @@ test("desktop host preferences follows authoritative preference events", async (
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "zh-CN",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -73,6 +74,7 @@ test("desktop host preferences follows authoritative preference events", async (
 
       dockIconStyle: "default",
       dockPlacement: "bottom",
+      fileDefaultOpenersByExtension: { html: "defaultBrowser" },
       locale: "en",
       sleepPreventionMode: "never",
       themeSource: "dark",
@@ -106,6 +108,8 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   > = "isolated";
   let dockPlacement: DesktopPreferencesStateResponse["preferences"]["dockPlacement"] =
     "bottom";
+  let fileDefaultOpenersByExtension: DesktopPreferencesStateResponse["preferences"]["fileDefaultOpenersByExtension"] =
+    { html: "defaultBrowser" };
   let locale: DesktopPreferencesStateResponse["preferences"]["locale"] = "en";
   let sleepPreventionMode: DesktopPreferencesStateResponse["preferences"]["sleepPreventionMode"] =
     "never";
@@ -136,6 +140,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     getDockPlacement() {
       return dockPlacement;
+    },
+    getFileDefaultOpenersByExtension() {
+      return fileDefaultOpenersByExtension;
     },
     getSleepPreventionMode() {
       return sleepPreventionMode;
@@ -168,6 +175,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.dockPlacement) {
         dockPlacement = input.dockPlacement;
+      }
+      if (input.fileDefaultOpenersByExtension) {
+        fileDefaultOpenersByExtension = input.fileDefaultOpenersByExtension;
       }
       if (input.sleepPreventionMode !== undefined) {
         sleepPreventionMode = input.sleepPreventionMode;

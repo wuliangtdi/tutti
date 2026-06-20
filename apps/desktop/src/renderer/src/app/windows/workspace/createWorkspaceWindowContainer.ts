@@ -95,7 +95,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     "workspace-renderer",
     reporterService
   );
-  registerDesktopPreferencesServices(
+  const desktopPreferencesService = registerDesktopPreferencesServices(
     registry,
     tuttidClient,
     tuttidEventStreamClient
@@ -127,6 +127,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     reporterService
   });
   registerWorkspaceFileManagerServices(registry, {
+    desktopPreferencesService,
     hostFilesApi: desktopApi.host.files,
     tuttidClient,
     platformApi: desktopApi.platform,
