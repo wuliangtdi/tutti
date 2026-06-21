@@ -149,6 +149,7 @@ beforeEach(() => {
     console
   });
   resetAgentHostApiForTests();
+  resetMentionSearchBrowseCacheForTests();
   installTestLocalStorage();
   installTestAgentHostApi();
 });
@@ -157,11 +158,20 @@ afterEach(() => {
   try {
     cleanup();
     resetAgentHostApiForTests();
+    resetMentionSearchBrowseCacheForTests();
   } finally {
     restoreReactRenderLoopConsoleTrap?.();
     restoreReactRenderLoopConsoleTrap = null;
   }
 });
+
+function resetMentionSearchBrowseCacheForTests(): void {
+  (
+    globalThis as typeof globalThis & {
+      __tuttiResetAgentMentionSearchBrowseCacheForTests?: () => void;
+    }
+  ).__tuttiResetAgentMentionSearchBrowseCacheForTests?.();
+}
 
 function installTestLocalStorage(): void {
   if (typeof window.localStorage?.clear === "function") {

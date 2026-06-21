@@ -22,6 +22,7 @@ export {
   type AgentContextMentionProviderId,
   type AgentContextMentionProvider
 } from "./agent-gui/agentGuiNode/agentContextMentionProvider";
+export { preloadAgentMentionBrowse } from "./agent-gui/agentGuiNode/AgentMentionSearchController";
 export { AgentActivityHostProvider } from "./agentActivityHost";
 export type { AgentActivityHostProviderProps } from "./agentActivityHost";
 export {

@@ -4450,8 +4450,14 @@ describe("AgentGUINode", () => {
     const pendingFileSearch = new Promise<PendingFileSearch>((resolve) => {
       resolveFileSearch = resolve;
     });
-    mockSearchWorkspaceFileManagerEntries.mockImplementationOnce(
-      () => pendingFileSearch
+    mockSearchWorkspaceFileManagerEntries.mockImplementation((input) =>
+      input.query === "read"
+        ? pendingFileSearch
+        : Promise.resolve({
+            workspaceId: "room-1",
+            root: "/workspace",
+            entries: []
+          })
     );
     renderAgentGUINode();
 
@@ -4719,23 +4725,12 @@ describe("AgentGUINode", () => {
     });
   });
 
-  it("keeps mention category tabs and palette height stable while a selected tab loads", async () => {
-    type EmptyIssueLoad = {
-      issues: [];
-      totalCount: number;
-      statusCounts: undefined;
-    };
-    let resolveIssueLoad!: (value: EmptyIssueLoad) => void;
-    const pendingIssueLoad = new Promise<EmptyIssueLoad>((resolve) => {
-      resolveIssueLoad = resolve;
+  it("keeps mention category tabs and palette height stable when a selected tab reuses all-cache results", async () => {
+    mockListWorkspaceIssues.mockResolvedValueOnce({
+      issues: [],
+      totalCount: 0,
+      statusCounts: undefined
     });
-    mockListWorkspaceIssues
-      .mockResolvedValueOnce({
-        issues: [],
-        totalCount: 0,
-        statusCounts: undefined
-      })
-      .mockImplementationOnce(() => pendingIssueLoad);
     renderAgentGUINode();
 
     pasteComposerText("@");
@@ -4752,44 +4747,24 @@ describe("AgentGUINode", () => {
 
     fireEvent.click(within(palette).getByRole("tab", { name: "Tasks" }));
 
-    await waitFor(() =>
-      expect(mockListWorkspaceIssues).toHaveBeenCalledTimes(2)
-    );
+    expect(mockListWorkspaceIssues).toHaveBeenCalledTimes(1);
     expect(within(palette).getByRole("tab", { name: "Tasks" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
     expect(within(palette).getByRole("tab", { name: "会话" })).toBeVisible();
     expect(
-      within(palette).getByText("agentHost.agentGui.fileMentionLoading")
-    ).toBeVisible();
-    expect(
       within(palette).queryByTestId("agent-mention-loading-banner")
     ).toBeNull();
-    const loadingSpinner = within(palette).getByTestId(
-      "agent-mention-loading-spinner"
-    );
-    expect(loadingSpinner.querySelectorAll("circle")).toHaveLength(2);
-    expect(loadingSpinner.querySelectorAll("circle")[0]).toHaveAttribute(
-      "stroke-width",
-      "2"
-    );
-    expect(loadingSpinner.querySelectorAll("circle")[1]).toHaveAttribute(
-      "stroke-width",
-      "2"
-    );
+    expect(
+      within(palette).queryByTestId("agent-mention-loading-spinner")
+    ).toBeNull();
     expect(within(palette).getByText("Tab")).toBeVisible();
     expect(within(palette).getByText("↑")).toBeVisible();
     expect(within(palette).getByText("↓")).toBeVisible();
     expect(
       (surface.getAttribute("style") ?? "").match(/height:[^;]+/)?.[0]
     ).toBe(initialSurfaceHeight);
-
-    resolveIssueLoad({
-      issues: [],
-      totalCount: 0,
-      statusCounts: undefined
-    });
   });
 
   it("renders the file mention palette as a floating scrollable surface", async () => {
@@ -5540,7 +5515,11 @@ describe("AgentGUINode", () => {
     await waitFor(() =>
       expect(getComposerEditor()).toHaveTextContent("a@b.com")
     );
-    expect(mockSearchWorkspaceFileManagerEntries).not.toHaveBeenCalled();
+    expect(mockSearchWorkspaceFileManagerEntries).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: "b.com"
+      })
+    );
     expect(
       screen.queryByRole("listbox", {
         name: "agentHost.agentGui.fileMentionPalette"

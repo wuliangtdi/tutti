@@ -1,6 +1,7 @@
 export { registerWorkspaceAgentServices } from "./services/registerWorkspaceAgentServices";
 export { IAgentProviderStatusService } from "./services/agentProviderStatusService.interface";
 export { createDesktopAgentGUIWorkbenchHostInput } from "./services/createDesktopAgentGUIWorkbenchHostInput";
+export { preloadDesktopAgentGuiMentionBrowse } from "./services/preloadDesktopAgentGuiMentionBrowse";
 export { createDesktopAgentActivityRuntime } from "./services/createDesktopAgentActivityRuntime";
 export { createDesktopAgentHostApi } from "./services/createDesktopAgentHostApi";
 export { createDesktopAgentGeneratedFileMentionProvider } from "./services/internal/createDesktopAgentGeneratedFileMentionProvider";
