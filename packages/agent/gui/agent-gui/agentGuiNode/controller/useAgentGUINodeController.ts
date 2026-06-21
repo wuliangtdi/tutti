@@ -126,11 +126,13 @@ import {
   markAgentGUIConversationCreatePending,
   markAgentGUIConversationSubmitPending,
   markLocalDeletedAgentGUIConversation,
+  patchAgentGUIConversationSummary,
+  removeAgentGUIConversationSummaries,
   scheduleAgentGUIConversationListProjection,
+  seedAgentGUIConversationListConversationsIfEmpty,
   setAgentGUIConversationListActiveConversation,
   subscribeAgentGUIConversationListStore,
   upsertLocalCreatedAgentGUIConversation,
-  updateAgentGUIConversationListConversations,
   isAgentGUIConversationListRefreshing,
   type AgentGUIConversationListQuery
 } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
@@ -2456,19 +2458,39 @@ export function useAgentGUINodeController({
   const markFailedLiveState = activation.markFailed;
   const clearFailedLiveState = activation.clearFailure;
 
-  const updateConversationList = useCallback(
+  // Constrained store-write helpers. The controller can only patch a single
+  // conversation by id or remove conversations by id — it can no longer pass an
+  // arbitrary `(current[]) => next[]` updater, which is what allowed the old
+  // per-window project writeback to bulk-rewrite shared store conversations.
+  const patchConversation = useCallback(
     (
-      updater: (
-        current: AgentGUIConversationSummary[]
-      ) => AgentGUIConversationSummary[]
+      conversationId: string,
+      patch:
+        | Partial<Omit<AgentGUIConversationSummary, "project">>
+        | ((
+            conversation: AgentGUIConversationSummary
+          ) => Partial<Omit<AgentGUIConversationSummary, "project">> | null)
     ) => {
       if (!conversationListQuery) {
         return;
       }
-      updateAgentGUIConversationListConversations(
-        conversationListQuery,
-        updater
-      );
+      patchAgentGUIConversationSummary({
+        query: conversationListQuery,
+        conversationId,
+        patch
+      });
+    },
+    [conversationListQuery]
+  );
+  const removeConversations = useCallback(
+    (conversationIds: readonly string[]) => {
+      if (!conversationListQuery) {
+        return;
+      }
+      removeAgentGUIConversationSummaries({
+        query: conversationListQuery,
+        conversationIds
+      });
     },
     [conversationListQuery]
   );
@@ -2545,30 +2567,10 @@ export function useAgentGUINodeController({
     []
   );
 
-  useEffect(() => {
-    if (previewMode) {
-      return;
-    }
-    updateConversationList((current) =>
-      applyAgentGUIConversationProjects(current, userProjects, {
-        isNoProjectPath
-      })
-    );
-    setTransientConversation((current) =>
-      current
-        ? (applyAgentGUIConversationProjects([current], userProjects, {
-            isNoProjectPath
-          })[0] ?? current)
-        : current
-    );
-  }, [
-    isNoProjectPath,
-    conversations,
-    previewMode,
-    setTransientConversation,
-    updateConversationList,
-    userProjects
-  ]);
+  // NOTE: project metadata is intentionally NOT written back into the shared
+  // conversation store. `conversation.project` is a per-window JOIN of cwd ×
+  // userProjects; deriving it here and persisting it caused cross-window update
+  // storms. It is now derived in the view layer (groupConversations) instead.
 
   const ensureOpenclawGateway = useCallback(() => {
     if (dataRef.current.provider !== "openclaw") {
@@ -2769,6 +2771,11 @@ export function useAgentGUINodeController({
     if (previewMode) {
       return;
     }
+    // Carry the previous query's conversations across a query-key (userId) switch
+    // so the list (and local working status/titles) survives the transition until
+    // the new query refreshes. This is a one-shot seed gated on an empty new slot
+    // and a changed query key — NOT a per-render derived writeback, so it is not a
+    // cross-window storm source (unlike the project writeback, which was removed).
     const previousSnapshot = previousConversationListSnapshotRef.current;
     const previousQuery = previousSnapshot.query;
     const previousQueryKey = previousQuery
@@ -2787,11 +2794,10 @@ export function useAgentGUINodeController({
       previousSnapshot.conversations.length > 0
     ) {
       ensureAgentGUIConversationListQuery(conversationListQuery);
-      updateAgentGUIConversationListConversations(
-        conversationListQuery,
-        (current) =>
-          current.length === 0 ? previousSnapshot.conversations : current
-      );
+      seedAgentGUIConversationListConversationsIfEmpty({
+        query: conversationListQuery,
+        conversations: previousSnapshot.conversations
+      });
     }
     previousConversationListSnapshotRef.current = {
       query: conversationListQuery,
@@ -3259,14 +3265,7 @@ export function useAgentGUINodeController({
       const mergedTimelineStatus = incomingTimelineStatus
         ? conversationStatusFromTimelineItems([...mergedItems])
         : null;
-      updateConversationList((current) => {
-        const previous =
-          current.find(
-            (conversation) => conversation.id === normalizedAgentSessionId
-          ) ?? null;
-        if (!previous) {
-          return current;
-        }
+      patchConversation(normalizedAgentSessionId, (previous) => {
         const title = resolveAgentGUIConversationTitleFromTimelineItems({
           timelineItems: mergedItems,
           conversation: previous
@@ -3281,22 +3280,17 @@ export function useAgentGUINodeController({
           (!title || title.title === previous.title) &&
           settledStatus === previous.status
         ) {
-          return current;
+          return null;
         }
-        return current.map((conversation) =>
-          conversation.id === normalizedAgentSessionId
+        return {
+          ...(title
             ? {
-                ...conversation,
-                ...(title
-                  ? {
-                      title: title.title,
-                      titleFallback: title.titleFallback
-                    }
-                  : {}),
-                status: settledStatus
+                title: title.title,
+                titleFallback: title.titleFallback
               }
-            : conversation
-        );
+            : {}),
+          status: settledStatus
+        };
       });
       if (activeConversationIdRef.current === normalizedAgentSessionId) {
         setIsLoadingMessages(false);
@@ -3306,7 +3300,7 @@ export function useAgentGUINodeController({
         false
       );
     },
-    [sessionViewRef, updateConversationList]
+    [sessionViewRef, patchConversation]
   );
 
   const applySessionStateSnapshot = useCallback(
@@ -3334,60 +3328,49 @@ export function useAgentGUINodeController({
       if (!nextStatus && !title) {
         return;
       }
-      updateConversationList((current) =>
-        current.map((conversation) => {
-          if (conversation.id !== agentSessionId) {
-            return conversation;
-          }
-          const timelineItems = projectAgentGUIMessagesToTimelineItems(
-            resolveSessionMessages(agentSessionId)
-          );
-          const canSettleBusyStatus = canSettleBusyConversationFromSessionState(
-            {
-              timelineItems,
-              syncState: conversation.syncState
-            }
-          );
-          const incomingWouldSettleBusyStatus =
-            nextStatus !== null &&
-            conversationBusyStatus(conversation.status) &&
-            !conversationBusyStatus(nextStatus);
-          const shouldKeepCurrentStatus =
-            nextStatus !== null &&
-            conversation.updatedAtUnixMs > updatedAtUnixMs &&
-            (!incomingWouldSettleBusyStatus || !canSettleBusyStatus);
-          const candidateStatus = shouldKeepCurrentStatus
-            ? conversation.status
-            : (nextStatus ?? conversation.status);
-          const status = resolveConversationStatusFromTimelineEvidence({
-            status: candidateStatus,
-            timelineItems
-          });
-          const titleFields = mergeConversationTitleUpdateFields(
-            conversation,
-            title
-          );
-          const nextConversation = {
-            ...conversation,
-            ...titleFields,
-            status,
-            updatedAtUnixMs: resolveConversationUpdatedAtUnixMsFromSessionState(
-              {
-                currentUpdatedAtUnixMs: conversation.updatedAtUnixMs,
-                snapshotUpdatedAtUnixMs: shouldAdvanceConversationUpdatedAt
-                  ? snapshot.updatedAtUnixMs
-                  : undefined,
-                source: cause?.source
-              }
-            ),
-            hasUnreadCompletion:
-              status === "completed"
-                ? (conversation.hasUnreadCompletion ?? false)
-                : false
-          };
-          return nextConversation;
-        })
-      );
+      patchConversation(agentSessionId, (conversation) => {
+        const timelineItems = projectAgentGUIMessagesToTimelineItems(
+          resolveSessionMessages(agentSessionId)
+        );
+        const canSettleBusyStatus = canSettleBusyConversationFromSessionState({
+          timelineItems,
+          syncState: conversation.syncState
+        });
+        const incomingWouldSettleBusyStatus =
+          nextStatus !== null &&
+          conversationBusyStatus(conversation.status) &&
+          !conversationBusyStatus(nextStatus);
+        const shouldKeepCurrentStatus =
+          nextStatus !== null &&
+          conversation.updatedAtUnixMs > updatedAtUnixMs &&
+          (!incomingWouldSettleBusyStatus || !canSettleBusyStatus);
+        const candidateStatus = shouldKeepCurrentStatus
+          ? conversation.status
+          : (nextStatus ?? conversation.status);
+        const status = resolveConversationStatusFromTimelineEvidence({
+          status: candidateStatus,
+          timelineItems
+        });
+        const titleFields = mergeConversationTitleUpdateFields(
+          conversation,
+          title
+        );
+        return {
+          ...titleFields,
+          status,
+          updatedAtUnixMs: resolveConversationUpdatedAtUnixMsFromSessionState({
+            currentUpdatedAtUnixMs: conversation.updatedAtUnixMs,
+            snapshotUpdatedAtUnixMs: shouldAdvanceConversationUpdatedAt
+              ? snapshot.updatedAtUnixMs
+              : undefined,
+            source: cause?.source
+          }),
+          hasUnreadCompletion:
+            status === "completed"
+              ? (conversation.hasUnreadCompletion ?? false)
+              : false
+        };
+      });
       if (nextStatus === "completed" && conversationListQuery) {
         markAgentGUIConversationCompletionObserved({
           query: conversationListQuery,
@@ -3438,7 +3421,17 @@ export function useAgentGUINodeController({
         });
       }
     },
-    [conversationListQuery, sessionViewRef, setTransientConversation]
+    // resolveSessionMessages is intentionally NOT listed: it changes whenever the
+    // activity snapshot's sessionMessagesById changes, and this callback feeds an
+    // effect that would then re-fire on every snapshot tick (pre-existing design;
+    // adding it regresses ~50 tests). The session-message read is best-effort here
+    // and the timeline projection drives detail freshness regardless.
+    [
+      conversationListQuery,
+      patchConversation,
+      sessionViewRef,
+      setTransientConversation
+    ]
   );
 
   useEffect(() => {
@@ -3607,9 +3600,7 @@ export function useAgentGUINodeController({
           setIsLoadingMessages(false);
           setDetailError(null);
           persistActiveConversation(null);
-          updateConversationList((current) =>
-            current.filter((conversation) => conversation.id !== agentSessionId)
-          );
+          removeConversations([agentSessionId]);
         }
         if (isSessionNotFoundErrorCode(errorCode)) {
           setAgentSessionViewControlState(sessionViewRef(agentSessionId), null);
@@ -3628,6 +3619,7 @@ export function useAgentGUINodeController({
       clearSelectedConversationNotFoundRetryWhenInitialLoadsSettled,
       markFailedLiveState,
       persistActiveConversation,
+      removeConversations,
       scheduleSelectedConversationNotFoundRetry,
       workspaceId,
       conversationListQuery,
@@ -3936,29 +3928,22 @@ export function useAgentGUINodeController({
         : null;
       if (nextStatus || sessionState) {
         const updatedAtUnixMs = Math.max(...nextItems.map(timelineItemTime));
-        updateConversationList((current) =>
-          current.map((conversation) =>
-            conversation.id === agentSessionId
-              ? (() => {
-                  const status = resolveConversationStatusAfterTimelineUpdate({
-                    currentStatus: conversation.status,
-                    incomingTimelineStatus: nextStatus,
-                    sessionState,
-                    timelineItems: merged
-                  });
-                  return {
-                    ...conversation,
-                    status,
-                    updatedAtUnixMs: Math.max(
-                      conversation.updatedAtUnixMs,
-                      updatedAtUnixMs
-                    ),
-                    hasUnreadCompletion: false
-                  };
-                })()
-              : conversation
-          )
-        );
+        patchConversation(agentSessionId, (conversation) => {
+          const status = resolveConversationStatusAfterTimelineUpdate({
+            currentStatus: conversation.status,
+            incomingTimelineStatus: nextStatus,
+            sessionState,
+            timelineItems: merged
+          });
+          return {
+            status,
+            updatedAtUnixMs: Math.max(
+              conversation.updatedAtUnixMs,
+              updatedAtUnixMs
+            ),
+            hasUnreadCompletion: false
+          };
+        });
         const transient = transientConversationRef.current;
         if (transient?.id === agentSessionId) {
           const status = resolveConversationStatusAfterTimelineUpdate({
@@ -3979,7 +3964,12 @@ export function useAgentGUINodeController({
         }
       }
     },
-    [resolveSessionMessages, sessionViewRef, setTransientConversation]
+    [
+      patchConversation,
+      resolveSessionMessages,
+      sessionViewRef,
+      setTransientConversation
+    ]
   );
 
   const applyBackgroundTimelineStatusUpdate = useCallback(
@@ -3995,33 +3985,24 @@ export function useAgentGUINodeController({
         return;
       }
       const updatedAtUnixMs = Math.max(...nextItems.map(timelineItemTime));
-      updateConversationList((current) => {
-        let changed = false;
-        const next = current.map((conversation) => {
-          if (conversation.id !== agentSessionId) {
-            return conversation;
-          }
-          const status = incomingStatus;
-          const nextUpdatedAtUnixMs = Math.max(
-            conversation.updatedAtUnixMs,
-            updatedAtUnixMs
-          );
-          if (
-            status === conversation.status &&
-            nextUpdatedAtUnixMs === conversation.updatedAtUnixMs &&
-            conversation.hasUnreadCompletion !== true
-          ) {
-            return conversation;
-          }
-          changed = true;
-          return {
-            ...conversation,
-            status,
-            updatedAtUnixMs: nextUpdatedAtUnixMs,
-            hasUnreadCompletion: false
-          };
-        });
-        return changed ? next : current;
+      patchConversation(agentSessionId, (conversation) => {
+        const status = incomingStatus;
+        const nextUpdatedAtUnixMs = Math.max(
+          conversation.updatedAtUnixMs,
+          updatedAtUnixMs
+        );
+        if (
+          status === conversation.status &&
+          nextUpdatedAtUnixMs === conversation.updatedAtUnixMs &&
+          conversation.hasUnreadCompletion !== true
+        ) {
+          return null;
+        }
+        return {
+          status,
+          updatedAtUnixMs: nextUpdatedAtUnixMs,
+          hasUnreadCompletion: false
+        };
       });
       const transient = transientConversationRef.current;
       if (transient?.id === agentSessionId) {
@@ -4033,7 +4014,7 @@ export function useAgentGUINodeController({
         });
       }
     },
-    [setTransientConversation]
+    [setTransientConversation, patchConversation]
   );
 
   const recordLocalMessages = useCallback(
@@ -4143,45 +4124,36 @@ export function useAgentGUINodeController({
           );
         }
       }
-      updateConversationList((current) => {
-        let changed = false;
-        const next = current.map((conversation) => {
-          if (conversation.id !== agentSessionId) {
-            return conversation;
-          }
-          const titleFields = mergeConversationTitleUpdateFields(
-            conversation,
-            patchTitle
-          );
-          const timelineItems = projectAgentGUIMessagesToTimelineItems(
-            resolveSessionMessages(agentSessionId)
-          );
-          const status = resolveConversationStatusFromTimelineEvidence({
-            status: nextStatus ?? conversation.status,
-            timelineItems
-          });
-          const hasUnreadCompletion =
-            status === "completed"
-              ? (conversation.hasUnreadCompletion ?? false)
-              : false;
-          if (
-            titleFields.title === conversation.title &&
-            titleFields.titleFallback === conversation.titleFallback &&
-            status === conversation.status &&
-            hasUnreadCompletion === conversation.hasUnreadCompletion &&
-            !clearedPendingSubmittedTurn
-          ) {
-            return conversation;
-          }
-          changed = true;
-          return {
-            ...conversation,
-            ...titleFields,
-            status,
-            hasUnreadCompletion
-          };
+      patchConversation(agentSessionId, (conversation) => {
+        const titleFields = mergeConversationTitleUpdateFields(
+          conversation,
+          patchTitle
+        );
+        const timelineItems = projectAgentGUIMessagesToTimelineItems(
+          resolveSessionMessages(agentSessionId)
+        );
+        const status = resolveConversationStatusFromTimelineEvidence({
+          status: nextStatus ?? conversation.status,
+          timelineItems
         });
-        return changed ? next : current;
+        const hasUnreadCompletion =
+          status === "completed"
+            ? (conversation.hasUnreadCompletion ?? false)
+            : false;
+        if (
+          titleFields.title === conversation.title &&
+          titleFields.titleFallback === conversation.titleFallback &&
+          status === conversation.status &&
+          hasUnreadCompletion === conversation.hasUnreadCompletion &&
+          !clearedPendingSubmittedTurn
+        ) {
+          return null;
+        }
+        return {
+          ...titleFields,
+          status,
+          hasUnreadCompletion
+        };
       });
       if (nextStatus === "completed" && conversationListQuery) {
         markAgentGUIConversationCompletionObserved({
@@ -4213,6 +4185,7 @@ export function useAgentGUINodeController({
       }
     },
     [
+      patchConversation,
       resolveSessionMessages,
       sessionViewRef,
       setTransientConversation,
@@ -4878,24 +4851,17 @@ export function useAgentGUINodeController({
       }
       setLocalIsSubmitting(true);
       setDetailError(null);
-      updateConversationList((current) =>
-        current.map((conversation) =>
-          conversation.id === agentSessionId
-            ? {
-                ...conversation,
-                status: "working",
-                sortTimeUnixMs: Math.max(
-                  conversation.sortTimeUnixMs ?? 0,
-                  submittedAtUnixMs
-                ),
-                updatedAtUnixMs: Math.max(
-                  conversation.updatedAtUnixMs,
-                  submittedAtUnixMs
-                )
-              }
-            : conversation
+      patchConversation(agentSessionId, (conversation) => ({
+        status: "working",
+        sortTimeUnixMs: Math.max(
+          conversation.sortTimeUnixMs ?? 0,
+          submittedAtUnixMs
+        ),
+        updatedAtUnixMs: Math.max(
+          conversation.updatedAtUnixMs,
+          submittedAtUnixMs
         )
-      );
+      }));
       setTransientConversation((current) =>
         current?.id === agentSessionId
           ? {
@@ -4938,17 +4904,10 @@ export function useAgentGUINodeController({
             projectCoreSessionStatus(result.status)
           );
           if (submittedStatus && submittedStatus !== "ready") {
-            updateConversationList((current) =>
-              current.map((conversation) =>
-                conversation.id === agentSessionId
-                  ? {
-                      ...conversation,
-                      status: submittedStatus,
-                      updatedAtUnixMs: Date.now()
-                    }
-                  : conversation
-              )
-            );
+            patchConversation(agentSessionId, {
+              status: submittedStatus,
+              updatedAtUnixMs: Date.now()
+            });
           }
           if (!queuedPromptId) {
             setDraftBySessionId((current) => {
@@ -5044,17 +5003,13 @@ export function useAgentGUINodeController({
             previousConversationStatus &&
             previousConversationStatus !== "working"
           ) {
-            updateConversationList((current) =>
-              current.map((conversation) =>
-                conversation.id === agentSessionId &&
-                conversation.status === "working"
-                  ? {
-                      ...conversation,
-                      status: previousConversationStatus,
-                      updatedAtUnixMs: Date.now()
-                    }
-                  : conversation
-              )
+            patchConversation(agentSessionId, (conversation) =>
+              conversation.status === "working"
+                ? {
+                    status: previousConversationStatus,
+                    updatedAtUnixMs: Date.now()
+                  }
+                : null
             );
             const transient = transientConversationRef.current;
             if (
@@ -5132,7 +5087,7 @@ export function useAgentGUINodeController({
       recordLocalMessages,
       sessionViewRef,
       setTransientConversation,
-      updateConversationList,
+      patchConversation,
       workspaceId,
       agentActivityRuntime
     ]
@@ -6309,8 +6264,13 @@ export function useAgentGUINodeController({
       }
       const targetConversations = conversationsRef.current.filter(
         (conversation) =>
-          normalizeProjectConversationPath(conversation.project?.path) ===
-          normalizedPath
+          normalizeProjectConversationPath(
+            resolveAgentGUIConversationProject(
+              conversation.cwd,
+              userProjectsRef.current,
+              { isNoProjectPath: isNoProjectPathRef.current }
+            )?.path
+          ) === normalizedPath
       );
       if (targetConversations.length === 0) {
         return;
@@ -6321,10 +6281,7 @@ export function useAgentGUINodeController({
       );
       setPendingDeleteProjectConversations({
         conversationCount: targetConversations.length,
-        label:
-          project?.label?.trim() ||
-          targetConversations[0]?.project?.label ||
-          path,
+        label: project?.label?.trim() || path,
         path: normalizedPath
       });
       setDetailError(null);
@@ -6437,9 +6394,7 @@ export function useAgentGUINodeController({
           setActiveConversationId(nextActive);
           persistActiveConversation(nextActive);
         }
-        updateConversationList((current) =>
-          current.filter((conversation) => conversation.id !== target.id)
-        );
+        removeConversations([target.id]);
         setPendingDeleteConversation(null);
       })
       .catch((error) => {
@@ -6473,7 +6428,7 @@ export function useAgentGUINodeController({
     workspaceId,
     sessionViewRef,
     agentActivityRuntime,
-    updateConversationList
+    removeConversations
   ]);
 
   const confirmDeleteProjectConversations = useCallback(
@@ -6485,7 +6440,11 @@ export function useAgentGUINodeController({
               conversationCount: conversationsRef.current.filter(
                 (conversation) =>
                   normalizeProjectConversationPath(
-                    conversation.project?.path
+                    resolveAgentGUIConversationProject(
+                      conversation.cwd,
+                      userProjectsRef.current,
+                      { isNoProjectPath: isNoProjectPathRef.current }
+                    )?.path
                   ) === normalizedPath
               ).length,
               label:
@@ -6504,8 +6463,13 @@ export function useAgentGUINodeController({
       }
       const targetConversations = conversationsRef.current.filter(
         (conversation) =>
-          normalizeProjectConversationPath(conversation.project?.path) ===
-          target.path
+          normalizeProjectConversationPath(
+            resolveAgentGUIConversationProject(
+              conversation.cwd,
+              userProjectsRef.current,
+              { isNoProjectPath: isNoProjectPathRef.current }
+            )?.path
+          ) === target.path
       );
       if (targetConversations.length === 0) {
         setPendingDeleteProjectConversations(null);
@@ -6591,9 +6555,7 @@ export function useAgentGUINodeController({
             setActiveConversationId(nextActive);
             persistActiveConversation(nextActive);
           }
-          updateConversationList((current) =>
-            current.filter((conversation) => !targetIds.has(conversation.id))
-          );
+          removeConversations([...targetIds]);
           setPendingDeleteProjectConversations(null);
         })
         .catch((error) => {
@@ -6638,7 +6600,7 @@ export function useAgentGUINodeController({
       persistActiveConversation,
       sessionViewRef,
       setTransientConversation,
-      updateConversationList,
+      removeConversations,
       workspaceId
     ]
   );
@@ -6652,13 +6614,9 @@ export function useAgentGUINodeController({
       setDetailError(null);
       const previousConversations = conversationsRef.current;
       const optimisticPinnedAtUnixMs = pinned ? Date.now() : null;
-      updateConversationList((current) =>
-        current.map((conversation) =>
-          conversation.id === normalizedAgentSessionId
-            ? { ...conversation, pinnedAtUnixMs: optimisticPinnedAtUnixMs }
-            : conversation
-        )
-      );
+      patchConversation(normalizedAgentSessionId, {
+        pinnedAtUnixMs: optimisticPinnedAtUnixMs
+      });
       setTransientConversation((current) =>
         current?.id === normalizedAgentSessionId
           ? { ...current, pinnedAtUnixMs: optimisticPinnedAtUnixMs }
@@ -6672,13 +6630,7 @@ export function useAgentGUINodeController({
         })
         .then((session) => {
           const pinnedAtUnixMs = session.pinnedAtUnixMs ?? null;
-          updateConversationList((current) =>
-            current.map((conversation) =>
-              conversation.id === normalizedAgentSessionId
-                ? { ...conversation, pinnedAtUnixMs }
-                : conversation
-            )
-          );
+          patchConversation(normalizedAgentSessionId, { pinnedAtUnixMs });
           setTransientConversation((current) =>
             current?.id === normalizedAgentSessionId
               ? { ...current, pinnedAtUnixMs }
@@ -6698,18 +6650,23 @@ export function useAgentGUINodeController({
           });
           toast.error(message);
           setDetailError(message);
-          updateConversationList(() => previousConversations);
-          setTransientConversation((current) => {
-            const previous = previousConversations.find(
-              (conversation) => conversation.id === normalizedAgentSessionId
-            );
-            return current?.id === normalizedAgentSessionId && previous
-              ? previous
-              : current;
+          // Targeted revert of just this conversation's pin (rather than the
+          // whole-list restore the arbitrary updater allowed), so a concurrent
+          // update to another conversation is not clobbered on pin failure.
+          const previous = previousConversations.find(
+            (conversation) => conversation.id === normalizedAgentSessionId
+          );
+          patchConversation(normalizedAgentSessionId, {
+            pinnedAtUnixMs: previous?.pinnedAtUnixMs ?? null
           });
+          setTransientConversation((current) =>
+            current?.id === normalizedAgentSessionId && previous
+              ? previous
+              : current
+          );
         });
     },
-    [agentActivityRuntime, updateConversationList, workspaceId]
+    [agentActivityRuntime, patchConversation, workspaceId]
   );
 
   const activeConversation = useMemo(() => {
@@ -6795,7 +6752,7 @@ export function useAgentGUINodeController({
           transientConversationRef.current
         )
       : conversations;
-    const next = source.map((conversation) => {
+    const mapped = source.map((conversation) => {
       const withRuntime = mergeConversationSummaryWithRuntimeSession({
         conversation,
         runtimeSyncState: stableRuntimeSyncStateBySessionId[conversation.id]
@@ -6808,6 +6765,14 @@ export function useAgentGUINodeController({
         ? { ...withRuntime, status: activityBusyStatus }
         : withRuntime;
     });
+    // Derive project (cwd × userProjects) here in the per-window view-model
+    // layer. This is the JOIN that previously got written back into the shared
+    // conversation store (causing cross-window update storms); computing it in
+    // this local useMemo keeps the canonical store project-free while exposing a
+    // resolved `project` to the view and view-model consumers.
+    const next = applyAgentGUIConversationProjects(mapped, userProjects, {
+      isNoProjectPath
+    });
     const stableNext = stableConversationSummaryList(
       visibleConversationsRef.current,
       next
@@ -6818,8 +6783,10 @@ export function useAgentGUINodeController({
     agentActivityDisplayStatuses,
     conversations,
     isLoadingConversations,
+    isNoProjectPath,
     stableRuntimeSyncStateBySessionId,
-    transientConversation
+    transientConversation,
+    userProjects
   ]);
   const conversationUserIds = useMemo(
     () =>
@@ -6858,8 +6825,7 @@ export function useAgentGUINodeController({
         previous.title === activeConversation.title &&
         previous.titleFallback === activeConversation.titleFallback &&
         previous.status === activeConversation.status &&
-        previous.cwd === activeConversation.cwd &&
-        previous.project === activeConversation.project
+        previous.cwd === activeConversation.cwd
       ) {
         return previous;
       }
@@ -6872,7 +6838,6 @@ export function useAgentGUINodeController({
             titleFallback: activeConversation.titleFallback,
             status: activeConversation.status,
             cwd: activeConversation.cwd,
-            project: activeConversation.project,
             updatedAtUnixMs: activeConversation.updatedAtUnixMs,
             syncState: activeConversation.syncState
           }
@@ -6885,7 +6850,6 @@ export function useAgentGUINodeController({
       activeConversation?.cwd,
       activeConversation?.id,
       activeConversation?.provider,
-      activeConversation?.project,
       activeConversation?.status,
       activeConversation?.title,
       activeConversation?.titleFallback,

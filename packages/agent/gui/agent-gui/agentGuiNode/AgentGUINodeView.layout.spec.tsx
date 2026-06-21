@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { createDefaultWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -389,6 +389,39 @@ describe("AgentGUINodeView layout persistence", () => {
       screen.getByTestId("agent-gui-conversation-list-loading-skeleton")
     ).toHaveAccessibleName("loadingConversations");
     expect(screen.queryByText("loadingConversations")).not.toBeInTheDocument();
+  });
+
+  it("opens a conversation from the rail with the external-link action", () => {
+    const actions = createActions();
+    const onOpenConversationWindow = vi.fn();
+
+    renderAgentGUINodeView({
+      actions,
+      onOpenConversationWindow,
+      viewModel: {
+        ...createViewModel(),
+        activeConversationId: "session-1",
+        conversations: [
+          createConversationSummary("session-1"),
+          createConversationSummary("session-2")
+        ]
+      }
+    });
+
+    const row = screen.getByTestId("agent-gui-conversation-item-session-2");
+    const openWindowButton = within(row).getByRole("button", {
+      name: "openConversationWindow"
+    });
+
+    expect(
+      openWindowButton.querySelector("svg.lucide-external-link")
+    ).toBeInTheDocument();
+
+    fireEvent.click(openWindowButton);
+
+    expect(onOpenConversationWindow).toHaveBeenCalledTimes(1);
+    expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
+    expect(actions.selectConversation).not.toHaveBeenCalled();
   });
 
   it("scrolls the active conversation item into view", () => {
@@ -1069,6 +1102,7 @@ interface RenderAgentGUINodeViewOptions {
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
+  onOpenConversationWindow?: AgentGUINodeViewProps["onOpenConversationWindow"];
   slashStatusLimits?: AgentGUINodeViewProps["slashStatusLimits"];
   showProjectSelector?: boolean;
 }
@@ -1081,6 +1115,7 @@ function buildAgentGUINodeViewElement({
   viewModel = createViewModel(),
   actions = createActions(),
   labels = createLabels(),
+  onOpenConversationWindow,
   slashStatusLimits = [],
   showProjectSelector = true
 }: RenderAgentGUINodeViewOptions = {}) {
@@ -1098,6 +1133,7 @@ function buildAgentGUINodeViewElement({
       detailMinWidthPx={220}
       uiLanguage="en"
       showProjectSelector={showProjectSelector}
+      onOpenConversationWindow={onOpenConversationWindow}
       onConversationRailWidthChanged={onConversationRailWidthChanged}
       labels={labels}
     />
@@ -1414,6 +1450,7 @@ function createLabels(): AgentGUIViewLabels {
     waitingForAnswer: "waitingForAnswer",
     thinkingLabel: "thinkingLabel",
     toolCallsLabel: (count: number) => `toolCalls:${count}`,
+    openConversationWindow: "openConversationWindow",
     deleteSession: "deleteSession",
     pinSession: "pinSession",
     unpinSession: "unpinSession",

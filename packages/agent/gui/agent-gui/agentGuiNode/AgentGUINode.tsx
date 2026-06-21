@@ -170,6 +170,7 @@ export interface AgentGUINodeProps {
     provider: AgentProvider;
     references: readonly WorkspaceFileReference[];
   }) => void | Promise<void>;
+  onOpenConversationWindow?: (agentSessionId: string) => void;
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
   onUpdateNode: (
@@ -474,6 +475,7 @@ function areAgentGUINodePropsEqual(
     previous.onClose === next.onClose &&
     previous.onResize === next.onResize &&
     previous.onUpdateNode === next.onUpdateNode &&
+    previous.onOpenConversationWindow === next.onOpenConversationWindow &&
     previous.isMaximized === next.isMaximized &&
     previous.isMuted === next.isMuted &&
     previous.onMinimize === next.onMinimize &&
@@ -522,6 +524,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onWorkspaceFileReferencesAdded,
+  onOpenConversationWindow,
   onClose,
   onResize,
   onUpdateNode,
@@ -944,6 +947,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),
+      openConversationWindow: t("agentHost.agentGui.openConversationWindow"),
       deleteSession: t("agentHost.agentGui.deleteSession"),
       pinSession: t("agentHost.agentGui.pinSession"),
       unpinSession: t("agentHost.agentGui.unpinSession"),
@@ -1335,6 +1339,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             labels={labels}
             workspaceUserProjectI18n={workspaceUserProjectI18n}
             workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}
+            onOpenConversationWindow={onOpenConversationWindow}
             onRequestGitBranches={onRequestGitBranches}
             referenceSourceAggregator={referenceSourceAggregator}
             resolveMentionReferenceTarget={resolveMentionReferenceTarget}

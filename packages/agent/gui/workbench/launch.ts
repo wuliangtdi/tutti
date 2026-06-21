@@ -190,7 +190,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
     dockEntryId: request.dockEntryId ?? agentGuiWorkbenchDockEntryId(provider),
     instanceId,
     provider,
-    reuseDockEntryNode: Boolean(targetAgentSessionId),
+    reuseDockEntryNode: false,
     targetAgentSessionId
   };
 }

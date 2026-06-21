@@ -32,7 +32,10 @@ import {
   getAgentSessionView,
   resetAgentSessionViewStoreForTests
 } from "../../../contexts/workspace/presentation/renderer/agentSessions/agentSessionViewStore";
-import { resetAgentGUIConversationListStoreForTests } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
+import {
+  getAgentGUIConversationListStoreSnapshot,
+  resetAgentGUIConversationListStoreForTests
+} from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore";
 import { createAppError } from "../../../shared/errors/appError";
 import type { AgentGUINodeData } from "../../../types";
 import { AGENT_GUI_RUNTIME_SESSION_ORIGIN } from "../model/agentGuiConversationModel";
@@ -199,6 +202,20 @@ describe("useAgentGUINodeController", () => {
     });
     expect(listUserProjects).toHaveBeenCalled();
     expect(subscribeUserProjects).toHaveBeenCalled();
+
+    // Storm guard: `project` is a per-window JOIN derived in the view-model
+    // layer only. Writing it back into the shared conversation store caused
+    // cross-window update storms, so the canonical store must stay project-free
+    // even though the view model exposes a resolved project above.
+    const storedConversation = Object.values(
+      getAgentGUIConversationListStoreSnapshot().statesByQueryKey
+    )
+      .flatMap((state) => state.conversations)
+      .find((candidate) => candidate.id === "session-1");
+    expect(storedConversation).toBeDefined();
+    // The store may carry null (loader) or undefined, but never a resolved
+    // project object — that only lives in the view-model layer.
+    expect(storedConversation?.project ?? null).toBeNull();
 
     userProjects = [
       ...userProjects,

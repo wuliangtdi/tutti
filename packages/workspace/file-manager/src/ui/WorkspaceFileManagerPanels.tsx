@@ -1,4 +1,5 @@
 import {
+  ArrowRightIcon,
   FileCodeIcon,
   FileTextIcon,
   LoadingIcon,
@@ -21,6 +22,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState
 } from "react";
@@ -47,6 +49,7 @@ import {
   type WorkspaceFileManagerArrangeMode
 } from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
+import type { WorkspaceFileManagerVisibleTreeRow } from "./workspaceFileManagerVisibleTree.ts";
 
 const workspaceFileManagerTableGridClassName =
   "grid-cols-[minmax(0,_1fr)_148px_96px]";
@@ -94,6 +97,7 @@ export function WorkspaceFileManagerPanels({
   selectedPath,
   state,
   showDropOverlay,
+  treeRows,
   onBlankContextMenu,
   onCancelInlineRename,
   onClearInlineRenameValidation,
@@ -102,7 +106,8 @@ export function WorkspaceFileManagerPanels({
   onEntryDragStart,
   onMoveEntry,
   onOpenEntry,
-  onSelect
+  onSelect,
+  onToggleDirectoryExpanded
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
@@ -128,6 +133,7 @@ export function WorkspaceFileManagerPanels({
     isLoading: boolean;
   };
   showDropOverlay: boolean;
+  treeRows: readonly WorkspaceFileManagerVisibleTreeRow[];
   onBlankContextMenu: (event: ReactMouseEvent<HTMLElement>) => void;
   onCancelInlineRename: () => void;
   onClearInlineRenameValidation: () => void;
@@ -143,6 +149,10 @@ export function WorkspaceFileManagerPanels({
   onMoveEntry: (entry: WorkspaceFileEntry, targetDirectoryPath: string) => void;
   onOpenEntry: (entry: WorkspaceFileEntry) => void;
   onSelect: (path: string) => void;
+  onToggleDirectoryExpanded: (
+    entry: WorkspaceFileEntry,
+    expanded: boolean
+  ) => void;
 }): ReactElement {
   const { rootRef } = useWorkspaceFileManagerStackedLayout(
     workspaceFileManagerStackedBreakpoint
@@ -165,7 +175,14 @@ export function WorkspaceFileManagerPanels({
     useRef<WorkspaceFileManagerMoveDragAutoScroll | null>(null);
   const moveDragRef = useRef<WorkspaceFileManagerMoveDrag | null>(null);
   const suppressNextClickRef = useRef(false);
-  const entriesRef = useRef<readonly WorkspaceFileEntry[]>(state.entries);
+  const moveTargetEntries = useMemo(
+    () =>
+      layoutMode === "list"
+        ? treeRows.flatMap((row) => (row.kind === "entry" ? [row.entry] : []))
+        : state.entries,
+    [layoutMode, state.entries, treeRows]
+  );
+  const entriesRef = useRef<readonly WorkspaceFileEntry[]>(moveTargetEntries);
   const nativeEntryDragEnabled =
     onEntryDragStart !== undefined &&
     (entryDragMode === "external" || (entryDragMode === undefined && !canMove));
@@ -309,8 +326,8 @@ export function WorkspaceFileManagerPanels({
   );
   useEffect(() => {
     lastEntryClickRef.current = null;
-    entriesRef.current = state.entries;
-  }, [state.entries]);
+    entriesRef.current = moveTargetEntries;
+  }, [moveTargetEntries]);
   useEffect(() => {
     function handleDocumentPointerMove(event: PointerEvent | MouseEvent): void {
       const drag = moveDragRef.current;
@@ -573,45 +590,69 @@ export function WorkspaceFileManagerPanels({
                   {copy.t("sizeLabel")}
                 </span>
               </div>
-              {state.entries.map((entry) => (
-                <EntryRow
-                  key={entry.path}
-                  contextMenuActive={contextMenuEntryPath === entry.path}
-                  copy={copy}
-                  arrangeMode={arrangeMode}
-                  dateLocale={dateLocale}
-                  entry={entry}
-                  iconUrlByCacheKey={iconUrlByCacheKey}
-                  canMove={internalMoveEnabled}
-                  draggable={nativeEntryDragEnabled}
-                  gridClassName={tableGridClassName}
-                  gridStyle={tableGridStyle}
-                  inlineRenameValidation={
-                    inlineRenameEntryPath === entry.path
-                      ? inlineRenameValidation
-                      : null
-                  }
-                  isEnteringDirectory={pendingDirectoryPath === entry.path}
-                  isInlineRenaming={inlineRenameEntryPath === entry.path}
-                  isRenaming={isRenaming}
-                  moveDragActive={moveDragPreview !== null}
-                  moveDragSource={moveDragPreview?.entry.path === entry.path}
-                  moveDragTarget={
-                    moveDragPreview?.targetDirectoryPath === entry.path
-                  }
-                  tableCellPaddingClassName={tableCellPaddingClassName}
-                  selected={selectedPath === entry.path}
-                  onEntryIconViewportLeave={onEntryIconViewportLeave}
-                  onEntryIconViewportEnter={onEntryIconViewportEnter}
-                  onCancelInlineRename={onCancelInlineRename}
-                  onClearInlineRenameValidation={onClearInlineRenameValidation}
-                  onConfirmInlineRename={onConfirmInlineRename}
-                  onContextMenu={onEntryContextMenu}
-                  onDragStart={onEntryDragStart}
-                  onClick={handleEntryClick}
-                  onPointerDown={handleEntryPointerDown}
-                />
-              ))}
+              {treeRows.map((row) =>
+                row.kind === "feedback" ? (
+                  <TreeFeedbackRow
+                    key={row.key}
+                    copy={copy}
+                    depth={row.depth}
+                    gridClassName={tableGridClassName}
+                    gridStyle={tableGridStyle}
+                    message={row.message}
+                    status={row.status}
+                    tableCellPaddingClassName={tableCellPaddingClassName}
+                  />
+                ) : (
+                  <EntryRow
+                    key={row.entry.path}
+                    contextMenuActive={contextMenuEntryPath === row.entry.path}
+                    copy={copy}
+                    arrangeMode={arrangeMode}
+                    dateLocale={dateLocale}
+                    depth={row.depth}
+                    entry={row.entry}
+                    expanded={row.expanded}
+                    expandable={row.expandable}
+                    iconUrlByCacheKey={iconUrlByCacheKey}
+                    canMove={internalMoveEnabled}
+                    draggable={nativeEntryDragEnabled}
+                    gridClassName={tableGridClassName}
+                    gridStyle={tableGridStyle}
+                    inlineRenameValidation={
+                      inlineRenameEntryPath === row.entry.path
+                        ? inlineRenameValidation
+                        : null
+                    }
+                    isEnteringDirectory={
+                      pendingDirectoryPath === row.entry.path
+                    }
+                    isInlineRenaming={inlineRenameEntryPath === row.entry.path}
+                    isLoadingChildren={row.loadingChildren}
+                    isRenaming={isRenaming}
+                    moveDragActive={moveDragPreview !== null}
+                    moveDragSource={
+                      moveDragPreview?.entry.path === row.entry.path
+                    }
+                    moveDragTarget={
+                      moveDragPreview?.targetDirectoryPath === row.entry.path
+                    }
+                    tableCellPaddingClassName={tableCellPaddingClassName}
+                    selected={selectedPath === row.entry.path}
+                    onEntryIconViewportLeave={onEntryIconViewportLeave}
+                    onEntryIconViewportEnter={onEntryIconViewportEnter}
+                    onCancelInlineRename={onCancelInlineRename}
+                    onClearInlineRenameValidation={
+                      onClearInlineRenameValidation
+                    }
+                    onConfirmInlineRename={onConfirmInlineRename}
+                    onContextMenu={onEntryContextMenu}
+                    onDragStart={onEntryDragStart}
+                    onClick={handleEntryClick}
+                    onPointerDown={handleEntryPointerDown}
+                    onToggleDirectoryExpanded={onToggleDirectoryExpanded}
+                  />
+                )
+              )}
             </div>
           )}
         </ScrollArea>
@@ -757,14 +798,18 @@ function EntryRow({
   contextMenuActive,
   copy,
   dateLocale,
+  depth,
   draggable,
   entry,
+  expanded,
+  expandable,
   gridClassName,
   gridStyle,
   iconUrlByCacheKey,
   inlineRenameValidation,
   isEnteringDirectory,
   isInlineRenaming,
+  isLoadingChildren,
   isRenaming,
   moveDragActive,
   moveDragSource,
@@ -779,21 +824,26 @@ function EntryRow({
   onContextMenu,
   onDragStart,
   onClick,
-  onPointerDown
+  onPointerDown,
+  onToggleDirectoryExpanded
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
   contextMenuActive: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
   dateLocale?: TuttiDateLocale;
+  depth: number;
   draggable: boolean;
   entry: WorkspaceFileEntry;
+  expanded: boolean;
+  expandable: boolean;
   gridClassName: string;
   gridStyle: CSSProperties;
   iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
   isEnteringDirectory: boolean;
   isInlineRenaming: boolean;
+  isLoadingChildren: boolean;
   isRenaming: boolean;
   moveDragActive: boolean;
   moveDragSource: boolean;
@@ -812,6 +862,10 @@ function EntryRow({
   onPointerDown: (
     entry: WorkspaceFileEntry,
     event: ReactPointerEvent<HTMLElement>
+  ) => void;
+  onToggleDirectoryExpanded: (
+    entry: WorkspaceFileEntry,
+    expanded: boolean
   ) => void;
   selected: boolean;
   tableCellPaddingClassName: string;
@@ -862,13 +916,18 @@ function EntryRow({
         iconUrlByCacheKey={iconUrlByCacheKey}
         inlineRenameValidation={inlineRenameValidation}
         isEnteringDirectory={isEnteringDirectory}
+        isExpanded={expanded}
+        isExpandable={expandable}
         isInlineRenaming={isInlineRenaming}
+        isLoadingChildren={isLoadingChildren}
         isRenaming={isRenaming}
+        treeDepth={depth}
         onEntryIconViewportLeave={onEntryIconViewportLeave}
         onEntryIconViewportEnter={onEntryIconViewportEnter}
         onCancelInlineRename={onCancelInlineRename}
         onClearInlineRenameValidation={onClearInlineRenameValidation}
         onConfirmInlineRename={onConfirmInlineRename}
+        onToggleDirectoryExpanded={onToggleDirectoryExpanded}
       />
     </span>
   );
@@ -1065,32 +1124,152 @@ function canMoveEntryToDirectory(
   );
 }
 
+function TreeFeedbackRow({
+  copy,
+  depth,
+  gridClassName,
+  gridStyle,
+  message,
+  status,
+  tableCellPaddingClassName
+}: {
+  copy: WorkspaceFileManagerI18nRuntime;
+  depth: number;
+  gridClassName: string;
+  gridStyle: CSSProperties;
+  message?: string;
+  status: "empty" | "error" | "loading";
+  tableCellPaddingClassName: string;
+}): ReactElement {
+  const resolvedMessage =
+    status === "loading"
+      ? copy.t("loading")
+      : status === "empty"
+        ? copy.t("emptyDirectory")
+        : (message ?? copy.t("unknownErrorMessage"));
+
+  return (
+    <div
+      className={cn(
+        "grid min-h-9 w-full items-center gap-x-6 border-b border-[var(--border-1)] text-left text-xs text-[var(--text-tertiary)]",
+        gridClassName
+      )}
+      style={gridStyle}
+    >
+      <span className={tableCellPaddingClassName}>
+        <span
+          className="flex min-w-0 items-center gap-2"
+          style={workspaceFileManagerTreeIndentStyle(depth)}
+        >
+          <span className="size-5 shrink-0" />
+          {status === "loading" ? (
+            <LoadingIcon className="size-3.5 shrink-0 animate-spin" />
+          ) : null}
+          <span className="min-w-0 truncate">{resolvedMessage}</span>
+        </span>
+      </span>
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
+function DirectoryDisclosureButton({
+  copy,
+  entry,
+  expanded,
+  isLoading,
+  show,
+  onToggle
+}: {
+  copy: WorkspaceFileManagerI18nRuntime;
+  entry: WorkspaceFileEntry;
+  expanded: boolean;
+  isLoading: boolean;
+  show: boolean;
+  onToggle: (entry: WorkspaceFileEntry, expanded: boolean) => void;
+}): ReactElement {
+  if (!show) {
+    return <span aria-hidden="true" className="size-5 shrink-0" />;
+  }
+
+  return (
+    <button
+      aria-label={copy.t(
+        expanded ? "collapseFolderLabel" : "expandFolderLabel"
+      )}
+      aria-expanded={expanded}
+      className="grid size-5 shrink-0 place-items-center rounded text-[var(--text-tertiary)] transition-colors hover:bg-transparency-block hover:text-[var(--text-primary)]"
+      disabled={isLoading}
+      type="button"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggle(entry, expanded);
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      {isLoading ? (
+        <LoadingIcon className="size-3 animate-spin" />
+      ) : (
+        <ArrowRightIcon
+          className={cn(
+            "size-3.5 transition-transform",
+            expanded && "rotate-90"
+          )}
+        />
+      )}
+    </button>
+  );
+}
+
+function workspaceFileManagerTreeIndentStyle(depth: number): CSSProperties {
+  return {
+    paddingLeft: `${Math.max(0, depth) * 20}px`
+  };
+}
+
 function EntryNameCell({
   copy,
   entry,
   iconUrlByCacheKey,
   inlineRenameValidation = null,
   isEnteringDirectory = false,
+  isExpanded = false,
+  isExpandable = false,
   isInlineRenaming = false,
+  isLoadingChildren = false,
   isRenaming = false,
+  treeDepth = 0,
   onEntryIconViewportLeave,
   onEntryIconViewportEnter,
   onCancelInlineRename,
   onClearInlineRenameValidation,
-  onConfirmInlineRename
+  onConfirmInlineRename,
+  onToggleDirectoryExpanded
 }: {
   copy: WorkspaceFileManagerI18nRuntime;
   entry: WorkspaceFileEntry;
   iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameValidation?: WorkspaceFileManagerInlineRenameValidation | null;
   isEnteringDirectory?: boolean;
+  isExpanded?: boolean;
+  isExpandable?: boolean;
   isInlineRenaming?: boolean;
+  isLoadingChildren?: boolean;
   isRenaming?: boolean;
+  treeDepth?: number;
   onEntryIconViewportLeave?: (entry: WorkspaceFileEntry) => void;
   onEntryIconViewportEnter?: (entry: WorkspaceFileEntry) => void;
   onCancelInlineRename: () => void;
   onClearInlineRenameValidation: () => void;
   onConfirmInlineRename: (newName: string) => Promise<boolean>;
+  onToggleDirectoryExpanded: (
+    entry: WorkspaceFileEntry,
+    expanded: boolean
+  ) => void;
 }): ReactElement {
   const nameParts = splitWorkspaceFileName(entry.name);
   const hasFileExtension =
@@ -1139,7 +1318,18 @@ function EntryNameCell({
 
   if (isInlineRenaming) {
     return (
-      <span className="flex min-w-0 items-center gap-2">
+      <span
+        className="flex min-w-0 items-center gap-1.5"
+        style={workspaceFileManagerTreeIndentStyle(treeDepth)}
+      >
+        <DirectoryDisclosureButton
+          copy={copy}
+          entry={entry}
+          expanded={isExpanded}
+          isLoading={isLoadingChildren}
+          show={isExpandable}
+          onToggle={onToggleDirectoryExpanded}
+        />
         <WorkspaceFileEntryIcon
           entry={entry}
           frameClassName="size-7"
@@ -1204,7 +1394,18 @@ function EntryNameCell({
   }
 
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span
+      className="flex min-w-0 items-center gap-1.5"
+      style={workspaceFileManagerTreeIndentStyle(treeDepth)}
+    >
+      <DirectoryDisclosureButton
+        copy={copy}
+        entry={entry}
+        expanded={isExpanded}
+        isLoading={isLoadingChildren}
+        show={isExpandable}
+        onToggle={onToggleDirectoryExpanded}
+      />
       <WorkspaceFileEntryIcon
         entry={entry}
         frameClassName="size-7"

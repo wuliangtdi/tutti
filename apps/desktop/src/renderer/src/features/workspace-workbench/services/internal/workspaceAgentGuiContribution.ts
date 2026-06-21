@@ -129,6 +129,9 @@ export function createWorkspaceAgentGuiContribution(input: {
       dockPreviewCache: input.dockPreviewCache,
       onCapabilitySettingsRequest: input.onCapabilitySettingsRequest,
       onLinkAction: handleLinkAction,
+      onOpenAgentConversationWindow: async (request) => {
+        await requestWorkspaceAgentGuiLaunch(request);
+      },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
       contextMentionProviders:

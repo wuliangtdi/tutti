@@ -1766,7 +1766,7 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__conversation-title\s*{[^}]*overflow:\s*hidden[^}]*color:\s*var\(--text-primary\)[^}]*font-size:\s*13px[^}]*font-weight:\s*400[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__conversation-item:hover\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*0[\s\S]*?padding-right:\s*72px/s
+      /\.agent-gui-node__conversation-item:hover\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s*0[\s\S]*?padding-right:\s*96px/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-node__conversation-item:focus-within\s+\.agent-gui-node__conversation-select[\s\S]*?grid-template-columns/s
@@ -1778,16 +1778,16 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__conversation-item\[data-pinned="true"\]\s+\.agent-gui-node__conversation-actions,\s*\.agent-gui-node__conversation-item:hover/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__conversation-actions\s*{[^}]*right:\s*4px[^}]*justify-content:\s*flex-start[^}]*gap:\s*0[^}]*min-width:\s*48px/s
+      /\.agent-gui-node__conversation-actions\s*{[^}]*right:\s*4px[^}]*justify-content:\s*flex-start[^}]*gap:\s*0[^}]*min-width:\s*72px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__conversation-delete-button,\s*\.agent-gui-node__conversation-pin-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--text-tertiary\)/s
+      /\.agent-gui-node__conversation-delete-button,\s*\.agent-gui-node__conversation-open-window-button,\s*\.agent-gui-node__conversation-pin-button\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent[^}]*color:\s*var\(--text-tertiary\)/s
     );
     expect(css).not.toMatch(
       /\.agent-gui-node__conversation-delete-button,\s*\.agent-gui-node__conversation-pin-button\s*{[^}]*width:\s*28px/s
     );
     expect(nodeViewSource).toMatch(
-      /<BareIconButton[\s\S]*className=\{styles\.conversationPinButton\}[\s\S]*size="md"[\s\S]*<BareIconButton[\s\S]*className=\{[\s\S]*?styles\.conversationDeleteButton[\s\S]*?\}[\s\S]*size="md"/
+      /<BareIconButton[\s\S]*className=\{styles\.conversationOpenWindowButton\}[\s\S]*size="md"[\s\S]*<BareIconButton[\s\S]*className=\{styles\.conversationPinButton\}[\s\S]*size="md"[\s\S]*<BareIconButton[\s\S]*className=\{styles\.conversationDeleteButton\}[\s\S]*size="md"/
     );
     expect(css).toMatch(
       /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s*{[^}]*background:\s*transparent[^}]*background-color:\s*transparent/s
@@ -1797,6 +1797,15 @@ describe("AgentFileMentionPalette", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s*{[^}]*color:\s*var\(--agent-gui-accent\)/s
+    );
+    const openWindowIconHoverRule = css.match(
+      /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-open-window-button:not\(:disabled\):hover\s+svg,[\s\S]*?\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-open-window-button:not\(:disabled\):active\s+svg\s*{(?<body>[^}]*)}/
+    );
+    expect(openWindowIconHoverRule?.groups?.body).toMatch(
+      /color:\s*var\(--text-primary\)/
+    );
+    expect(openWindowIconHoverRule?.groups?.body).not.toMatch(
+      /fill:\s*currentColor/
     );
     expect(css).toMatch(
       /\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):hover\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):focus-visible\s+svg,\s*\.agent-gui-node__conversation-actions\s+>\s+button\.agent-gui-node__conversation-pin-button:not\(:disabled\):active\s+svg\s*{[^}]*color:\s*var\(--agent-gui-accent\)[^}]*fill:\s*currentColor/s

@@ -733,6 +733,7 @@ export const zhCN = {
       shortcutEnter: "Enter",
       shortcutCmdEnter: "Cmd + Enter",
       shortcutCtrEnter: "Ctr + Enter",
+      openConversationWindow: "在新窗口打开会话",
       deleteSession: "删除会话",
       pinSession: "置顶会话",
       unpinSession: "取消置顶",

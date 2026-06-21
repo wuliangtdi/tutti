@@ -54,6 +54,13 @@ export interface WorkspaceFileDirectoryListing {
   workspaceID: string;
 }
 
+export interface WorkspaceFileDirectoryExpansionState {
+  entries: WorkspaceFileEntry[];
+  error: string | null;
+  isLoading: boolean;
+  loaded: boolean;
+}
+
 export interface WorkspaceFileSearchEntry {
   directoryPath: string;
   kind: WorkspaceFileEntryKind;
@@ -175,11 +182,16 @@ export interface WorkspaceFileManagerState {
   createDialog: WorkspaceFileManagerCreateDialogState | null;
   currentDirectoryPath: string;
   deleteDialog: WorkspaceFileManagerDeleteDialogState | null;
+  directoryExpansionByPath: Record<
+    string,
+    WorkspaceFileDirectoryExpansionState
+  >;
   inlineRenameEntryPath: string | null;
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
   dragDepth: number;
   entries: WorkspaceFileEntry[];
   error: string | null;
+  expandedDirectoryPaths: Record<string, boolean>;
   isLoading: boolean;
   isMutating: boolean;
   isSearching: boolean;

@@ -31,11 +31,13 @@ export function createWorkspaceFileManagerStore(input: {
       initialDirectoryPath ??
       workspaceFileManagerLogicalRoot,
     deleteDialog: null,
+    directoryExpansionByPath: {},
     inlineRenameEntryPath: null,
     inlineRenameValidation: null,
     dragDepth: 0,
     entries: [],
     error: null,
+    expandedDirectoryPaths: {},
     isLoading: false,
     isMutating: false,
     isSearching: false,

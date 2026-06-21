@@ -796,6 +796,7 @@ export const en = {
       shortcutEnter: "Enter",
       shortcutCmdEnter: "Cmd + Enter",
       shortcutCtrEnter: "Ctr + Enter",
+      openConversationWindow: "Open session in new window",
       deleteSession: "Delete session",
       pinSession: "Pin session",
       unpinSession: "Unpin session",

@@ -366,9 +366,9 @@ function mergeLoadedConversation(
   )
     ? (incoming.pinnedAtUnixMs ?? null)
     : (current?.pinnedAtUnixMs ?? null);
-  const project =
-    incoming.project ??
-    (current?.cwd === incoming.cwd ? current?.project : null);
+  // `project` is intentionally not merged/preserved here: it is a view-only
+  // JOIN of cwd × userProjects derived in the view layer, never canonical store
+  // state. Whatever `incoming` carries (normally undefined) flows through.
   const merged: AgentGUIConversationSummary = {
     ...incoming,
     ...mergeLoadedConversationTitleFields(current, incoming, preferCurrent),
@@ -376,7 +376,6 @@ function mergeLoadedConversation(
       incoming.hasUnreadCompletion ||
       (preferCurrent ? current?.hasUnreadCompletion : false),
     pinnedAtUnixMs,
-    project,
     sortTimeUnixMs: maxOptionalTimeUnixMs(
       current?.sortTimeUnixMs,
       incoming.sortTimeUnixMs
@@ -1162,7 +1161,33 @@ export function scheduleAgentGUIConversationListProjection(
   scheduleQueryRefresh(query, reason);
 }
 
-export function updateAgentGUIConversationListConversations(
+// Internal-only. Production callers must use the named, intent-scoped mutations
+// below (patch a single conversation by id, remove by id, pin, seed, …). The
+// arbitrary `(current[]) => next[]` updater was the seam that let a per-window
+// view-derived value (project) be written back into the shared store and churn
+// across windows; keeping it un-exported makes that impossible to express.
+// `project` is a per-window JOIN of cwd x userProjects derived in the view layer;
+// it must never become canonical store state (writing it back caused the
+// cross-window update storm this module fixes). Strip it at the single write
+// choke point so no path - merge, upsert, patch, seed - can leak a resolved
+// project, regardless of what a caller returns. Returns the same array reference
+// when nothing needed stripping, preserving the no-op identity short-circuit.
+function stripProjectFromConversations(
+  conversations: AgentGUIConversationSummary[]
+): AgentGUIConversationSummary[] {
+  let changed = false;
+  const next = conversations.map((conversation) => {
+    if (conversation.project == null) {
+      return conversation;
+    }
+    changed = true;
+    const { project: _project, ...rest } = conversation;
+    return rest;
+  });
+  return changed ? next : conversations;
+}
+
+function updateAgentGUIConversationListConversations(
   query: AgentGUIConversationListQuery,
   updater: (
     current: AgentGUIConversationSummary[]
@@ -1170,7 +1195,9 @@ export function updateAgentGUIConversationListConversations(
   _reason: ConversationListUpdateReason = "external-update"
 ): void {
   updateQueryState(query, (current) => {
-    const nextConversations = updater(current.conversations);
+    const nextConversations = stripProjectFromConversations(
+      updater(current.conversations)
+    );
     if (nextConversations === current.conversations) {
       return current;
     }
@@ -1365,6 +1392,94 @@ export function setAgentGUIConversationPinned(input: {
   );
 }
 
+/**
+ * Apply a partial update to a single conversation identified by id. `patch` is
+ * either a partial object or a function `(conversation) => Partial | null`
+ * (return `null` for "no change"). Unlike the (now internal) arbitrary list
+ * updater, this can only modify fields of ONE existing conversation — it cannot
+ * add, remove, reorder, or bulk-rewrite the list. That constraint is what makes
+ * a view-derived writeback (the old project storm) impossible to express.
+ */
+export function patchAgentGUIConversationSummary(input: {
+  query: AgentGUIConversationListQuery;
+  conversationId: string;
+  // `project` is omitted from the patch type: it is view-derived, never store
+  // state. (Even if it slipped through, stripProjectFromConversations drops it.)
+  patch:
+    | Partial<Omit<AgentGUIConversationSummary, "project">>
+    | ((
+        conversation: AgentGUIConversationSummary
+      ) => Partial<Omit<AgentGUIConversationSummary, "project">> | null);
+}): void {
+  const conversationId = input.conversationId.trim();
+  if (!conversationId) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(input.query, (current) => {
+    if (!current.some((conversation) => conversation.id === conversationId)) {
+      return current;
+    }
+    let changed = false;
+    const next = current.map((conversation) => {
+      if (conversation.id !== conversationId) {
+        return conversation;
+      }
+      const patch =
+        typeof input.patch === "function"
+          ? input.patch(conversation)
+          : input.patch;
+      if (!patch) {
+        return conversation;
+      }
+      const merged = { ...conversation, ...patch };
+      if (areConversationsEqual(conversation, merged)) {
+        return conversation;
+      }
+      changed = true;
+      return merged;
+    });
+    return changed ? next : current;
+  });
+}
+
+/** Remove conversations by id (optimistic local delete, no reappear-guard). */
+export function removeAgentGUIConversationSummaries(input: {
+  query: AgentGUIConversationListQuery;
+  conversationIds: readonly string[];
+}): void {
+  const ids = new Set(
+    input.conversationIds.map((id) => id.trim()).filter(Boolean)
+  );
+  if (ids.size === 0) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(
+    input.query,
+    (current) => {
+      const next = current.filter((conversation) => !ids.has(conversation.id));
+      return next.length === current.length ? current : next;
+    },
+    "local-delete"
+  );
+}
+
+/**
+ * Seed a query's conversations from a previous snapshot ONLY when the target is
+ * still empty (query-key/userId handoff). One-shot and gated, so it cannot churn
+ * across windows.
+ */
+export function seedAgentGUIConversationListConversationsIfEmpty(input: {
+  query: AgentGUIConversationListQuery;
+  conversations: readonly AgentGUIConversationSummary[];
+}): void {
+  if (input.conversations.length === 0) {
+    return;
+  }
+  updateAgentGUIConversationListConversations(input.query, (current) =>
+    current.length === 0 ? [...input.conversations] : current
+  );
+}
+
 export function markAgentGUIConversationCreatePending(input: {
   query: AgentGUIConversationListQuery;
   ownerKey: string;
@@ -1487,6 +1602,22 @@ export function markLocalDeletedAgentGUIConversation(input: {
         (conversation) => conversation.id !== input.agentSessionId
       ),
     "local-delete"
+  );
+}
+
+/**
+ * Test-only seam: replace a query's conversations wholesale. Production code must
+ * use the named single-conversation mutations; this exists so store-level tests
+ * can seed arbitrary lists and exercise sort/equality/diagnostics behaviour.
+ */
+export function setAgentGUIConversationListConversationsForTests(
+  query: AgentGUIConversationListQuery,
+  conversations: AgentGUIConversationSummary[]
+): void {
+  updateAgentGUIConversationListConversations(
+    query,
+    () => conversations,
+    "external-update"
   );
 }
 

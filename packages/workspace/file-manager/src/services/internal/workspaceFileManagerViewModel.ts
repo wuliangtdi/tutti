@@ -8,6 +8,7 @@ import type {
   WorkspaceFileEntry,
   WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
+import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 
 export interface WorkspaceFileManagerRootViewState {
   canImportFromDrop: boolean;
@@ -224,14 +225,12 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
 function findSelectedEntry(
   state: WorkspaceFileManagerState
 ): WorkspaceFileEntry | null {
-  return (
-    state.entries.find((entry) => entry.path === state.selectedPath) ?? null
-  );
+  return findWorkspaceFileEntry(state, state.selectedPath);
 }
 
 function findEntry(
   state: WorkspaceFileManagerState,
   entryPath: string
 ): WorkspaceFileEntry | null {
-  return state.entries.find((entry) => entry.path === entryPath) ?? null;
+  return findWorkspaceFileEntry(state, entryPath);
 }

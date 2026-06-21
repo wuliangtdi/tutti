@@ -2,24 +2,19 @@ import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
   MouseEvent as ReactMouseEvent,
-  ReactElement,
-  RefObject
+  ReactElement
 } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { cn } from "@tutti-os/ui-system";
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import type { WorkspaceFileManagerSession } from "../services/workspaceFileManagerService.interface.ts";
-import {
-  resolveRevealInFolderLabel,
-  type WorkspaceFileManagerI18nRuntime
-} from "../i18n/workspaceFileManagerI18n.ts";
+import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type {
   WorkspaceFileEntry,
   WorkspaceFileOpenWithApplication
 } from "../services/workspaceFileManagerTypes.ts";
-import { isWorkspaceFileBrowserOpenable } from "../services/index.ts";
+import { WorkspaceFileManagerContextMenuContainer } from "./WorkspaceFileManagerContextMenuContainer.tsx";
 import {
-  WorkspaceFileManagerContextMenu,
   WorkspaceFileManagerCreateDialog,
   WorkspaceFileManagerDeleteDialog,
   WorkspaceFileManagerUnsupportedDialog,
@@ -41,7 +36,10 @@ import { useWorkspaceFileManagerLayoutMode } from "./useWorkspaceFileManagerLayo
 import { useWorkspaceFileEntryIconUrls } from "./useWorkspaceFileEntryIconUrls.ts";
 import { shouldTrackDirectoryExpanded } from "./workspaceFileManagerAnalytics.ts";
 import {
-  useWorkspaceFileManagerContextMenuView,
+  buildWorkspaceFileManagerVisibleTreeRows,
+  collectWorkspaceFileManagerVisibleTreeEntries
+} from "./workspaceFileManagerVisibleTree.ts";
+import {
   useWorkspaceFileManagerDialogsView,
   useWorkspaceFileManagerPanelsView,
   useWorkspaceFileManagerRootView,
@@ -451,12 +449,31 @@ function WorkspaceFileManagerPanelsContainer({
     () => sortWorkspaceFileEntriesForArrangeMode(state.entries, arrangeMode),
     [arrangeMode, state.entries]
   );
+  const treeRows = useMemo(
+    () =>
+      buildWorkspaceFileManagerVisibleTreeRows({
+        arrangeMode,
+        directoryExpansionByPath: state.directoryExpansionByPath,
+        entries: arrangedEntries,
+        expandedDirectoryPaths: state.expandedDirectoryPaths
+      }),
+    [
+      arrangeMode,
+      arrangedEntries,
+      state.directoryExpansionByPath,
+      state.expandedDirectoryPaths
+    ]
+  );
+  const visibleTreeEntries = useMemo(
+    () => collectWorkspaceFileManagerVisibleTreeEntries(treeRows),
+    [treeRows]
+  );
   const {
     iconUrlByCacheKey,
     reportEntryIconViewportEnter,
     reportEntryIconViewportLeave
   } = useWorkspaceFileEntryIconUrls({
-    entries: arrangedEntries,
+    entries: layoutMode === "list" ? visibleTreeEntries : arrangedEntries,
     includeImageThumbnails: true,
     resolveEntryIconUrl
   });
@@ -476,6 +493,7 @@ function WorkspaceFileManagerPanelsContainer({
       layoutMode={layoutMode}
       pendingDirectoryPath={view.pendingDirectoryPath}
       previewState={view.previewState}
+      treeRows={treeRows}
       onEntryIconViewportEnter={reportEntryIconViewportEnter}
       onEntryIconViewportLeave={reportEntryIconViewportLeave}
       selectedEntry={view.selectedEntry}
@@ -511,6 +529,12 @@ function WorkspaceFileManagerPanelsContainer({
       }}
       onSelect={(path) => {
         session.select(path);
+      }}
+      onToggleDirectoryExpanded={(entry, expanded) => {
+        if (!expanded) {
+          onDirectoryExpanded?.(entry.path);
+        }
+        void session.toggleDirectoryExpanded(entry);
       }}
     />
   );
@@ -576,258 +600,6 @@ function WorkspaceFileManagerDialogsContainer({
       />
     </>
   );
-}
-
-function WorkspaceFileManagerContextMenuContainer({
-  hostOs,
-  i18n,
-  onCopyEntry,
-  onCopyPath,
-  openInAppBrowserIcon,
-  resolveOpenWithApplicationIcon,
-  session
-}: {
-  hostOs: NodeJS.Platform;
-  i18n: WorkspaceFileManagerI18nRuntime;
-  onCopyEntry?: () => Promise<void> | void;
-  onCopyPath?: (path: string) => Promise<void> | void;
-  openInAppBrowserIcon?: ReactElement;
-  resolveOpenWithApplicationIcon?: (
-    application: WorkspaceFileOpenWithApplication
-  ) => ReactElement | null;
-  session: WorkspaceFileManagerSession;
-}): ReactElement | null {
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
-  const { view } = useWorkspaceFileManagerContextMenuView(session);
-  const [openWithApplications, setOpenWithApplications] = useState<
-    WorkspaceFileOpenWithApplication[]
-  >([]);
-  const [openWithLoading, setOpenWithLoading] = useState(false);
-
-  useEffect(() => {
-    const entry = view.contextMenu?.entry;
-    if (!entry || !view.showOpenWithAction) {
-      return;
-    }
-
-    const cachedApplications = session.getCachedOpenWithApplications(entry);
-    if (cachedApplications) {
-      setOpenWithApplications(cachedApplications);
-      setOpenWithLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setOpenWithLoading(true);
-    void session
-      .listOpenWithApplications(entry)
-      .then((applications) => {
-        if (cancelled) {
-          return;
-        }
-        setOpenWithApplications(applications);
-        setOpenWithLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) {
-          return;
-        }
-        setOpenWithApplications([]);
-        setOpenWithLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session, view.contextMenu?.entry?.path, view.showOpenWithAction]);
-
-  useCloseContextMenuOnOutsideInteraction({
-    contextMenuRef,
-    isOpen: view.contextMenu !== null,
-    session
-  });
-
-  return (
-    <WorkspaceFileManagerContextMenu
-      busy={view.isBusy || view.isLoading || view.isMutating}
-      copy={i18n}
-      contextMenu={view.contextMenu}
-      contextMenuRef={contextMenuRef}
-      showCopyAction={view.showCopyAction}
-      showImportAction={view.showImportAction}
-      showExportAction={view.showExportAction}
-      showOpenInAppBrowserAction={
-        view.showOpenInAppBrowserAction &&
-        !!view.contextMenu?.entry &&
-        isWorkspaceFileBrowserOpenable(view.contextMenu.entry)
-      }
-      showOpenInDefaultBrowserAction={
-        view.showOpenInDefaultBrowserAction &&
-        !!view.contextMenu?.entry &&
-        isWorkspaceFileBrowserOpenable(view.contextMenu.entry)
-      }
-      showOpenInFileViewerAction={view.showOpenInFileViewerAction}
-      showOpenWithAction={view.showOpenWithAction}
-      showOpenWithOtherAction={view.showOpenWithOtherAction}
-      showRevealInFolderAction={view.showRevealInFolderAction}
-      showRenameAction={view.showRenameAction}
-      revealInFolderLabel={resolveRevealInFolderLabel(i18n, hostOs)}
-      openInAppBrowserIcon={openInAppBrowserIcon}
-      openWithApplications={openWithApplications}
-      openWithLoading={openWithLoading}
-      resolveOpenWithApplicationIcon={resolveOpenWithApplicationIcon}
-      onClose={() => {
-        session.closeContextMenu();
-      }}
-      onCreateDirectory={() => {
-        session.openCreateDirectoryDialog();
-      }}
-      onCreateFile={() => {
-        session.openCreateFileDialog();
-      }}
-      onCopy={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        session.closeContextMenu();
-        await session.copyToClipboard(entry);
-        if (onCopyEntry) {
-          await onCopyEntry();
-        }
-      }}
-      onCopyPath={async () => {
-        const path = view.contextMenu?.entry?.path;
-        if (!path) {
-          return;
-        }
-        session.closeContextMenu();
-        if (onCopyPath) {
-          await onCopyPath(path);
-          return;
-        }
-        await navigator.clipboard.writeText(path);
-      }}
-      onDelete={() => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        session.openDeleteDialog(entry);
-      }}
-      onRename={() => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        session.startInlineRename(entry);
-      }}
-      onExport={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.exportEntry(entry);
-      }}
-      onOpen={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openEntry(entry);
-      }}
-      onOpenInAppBrowser={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openFileInAppBrowser(entry);
-      }}
-      onOpenInDefaultBrowser={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openFileInDefaultBrowser(entry);
-      }}
-      onOpenInFileViewer={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openFileInFileViewer(entry);
-      }}
-      onOpenWithApplication={async (applicationPath) => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openFileWithApplication(entry, applicationPath);
-      }}
-      onOpenWithOtherApplication={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.openFileWithOtherApplication(entry);
-      }}
-      onRevealInFolder={async () => {
-        const entry = view.contextMenu?.entry;
-        if (!entry) {
-          return;
-        }
-        await session.revealEntry(entry);
-      }}
-      onImport={async () => {
-        session.closeContextMenu();
-        await session.importFiles(
-          view.contextMenu?.entry?.kind === "directory"
-            ? view.contextMenu.entry.path
-            : view.currentDirectoryPath
-        );
-      }}
-    />
-  );
-}
-
-function useCloseContextMenuOnOutsideInteraction(input: {
-  contextMenuRef: RefObject<HTMLDivElement | null>;
-  isOpen: boolean;
-  session: WorkspaceFileManagerSession;
-}): void {
-  const { contextMenuRef, isOpen, session } = input;
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    function handlePointerDown(event: PointerEvent): void {
-      const target = event.target;
-      if (target instanceof Node && contextMenuRef.current?.contains(target)) {
-        return;
-      }
-      if (
-        target instanceof Element &&
-        target.closest("[data-workspace-file-manager-submenu]")
-      ) {
-        return;
-      }
-      session.closeContextMenu();
-    }
-
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === "Escape") {
-        session.closeContextMenu();
-      }
-    }
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [contextMenuRef, isOpen, session]);
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {

@@ -14,8 +14,7 @@ import {
   resetAgentGUIConversationListStoreForTests,
   scheduleAgentGUIConversationListProjection,
   setAgentGUIConversationListActiveConversation,
-  updateAgentGUIConversationListConversations,
-  upsertLocalCreatedAgentGUIConversation,
+  setAgentGUIConversationListConversationsForTests,
   type AgentGUIConversationListQuery
 } from "./agentGuiConversationListStore";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
@@ -210,7 +209,7 @@ describe("agentGuiConversationListStore", () => {
     };
     ensureAgentGUIConversationListQuery(query);
 
-    updateAgentGUIConversationListConversations(query, () => [
+    setAgentGUIConversationListConversationsForTests(query, [
       conversation("older-start-with-newer-message", {
         sortTimeUnixMs: 1_000,
         updatedAtUnixMs: 9_000
@@ -240,7 +239,7 @@ describe("agentGuiConversationListStore", () => {
     };
     ensureAgentGUIConversationListQuery(query);
 
-    updateAgentGUIConversationListConversations(query, () => [
+    setAgentGUIConversationListConversationsForTests(query, [
       conversation("session-1", {
         status: "completed"
       })
@@ -271,7 +270,14 @@ describe("agentGuiConversationListStore", () => {
     ).toBe(false);
   });
 
-  it("preserves projected project metadata when durable refresh has the same cwd without project metadata", () => {
+  // NOTE: project metadata is no longer canonical store state — it is a
+  // view-only JOIN of cwd × userProjects derived per-window in the view-model
+  // layer (see useAgentGUINodeController visibleConversations). The store
+  // structurally strips `project` at its write choke point, so the former
+  // store-merge project tests were removed. View derivation is covered by the
+  // controller and groupConversations specs.
+
+  it("strips project metadata so it never becomes canonical store state", () => {
     const query: AgentGUIConversationListQuery = {
       workspaceId: "workspace-1",
       userId: "user-1",
@@ -280,69 +286,23 @@ describe("agentGuiConversationListStore", () => {
     };
     ensureAgentGUIConversationListQuery(query);
 
-    upsertLocalCreatedAgentGUIConversation({
-      query,
-      conversation: conversation("session-1", {
+    // Even if a write path hands the store a resolved project, it must not land
+    // in canonical state (this is what prevented the cross-window storm).
+    setAgentGUIConversationListConversationsForTests(query, [
+      conversation("session-1", {
         cwd: "/workspace/app",
         project: {
           id: "app",
           path: "/workspace/app",
           label: "App"
-        },
-        updatedAtUnixMs: 1
+        }
       })
-    });
-    upsertLocalCreatedAgentGUIConversation({
-      query,
-      conversation: conversation("session-1", {
-        cwd: "/workspace/app",
-        project: null,
-        updatedAtUnixMs: 2
-      })
-    });
+    ]);
 
-    expect(
-      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]?.project
-    ).toEqual({
-      id: "app",
-      path: "/workspace/app",
-      label: "App"
-    });
-  });
-
-  it("drops projected project metadata when durable refresh changes cwd without project metadata", () => {
-    const query: AgentGUIConversationListQuery = {
-      workspaceId: "workspace-1",
-      userId: "user-1",
-      provider: "codex",
-      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
-    };
-    ensureAgentGUIConversationListQuery(query);
-
-    upsertLocalCreatedAgentGUIConversation({
-      query,
-      conversation: conversation("session-1", {
-        cwd: "/workspace/app",
-        project: {
-          id: "app",
-          path: "/workspace/app",
-          label: "App"
-        },
-        updatedAtUnixMs: 1
-      })
-    });
-    upsertLocalCreatedAgentGUIConversation({
-      query,
-      conversation: conversation("session-1", {
-        cwd: "/workspace/other",
-        project: null,
-        updatedAtUnixMs: 2
-      })
-    });
-
-    expect(
-      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]?.project
-    ).toBeNull();
+    const stored =
+      getAgentGUIConversationListQuerySnapshot(query)?.conversations[0];
+    expect(stored?.id).toBe("session-1");
+    expect(stored?.project ?? null).toBeNull();
   });
 
   it("logs diagnostics when conversation updates churn in a short window", () => {
@@ -362,15 +322,11 @@ describe("agentGuiConversationListStore", () => {
     ensureAgentGUIConversationListQuery(query);
 
     for (let index = 0; index < 8; index += 1) {
-      updateAgentGUIConversationListConversations(
-        query,
-        () => [
-          conversation("session-1", {
-            updatedAtUnixMs: index + 1
-          })
-        ],
-        "external-update"
-      );
+      setAgentGUIConversationListConversationsForTests(query, [
+        conversation("session-1", {
+          updatedAtUnixMs: index + 1
+        })
+      ]);
     }
 
     expect(logRuntimeDiagnostics).toHaveBeenCalledTimes(1);

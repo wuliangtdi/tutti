@@ -78,7 +78,7 @@ describe("agent gui workbench launch contract", () => {
       dockEntryId: "agent-gui",
       instanceId: "agent-gui:codex:session:session-2",
       provider: "codex",
-      reuseDockEntryNode: true,
+      reuseDockEntryNode: false,
       targetAgentSessionId: "session-2"
     });
   });

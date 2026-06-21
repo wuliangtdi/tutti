@@ -28,6 +28,8 @@ import { WorkspaceFileManagerMutationController } from "./workspaceFileManagerMu
 import { WorkspaceFileManagerNavigationController } from "./workspaceFileManagerNavigationController.ts";
 import { WorkspaceFileManagerPreviewController } from "./workspaceFileManagerPreviewController.ts";
 import { WorkspaceFileManagerImportController } from "./workspaceFileManagerImportController.ts";
+import { WorkspaceFileManagerTreeController } from "./workspaceFileManagerTreeController.ts";
+import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 import {
   resolveWorkspaceFileOpenWithCacheKey,
   WorkspaceFileOpenWithApplicationsCache
@@ -78,6 +80,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   private readonly mutationController: WorkspaceFileManagerMutationController;
   private readonly navigationController: WorkspaceFileManagerNavigationController;
   private readonly previewController: WorkspaceFileManagerPreviewController;
+  private readonly treeController: WorkspaceFileManagerTreeController;
   private readonly persistence?: CreateWorkspaceFileManagerSessionInput["persistence"];
   private unsubscribeStore: (() => void) | null = null;
   private readonly importController: WorkspaceFileManagerImportController;
@@ -92,6 +95,11 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.persistence = input.persistence;
     this.store = input.store;
     this.navigationController = new WorkspaceFileManagerNavigationController({
+      host: input.host,
+      resolveErrorMessage: (error) => this.resolveErrorMessage(error),
+      store: this.store
+    });
+    this.treeController = new WorkspaceFileManagerTreeController({
       host: input.host,
       resolveErrorMessage: (error) => this.resolveErrorMessage(error),
       store: this.store
@@ -266,9 +274,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     if (!inlineRenameEntryPath) {
       return true;
     }
-    const entry = this.store.entries.find(
-      (candidate) => candidate.path === inlineRenameEntryPath
-    );
+    const entry = findWorkspaceFileEntry(this.store, inlineRenameEntryPath);
     if (!entry) {
       this.store.inlineRenameEntryPath = null;
       this.store.inlineRenameValidation = null;
@@ -465,6 +471,10 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.store.inlineRenameEntryPath = entry.path;
     this.store.inlineRenameValidation = null;
     this.store.selectedPath = entry.path;
+  }
+
+  async toggleDirectoryExpanded(entry: WorkspaceFileEntry): Promise<void> {
+    await this.treeController.toggleDirectoryExpanded(entry);
   }
 
   async copyToClipboard(entry: WorkspaceFileEntry): Promise<void> {

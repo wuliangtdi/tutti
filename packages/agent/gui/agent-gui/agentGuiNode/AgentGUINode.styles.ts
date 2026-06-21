@@ -57,6 +57,8 @@ const styles = {
   conversationItem: "agent-gui-node__conversation-item",
   conversationList: "agent-gui-node__conversation-list",
   conversationMeta: "agent-gui-node__conversation-meta",
+  conversationOpenWindowButton:
+    "agent-gui-node__conversation-open-window-button",
   conversationPinButton: "agent-gui-node__conversation-pin-button",
   conversationSection: "agent-gui-node__conversation-section",
   conversationSectionActions: "agent-gui-node__conversation-section-actions",

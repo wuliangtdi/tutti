@@ -11,6 +11,7 @@ import type {
   WorkspaceFileEntryKind,
   WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
+import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 
 export interface WorkspaceFileManagerMutationControllerInput {
   host: WorkspaceFileManagerHost;
@@ -72,9 +73,7 @@ export class WorkspaceFileManagerMutationController {
       return;
     }
 
-    const entry = this.store.entries.find(
-      (candidate) => candidate.path === this.store.selectedPath
-    );
+    const entry = findWorkspaceFileEntry(this.store, this.store.selectedPath);
     await this.mutate(
       "delete",
       () =>

@@ -48,6 +48,7 @@ export interface WorkspaceFileManagerCommands {
   openCreateFileDialog(): void;
   openDeleteDialog(entry: WorkspaceFileEntry): void;
   startInlineRename(entry: WorkspaceFileEntry): void;
+  toggleDirectoryExpanded(entry: WorkspaceFileEntry): Promise<void>;
   getCachedOpenWithApplications(
     entry: WorkspaceFileEntry
   ): WorkspaceFileOpenWithApplication[] | null;

@@ -70,6 +70,8 @@ export class WorkspaceFileManagerNavigationController {
       this.store.root = normalizeWorkspaceFilePath(listing.root);
       this.store.currentDirectoryPath = listing.directoryPath;
       this.store.entries = sortWorkspaceEntries(listing.entries);
+      this.store.directoryExpansionByPath = {};
+      this.store.expandedDirectoryPaths = {};
       this.store.selectedPath = null;
     } catch (error) {
       if (requestID === this.requestSeq) {
@@ -117,6 +119,8 @@ export class WorkspaceFileManagerNavigationController {
       this.store.root = normalizeWorkspaceFilePath(listing.root);
       this.store.currentDirectoryPath = listing.directoryPath;
       this.store.entries = sortWorkspaceEntries(listing.entries);
+      this.store.directoryExpansionByPath = {};
+      this.store.expandedDirectoryPaths = {};
       this.store.selectedPath = normalizedPath;
     } catch (error) {
       if (requestID === this.requestSeq) {
@@ -146,6 +150,8 @@ export class WorkspaceFileManagerNavigationController {
       this.store.root = normalizeWorkspaceFilePath(listing.root);
       this.store.currentDirectoryPath = listing.directoryPath;
       this.store.entries = sortWorkspaceEntries(listing.entries);
+      this.store.directoryExpansionByPath = {};
+      this.store.expandedDirectoryPaths = {};
       this.store.selectedPath = null;
     } catch (error) {
       if (requestID === this.requestSeq) {

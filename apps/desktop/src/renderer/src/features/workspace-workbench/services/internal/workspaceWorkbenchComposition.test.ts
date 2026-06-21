@@ -138,7 +138,7 @@ test("workspace agent GUI session launches target exact session instances", () =
   assert.equal(descriptor.targetAgentSessionId, "session-2");
   assert.equal(descriptor.dockEntryId, "agent-gui");
   assert.equal(descriptor.instanceId, "agent-gui:codex:session:session-2");
-  assert.equal(descriptor.reuseDockEntryNode, true);
+  assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
     payload: {
       agentSessionId: "session-2"
