@@ -259,6 +259,40 @@ describe("AgentTranscriptItemView render stability", () => {
     });
   });
 
+  it("shows the message copy action when hovering the bottom action row", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-group::after\s*{[^}]*top:\s*100%[^}]*right:\s*0[^}]*left:\s*0[^}]*height:\s*26px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*26px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-group:hover[\s\S]*?> \.agent-gui-conversation__message-copy-button,[\s\S]*?\.agent-gui-conversation__message-group:focus-within[\s\S]*?> \.agent-gui-conversation__message-copy-button\s*{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-conversation__message-group::after\s*{[^}]*height:\s*10px/s
+    );
+  });
+
+  it("keeps the message copy button compact within the action row", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 4px\)[^}]*width:\s*22px[^}]*min-width:\s*22px[^}]*height:\s*22px[^}]*min-height:\s*22px[^}]*border-radius:\s*5px/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*width:\s*28px/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-conversation__message-copy-button\s*{[^}]*top:\s*calc\(100% \+ 8px\)/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-conversation__message-group:has\(\s*> \.agent-gui-conversation__message-copy-button\s*\)\s*{[^}]*margin-bottom:\s*36px/s
+    );
+  });
+
   it("loads user prompt image attachments from the activity runtime", async () => {
     const readSessionAttachment = vi.fn(async () => ({
       attachmentId: "attachment-1",
