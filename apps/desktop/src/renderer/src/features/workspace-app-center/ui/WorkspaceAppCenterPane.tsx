@@ -119,14 +119,14 @@ const documentSummarizerAppIconUrl = new URL(
 
 const comingSoonWorkspaceAppDefinitions = [
   {
-    appId: "ai-ppt",
+    appId: "ai-slide",
     descriptionKey: "appCenter.comingSoonApps.aiPpt.description",
     iconUrl: aiPptAppIconUrl,
     nameKey: "appCenter.comingSoonApps.aiPpt.name",
     tags: ["coming-soon", "office", "presentation"]
   },
   {
-    appId: "ai-document",
+    appId: "ai-doc",
     descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
     iconUrl: aiDocumentAppIconUrl,
     nameKey: "appCenter.comingSoonApps.aiDocument.name",
@@ -509,8 +509,8 @@ function resolveWorkspaceAppCategory(
     case "design-review":
     case "vibe-design":
       return labels.productDesign;
-    case "ai-ppt":
-    case "ai-document":
+    case "ai-slide":
+    case "ai-doc":
     case "ai-sheet":
       return labels.office;
     case "ai-media-canvas":

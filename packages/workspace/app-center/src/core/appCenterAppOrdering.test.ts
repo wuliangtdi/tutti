@@ -33,7 +33,7 @@ describe("sortRecommendedApps", () => {
         sourceKind: "bundled"
       }),
       createApp({
-        id: "ai-ppt",
+        id: "ai-slide",
         name: "AI PPT",
         sourceKind: "bundled",
         tags: ["coming-soon"]
@@ -62,7 +62,7 @@ describe("sortRecommendedApps", () => {
         "vibe-design",
         "automation",
         "daily-product-radar",
-        "ai-ppt"
+        "ai-slide"
       ]
     );
   });
@@ -126,7 +126,7 @@ describe("sortRecommendedAppsForAllTab", () => {
   it("orders radar aliases with other installable apps before coming soon apps", () => {
     const apps = [
       createApp({
-        id: "ai-ppt",
+        id: "ai-slide",
         name: "AI PPT",
         sourceKind: "bundled",
         tags: ["coming-soon"]
@@ -141,7 +141,7 @@ describe("sortRecommendedAppsForAllTab", () => {
 
     assert.deepEqual(
       sortRecommendedAppsForAllTab(apps).map((app) => app.id),
-      ["automation", "daily-tech-radar", "ai-ppt"]
+      ["automation", "daily-tech-radar", "ai-slide"]
     );
   });
 });

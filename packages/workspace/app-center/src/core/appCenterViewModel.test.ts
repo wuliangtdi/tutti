@@ -187,7 +187,7 @@ describe("createAppCenterViewModel", () => {
               }
             ],
             manifest: {
-              appId: "ai-document",
+              appId: "ai-doc",
               description: "AI document creation.",
               runtime: {
                 bootstrap: "bootstrap.sh",
@@ -201,7 +201,7 @@ describe("createAppCenterViewModel", () => {
           },
           install: null,
           manifest: {
-            appId: "ai-document",
+            appId: "ai-doc",
             description: "AI document creation.",
             runtime: {
               bootstrap: "bootstrap.sh",
