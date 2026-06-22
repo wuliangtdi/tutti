@@ -1,10 +1,12 @@
 package runtimecmd
 
 import (
+	"context"
 	"net"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // System proxy injection.
@@ -67,7 +69,9 @@ func runScutilProxy() (string, bool) {
 	if runtime.GOOS != "darwin" {
 		return "", false
 	}
-	out, err := exec.Command("scutil", "--proxy").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "scutil", "--proxy").Output()
 	if err != nil {
 		return "", false
 	}
