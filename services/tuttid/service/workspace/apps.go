@@ -496,6 +496,8 @@ func (s *AppCenterService) startRuntimePreload() {
 	s.mu.Unlock()
 
 	go func() {
+		startedAt := time.Now()
+		slog.Info("workspace app runtime preload started", "profile", workspaceAppNodeRuntimePreloadProfile)
 		defer func() {
 			s.mu.Lock()
 			s.runtimePreloadInFlight = false
@@ -503,9 +505,11 @@ func (s *AppCenterService) startRuntimePreload() {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		if err := runner.PreloadRuntime(ctx); err != nil {
-			slog.Warn("workspace app runtime preload failed", "error", err)
+		if err := runner.PreloadRuntimeForProfile(ctx, workspaceAppNodeRuntimePreloadProfile); err != nil {
+			slog.Warn("workspace app runtime preload failed", "profile", workspaceAppNodeRuntimePreloadProfile, "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
+			return
 		}
+		slog.Info("workspace app runtime preload completed", "profile", workspaceAppNodeRuntimePreloadProfile, "durationMs", time.Since(startedAt).Milliseconds())
 	}()
 }
 

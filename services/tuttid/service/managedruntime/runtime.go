@@ -22,13 +22,20 @@ const tuttiAppRuntimeCacheRootEnv = "TUTTI_APP_RUNTIME_CACHE_ROOT"
 const tuttiAppRuntimeCatalogEnv = "TUTTI_APP_RUNTIME_CATALOG"
 const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
+const appRuntimeNodeStaticProfile = "node-static"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
+
+const NodeStaticProfile = appRuntimeNodeStaticProfile
 
 const maxManagedAppRuntimeArtifactBytes int64 = 512 * 1024 * 1024
 const maxManagedAppRuntimeExpandedBytes int64 = 2 * 1024 * 1024 * 1024
 
 type Resolver interface {
 	Resolve(context.Context) (ResolvedRuntime, error)
+}
+
+type ProfilePreloader interface {
+	PreloadProfile(context.Context, string) error
 }
 
 type ResolvedRuntime struct {
@@ -75,6 +82,18 @@ type appRuntimeCatalogComponent struct {
 var managedAppRuntimeDownloadLocks sync.Map
 
 func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
+	root := r.runtimeRoot()
+	if err := r.ensureRuntime(ctx, root); err != nil {
+		return ResolvedRuntime{}, err
+	}
+	return r.resolvedRuntime(root)
+}
+
+func (r DefaultResolver) PreloadProfile(ctx context.Context, profile string) error {
+	return r.ensureRuntimeProfile(ctx, r.runtimeRoot(), profile)
+}
+
+func (r DefaultResolver) runtimeRoot() string {
 	root := strings.TrimSpace(r.RuntimeRoot)
 	if root == "" {
 		root = strings.TrimSpace(envValue(r.environ(), tuttiAppRuntimeRootEnv))
@@ -82,11 +101,7 @@ func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 	if root == "" {
 		root = DefaultRoot(r.environ())
 	}
-	root = filepath.Clean(root)
-	if err := r.ensureRuntime(ctx, root); err != nil {
-		return ResolvedRuntime{}, err
-	}
-	return r.resolvedRuntime(root)
+	return filepath.Clean(root)
 }
 
 func (r DefaultResolver) resolvedRuntime(root string) (ResolvedRuntime, error) {
@@ -128,12 +143,26 @@ func (r DefaultResolver) ensureRuntime(ctx context.Context, root string) error {
 	if RootReady(root) {
 		return nil
 	}
+	if err := r.ensureRuntimeProfile(ctx, root, appRuntimeBaselineProfile); err != nil {
+		return err
+	}
+	if !RootReady(root) {
+		return fmt.Errorf("managed app runtime artifact does not contain python and node baseline")
+	}
+	return nil
+}
+
+func (r DefaultResolver) ensureRuntimeProfile(ctx context.Context, root string, profile string) error {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		return fmt.Errorf("managed app runtime profile is required")
+	}
 	lockValue, _ := managedAppRuntimeDownloadLocks.LoadOrStore(root, &sync.Mutex{})
 	lock := lockValue.(*sync.Mutex)
 	lock.Lock()
 	defer lock.Unlock()
 
-	if RootReady(root) {
+	if profile == appRuntimeBaselineProfile && RootReady(root) {
 		return nil
 	}
 	catalogSource := r.runtimeCatalogSource()
@@ -149,7 +178,20 @@ func (r DefaultResolver) ensureRuntime(ctx context.Context, root string) error {
 	if !ok {
 		return fmt.Errorf("managed app runtime catalog does not contain platform %q", platformArch)
 	}
-	return r.downloadRuntime(ctx, root, entry)
+	componentNames, err := appRuntimeProfileComponentNames(entry, profile)
+	if err != nil {
+		return err
+	}
+	missing := make([]string, 0, len(componentNames))
+	for _, name := range componentNames {
+		if !appRuntimeComponentReady(root, name) {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return r.downloadRuntime(ctx, root, entry, missing)
 }
 
 func RootReady(root string) bool {
@@ -161,6 +203,23 @@ func RootReady(root string) bool {
 		runtime.Python != "" &&
 		runtime.Node != "" &&
 		runtime.NPM != ""
+}
+
+func appRuntimeComponentReady(root string, name string) bool {
+	if strings.TrimSpace(root) == "" {
+		return false
+	}
+	switch strings.TrimSpace(name) {
+	case "python":
+		return isExecutableFile(filepath.Join(root, "python", "bin", pythonBinaryName()))
+	case "node":
+		nodeBinDir := filepath.Join(root, "node", "bin")
+		return isExecutableFile(filepath.Join(nodeBinDir, nodeBinaryName())) &&
+			isExecutableFile(filepath.Join(nodeBinDir, npmBinaryName()))
+	default:
+		info, err := os.Stat(filepath.Join(root, name))
+		return err == nil && info.IsDir()
+	}
 }
 
 func (r DefaultResolver) loadCatalog(ctx context.Context, source string) (appRuntimeCatalog, error) {
@@ -232,11 +291,7 @@ func (r DefaultResolver) readCatalog(ctx context.Context, source string) ([]byte
 	return data, nil
 }
 
-func (r DefaultResolver) downloadRuntime(ctx context.Context, root string, entry appRuntimeCatalogEntry) error {
-	componentNames, err := baselineAppRuntimeComponentNames(entry)
-	if err != nil {
-		return err
-	}
+func (r DefaultResolver) downloadRuntime(ctx context.Context, root string, entry appRuntimeCatalogEntry, componentNames []string) error {
 	parent := filepath.Dir(root)
 	downloadsDir := filepath.Join(parent, "downloads")
 	if err := os.MkdirAll(downloadsDir, 0o755); err != nil {
@@ -264,17 +319,26 @@ func (r DefaultResolver) downloadRuntime(ctx context.Context, root string, entry
 			return fmt.Errorf("extract managed app runtime component %q: %w", download.name, err)
 		}
 	}
-	if !RootReady(stagingDir) {
-		return fmt.Errorf("managed app runtime artifact does not contain python and node baseline")
-	}
-	if err := os.RemoveAll(root); err != nil {
-		return fmt.Errorf("replace managed app runtime root: %w", err)
+	for _, name := range componentNames {
+		if !appRuntimeComponentReady(stagingDir, name) {
+			return fmt.Errorf("managed app runtime artifact does not contain %q component", name)
+		}
 	}
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("create managed app runtime parent: %w", err)
 	}
-	if err := os.Rename(stagingDir, root); err != nil {
-		return fmt.Errorf("install managed app runtime: %w", err)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return fmt.Errorf("create managed app runtime root: %w", err)
+	}
+	for _, name := range componentNames {
+		source := filepath.Join(stagingDir, name)
+		target := filepath.Join(root, name)
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("replace managed app runtime component %q: %w", name, err)
+		}
+		if err := os.Rename(source, target); err != nil {
+			return fmt.Errorf("install managed app runtime component %q: %w", name, err)
+		}
 	}
 	return nil
 }
@@ -563,33 +627,47 @@ func validateManagedAppRuntimeCatalogEntry(platform string, entry appRuntimeCata
 			return err
 		}
 	}
-	baseline, err := baselineAppRuntimeComponentNames(entry)
-	if err != nil {
+	if _, err := appRuntimeProfileComponentNames(entry, appRuntimeBaselineProfile); err != nil {
 		return fmt.Errorf("managed app runtime catalog platform %q: %w", platform, err)
 	}
-	seen := map[string]struct{}{}
-	for _, name := range baseline {
-		if _, ok := seen[name]; ok {
-			return fmt.Errorf("managed app runtime catalog platform %q baseline contains duplicate component %q", platform, name)
-		}
-		seen[name] = struct{}{}
-		if _, ok := entry.Components[name]; !ok {
-			return fmt.Errorf("managed app runtime catalog platform %q baseline references missing component %q", platform, name)
+	for profileName := range entry.Profiles {
+		if _, err := appRuntimeProfileComponentNames(entry, profileName); err != nil {
+			return fmt.Errorf("managed app runtime catalog platform %q: %w", platform, err)
 		}
 	}
 	return nil
 }
 
-func baselineAppRuntimeComponentNames(entry appRuntimeCatalogEntry) ([]string, error) {
-	baseline := entry.Profiles[appRuntimeBaselineProfile]
-	if len(baseline) == 0 {
+func appRuntimeProfileComponentNames(entry appRuntimeCatalogEntry, profile string) ([]string, error) {
+	profile = strings.TrimSpace(profile)
+	if profile == "" {
+		return nil, fmt.Errorf("managed app runtime profile is required")
+	}
+	components, ok := entry.Profiles[profile]
+	if !ok || len(components) == 0 {
+		if profile == appRuntimeNodeStaticProfile {
+			if _, ok := entry.Components["node"]; ok {
+				return []string{"node"}, nil
+			}
+		}
+		if profile != appRuntimeBaselineProfile {
+			return nil, fmt.Errorf("managed app runtime profile %q is required", profile)
+		}
 		return nil, fmt.Errorf("managed app runtime baseline profile is required")
 	}
-	names := make([]string, 0, len(baseline))
-	for _, componentName := range baseline {
+	seen := map[string]struct{}{}
+	names := make([]string, 0, len(components))
+	for _, componentName := range components {
 		name := strings.TrimSpace(componentName)
 		if name == "" {
-			return nil, fmt.Errorf("managed app runtime baseline profile contains an empty component")
+			return nil, fmt.Errorf("managed app runtime profile %q contains an empty component", profile)
+		}
+		if _, ok := seen[name]; ok {
+			return nil, fmt.Errorf("managed app runtime profile %q contains duplicate component %q", profile, name)
+		}
+		seen[name] = struct{}{}
+		if _, ok := entry.Components[name]; !ok {
+			return nil, fmt.Errorf("managed app runtime profile %q references missing component %q", profile, name)
 		}
 		names = append(names, name)
 	}

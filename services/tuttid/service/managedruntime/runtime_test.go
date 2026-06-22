@@ -165,6 +165,80 @@ func TestDefaultResolverDownloadsRuntimeFromCatalog(t *testing.T) {
 	}
 }
 
+func TestDefaultResolverPreloadsRuntimeProfileComponents(t *testing.T) {
+	cacheRoot := t.TempDir()
+	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")
+	pythonSHA256, _, err := fileSHA256AndSize(pythonArtifactPath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	nodeArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "node")
+	nodeSHA256, _, err := fileSHA256AndSize(nodeArtifactPath)
+	if err != nil {
+		t.Fatalf("fileSHA256AndSize() error = %v", err)
+	}
+	catalogPath := filepath.Join(t.TempDir(), "runtimes.json")
+	catalogJSON := `{
+  "schemaVersion": "tutti.app.runtimes.v2",
+  "runtimes": {
+    "` + appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH) + `": {
+      "version": "test",
+      "components": {
+        "python": {
+          "version": "test-python",
+          "artifactUrl": "` + filepath.ToSlash(pythonArtifactPath) + `",
+          "artifactSha256": "` + pythonSHA256 + `"
+        },
+        "node": {
+          "version": "test-node",
+          "artifactUrl": "` + filepath.ToSlash(nodeArtifactPath) + `",
+          "artifactSha256": "` + nodeSHA256 + `"
+        }
+      },
+      "profiles": {
+        "baseline": ["python", "node"],
+        "node-static": ["node"]
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(catalogPath, []byte(catalogJSON), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+
+	resolver := DefaultResolver{
+		Environ: func() []string {
+			return []string{
+				tuttiAppRuntimeCacheRootEnv + "=" + cacheRoot,
+				tuttiAppRuntimeCatalogEnv + "=" + catalogPath,
+				"PATH=/usr/bin:/bin",
+			}
+		},
+	}
+	if err := resolver.PreloadProfile(context.Background(), "node-static"); err != nil {
+		t.Fatalf("PreloadProfile() error = %v", err)
+	}
+
+	root := filepath.Join(cacheRoot, appRuntimePlatformArch(runtime.GOOS, runtime.GOARCH))
+	if !isExecutableFile(filepath.Join(root, "node", "bin", nodeBinaryName())) {
+		t.Fatal("node profile preload did not install node")
+	}
+	if !isExecutableFile(filepath.Join(root, "node", "bin", npmBinaryName())) {
+		t.Fatal("node profile preload did not install npm")
+	}
+	if isExecutableFile(filepath.Join(root, "python", "bin", pythonBinaryName())) {
+		t.Fatal("node profile preload installed python")
+	}
+
+	resolved, err := resolver.Resolve(context.Background())
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if !isExecutableFile(resolved.Python) || !isExecutableFile(resolved.Node) || !isExecutableFile(resolved.NPM) {
+		t.Fatalf("Resolve() did not complete baseline runtime: %#v", resolved)
+	}
+}
+
 func TestDefaultResolverRejectsRuntimeShaMismatch(t *testing.T) {
 	cacheRoot := t.TempDir()
 	pythonArtifactPath := createManagedRuntimeComponentArchiveForTest(t, "python")

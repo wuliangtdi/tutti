@@ -123,6 +123,16 @@ func (r *AppRunner) PreloadRuntime(ctx context.Context) error {
 	return err
 }
 
+func (r *AppRunner) PreloadRuntimeForProfile(ctx context.Context, profile string) error {
+	r.ensure()
+	resolver := r.runtimeResolver()
+	if preloader, ok := resolver.(AppRuntimeProfilePreloader); ok {
+		return preloader.PreloadProfile(ctx, profile)
+	}
+	_, err := resolver.Resolve(ctx)
+	return err
+}
+
 func (r *AppRunner) startQueued(ctx context.Context, key string, input AppStartInput, start *appStart) {
 	select {
 	case r.queue <- struct{}{}:

@@ -35,9 +35,11 @@ type appArtifactFetcherStub struct {
 }
 
 type appRuntimeResolverStub struct {
-	called chan struct{}
-	once   sync.Once
-	err    error
+	called  chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+	profile string
+	err     error
 }
 
 type preloadThenFailRuntimeResolver struct {
@@ -180,6 +182,16 @@ func (r *appRuntimeResolverStub) Resolve(context.Context) (ResolvedAppRuntime, e
 		return ResolvedAppRuntime{}, r.err
 	}
 	return ResolvedAppRuntime{}, nil
+}
+
+func (r *appRuntimeResolverStub) PreloadProfile(_ context.Context, profile string) error {
+	r.once.Do(func() {
+		close(r.called)
+	})
+	r.mu.Lock()
+	r.profile = profile
+	r.mu.Unlock()
+	return r.err
 }
 
 func (r *preloadThenFailRuntimeResolver) Resolve(context.Context) (ResolvedAppRuntime, error) {
@@ -1234,6 +1246,83 @@ func TestAppCenterServiceStartEnabledWaitsForRemoteCatalogRefresh(t *testing.T) 
 	case <-fetcher.done:
 	case <-time.After(time.Second):
 		t.Fatal("background remote builtin update did not finish")
+	}
+}
+
+func TestAppCenterServiceStartEnabledPreloadsRuntimeAfterRemoteCatalogRefresh(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("TUTTI_APP_CATALOG_FILE", "")
+
+	releaseCatalog := make(chan struct{})
+	releaseCatalogOnce := sync.Once{}
+	releaseCatalogResponse := func() {
+		releaseCatalogOnce.Do(func() {
+			close(releaseCatalog)
+		})
+	}
+	t.Cleanup(releaseCatalogResponse)
+	catalogRequested := make(chan struct{})
+	var catalogRequestedOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		catalogRequestedOnce.Do(func() {
+			close(catalogRequested)
+		})
+		<-releaseCatalog
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{
+			"schemaVersion": "tutti.app.catalog.v1",
+			"apps": []
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("TUTTI_APP_CATALOG_URL", server.URL+"/catalog.json")
+
+	resolver := &appRuntimeResolverStub{called: make(chan struct{})}
+	service := AppCenterService{
+		Store:          newAppStoreStub(),
+		WorkspaceStore: &catalogStoreStub{getWorkspace: workspacebiz.Summary{ID: "ws-1", Name: "Workspace"}},
+		Runner:         &AppRunner{RuntimeResolver: resolver},
+		StateDir:       t.TempDir(),
+	}
+
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := service.StartEnabled(ctx, "ws-1")
+		resultCh <- err
+	}()
+
+	select {
+	case <-catalogRequested:
+	case err := <-resultCh:
+		t.Fatalf("StartEnabled() returned before catalog request completed: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("remote catalog was not requested")
+	}
+	select {
+	case <-resolver.called:
+		t.Fatal("runtime preload started before catalog refresh completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	releaseCatalogResponse()
+	select {
+	case err := <-resultCh:
+		if err != nil {
+			t.Fatalf("StartEnabled() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StartEnabled() did not return after catalog refresh completed")
+	}
+	select {
+	case <-resolver.called:
+	case <-time.After(time.Second):
+		t.Fatal("runtime preload did not start after catalog refresh")
+	}
+	resolver.mu.Lock()
+	preloadedProfile := resolver.profile
+	resolver.mu.Unlock()
+	if preloadedProfile != workspaceAppNodeRuntimePreloadProfile {
+		t.Fatalf("runtime preload profile = %q, want %q", preloadedProfile, workspaceAppNodeRuntimePreloadProfile)
 	}
 }
 

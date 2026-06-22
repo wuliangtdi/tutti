@@ -44,9 +44,11 @@ export async function buildTuttiAppRuntimeCatalog({
             }
           ])
       ),
-      profiles: {
-        baseline: [...metadata.profiles.baseline]
-      }
+      profiles: Object.fromEntries(
+        Object.entries(metadata.profiles)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, components]) => [name, [...components]])
+      )
     };
   }
 
@@ -88,27 +90,54 @@ export function validateRuntimeArtifactMetadata(metadata, metadataPath = "") {
   ) {
     throw new Error(`${prefix}metadata.profiles.baseline is required`);
   }
-  const seenBaseline = new Set();
-  for (const componentName of metadata.profiles.baseline) {
-    if (typeof componentName !== "string" || componentName.trim() === "") {
-      throw new Error(`${prefix}metadata.profiles.baseline is invalid`);
-    }
-    if (seenBaseline.has(componentName)) {
-      throw new Error(
-        `${prefix}metadata.profiles.baseline has duplicate component`
-      );
-    }
-    seenBaseline.add(componentName);
-    if (!metadata.components[componentName]) {
-      throw new Error(
-        `${prefix}metadata.profiles.baseline references missing component ${componentName}`
-      );
-    }
+  for (const [profileName, profileComponents] of Object.entries(
+    metadata.profiles
+  )) {
+    validateRuntimeArtifactProfile(
+      profileName,
+      profileComponents,
+      metadata.components,
+      prefix
+    );
   }
   for (const [componentName, component] of Object.entries(
     metadata.components
   )) {
     validateRuntimeArtifactComponent(componentName, component, prefix);
+  }
+}
+
+function validateRuntimeArtifactProfile(
+  profileName,
+  profileComponents,
+  components,
+  prefix
+) {
+  if (typeof profileName !== "string" || profileName.trim() === "") {
+    throw new Error(`${prefix}metadata profile name is invalid`);
+  }
+  if (!/^[a-z0-9][a-z0-9._-]*[a-z0-9]$/i.test(profileName)) {
+    throw new Error(`${prefix}metadata profile name ${profileName} is unsafe`);
+  }
+  if (!Array.isArray(profileComponents) || profileComponents.length === 0) {
+    throw new Error(`${prefix}metadata.profiles.${profileName} is required`);
+  }
+  const seen = new Set();
+  for (const componentName of profileComponents) {
+    if (typeof componentName !== "string" || componentName.trim() === "") {
+      throw new Error(`${prefix}metadata.profiles.${profileName} is invalid`);
+    }
+    if (seen.has(componentName)) {
+      throw new Error(
+        `${prefix}metadata.profiles.${profileName} has duplicate component`
+      );
+    }
+    seen.add(componentName);
+    if (!components[componentName]) {
+      throw new Error(
+        `${prefix}metadata.profiles.${profileName} references missing component ${componentName}`
+      );
+    }
   }
 }
 

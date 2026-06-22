@@ -222,7 +222,8 @@ jobs:
               }
             },
             "profiles": {
-              "baseline": ["python", "node"]
+              "baseline": ["python", "node"],
+              "node-static": ["node"]
             }
           }
           JSON

@@ -35,7 +35,8 @@ test("buildTuttiAppRuntimeCatalog writes runtime catalog from artifact metadata"
       }
     },
     profiles: {
-      baseline: ["node"]
+      baseline: ["node"],
+      "node-static": ["node"]
     }
   });
   const output = path.join(tempDir, "catalog.json");
@@ -57,6 +58,9 @@ test("buildTuttiAppRuntimeCatalog writes runtime catalog from artifact metadata"
   );
   assert.deepEqual(catalog.runtimes["darwin-arm64"].profiles.baseline, [
     "python"
+  ]);
+  assert.deepEqual(catalog.runtimes["linux-amd64"].profiles["node-static"], [
+    "node"
   ]);
 });
 
@@ -118,6 +122,7 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /node\/bin\/npx/);
   assert.match(workflow, /npx-cli\.js/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npm" --version/);
+  assert.match(workflow, /"node-static": \["node"\]/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npx" --version/);
   assert.match(workflow, /path: downloaded-tutti-app-runtime/);
   assert.match(workflow, /merge-multiple: false/);

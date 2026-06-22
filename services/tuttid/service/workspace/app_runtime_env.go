@@ -9,8 +9,10 @@ import (
 )
 
 const tuttiAppRuntimeRootEnv = "TUTTI_APP_RUNTIME_ROOT"
+const workspaceAppNodeRuntimePreloadProfile = managedruntime.NodeStaticProfile
 
 type AppRuntimeResolver = managedruntime.Resolver
+type AppRuntimeProfilePreloader = managedruntime.ProfilePreloader
 type ResolvedAppRuntime = managedruntime.ResolvedRuntime
 type DefaultManagedAppRuntimeResolver = managedruntime.DefaultResolver
 
