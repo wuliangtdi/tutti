@@ -25,11 +25,12 @@ func remoteBuiltinWorkspaceApp(builtin builtinapps.App) (workspacebiz.WorkspaceA
 		return workspacebiz.WorkspaceApp{}, fmt.Errorf("normalize remote builtin app manifest %q: %w", builtin.Manifest.AppID, err)
 	}
 	appPackage := workspacebiz.AppPackage{
-		AppID:        builtin.Manifest.AppID,
-		Version:      builtin.Manifest.Version,
-		Manifest:     builtin.Manifest,
-		ManifestJSON: manifestJSON,
-		Source:       workspacebiz.AppPackageSourceBuiltin,
+		AppID:                builtin.Manifest.AppID,
+		Version:              builtin.Manifest.Version,
+		Manifest:             builtin.Manifest,
+		ManifestJSON:         manifestJSON,
+		CatalogLocalizations: append([]workspacebiz.AppManifestLocalization(nil), builtin.Localizations...),
+		Source:               workspacebiz.AppPackageSourceBuiltin,
 	}
 	return workspacebiz.WorkspaceApp{
 		Package: appPackage,

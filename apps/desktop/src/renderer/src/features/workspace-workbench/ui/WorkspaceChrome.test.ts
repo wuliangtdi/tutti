@@ -24,14 +24,15 @@ test("workspace chrome does not call updateSessionSettings or sendInput from the
   // (toast notification path at line 484 uses submitInteractive — that is expected to stay)
   // But updateSessionSettings + sendInput pair for plan mode must be gone from deck handler
   const deckSubmitMatch = source.match(
-    /onSubmitPrompt=\{async \(input\) => \{([\s\S]*?)\}\}/
+    /const handleMessageCenterSubmitPrompt = useCallback\(\s*async \(input: \{[\s\S]*?\}\) => \{([\s\S]*?)\},\s*\[workspace\.id, workspaceAgentActivityService\]\s*\)/
   );
   assert.ok(
     deckSubmitMatch,
-    "onSubmitPrompt handler should be present in WorkspaceChrome"
+    "message center submit handler should be present in WorkspaceChrome"
   );
   const handler = deckSubmitMatch[1] ?? "";
   assert.doesNotMatch(handler, /updateSessionSettings/);
   assert.doesNotMatch(handler, /sendInput/);
   assert.doesNotMatch(handler, /submitInteractive/);
+  assert.match(source, /onSubmitPrompt=\{handleMessageCenterSubmitPrompt\}/);
 });

@@ -51,6 +51,7 @@ export async function buildTuttiAppRelease(options) {
   for (const locale of manifest.localizationInfo?.additionalLocales ?? []) {
     await requireNonEmptyTextFile(path.join(packageDir, locale.file));
   }
+  const localizations = await readManifestLocalizations(packageDir, manifest);
   if (manifest.cli?.manifest) {
     const cliManifestPath = path.join(packageDir, manifest.cli.manifest);
     await requireFile(cliManifestPath);
@@ -85,6 +86,7 @@ export async function buildTuttiAppRelease(options) {
     name: manifest.name,
     description: manifest.description,
     manifest,
+    ...(localizations.length > 0 ? { localizations } : {}),
     artifactUrl: `${baseUrl}/${releaseURLPrefix}/${encodeURLPathSegment(artifactName)}`,
     artifactSha256: artifact.sha256,
     artifactSizeBytes: artifact.size,
@@ -410,6 +412,9 @@ function validateLocalizationInfo(localizationInfo, sourceLabel) {
 export function releaseToCatalogApp(release) {
   validateRelease(release);
   return {
+    ...(Array.isArray(release.localizations) && release.localizations.length > 0
+      ? { localizations: release.localizations }
+      : {}),
     manifest: release.manifest,
     distribution: {
       kind: "remote",
@@ -443,6 +448,7 @@ export function validateRelease(release) {
   if (release.manifest.version !== release.version) {
     throw new Error("release manifest.version must match release version");
   }
+  validateReleaseLocalizations(release.localizations, "release.localizations");
   if (!/^[a-f0-9]{64}$/i.test(release.artifactSha256)) {
     throw new Error("release artifactSha256 must be a sha256 hex digest");
   }
@@ -451,6 +457,110 @@ export function validateRelease(release) {
     release.artifactSizeBytes <= 0
   ) {
     throw new Error("release artifactSizeBytes must be a positive integer");
+  }
+}
+
+async function readManifestLocalizations(packageDir, manifest) {
+  const localizations = [];
+  for (const entry of manifest.localizationInfo?.additionalLocales ?? []) {
+    const locale = requireNonEmpty(
+      entry.locale,
+      "manifest localization locale"
+    );
+    const filePath = path.join(packageDir, entry.file);
+    const document = await readLocalizationDocument(filePath);
+    const localization = normalizeLocalization(document, locale, filePath);
+    if (localization) {
+      localizations.push(localization);
+    }
+  }
+  return localizations;
+}
+
+function normalizeLocalization(document, locale, sourceLabel) {
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    throw new Error(`${sourceLabel} must be a localization object`);
+  }
+  const localization = {
+    locale
+  };
+  if (document.name !== undefined) {
+    const name = requireOptionalString(document.name, `${sourceLabel}.name`);
+    if (name) {
+      localization.name = name;
+    }
+  }
+  if (document.description !== undefined) {
+    const description = requireOptionalString(
+      document.description,
+      `${sourceLabel}.description`
+    );
+    if (description) {
+      localization.description = description;
+    }
+  }
+  if (document.tags !== undefined) {
+    if (!Array.isArray(document.tags)) {
+      throw new Error(`${sourceLabel}.tags must be an array`);
+    }
+    const tags = document.tags
+      .map((tag, index) =>
+        requireOptionalString(tag, `${sourceLabel}.tags[${index}]`)
+      )
+      .filter(Boolean);
+    if (tags.length > 0) {
+      localization.tags = [...new Set(tags)];
+    }
+  }
+  if (!localization.name && !localization.description && !localization.tags) {
+    return null;
+  }
+  return localization;
+}
+
+async function readLocalizationDocument(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `parse manifest localization file ${filePath}: ${error.message}`
+    );
+  }
+}
+
+function validateReleaseLocalizations(localizations, sourceLabel) {
+  if (localizations === undefined) {
+    return;
+  }
+  if (!Array.isArray(localizations)) {
+    throw new Error(`${sourceLabel} must be an array`);
+  }
+  const seenLocales = new Set();
+  for (const [index, localization] of localizations.entries()) {
+    const label = `${sourceLabel}[${index}]`;
+    if (!localization || typeof localization !== "object") {
+      throw new Error(`${label} must be an object`);
+    }
+    const locale = requireNonEmpty(localization.locale, `${label}.locale`);
+    const localeKey = locale.toLowerCase();
+    if (seenLocales.has(localeKey)) {
+      throw new Error(`${label}.locale must be unique`);
+    }
+    seenLocales.add(localeKey);
+    if (localization.name !== undefined) {
+      requireOptionalString(localization.name, `${label}.name`);
+    }
+    if (localization.description !== undefined) {
+      requireOptionalString(localization.description, `${label}.description`);
+    }
+    if (localization.tags !== undefined) {
+      if (!Array.isArray(localization.tags)) {
+        throw new Error(`${label}.tags must be an array`);
+      }
+      for (const [tagIndex, tag] of localization.tags.entries()) {
+        requireOptionalString(tag, `${label}.tags[${tagIndex}]`);
+      }
+    }
   }
 }
 
@@ -519,6 +629,13 @@ function requireNonEmpty(value, label) {
     throw new Error(`${label} is required`);
   }
   return text;
+}
+
+function requireOptionalString(value, label) {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+  return value.trim();
 }
 
 function requireSafePathSegment(value, label) {

@@ -1207,6 +1207,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
     {
       args: [
         {
+          allowExisting: true,
           name: "session-44444444-4444-4444-8444-444444444444"
         }
       ],

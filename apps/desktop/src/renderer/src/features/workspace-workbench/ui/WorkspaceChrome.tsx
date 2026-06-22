@@ -12,8 +12,10 @@ import {
   buildWorkspaceAgentInteractivePromptLabels,
   buildWorkspaceAgentMessageCenterModel,
   isWaitingMessageCenterItem,
+  stabilizeWorkspaceAgentMessageCenterModel,
   WorkspaceAgentMessageCenterPanel,
-  type WorkspaceAgentMessageCenterItem
+  type WorkspaceAgentMessageCenterItem,
+  type WorkspaceAgentMessageCenterModel
 } from "@tutti-os/agent-gui/agent-message-center";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type {
@@ -81,6 +83,8 @@ import type {
 } from "../services/workspaceWallpaper";
 
 const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
+const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
+const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
 const WORKSPACE_AGENT_DECISION_TOAST_DURATION = Infinity;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
 const AGENT_STATUS_PET_SOURCES = {
@@ -259,6 +263,10 @@ function WorkspaceAgentMessageCenterAction({
   const activeWaitingNotificationToastIdsRef = useRef<Map<string, string>>(
     new Map()
   );
+  const messageCenterModelRef = useRef<WorkspaceAgentMessageCenterModel | null>(
+    null
+  );
+  const messageCenterModelWorkspaceIdRef = useRef<string | null>(null);
   const snapshot = useSyncExternalStore(
     (listener) =>
       workspaceAgentActivityService.subscribe(workspace.id, (nextSnapshot) => {
@@ -295,21 +303,34 @@ function WorkspaceAgentMessageCenterAction({
       return nextSnapshot;
     }
   );
-  const model = useMemo(
-    () =>
-      buildWorkspaceAgentMessageCenterModel(snapshot, {
-        promptFallbackLabels: {
-          constraintHeader: t(
-            "workspace.agentMessageCenter.promptConstraintHeader"
-          ),
-          inputHeader: t("workspace.agentMessageCenter.promptInputHeader"),
-          question: t("workspace.agentMessageCenter.promptQuestion"),
-          title: t("workspace.agentMessageCenter.promptTitle")
-        },
-        workspaceRoot: null
-      }),
-    [snapshot, t]
+  const messageCenterItemCutoffUnixMs = useMemo(
+    () => Date.now() - MESSAGE_CENTER_VISIBLE_HISTORY_MS,
+    [workspace.id]
   );
+  const model = useMemo(() => {
+    if (messageCenterModelWorkspaceIdRef.current !== workspace.id) {
+      messageCenterModelWorkspaceIdRef.current = workspace.id;
+      messageCenterModelRef.current = null;
+    }
+    const nextModel = buildWorkspaceAgentMessageCenterModel(snapshot, {
+      promptFallbackLabels: {
+        constraintHeader: t(
+          "workspace.agentMessageCenter.promptConstraintHeader"
+        ),
+        inputHeader: t("workspace.agentMessageCenter.promptInputHeader"),
+        question: t("workspace.agentMessageCenter.promptQuestion"),
+        title: t("workspace.agentMessageCenter.promptTitle")
+      },
+      itemCutoffUnixMs: messageCenterItemCutoffUnixMs,
+      workspaceRoot: null
+    });
+    const stableModel = stabilizeWorkspaceAgentMessageCenterModel(
+      messageCenterModelRef.current,
+      nextModel
+    );
+    messageCenterModelRef.current = stableModel;
+    return stableModel;
+  }, [messageCenterItemCutoffUnixMs, snapshot, t, workspace.id]);
   const waitingItems = useMemo(
     () => model.items.filter(isWaitingMessageCenterItem),
     [model.items]
@@ -553,51 +574,64 @@ function WorkspaceAgentMessageCenterAction({
     if (!open) {
       return undefined;
     }
-    const abortController = new AbortController();
-    const targets = snapshot.sessions.filter((session) => {
+    const sessionsById = new Map(
+      snapshot.sessions.map((session) => [session.agentSessionId, session])
+    );
+    const targets = model.items
+      .slice(0, MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT)
+      .flatMap((item) => {
+        const session = sessionsById.get(item.agentSessionId);
+        return session ? [session] : [];
+      })
+      .filter((session) => {
+        const agentSessionId = session.agentSessionId.trim();
+        if (!agentSessionId) {
+          return false;
+        }
+        if (requestedMessageSummarySessionIdsRef.current.has(agentSessionId)) {
+          return false;
+        }
+        return !hasCachedWorkspaceAgentSessionMessages(
+          snapshot.sessionMessagesById,
+          session
+        );
+      });
+    if (targets.length === 0) {
+      return undefined;
+    }
+    const requestSessionSummary = (session: (typeof targets)[number]) => {
       const agentSessionId = session.agentSessionId.trim();
       if (!agentSessionId) {
-        return false;
+        return;
       }
       if (requestedMessageSummarySessionIdsRef.current.has(agentSessionId)) {
-        return false;
+        return;
       }
-      return !hasCachedWorkspaceAgentSessionMessages(
-        snapshot.sessionMessagesById,
-        session
-      );
-    });
-    if (targets.length === 0) {
-      return () => {
-        abortController.abort();
-      };
-    }
-    for (const session of targets) {
-      requestedMessageSummarySessionIdsRef.current.add(
-        session.agentSessionId.trim()
-      );
-    }
-    void Promise.all(
-      targets.map(async (session) => {
+      requestedMessageSummarySessionIdsRef.current.add(agentSessionId);
+      void (async () => {
         try {
           await workspaceAgentActivityService.listSessionMessages({
             workspaceId: workspace.id,
             agentSessionId: session.agentSessionId,
             limit: MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT,
-            order: "desc",
-            signal: abortController.signal
+            order: "desc"
           });
         } catch {
-          requestedMessageSummarySessionIdsRef.current.delete(
-            session.agentSessionId.trim()
-          );
+          requestedMessageSummarySessionIdsRef.current.delete(agentSessionId);
         }
-      })
-    );
-    return () => {
-      abortController.abort();
+      })();
     };
-  }, [open, snapshot, workspace.id, workspaceAgentActivityService]);
+    for (const session of targets) {
+      requestSessionSummary(session);
+    }
+    return undefined;
+  }, [
+    model.items,
+    open,
+    snapshot,
+    workspace.id,
+    workspaceAgentActivityService
+  ]);
 
   const openMessageCenterChat = useCallback(
     (input: { agentSessionId: string; provider: string }) => {
@@ -652,6 +686,54 @@ function WorkspaceAgentMessageCenterAction({
     },
     [launchNode, workbenchHostService, workspace.id]
   );
+  const closeMessageCenter = useCallback(() => {
+    setOpen(false);
+  }, []);
+  const handleHighlightedMessageCenterItemSettled = useCallback(
+    (itemId: string) => {
+      setHighlightedMessageCenterItemId((current) =>
+        current === itemId ? null : current
+      );
+    },
+    []
+  );
+  const handleMessageCenterNotificationActioned = useCallback(
+    (input: { action: string; provider: string }) => {
+      void new MessageCenterNotificationActionedReporter(
+        {
+          action: input.action,
+          provider: input.provider
+        },
+        {
+          reporterService
+        }
+      ).report();
+    },
+    [reporterService]
+  );
+  const handleMessageCenterSubmitPrompt = useCallback(
+    async (input: {
+      action?: string;
+      agentSessionId: string;
+      optionId?: string;
+      payload?: Record<string, unknown>;
+      promptKind?: string;
+      requestId: string;
+    }) => {
+      await workspaceAgentActivityService.submitPlanDecision({
+        workspaceId: workspace.id,
+        agentSessionId: input.agentSessionId,
+        // "" (no pending-prompt kind) takes the interactive-prompt branch
+        // in planDecisionOps; only "plan-implementation" diverges from it.
+        promptKind: input.promptKind ?? "",
+        requestId: input.requestId,
+        ...(input.action ? { action: input.action } : {}),
+        ...(input.optionId ? { optionId: input.optionId } : {}),
+        ...(input.payload ? { payload: input.payload } : {})
+      });
+    },
+    [workspace.id, workspaceAgentActivityService]
+  );
 
   return (
     <>
@@ -704,38 +786,12 @@ function WorkspaceAgentMessageCenterAction({
         open={open}
         model={model}
         highlightedItemId={highlightedMessageCenterItemId}
-        onClose={() => setOpen(false)}
-        onHighlightedItemSettled={(itemId) => {
-          setHighlightedMessageCenterItemId((current) =>
-            current === itemId ? null : current
-          );
-        }}
+        onClose={closeMessageCenter}
+        onHighlightedItemSettled={handleHighlightedMessageCenterItemSettled}
         onLinkAction={handleLinkAction}
-        onNotificationActioned={(input) => {
-          void new MessageCenterNotificationActionedReporter(
-            {
-              action: input.action,
-              provider: input.provider
-            },
-            {
-              reporterService
-            }
-          ).report();
-        }}
+        onNotificationActioned={handleMessageCenterNotificationActioned}
         onOpenChat={openMessageCenterChat}
-        onSubmitPrompt={async (input) => {
-          await workspaceAgentActivityService.submitPlanDecision({
-            workspaceId: workspace.id,
-            agentSessionId: input.agentSessionId,
-            // "" (no pending-prompt kind) takes the interactive-prompt branch
-            // in planDecisionOps; only "plan-implementation" diverges from it.
-            promptKind: input.promptKind ?? "",
-            requestId: input.requestId,
-            ...(input.action ? { action: input.action } : {}),
-            ...(input.optionId ? { optionId: input.optionId } : {}),
-            ...(input.payload ? { payload: input.payload } : {})
-          });
-        }}
+        onSubmitPrompt={handleMessageCenterSubmitPrompt}
       />
     </>
   );

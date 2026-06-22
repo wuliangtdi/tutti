@@ -566,7 +566,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       const directory =
         await this.dependencies.hostFilesApi?.createUserDocumentsProjectDirectory(
           {
-            name: `session-${input.agentSessionId.trim()}`
+            name: `session-${input.agentSessionId.trim()}`,
+            allowExisting: true
           }
         );
       this.dependencies.workspaceUserProjectService?.rememberNoProjectPath(

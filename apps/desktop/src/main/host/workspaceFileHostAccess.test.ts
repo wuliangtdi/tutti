@@ -324,6 +324,26 @@ test("workspace file host access rejects an existing project directory name", as
   );
 });
 
+test("workspace file host access treats an existing directory as success when allowExisting is set", async () => {
+  const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
+  const sessionName = "session-cf25318a-0f29-437d-943b-dfb8a478bc64";
+  await mkdir(path.join(documentsRoot, "tutti", sessionName), {
+    recursive: true
+  });
+  const hostAccess = createWorkspaceFileHostAccess({
+    getDocumentsPath: () => documentsRoot
+  });
+
+  const result = await hostAccess.createUserDocumentsProjectDirectory({
+    name: sessionName,
+    allowExisting: true
+  });
+
+  assert.deepEqual(result, {
+    path: path.join(documentsRoot, "tutti", sessionName)
+  });
+});
+
 test("workspace file host access gives project-specific codes for create failures", async () => {
   const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
   const hostAccess = createWorkspaceFileHostAccess({

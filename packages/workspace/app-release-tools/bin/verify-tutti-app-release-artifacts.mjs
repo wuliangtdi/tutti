@@ -147,6 +147,14 @@ function assertCatalogMatchesRelease(app, release) {
       `catalog app ${appId} iconUrl must match latest release metadata`
     );
   }
+  if (
+    JSON.stringify(app.localizations ?? []) !==
+    JSON.stringify(release.localizations ?? [])
+  ) {
+    throw new Error(
+      `catalog app ${appId} localizations must match latest release metadata`
+    );
+  }
 }
 
 function validateCatalog(catalog) {

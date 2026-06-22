@@ -22,6 +22,14 @@ func TestCatalogLoadsRemoteAppsFromFile(t *testing.T) {
 		"schemaVersion": "tutti.app.catalog.v1",
 		"apps": [
 			{
+				"localizations": [
+					{
+						"locale": "zh-CN",
+						"name": "远程设计",
+						"description": "设计工作区",
+						"tags": ["设计", "工作区"]
+					}
+				],
 				"manifest": {
 					"schemaVersion": "tutti.app.manifest.v1",
 					"appId": "remote-design",
@@ -54,6 +62,9 @@ func TestCatalogLoadsRemoteAppsFromFile(t *testing.T) {
 	}
 	if app.Distribution.Kind != DistributionRemote || app.Distribution.IconURL == "" {
 		t.Fatalf("remote app distribution = %#v", app.Distribution)
+	}
+	if len(app.Localizations) != 1 || app.Localizations[0].Locale != "zh-CN" || app.Localizations[0].Name != "远程设计" {
+		t.Fatalf("remote app localizations = %#v", app.Localizations)
 	}
 }
 

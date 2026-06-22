@@ -73,6 +73,55 @@ export function messageCenterAgentUserStackId(
   return `agent-user:${provider}:${userId}`;
 }
 
+export function messageCenterStackRenderId(
+  groupId: string,
+  stackId: string
+): string {
+  return groupId === stackId ? stackId : `${groupId}:${stackId}`;
+}
+
+export function messageCenterStackScrollSyncSegment({
+  expanded,
+  groupId,
+  stack
+}: {
+  expanded: boolean;
+  groupId: string;
+  stack: MessageCenterAgentUserStack;
+}): string {
+  const stackId = messageCenterStackRenderId(groupId, stack.id);
+  if (expanded) {
+    return `expanded:${stackId}:${stack.items.map((item) => item.id).join("|")}`;
+  }
+  return `collapsed:${stackId}:${messageCenterCollapsedStackSignature(
+    stack.items
+  )}`;
+}
+
+function messageCenterCollapsedStackSignature(
+  items: readonly WorkspaceAgentMessageCenterItem[]
+): string {
+  const firstItem = items[0];
+  if (!firstItem) {
+    return "0";
+  }
+  const hasWaiting = items.some(isWaitingMessageCenterItem) ? "1" : "0";
+  const summary =
+    firstItem.digest.primary.summary.trim() ||
+    firstItem.lastAgentMessageSummary.trim() ||
+    firstItem.title.trim();
+  return [
+    items.length,
+    firstItem.id,
+    firstItem.provider,
+    firstItem.userId ?? "",
+    firstItem.identity?.userName ?? "",
+    firstItem.identity?.agentName ?? "",
+    hasWaiting,
+    summary
+  ].join(":");
+}
+
 export function buildMessageCenterStatusOptions(
   counts: WorkspaceAgentMessageCenterModel["counts"],
   t: MessageCenterTranslate

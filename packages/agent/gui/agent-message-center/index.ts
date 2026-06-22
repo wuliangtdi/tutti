@@ -23,6 +23,7 @@ export {
   buildWorkspaceAgentMessageCenterModel,
   isWaitingMessageCenterItem
 } from "./workspaceAgentMessageCenterModel";
+export { stabilizeWorkspaceAgentMessageCenterModel } from "./workspaceAgentMessageCenterModelStability";
 export type {
   WorkspaceAgentMessageCenterDigest,
   WorkspaceAgentMessageCenterDigestPrimary,

@@ -692,6 +692,14 @@ func TestAppCenterServiceListsRemoteBuiltinBeforeDownloadAndMaterializesOnDemand
 		BuiltinCatalog: func() ([]builtinapps.App, error) {
 			return []builtinapps.App{{
 				Manifest: sourceManifest,
+				Localizations: []workspacebiz.AppManifestLocalization{
+					{
+						Locale:      "zh-CN",
+						Name:        "大型内置应用",
+						Description: "大型应用",
+						Tags:        []string{"内置", "工作区"},
+					},
+				},
 				Distribution: builtinapps.Distribution{
 					Kind:           builtinapps.DistributionRemote,
 					ArtifactURL:    fileServer.URL + "/" + filepath.Base(archivePath),
@@ -712,6 +720,10 @@ func TestAppCenterServiceListsRemoteBuiltinBeforeDownloadAndMaterializesOnDemand
 	}
 	if actualIconURL := remoteApp.ResolvedIconURL(); actualIconURL == nil || *actualIconURL != iconURL {
 		t.Fatalf("remote builtin icon url = %v, want %q", actualIconURL, iconURL)
+	}
+	localizations := remoteApp.Package.Localizations()
+	if len(localizations) != 1 || localizations[0].Locale != "zh-CN" || localizations[0].Name != "大型内置应用" {
+		t.Fatalf("remote builtin localizations = %#v", localizations)
 	}
 	if _, err := store.GetAppPackage(ctx, "large-builtin"); !errors.Is(err, workspacedata.ErrWorkspaceAppNotFound) {
 		t.Fatalf("GetAppPackage() before materialize error = %v", err)

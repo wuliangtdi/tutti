@@ -175,30 +175,9 @@ export const appCenterEn = {
     }
   },
   catalogApps: {
-    aiMediaCanvas: {
-      description: "Generate and organize AI images and videos on a canvas.",
-      name: "AI Canvas"
-    },
-    automation: {
-      description: "Create and schedule automation tasks.",
-      name: "Automation"
-    },
-    dailyProductRadar: {
-      description:
-        "Summarize daily new products and trending open-source projects.",
-      name: "Daily Product Radar"
-    },
-    groupChat: {
-      description: "Collaborate with multiple agents in a group chat.",
-      name: "Group Chat"
-    },
     issueManager: {
       description: "Manage workspace tasks and runs.",
       name: "Task Manager"
-    },
-    vibeDesign: {
-      description: "Create and iterate on design prototypes.",
-      name: "Prototype Design"
     }
   },
   comingSoonApps: {
@@ -240,11 +219,6 @@ export const appCenterEn = {
       description:
         "Open-source video editor with media arrangement and timeline editing.",
       name: "Open Cut"
-    },
-    calendar: {
-      category: "Other tools",
-      description: "Manage schedules, meetings, and to-dos.",
-      name: "Calendar"
     },
     documentSummarizer: {
       category: "Other tools",
@@ -456,29 +430,9 @@ export const appCenterZhCN = {
     }
   },
   catalogApps: {
-    aiMediaCanvas: {
-      description: "在画布上生成和整理 AI 图片、视频",
-      name: "AI Canvas"
-    },
-    automation: {
-      description: "创建并定时运行自动化任务",
-      name: "自动化"
-    },
-    dailyProductRadar: {
-      description: "汇总每日新产品和热门开源项目",
-      name: "每日产品雷达"
-    },
-    groupChat: {
-      description: "在群里和多个 Agent 一起协作",
-      name: "群聊"
-    },
     issueManager: {
       description: "管理工作区任务和运行记录。",
       name: "任务管理"
-    },
-    vibeDesign: {
-      description: "创建并迭代产品原型设计",
-      name: "产品原型设计"
     }
   },
   comingSoonApps: {
@@ -516,11 +470,6 @@ export const appCenterZhCN = {
       category: "内容创作",
       description: "开源视频剪辑工具，支持素材编排和时间线编辑",
       name: "Open Cut"
-    },
-    calendar: {
-      category: "其他工具",
-      description: "管理日程、会议和待办事项",
-      name: "Calendar"
     },
     documentSummarizer: {
       category: "其他工具",

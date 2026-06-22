@@ -68,9 +68,53 @@ test("buildTuttiAppRelease writes immutable release and latest metadata", async 
   assert.equal(manifest.version, "0.1.0+abc123");
 });
 
+test("buildTuttiAppRelease includes package manifest localizations", async () => {
+  const packageDir = await createPackageForTest("localized-app", {
+    localizations: [
+      {
+        locale: "zh-CN",
+        metadata: {
+          name: "本地化应用",
+          description: "本地化描述",
+          tags: ["本地化", "工作区", "工作区"]
+        }
+      }
+    ]
+  });
+  const outputDir = await mkdtemp(path.join(tmpdir(), "tutti-release-"));
+
+  const result = await buildTuttiAppRelease({
+    appId: "localized-app",
+    packageDir,
+    outputDir,
+    baseUrl: "https://cdn.example.test/tutti-apps/",
+    version: "0.1.0+abc123",
+    gitSha: "abc123",
+    publishedAt: "2026-06-04T00:00:00Z"
+  });
+
+  assert.deepEqual(result.release.localizations, [
+    {
+      locale: "zh-CN",
+      name: "本地化应用",
+      description: "本地化描述",
+      tags: ["本地化", "工作区"]
+    }
+  ]);
+});
+
 test("buildTuttiAppCatalog merges release files into remote catalog", async () => {
   const alpha = await releaseFileForTest("alpha-app");
-  const beta = await releaseFileForTest("beta-app");
+  const beta = await releaseFileForTest("beta-app", "0.1.0", {
+    localizations: [
+      {
+        locale: "zh-CN",
+        name: "Beta 应用",
+        description: "Beta 描述",
+        tags: ["Beta"]
+      }
+    ]
+  });
   const outputDir = await mkdtemp(path.join(tmpdir(), "tutti-catalog-"));
   const outputPath = path.join(outputDir, "catalog.json");
 
@@ -89,6 +133,14 @@ test("buildTuttiAppCatalog merges release files into remote catalog", async () =
     result.catalog.apps[0].distribution.iconUrl,
     "https://cdn.example.test/apps/alpha-app/icon.svg"
   );
+  assert.deepEqual(result.catalog.apps[1].localizations, [
+    {
+      locale: "zh-CN",
+      name: "Beta 应用",
+      description: "Beta 描述",
+      tags: ["Beta"]
+    }
+  ]);
 
   const written = JSON.parse(await readFile(outputPath, "utf8"));
   assert.deepEqual(written, result.catalog);
@@ -560,6 +612,9 @@ async function releaseFileForTest(appId, version = "0.1.0", overrides = {}) {
     name: appId,
     description: `${appId} description`,
     manifest: manifestForTest(appId, version),
+    ...(overrides.localizations
+      ? { localizations: overrides.localizations }
+      : {}),
     artifactUrl:
       overrides.artifactUrl ??
       `https://cdn.example.test/apps/${appId}/${appId}.zip`,
@@ -605,13 +660,31 @@ function catalogAppForTest(appId, version, overrides = {}) {
   };
 }
 
-async function createPackageForTest(appId) {
+async function createPackageForTest(appId, options = {}) {
   const packageDir = await mkdtemp(path.join(tmpdir(), "tutti-app-package-"));
   await mkdir(path.join(packageDir, "web"), { recursive: true });
+  const manifest = manifestForTest(appId);
+  if (options.localizations?.length > 0) {
+    manifest.localizationInfo = {
+      defaultLocale: "en",
+      additionalLocales: options.localizations.map((localization) => ({
+        locale: localization.locale,
+        file: `locales/${localization.locale}/manifest.json`
+      }))
+    };
+  }
   await writeFile(
     path.join(packageDir, "tutti.app.json"),
-    `${JSON.stringify(manifestForTest(appId), null, 2)}\n`
+    `${JSON.stringify(manifest, null, 2)}\n`
   );
+  for (const localization of options.localizations ?? []) {
+    const localeDir = path.join(packageDir, "locales", localization.locale);
+    await mkdir(localeDir, { recursive: true });
+    await writeFile(
+      path.join(localeDir, "manifest.json"),
+      `${JSON.stringify(localization.metadata, null, 2)}\n`
+    );
+  }
   await writeFile(path.join(packageDir, "AGENTS.md"), "App instructions\n");
   await writeFile(path.join(packageDir, "icon.svg"), `<${"svg"}></${"svg"}>\n`);
   await writeFile(path.join(packageDir, "web", "index.html"), "<div></div>\n");

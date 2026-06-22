@@ -12,6 +12,7 @@ import {
   useState
 } from "react";
 import { useSnapshot } from "valtio";
+import { proxy } from "valtio/vanilla";
 import { ChevronRight, ExternalLink, Info, X } from "lucide-react";
 import type {
   ReferenceLocateTarget,
@@ -129,6 +130,7 @@ export type AgentMentionReferenceTargetResolver = (
 ) => ReferenceLocateTarget | null;
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
+const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -260,6 +262,7 @@ export interface AgentGUIViewLabels {
   sectionEarlier: string;
   projectSectionEdit: string;
   projectSectionMoreActions: string;
+  projectSectionViewFiles: string;
   projectRailCreateProject: string;
   projectRailLinkExistingProject: string;
   removeProject: string;
@@ -300,6 +303,8 @@ export interface AgentGUIViewLabels {
   thinkingLabel: string;
   toolCallsLabel: (count: number) => string;
   openConversationWindow: string;
+  showMoreConversations: string;
+  showLessConversations: string;
   deleteSession: string;
   pinSession: string;
   unpinSession: string;
@@ -905,15 +910,45 @@ export function AgentGUINodeView({
     },
     [settleReferencePicker, viewModel.workspaceId]
   );
-  const openclawGateway =
-    viewModel.openclawGateway ??
-    (viewModel.data.provider === "openclaw"
-      ? { status: "starting" as const, error: null }
-      : null);
+  const openclawGateway = useMemo(
+    () =>
+      viewModel.openclawGateway ??
+      (viewModel.data.provider === "openclaw"
+        ? { status: "starting" as const, error: null }
+        : null),
+    [viewModel.data.provider, viewModel.openclawGateway]
+  );
   const isOpenclawGatewayBlocking =
     openclawGateway !== null && openclawGateway.status !== "ready";
   const createConversationDisabled =
     viewModel.isCreatingConversation || isOpenclawGatewayBlocking;
+  const createConversationAction = useStableEventCallback(
+    actions.createConversation
+  );
+  const retryOpenclawGateway = useStableEventCallback(
+    actions.retryOpenclawGateway
+  );
+  const selectConversation = useStableEventCallback(actions.selectConversation);
+  const toggleConversationPinned = useStableEventCallback(
+    actions.toggleConversationPinned
+  );
+  const removeProject = useStableEventCallback(actions.removeProject);
+  const confirmDeleteProjectConversations = useStableEventCallback(
+    actions.confirmDeleteProjectConversations
+  );
+  const requestDeleteConversation = useStableEventCallback(
+    actions.requestDeleteConversation
+  );
+  const cancelDeleteConversation = useStableEventCallback(
+    actions.cancelDeleteConversation
+  );
+  const confirmDeleteConversation = useStableEventCallback(
+    actions.confirmDeleteConversation
+  );
+  const openConversationWindow = useOptionalStableEventCallback(
+    onOpenConversationWindow
+  );
+  const openProjectFiles = useOptionalStableEventCallback(onLinkAction);
   const detailComposerFocusRequestSequence =
     localComposerFocusRequestSequence === 0
       ? composerFocusRequestSequence
@@ -924,13 +959,13 @@ export function AgentGUINodeView({
         return;
       }
       if (options) {
-        actions.createConversation(options);
+        createConversationAction(options);
       } else {
-        actions.createConversation();
+        createConversationAction();
       }
       setLocalComposerFocusRequestSequence((current) => current + 1);
     },
-    [actions, previewMode]
+    [createConversationAction, previewMode]
   );
   useEffect(() => {
     if (
@@ -1099,6 +1134,78 @@ export function AgentGUINodeView({
       ? "0 minmax(var(--agent-gui-detail-min-width), 1fr)"
       : "var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
+  const conversationRailStoreState =
+    useMemo<AgentGUIConversationRailStoreSnapshot>(
+      () => ({
+        conversations: viewModel.conversations,
+        userProjects: viewModel.userProjects,
+        activeConversationId: viewModel.activeConversationId,
+        pendingDeleteConversationId:
+          viewModel.pendingDeleteConversation?.id ?? null,
+        isLoadingConversations: viewModel.isLoadingConversations,
+        isDeletingConversation: viewModel.isDeletingConversation,
+        isDeletingProjectConversations:
+          viewModel.isDeletingProjectConversations,
+        labels,
+        workspaceUserProjectI18n,
+        uiLanguage,
+        showProjectSelector,
+        createConversationDisabled,
+        openclawGateway,
+        isCollapsed: conversationRailCollapsed,
+        onCreateConversation: requestCreateConversation,
+        onRetryOpenclawGateway: retryOpenclawGateway,
+        onSelectConversation: selectConversation,
+        onToggleConversationPinned: toggleConversationPinned,
+        onRemoveProject: removeProject,
+        onConfirmDeleteProjectConversations: confirmDeleteProjectConversations,
+        onRequestDeleteConversation: requestDeleteConversation,
+        onCancelDeleteConversation: cancelDeleteConversation,
+        onConfirmDeleteConversation: confirmDeleteConversation,
+        onOpenProjectFiles: openProjectFiles,
+        onOpenConversationWindow: openConversationWindow
+      }),
+      [
+        cancelDeleteConversation,
+        confirmDeleteConversation,
+        confirmDeleteProjectConversations,
+        conversationRailCollapsed,
+        createConversationDisabled,
+        labels,
+        openConversationWindow,
+        openProjectFiles,
+        openclawGateway,
+        removeProject,
+        requestCreateConversation,
+        requestDeleteConversation,
+        retryOpenclawGateway,
+        selectConversation,
+        showProjectSelector,
+        toggleConversationPinned,
+        uiLanguage,
+        viewModel.activeConversationId,
+        viewModel.conversations,
+        viewModel.isDeletingConversation,
+        viewModel.isDeletingProjectConversations,
+        viewModel.isLoadingConversations,
+        viewModel.pendingDeleteConversation?.id,
+        viewModel.userProjects,
+        workspaceUserProjectI18n
+      ]
+    );
+  const conversationRailStoreRef = useRef<AgentGUIConversationRailStore | null>(
+    null
+  );
+  if (conversationRailStoreRef.current === null) {
+    conversationRailStoreRef.current = createAgentGUIConversationRailStore(
+      conversationRailStoreState
+    );
+  }
+  const conversationRailStore = conversationRailStoreRef.current;
+  syncAgentGUIConversationRailStore(
+    conversationRailStore,
+    conversationRailStoreState
+  );
 
   return (
     <TooltipProvider>
@@ -1118,37 +1225,9 @@ export function AgentGUINodeView({
           aria-hidden={conversationRailCollapsed ? "true" : undefined}
           inert={conversationRailCollapsed ? true : undefined}
         >
-          <AgentGUIConversationRailPane
-            conversations={viewModel.conversations}
-            userProjects={viewModel.userProjects}
-            activeConversationId={viewModel.activeConversationId}
-            pendingDeleteConversationId={
-              viewModel.pendingDeleteConversation?.id ?? null
-            }
-            isLoadingConversations={viewModel.isLoadingConversations}
-            isDeletingConversation={viewModel.isDeletingConversation}
-            isDeletingProjectConversations={
-              viewModel.isDeletingProjectConversations
-            }
-            labels={labels}
-            workspaceUserProjectI18n={workspaceUserProjectI18n}
-            uiLanguage={uiLanguage}
-            showProjectSelector={showProjectSelector}
-            createConversationDisabled={createConversationDisabled}
-            openclawGateway={openclawGateway}
-            isCollapsed={conversationRailCollapsed}
-            onCreateConversation={requestCreateConversation}
-            onRetryOpenclawGateway={actions.retryOpenclawGateway}
-            onSelectConversation={actions.selectConversation}
-            onToggleConversationPinned={actions.toggleConversationPinned}
-            onRemoveProject={actions.removeProject}
-            onConfirmDeleteProjectConversations={
-              actions.confirmDeleteProjectConversations
-            }
-            onRequestDeleteConversation={actions.requestDeleteConversation}
-            onCancelDeleteConversation={actions.cancelDeleteConversation}
-            onConfirmDeleteConversation={actions.confirmDeleteConversation}
-            onOpenConversationWindow={onOpenConversationWindow}
+          <AgentGUIConversationRailStorePane
+            store={conversationRailStore}
+            storeState={conversationRailStoreState}
           />
         </aside>
         <div
@@ -2776,6 +2855,7 @@ interface AgentGUIConversationRailPaneProps {
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
+  onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRemoveProject: (path: string) => void;
   onConfirmDeleteProjectConversations: (path?: string) => void;
@@ -2803,6 +2883,77 @@ type OpenclawGatewayViewModel =
       status: "starting";
       error: null;
     };
+
+type AgentGUIConversationRailStoreSnapshot = AgentGUIConversationRailPaneProps;
+
+type AgentGUIConversationRailStore = AgentGUIConversationRailStoreSnapshot;
+
+function createAgentGUIConversationRailStore(
+  initialState: AgentGUIConversationRailStoreSnapshot
+): AgentGUIConversationRailStore {
+  return proxy<AgentGUIConversationRailStoreSnapshot>(initialState);
+}
+
+function syncAgentGUIConversationRailStore(
+  store: AgentGUIConversationRailStore,
+  next: AgentGUIConversationRailStoreSnapshot
+): void {
+  if (agentGUIConversationRailStoreSnapshotsEqual(store, next)) {
+    return;
+  }
+  Object.assign(store, next);
+}
+
+function agentGUIConversationRailStoreSnapshotsEqual(
+  current: AgentGUIConversationRailStoreSnapshot,
+  next: AgentGUIConversationRailStoreSnapshot
+): boolean {
+  return (
+    current.conversations === next.conversations &&
+    current.userProjects === next.userProjects &&
+    current.activeConversationId === next.activeConversationId &&
+    current.pendingDeleteConversationId === next.pendingDeleteConversationId &&
+    current.isLoadingConversations === next.isLoadingConversations &&
+    current.isDeletingConversation === next.isDeletingConversation &&
+    current.isDeletingProjectConversations ===
+      next.isDeletingProjectConversations &&
+    current.labels === next.labels &&
+    current.workspaceUserProjectI18n === next.workspaceUserProjectI18n &&
+    current.uiLanguage === next.uiLanguage &&
+    current.showProjectSelector === next.showProjectSelector &&
+    current.createConversationDisabled === next.createConversationDisabled &&
+    current.openclawGateway === next.openclawGateway &&
+    current.isCollapsed === next.isCollapsed &&
+    current.onCreateConversation === next.onCreateConversation &&
+    current.onRetryOpenclawGateway === next.onRetryOpenclawGateway &&
+    current.onSelectConversation === next.onSelectConversation &&
+    current.onToggleConversationPinned === next.onToggleConversationPinned &&
+    current.onOpenProjectFiles === next.onOpenProjectFiles &&
+    current.onOpenConversationWindow === next.onOpenConversationWindow &&
+    current.onRemoveProject === next.onRemoveProject &&
+    current.onConfirmDeleteProjectConversations ===
+      next.onConfirmDeleteProjectConversations &&
+    current.onRequestDeleteConversation === next.onRequestDeleteConversation &&
+    current.onCancelDeleteConversation === next.onCancelDeleteConversation &&
+    current.onConfirmDeleteConversation === next.onConfirmDeleteConversation
+  );
+}
+
+interface AgentGUIConversationRailStorePaneProps {
+  store: AgentGUIConversationRailStore;
+  storeState: AgentGUIConversationRailStoreSnapshot;
+}
+
+const AgentGUIConversationRailStorePane = memo(
+  function AgentGUIConversationRailStorePane({
+    store,
+    storeState: _storeState
+  }: AgentGUIConversationRailStorePaneProps): React.JSX.Element {
+    "use memo";
+    const state = useSnapshot(store) as AgentGUIConversationRailStoreSnapshot;
+    return <AgentGUIConversationRailPane {...state} />;
+  }
+);
 
 function normalizeConversationRailProjectPath(
   path: string | null | undefined
@@ -2834,6 +2985,7 @@ const AgentGUIConversationRailPane = memo(
     onRetryOpenclawGateway,
     onSelectConversation,
     onToggleConversationPinned,
+    onOpenProjectFiles,
     onOpenConversationWindow,
     onRemoveProject,
     onConfirmDeleteProjectConversations,
@@ -3062,6 +3214,7 @@ const AgentGUIConversationRailPane = memo(
                     onSelectConversation={onSelectConversation}
                     setPendingProjectAction={setPendingProjectAction}
                     onToggleConversationPinned={onToggleConversationPinned}
+                    onOpenProjectFiles={onOpenProjectFiles}
                     onOpenConversationWindow={onOpenConversationWindow}
                     onToggleProjectSectionCollapsed={
                       toggleProjectSectionCollapsed
@@ -3147,6 +3300,7 @@ interface AgentGUIConversationRailSectionProps {
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
+  onOpenProjectFiles?: ((action: WorkspaceLinkAction) => void) | null;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
   onCancelDeleteConversation: () => void;
@@ -3173,6 +3327,7 @@ const AgentGUIConversationRailSection = memo(
     onSelectConversation,
     setPendingProjectAction,
     onToggleConversationPinned,
+    onOpenProjectFiles,
     onOpenConversationWindow,
     onRequestDeleteConversation,
     onCancelDeleteConversation,
@@ -3180,6 +3335,26 @@ const AgentGUIConversationRailSection = memo(
   }: AgentGUIConversationRailSectionProps): React.JSX.Element {
     "use memo";
     const isProjectSection = section.kind === "project";
+    const [visibleItemLimit, setVisibleItemLimit] = useState(
+      AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+    );
+    const visibleItemCount = Math.min(visibleItemLimit, section.items.length);
+    const visibleItems = section.items.slice(0, visibleItemCount);
+    const canShowMore = visibleItemCount < section.items.length;
+    const canShowLess =
+      visibleItemCount > AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE;
+    const showMoreConversations = useCallback(() => {
+      setVisibleItemLimit((current) =>
+        Math.min(
+          section.items.length,
+          current + AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE
+        )
+      );
+    }, [section.items.length]);
+    const showLessConversations = useCallback(() => {
+      setVisibleItemLimit(AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE);
+    }, []);
+
     return (
       <section
         className={styles.conversationSection}
@@ -3255,6 +3430,22 @@ const AgentGUIConversationRailSection = memo(
                   className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}
                   sideOffset={6}
                 >
+                  <DropdownMenuItem
+                    className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                    disabled={!onOpenProjectFiles}
+                    onSelect={() => {
+                      onOpenProjectFiles?.({
+                        directoryPath: projectPath,
+                        mode: "open-directory",
+                        path: projectPath,
+                        source: "agent-project-menu",
+                        type: "open-workspace-file",
+                        workspaceRoot: projectPath
+                      });
+                    }}
+                  >
+                    <span>{labels.projectSectionViewFiles}</span>
+                  </DropdownMenuItem>
                   {projectConversationCount > 0 ? (
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
@@ -3299,7 +3490,7 @@ const AgentGUIConversationRailSection = memo(
                 {labels.emptyProjectConversations}
               </div>
             ) : null}
-            {section.items.map((item) => (
+            {visibleItems.map((item) => (
               <AgentGUIConversationRailItem
                 key={item.id}
                 active={item.id === activeConversationId}
@@ -3320,6 +3511,28 @@ const AgentGUIConversationRailSection = memo(
                 onOpenConversationWindow={onOpenConversationWindow}
               />
             ))}
+            {canShowMore || canShowLess ? (
+              <div className={styles.conversationSectionPagination}>
+                {canShowMore ? (
+                  <button
+                    type="button"
+                    className={styles.conversationSectionPaginationButton}
+                    onClick={showMoreConversations}
+                  >
+                    {labels.showMoreConversations}
+                  </button>
+                ) : null}
+                {canShowLess ? (
+                  <button
+                    type="button"
+                    className={styles.conversationSectionPaginationButton}
+                    onClick={showLessConversations}
+                  >
+                    {labels.showLessConversations}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

@@ -715,6 +715,63 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
   assert.equal(session.visible, true);
 });
 
+test("desktop agent activity adapter updates the Claude draft in place when settings change", async () => {
+  const calls: string[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_workspaceId, request) {
+        calls.push(`create:${request.planMode === true ? "plan" : "default"}`);
+        return createSession({
+          id: request.agentSessionId,
+          provider: "claude-code",
+          visible: false
+        });
+      },
+      async updateWorkspaceAgentSessionSettings(
+        _workspaceId,
+        agentSessionId,
+        request
+      ) {
+        calls.push(`update:${agentSessionId}:plan=${String(request.planMode)}`);
+        return createSession({
+          id: agentSessionId,
+          provider: "claude-code",
+          visible: false
+        });
+      },
+      async deleteWorkspaceAgentSession(_workspaceId, agentSessionId) {
+        calls.push(`delete:${agentSessionId}`);
+        return { removed: true };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const first = await adapter.loadComposerOptions({
+    provider: "claude-code",
+    settings: { planMode: false },
+    workspaceId
+  });
+  const draftAgentSessionId = String(first.runtimeContext?.draftAgentSessionId);
+
+  const second = await adapter.loadComposerOptions({
+    provider: "claude-code",
+    settings: { planMode: true },
+    workspaceId
+  });
+
+  // The same pre-warm draft is reused and patched in place; no teardown or
+  // second hidden session is created when toggling plan mode.
+  assert.deepEqual(calls, [
+    "create:default",
+    `update:${draftAgentSessionId}:plan=true`
+  ]);
+  assert.equal(
+    String(second.runtimeContext?.draftAgentSessionId),
+    draftAgentSessionId
+  );
+});
+
 function createTuttidClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {

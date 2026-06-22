@@ -44,6 +44,8 @@ import {
   buildMessageCenterStatusOptions,
   groupMessageCenterItems,
   itemMatchesViewFilters,
+  messageCenterStackRenderId,
+  messageCenterStackScrollSyncSegment,
   partitionMessageCenterItemsByAgentUser,
   statusFilterSummary,
   type MessageCenterGroupBy,
@@ -205,6 +207,25 @@ function WorkspaceAgentMessageCenterPanelContent({
     [highlightedItemId, model.items]
   );
   const activeStatusSummary = statusFilterSummary(statusFilters, statusOptions);
+  const scrollSyncKey = useMemo(
+    () =>
+      [
+        groupBy,
+        activeStatusSummary,
+        ...deckItems.map((item) => `deck:${item.id}`),
+        ...itemGroupStacks.flatMap((group) =>
+          group.stacks.map((stack) => {
+            const stackId = messageCenterStackRenderId(group.id, stack.id);
+            return messageCenterStackScrollSyncSegment({
+              expanded: expandedStackIds.has(stackId),
+              groupId: group.id,
+              stack
+            });
+          })
+        )
+      ].join("|"),
+    [activeStatusSummary, deckItems, expandedStackIds, groupBy, itemGroupStacks]
+  );
   const hasActiveFilters = statusFilters !== null || providerFilters !== null;
   const headerSummary = useMemo(() => {
     if (hasActiveFilters) {
@@ -371,7 +392,7 @@ function WorkspaceAgentMessageCenterPanelContent({
           stack.items.length > 1 &&
           stack.items.some((item) => item.id === highlightedItemId)
         ) {
-          expandStack(`${group.id}:${stack.id}`);
+          expandStack(messageCenterStackRenderId(group.id, stack.id));
           return;
         }
       }
@@ -529,7 +550,7 @@ function WorkspaceAgentMessageCenterPanelContent({
             className="min-h-0 flex-1"
             viewportClassName="flex h-full w-full flex-col px-3.5 pt-4 pb-4"
             scrollbarClassName="top-4 bottom-4"
-            syncKey={`${groupBy}:${activeStatusSummary}:${[...deckItems, ...visibleItems].map((item) => item.id).join("|")}`}
+            syncKey={scrollSyncKey}
           >
             {deckItems.length > 0 || listItems.length > 0 ? (
               <div className="flex w-full min-w-0 flex-col gap-4">
@@ -564,10 +585,10 @@ function WorkspaceAgentMessageCenterPanelContent({
                         if (stack.items.length === 1) {
                           return renderMessageCenterCard(firstItem);
                         }
-                        const stackId =
-                          group.id === stack.id
-                            ? stack.id
-                            : `${group.id}:${stack.id}`;
+                        const stackId = messageCenterStackRenderId(
+                          group.id,
+                          stack.id
+                        );
                         return (
                           <MessageCenterStack
                             key={stackId}

@@ -4422,9 +4422,22 @@ export function useAgentGUINodeController({
         const snapshotComposerOptions =
           agentActivityRuntime.getSnapshot(workspaceId)
             .composerOptionsByProvider?.[provider] ?? null;
-        const draftAgentSessionId =
+        const snapshotDraftAgentSessionId =
           normalizedInitialContent.length > 0 && provider === "claude-code"
             ? draftAgentSessionIdFromComposerOptions(snapshotComposerOptions)
+            : null;
+        // Only reuse a pre-warmed draft that has not already been consumed by a
+        // previous create. Once a draft is promoted it becomes a real (running)
+        // session, so reusing its id would collide on the server and re-create
+        // the session working directory. The composer-options snapshot can keep
+        // exposing a just-consumed id until it reloads, so guard against it.
+        const draftAgentSessionId =
+          snapshotDraftAgentSessionId &&
+          !activatedConversationIdsRef.current.has(
+            snapshotDraftAgentSessionId
+          ) &&
+          !failedNewConversationIdsRef.current.has(snapshotDraftAgentSessionId)
+            ? snapshotDraftAgentSessionId
             : null;
         const agentSessionId =
           draftAgentSessionId ?? createAgentGUIConversationId();
@@ -4575,8 +4588,12 @@ export function useAgentGUINodeController({
           void syncConversationListProjection(conversation.id);
         })
         .catch((error) => {
+          // Identify the failed create by the id captured when this submission
+          // started, not by re-reading the mutable startingConversationIdRef
+          // (a concurrent create may have overwritten or cleared it, which
+          // would misattribute the failure and skip loading teardown).
           const agentSessionId =
-            startingConversationIdRef.current ?? createAgentGUIConversationId();
+            pendingCreateAgentSessionId ?? createAgentGUIConversationId();
           if (conversationListQuery) {
             clearAgentGUIConversationCreatePending({
               query: conversationListQuery,
@@ -4592,6 +4609,10 @@ export function useAgentGUINodeController({
             !shouldShowFailedConversation &&
             !isCurrentConversation(agentSessionId)
           ) {
+            setAgentSessionViewMessagesLoading(
+              sessionViewRef(agentSessionId),
+              false
+            );
             if (startingConversationIdRef.current === agentSessionId) {
               startingConversationIdRef.current = null;
             }
@@ -4641,6 +4662,10 @@ export function useAgentGUINodeController({
             [agentSessionId]: emptyAgentComposerDraft()
           }));
           setIsLoadingMessages(false);
+          setAgentSessionViewMessagesLoading(
+            sessionViewRef(agentSessionId),
+            false
+          );
           setDetailError(message);
         })
         .finally(() => {

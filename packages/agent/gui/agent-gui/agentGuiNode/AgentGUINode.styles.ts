@@ -77,6 +77,10 @@ const styles = {
     "agent-gui-node__conversation-section-label-icon",
   conversationSectionMoreButton:
     "agent-gui-node__conversation-section-more-button",
+  conversationSectionPagination:
+    "agent-gui-node__conversation-section-pagination",
+  conversationSectionPaginationButton:
+    "agent-gui-node__conversation-section-pagination-button",
   conversationSectionToggle: "agent-gui-node__conversation-section-toggle",
   conversationSelect: "agent-gui-node__conversation-select",
   conversationStatusGlyph: "agent-gui-node__conversation-status-glyph",

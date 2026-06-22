@@ -99,6 +99,9 @@ export function createWorkspaceFileHostAccess(
       } catch (error) {
         const code = (error as NodeJS.ErrnoException).code;
         if (code === "EEXIST") {
+          if (payload.allowExisting === true) {
+            return { path: targetPath };
+          }
           throw createProjectDirectoryAlreadyExistsError(targetPath);
         }
         if (code === "EACCES" || code === "EPERM") {

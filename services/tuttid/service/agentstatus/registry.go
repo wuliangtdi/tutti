@@ -173,11 +173,10 @@ func DefaultRegistry() Registry {
 
 func codexCLIInstallerSpec() InstallerSpec {
 	return InstallerSpec{
-		Kind:           InstallerKindCodexCLILatest,
-		DisplayCommand: "Install Codex CLI latest from GitHub releases",
-		CodexCLI: &CodexCLILatestInstallerSpec{
-			BaseURL: "https://github.com/openai/codex/releases/latest/download",
-		},
+		Kind:           InstallerKindOfficialScript,
+		DisplayCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+		ScriptURL:      "https://chatgpt.com/codex/install.sh",
+		ScriptShell:    "sh",
 	}
 }
 

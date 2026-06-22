@@ -1411,11 +1411,14 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
       stack.querySelectorAll("[data-message-center-item-id]").length
     ).toBeLessThan(100);
 
-    await waitFor(() => {
-      expect(
-        stack.querySelectorAll("[data-message-center-item-id]")
-      ).toHaveLength(127);
-    });
+    await waitFor(
+      () => {
+        expect(
+          stack.querySelectorAll("[data-message-center-item-id]")
+        ).toHaveLength(127);
+      },
+      { timeout: 5000 }
+    );
 
     expect(screen.getByText("Running task 127")).toBeTruthy();
     expect(

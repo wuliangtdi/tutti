@@ -36,59 +36,6 @@ import {
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
 
-const catalogAppDisplayDefinitions = [
-  {
-    appIds: ["ai-media-canvas", "media-canvas"],
-    descriptionKey: "appCenter.catalogApps.aiMediaCanvas.description",
-    nameKey: "appCenter.catalogApps.aiMediaCanvas.name"
-  },
-  {
-    appIds: ["automation"],
-    descriptionKey: "appCenter.catalogApps.automation.description",
-    nameKey: "appCenter.catalogApps.automation.name"
-  },
-  {
-    appIds: ["daily-product-radar", "daily-tech-radar", "radar"],
-    descriptionKey: "appCenter.catalogApps.dailyProductRadar.description",
-    nameKey: "appCenter.catalogApps.dailyProductRadar.name"
-  },
-  {
-    appIds: ["ai-doc"],
-    descriptionKey: "appCenter.comingSoonApps.aiDocument.description",
-    nameKey: "appCenter.comingSoonApps.aiDocument.name"
-  },
-  {
-    appIds: ["group-chat"],
-    descriptionKey: "appCenter.catalogApps.groupChat.description",
-    nameKey: "appCenter.catalogApps.groupChat.name"
-  },
-  {
-    appIds: ["vibe-design"],
-    descriptionKey: "appCenter.catalogApps.vibeDesign.description",
-    nameKey: "appCenter.catalogApps.vibeDesign.name"
-  }
-] as const;
-
-type CatalogAppDisplayDefinition = {
-  descriptionKey: string;
-  nameKey: string;
-};
-
-const catalogAppDisplayById = new Map<string, CatalogAppDisplayDefinition>(
-  catalogAppDisplayDefinitions.flatMap((definition) =>
-    definition.appIds.map(
-      (appId) =>
-        [
-          appId,
-          {
-            descriptionKey: definition.descriptionKey,
-            nameKey: definition.nameKey
-          }
-        ] as const
-    )
-  )
-);
-
 const aiPptAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
   import.meta.url
@@ -111,10 +58,6 @@ const productCompetitionAppIconUrl = new URL(
 ).href;
 const designReviewAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/design-review.png",
-  import.meta.url
-).href;
-const calendarAppIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/calendar.png",
   import.meta.url
 ).href;
 const documentSummarizerAppIconUrl = new URL(
@@ -164,13 +107,6 @@ const comingSoonWorkspaceAppDefinitions = [
     iconUrl: designReviewAppIconUrl,
     nameKey: "appCenter.comingSoonApps.designReview.name",
     tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "calendar",
-    descriptionKey: "appCenter.comingSoonApps.calendar.description",
-    iconUrl: calendarAppIconUrl,
-    nameKey: "appCenter.comingSoonApps.calendar.name",
-    tags: ["coming-soon", "productivity", "calendar", "schedule"]
   },
   {
     appId: "document-summarizer",
@@ -306,9 +242,7 @@ export function WorkspaceAppCenterPane({
     const recommendedApps = withComingSoonWorkspaceApps(
       state.apps,
       comingSoonApps
-    )
-      .map((app) => withWorkspaceAppDisplayOverride(app, i18n, locale))
-      .filter((app) => shouldShowWorkspaceApp(app.appId));
+    ).filter((app) => shouldShowWorkspaceApp(app.appId));
 
     return createAppCenterViewModel({
       apps: recommendedApps.map((app) =>
@@ -432,32 +366,6 @@ function createComingSoonWorkspaceApp(input: {
   };
 }
 
-function withWorkspaceAppDisplayOverride(
-  app: WorkspaceAppCenterApp,
-  i18n: { readonly t: (key: string) => string },
-  locale: string
-): WorkspaceAppCenterApp {
-  const definition = catalogAppDisplayById.get(app.appId.trim().toLowerCase());
-  if (!definition) {
-    return app;
-  }
-  const name = i18n.t(definition.nameKey);
-  const description = i18n.t(definition.descriptionKey);
-  return {
-    ...app,
-    description,
-    name,
-    localizations: [
-      {
-        description,
-        locale,
-        name,
-        tags: []
-      }
-    ]
-  };
-}
-
 function withComingSoonWorkspaceApps(
   apps: readonly WorkspaceAppCenterApp[],
   comingSoonApps: readonly WorkspaceAppCenterApp[]
@@ -523,7 +431,6 @@ function resolveWorkspaceAppCategory(
     case "issue-manager":
     case "workspace-issue":
     case "workspace-issue-manager":
-    case "calendar":
     case "document-summarizer":
       return labels.tools;
     default:

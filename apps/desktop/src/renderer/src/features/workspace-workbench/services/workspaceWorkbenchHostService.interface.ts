@@ -50,7 +50,15 @@ export interface WorkspaceCustomWallpaperSnapshot {
   thumbnailUrl: string | null;
 }
 
+export interface WorkspaceOnboardingAutoOpenDiagnostic {
+  details?: Record<string, unknown>;
+  event: string;
+  level: "debug" | "info" | "warn" | "error";
+  workspaceId: string;
+}
+
 export interface WorkspaceFilesNodeActivationPayload {
+  mode?: "reveal" | "open-directory";
   path: string;
 }
 
@@ -137,6 +145,9 @@ export interface IWorkspaceWorkbenchHostService {
     listener: (request: DesktopWorkspaceAppOpenFileResolvedPayload) => void
   ): () => void;
   hasWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<boolean>;
+  logWorkspaceOnboardingAutoOpenDiagnostic(
+    diagnostic: WorkspaceOnboardingAutoOpenDiagnostic
+  ): void;
   markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;

@@ -150,6 +150,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   async applyRevealIntent(
     intent: {
+      mode?: "reveal" | "open-directory";
       path: string;
       requestID: string;
     } | null
@@ -161,6 +162,10 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       return;
     }
     this.lastRevealRequestID = intent.requestID;
+    if (intent.mode === "open-directory") {
+      await this.loadDirectory(intent.path);
+      return;
+    }
     await this.revealPath(intent.path);
   }
 

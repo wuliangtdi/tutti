@@ -26,40 +26,50 @@ const logRendererDiagnostic = createRendererDiagnosticSink();
 installBrowserCrashLogging({
   logRendererDiagnostic
 });
-const renderStormTracker = createRenderStormTracker({
-  logRendererDiagnostic
-});
 
-const rendererApp = import.meta.env.DEV ? (
-  <React.Profiler
-    id="TuttiRenderer"
-    onRender={(
-      id,
-      phase,
-      actualDuration,
-      baseDuration,
-      startTime,
-      commitTime
-    ) => {
-      renderStormTracker.record({
-        actualDuration,
-        baseDuration,
-        commitTime,
-        id,
-        phase,
-        startTime
-      });
-    }}
-  >
+const rendererApp =
+  import.meta.env.DEV && import.meta.env.VITE_TUTTI_REACT_PROFILER === "1" ? (
+    createProfiledRendererApp(logRendererDiagnostic)
+  ) : (
     <RendererApp />
-  </React.Profiler>
-) : (
-  <RendererApp />
-);
+  );
 const logReactRootError = createReactRootErrorLogger({
   captureOwnerStack: React.captureOwnerStack,
   logRendererDiagnostic
 });
+
+function createProfiledRendererApp(
+  logRendererDiagnostic: ReturnType<typeof createRendererDiagnosticSink>
+): React.ReactElement {
+  const renderStormTracker = createRenderStormTracker({
+    logRendererDiagnostic
+  });
+
+  return (
+    <React.Profiler
+      id="TuttiRenderer"
+      onRender={(
+        id,
+        phase,
+        actualDuration,
+        baseDuration,
+        startTime,
+        commitTime
+      ) => {
+        renderStormTracker.record({
+          actualDuration,
+          baseDuration,
+          commitTime,
+          id,
+          phase,
+          startTime
+        });
+      }}
+    >
+      <RendererApp />
+    </React.Profiler>
+  );
+}
 
 createRoot(root, {
   onCaughtError(error, errorInfo) {

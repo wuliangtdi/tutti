@@ -92,6 +92,7 @@ type AppPackage struct {
 	PackageDir           string
 	Manifest             AppManifest
 	ManifestJSON         string
+	CatalogLocalizations []AppManifestLocalization
 	Source               AppPackageSource
 	FactoryJobID         string
 	CreatedInWorkspaceID string
@@ -166,7 +167,7 @@ func (p AppPackage) IconDataURL() *string {
 
 func (p AppPackage) Localizations() []AppManifestLocalization {
 	if p.Manifest.LocalizationInfo == nil || strings.TrimSpace(p.PackageDir) == "" {
-		return nil
+		return append([]AppManifestLocalization(nil), p.CatalogLocalizations...)
 	}
 
 	localizations := make([]AppManifestLocalization, 0, len(p.Manifest.LocalizationInfo.AdditionalLocales))
@@ -179,6 +180,9 @@ func (p AppPackage) Localizations() []AppManifestLocalization {
 		if ok {
 			localizations = append(localizations, localization)
 		}
+	}
+	if len(localizations) == 0 {
+		return append([]AppManifestLocalization(nil), p.CatalogLocalizations...)
 	}
 	return localizations
 }

@@ -531,7 +531,9 @@ function loadPrintHtml(
     };
     const handleFailed: WorkspaceAppPrintLoadListener = (...args) => {
       const errorDescription =
-        typeof args[2] === "string" ? args[2] : "PDF print HTML failed to load.";
+        typeof args[2] === "string"
+          ? args[2]
+          : "PDF print HTML failed to load.";
       cleanup();
       reject(new Error(errorDescription));
     };
@@ -545,7 +547,9 @@ function loadPrintHtml(
 }
 
 function preparePrintHtml(input: TuttiExternalPdfPrintHtmlInput): string {
-  const base = input.baseUrl ? `<base href="${escapeHtml(input.baseUrl)}">` : "";
+  const base = input.baseUrl
+    ? `<base href="${escapeHtml(input.baseUrl)}">`
+    : "";
   const title = input.title ? `<title>${escapeHtml(input.title)}</title>` : "";
   const printHead = `${base}${title}`;
   if (!printHead) {
@@ -1005,7 +1009,9 @@ function normalizeWorkspaceAppOpenUrlLogPayload(
   };
 }
 
-function broadcastWorkspaceAppContext(payload: Partial<DesktopWorkspaceAppContext>): void {
+function broadcastWorkspaceAppContext(
+  payload: Partial<DesktopWorkspaceAppContext>
+): void {
   for (const contents of [...workspaceAppGuestWebContents]) {
     if (contents.isDestroyed()) {
       workspaceAppGuestWebContents.delete(contents);

@@ -12,7 +12,11 @@ verify-tutti-app-release-artifacts --release-file ./apps/vibe-design/latest.json
 verify-tutti-app-release-artifacts --catalog-file ./catalog.json --release-file ./apps/vibe-design/latest.json
 ```
 
-The release command validates a complete Tutti app package, creates a zip, writes immutable `release.json`, and writes mutable `latest.json`.
+The release command validates a complete Tutti app package, creates a zip,
+writes immutable `release.json`, and writes mutable `latest.json`. When the
+manifest declares `localizationInfo`, the release metadata includes the
+referenced manifest locale files so App Center can localize uninstalled remote
+apps without downloading the package.
 
 The catalog command merges one or more release files into `tutti.app.catalog.v1`.
 Pass `--existing-catalog` to preserve existing catalog apps and update only the

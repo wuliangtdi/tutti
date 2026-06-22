@@ -17,3 +17,10 @@ test("WorkspaceWorkbench does not render a global agent install pending overlay"
     /pendingActions\.find\(\s*\(action\) => action\.actionId === "install"/s
   );
 });
+
+test("WorkspaceWorkbench forwards open-directory mode to workspace files", () => {
+  assert.match(
+    source,
+    /payload:\s*\{\s*\.\.\.\(request\.mode \? \{ mode: request\.mode \} : \{\}\),\s*path: request\.path\s*\}/s
+  );
+});

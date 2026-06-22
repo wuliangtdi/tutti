@@ -60,6 +60,25 @@ func TestServiceListReportsInstallActionWhenCLIMissing(t *testing.T) {
 	}
 }
 
+func TestDefaultRegistryUsesOfficialCodexInstallerScript(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{"codex"})
+	if err != nil {
+		t.Fatalf("Select() error = %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("len(specs) = %d, want 1", len(specs))
+	}
+	install := specs[0].Install
+	if install.Kind != InstallerKindOfficialScript {
+		t.Fatalf("Install.Kind = %q, want %q", install.Kind, InstallerKindOfficialScript)
+	}
+	if install.DisplayCommand != "curl -fsSL https://chatgpt.com/codex/install.sh | sh" ||
+		install.ScriptURL != "https://chatgpt.com/codex/install.sh" ||
+		install.ScriptShell != "sh" {
+		t.Fatalf("Install = %#v, want official Codex installer script", install)
+	}
+}
+
 func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
@@ -256,6 +275,8 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 		Now: func() time.Time {
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
+		ProbeReadyAfter: 10 * time.Second,
+		ProbeTimeout:    15 * time.Second,
 		RunAuthStatusCommand: func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
 			return AuthInfo{Status: AuthAuthenticated}, true
 		},

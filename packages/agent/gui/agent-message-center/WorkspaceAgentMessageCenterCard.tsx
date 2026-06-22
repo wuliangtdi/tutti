@@ -56,6 +56,20 @@ export interface WorkspaceAgentMessageCenterCardProps {
   }) => void;
 }
 
+interface WorkspaceAgentMessageCenterStackProps {
+  className?: string;
+  expanded: boolean;
+  groupId: string;
+  highlightedItemId?: string | null;
+  items: WorkspaceAgentMessageCenterItem[];
+  renderCard: (
+    item: WorkspaceAgentMessageCenterItem,
+    options?: { stackedIndex?: number }
+  ) => ReactNode;
+  onCollapse: (groupId: string) => void;
+  onExpand: (groupId: string) => void;
+}
+
 function stopMessageCenterTextPointerPropagation(
   event: ReactPointerEvent<HTMLElement>
 ): void {
@@ -229,19 +243,7 @@ export const WorkspaceAgentMessageCenterStack = memo(
     renderCard,
     onCollapse,
     onExpand
-  }: {
-    className?: string;
-    expanded: boolean;
-    groupId: string;
-    highlightedItemId?: string | null;
-    items: WorkspaceAgentMessageCenterItem[];
-    renderCard: (
-      item: WorkspaceAgentMessageCenterItem,
-      options?: { stackedIndex?: number }
-    ) => ReactNode;
-    onCollapse: (groupId: string) => void;
-    onExpand: (groupId: string) => void;
-  }): JSX.Element | null {
+  }: WorkspaceAgentMessageCenterStackProps): JSX.Element | null {
     "use memo";
     const { t } = useTranslation();
     const summaryRegion = useStackRegionPresence(!expanded);
@@ -350,8 +352,55 @@ export const WorkspaceAgentMessageCenterStack = memo(
         ) : null}
       </div>
     );
-  }
+  },
+  areMessageCenterStackPropsEqual
 );
+
+function areMessageCenterStackPropsEqual(
+  previous: WorkspaceAgentMessageCenterStackProps,
+  next: WorkspaceAgentMessageCenterStackProps
+): boolean {
+  if (
+    previous.className !== next.className ||
+    previous.expanded !== next.expanded ||
+    previous.groupId !== next.groupId ||
+    previous.onCollapse !== next.onCollapse ||
+    previous.onExpand !== next.onExpand ||
+    previous.renderCard !== next.renderCard
+  ) {
+    return false;
+  }
+  if (next.expanded) {
+    return (
+      previous.highlightedItemId === next.highlightedItemId &&
+      previous.items === next.items
+    );
+  }
+  return (
+    messageCenterCollapsedStackSignature(previous.items) ===
+    messageCenterCollapsedStackSignature(next.items)
+  );
+}
+
+function messageCenterCollapsedStackSignature(
+  items: readonly WorkspaceAgentMessageCenterItem[]
+): string {
+  const firstItem = items[0];
+  if (!firstItem) {
+    return "0";
+  }
+  const hasWaiting = items.some(isWaitingMessageCenterItem) ? "1" : "0";
+  return [
+    items.length,
+    firstItem.id,
+    firstItem.provider,
+    firstItem.userId ?? "",
+    firstItem.identity?.userName ?? "",
+    firstItem.identity?.agentName ?? "",
+    hasWaiting,
+    messageCenterStackPreviewText(firstItem)
+  ].join(":");
+}
 
 function useBatchedMessageCenterStackItems({
   expanded,

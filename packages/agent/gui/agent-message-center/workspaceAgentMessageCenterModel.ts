@@ -62,6 +62,7 @@ export interface WorkspaceAgentMessageCenterTurnOutcome {
 export interface BuildWorkspaceAgentMessageCenterOptions {
   avoidGroupingEdits?: boolean;
   identityBySessionId?: Record<string, WorkspaceAgentMessageCenterIdentity>;
+  itemCutoffUnixMs?: number | null;
   promptFallbackLabels?: WorkspaceAgentMessageCenterPromptFallbackLabels;
   workspaceRoot?: string | null;
 }
@@ -148,7 +149,10 @@ export function buildWorkspaceAgentMessageCenterModel(
         latestTurnOutcome: latestTurnOutcome(session.agentSessionId, messages),
         sortTimeUnixMs
       } satisfies WorkspaceAgentMessageCenterItem;
-    });
+    })
+    .filter((item) =>
+      isWithinMessageCenterItemCutoff(item, options.itemCutoffUnixMs)
+    );
 
   return {
     waitingCount: items.filter(isWaitingMessageCenterItem).length,
@@ -192,6 +196,20 @@ export function isInteractiveMessageCenterItem(
   item: WorkspaceAgentMessageCenterItem
 ): boolean {
   return item.pendingPrompt !== null;
+}
+
+function isWithinMessageCenterItemCutoff(
+  item: WorkspaceAgentMessageCenterItem,
+  cutoffUnixMs: number | null | undefined
+): boolean {
+  if (!Number.isFinite(cutoffUnixMs)) {
+    return true;
+  }
+  if (isWaitingMessageCenterItem(item)) {
+    return true;
+  }
+  const timestamp = item.sortTimeUnixMs || item.lastAgentMessageAtUnixMs || 0;
+  return timestamp >= Number(cutoffUnixMs);
 }
 
 export function selectMessageCenterAttentionDeckItems(

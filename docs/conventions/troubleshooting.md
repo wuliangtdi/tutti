@@ -695,9 +695,12 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   `Maximum update depth exceeded`, but the current stack only points at the
   component that called `setState`.
 - Quick checks:
-  First inspect state-sync diagnostics and React Profiler to confirm the
-  component boundary. For prop identity churn, why-did-you-render is enabled by
-  default when launching with `make dev-gui`. Disable that default with
+  First inspect state-sync diagnostics. Enable the renderer-wide React Profiler
+  only when its render-storm diagnostics are needed by launching with
+  `VITE_TUTTI_REACT_PROFILER=1`; leave it off for Chrome Performance captures
+  on large workspaces because React dev component tracks can make trace
+  initialization stall. For prop identity churn, why-did-you-render is enabled
+  by default when launching with `make dev-gui`. Disable that default with
   `VITE_TUTTI_WHY_DID_YOU_RENDER=0 make dev-gui`, or set
   `localStorage.tuttiWhyDidYouRender = "0"` in DevTools and reload the renderer.
   For other development entrypoints, enable it by setting
@@ -716,4 +719,5 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   component lists the expected prop or hook difference. Then disable the tool
   and run the affected renderer tests plus desktop typecheck.
 - References:
+  [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)

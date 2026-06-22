@@ -11,6 +11,10 @@ const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
 }));
 
+const conversationMetaMock = vi.hoisted(() => ({
+  calls: [] as string[]
+}));
+
 const composerMock = vi.hoisted(() => ({
   calls: [] as Array<{
     composerFocusRequestSequence?: number | null;
@@ -84,9 +88,24 @@ vi.mock("../../app/renderer/components/StatusDot", () => ({
   }
 }));
 
+vi.mock("./agentGuiNodeViewConversation", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./agentGuiNodeViewConversation")>();
+  return {
+    ...actual,
+    ConversationMeta: (
+      props: Parameters<typeof actual.ConversationMeta>[0]
+    ): React.JSX.Element => {
+      conversationMetaMock.calls.push(props.item.id);
+      return actual.ConversationMeta(props);
+    }
+  };
+});
+
 describe("AgentGUINodeView layout persistence", () => {
   afterEach(() => {
     conversationFlowMock.calls = [];
+    conversationMetaMock.calls = [];
     composerMock.calls = [];
     statusDotMock.calls = [];
   });
@@ -311,6 +330,51 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
 
+  it("opens project folders through the workspace files action", async () => {
+    const actions = createActions();
+    const onLinkAction = vi.fn();
+    renderAgentGUINodeView({
+      actions,
+      onLinkAction,
+      viewModel: {
+        ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("session-1"),
+            cwd: "/workspace/app",
+            project: {
+              id: "project-app",
+              path: "/workspace/app",
+              label: "App"
+            }
+          }
+        ]
+      },
+      labels: {
+        ...createLabels(),
+        projectSectionMoreActions: "Project actions",
+        projectSectionViewFiles: "Open folder"
+      }
+    });
+
+    const projectActionsButton = screen.getByLabelText("Project actions");
+    fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
+    fireEvent.click(projectActionsButton);
+    const menuItems = await screen.findAllByRole("menuitem");
+    expect(menuItems[0]).toHaveTextContent("Open folder");
+
+    fireEvent.click(screen.getByText("Open folder"));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      directoryPath: "/workspace/app",
+      mode: "open-directory",
+      path: "/workspace/app",
+      source: "agent-project-menu",
+      type: "open-workspace-file",
+      workspaceRoot: "/workspace/app"
+    });
+  });
+
   it("shows tooltips for project section icon actions", () => {
     const { container } = renderAgentGUINodeView({
       viewModel: {
@@ -472,6 +536,103 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onOpenConversationWindow).toHaveBeenCalledTimes(1);
     expect(onOpenConversationWindow).toHaveBeenCalledWith("session-2");
     expect(actions.selectConversation).not.toHaveBeenCalled();
+  });
+
+  it("pages each conversation rail section five sessions at a time", () => {
+    renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        showMoreConversations: "Show more",
+        showLessConversations: "Show less"
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: Array.from({ length: 12 }, (_, index) =>
+          createConversationSummary(`session-${index + 1}`)
+        )
+      }
+    });
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-5")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-session-6")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show less" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-10")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-session-11")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show more" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show less" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-5")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("agent-gui-conversation-item-session-6")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show less" })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-12")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show more" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show less" })
+    ).toBeInTheDocument();
+  });
+
+  it("does not rerender the conversation rail when only the active detail state changes", () => {
+    const actions = createActions();
+    const labels = createLabels();
+    const viewModel = {
+      ...createViewModel(),
+      conversations: Array.from({ length: 20 }, (_, index) =>
+        createConversationSummary(`session-${index + 1}`)
+      )
+    };
+    const initialOptions = {
+      actions,
+      isActive: true,
+      labels,
+      viewModel
+    };
+
+    const { rerender } = renderAgentGUINodeView(initialOptions);
+
+    expect(conversationMetaMock.calls).toHaveLength(5);
+    conversationMetaMock.calls = [];
+
+    rerender(
+      buildAgentGUINodeViewElement({
+        ...initialOptions,
+        isActive: false
+      })
+    );
+
+    expect(conversationMetaMock.calls).toHaveLength(0);
   });
 
   it("scrolls the active conversation item into view", () => {
@@ -1147,8 +1308,10 @@ describe("AgentGUINodeView usage alert banner", () => {
 interface RenderAgentGUINodeViewOptions {
   conversationRailCollapsed?: boolean;
   conversationRailWidthPx?: number;
+  isActive?: boolean;
   isAgentProviderReady?: boolean;
   onConversationRailWidthChanged?: (widthPx: number) => void;
+  onLinkAction?: AgentGUINodeViewProps["onLinkAction"];
   viewModel?: AgentGUINodeViewModel;
   actions?: AgentGUINodeViewProps["actions"];
   labels?: AgentGUIViewLabels;
@@ -1160,8 +1323,10 @@ interface RenderAgentGUINodeViewOptions {
 function buildAgentGUINodeViewElement({
   conversationRailCollapsed = false,
   conversationRailWidthPx = 240,
+  isActive = true,
   isAgentProviderReady = true,
   onConversationRailWidthChanged = vi.fn(),
+  onLinkAction,
   viewModel = createViewModel(),
   actions = createActions(),
   labels = createLabels(),
@@ -1172,6 +1337,8 @@ function buildAgentGUINodeViewElement({
   return (
     <AgentGUINodeView
       viewModel={viewModel}
+      onLinkAction={onLinkAction}
+      isActive={isActive}
       isAgentProviderReady={isAgentProviderReady}
       slashStatusLimits={slashStatusLimits}
       actions={actions}
@@ -1457,6 +1624,7 @@ function createLabels(): AgentGUIViewLabels {
     sectionEarlier: "sectionEarlier",
     projectSectionEdit: "projectSectionEdit",
     projectSectionMoreActions: "projectSectionMoreActions",
+    projectSectionViewFiles: "projectSectionViewFiles",
     projectRailCreateProject: "projectRailCreateProject",
     projectRailLinkExistingProject: "projectRailLinkExistingProject",
     removeProject: "removeProject",
@@ -1501,6 +1669,8 @@ function createLabels(): AgentGUIViewLabels {
     thinkingLabel: "thinkingLabel",
     toolCallsLabel: (count: number) => `toolCalls:${count}`,
     openConversationWindow: "openConversationWindow",
+    showMoreConversations: "showMoreConversations",
+    showLessConversations: "showLessConversations",
     deleteSession: "deleteSession",
     pinSession: "pinSession",
     unpinSession: "unpinSession",

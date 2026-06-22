@@ -5290,6 +5290,55 @@ describe("useAgentGUINodeController", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("clears the per-session messages-loading flag when a new conversation activation fails", async () => {
+    const activate = vi.fn(
+      async (_input: AgentHostActivateAgentSessionInput) => {
+        throw new Error("runtime not connected");
+      }
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("create one"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+    });
+
+    const failedId = activate.mock.calls.at(-1)?.[0]?.agentSessionId;
+    expect(failedId).toBeTruthy();
+    // The failure is surfaced and the global loading flag is cleared today.
+    expect(result.current.viewModel.detailError).toBe("runtime not connected");
+    expect(result.current.viewModel.isLoadingMessages).toBe(false);
+    // The per-session messages-loading flag opened before submit must also be
+    // released on failure; otherwise the conversation view spins forever.
+    await waitFor(() => {
+      expect(
+        getAgentSessionView({
+          workspaceId: "room-1",
+          agentSessionId: failedId as string
+        })?.isLoadingMessages
+      ).toBe(false);
+    });
+  });
+
   it("keeps durable history visible and retries attach when explicitly requested again", async () => {
     const activate = vi.fn(
       async (_input: AgentHostActivateAgentSessionInput) => {

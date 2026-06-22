@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   groupMessageCenterItems,
   messageCenterAgentUserStackId,
+  messageCenterStackScrollSyncSegment,
   partitionMessageCenterItemsByAgentUser
 } from "./workspaceAgentMessageCenterViewModel";
 import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
@@ -73,6 +74,48 @@ describe("partitionMessageCenterItemsByAgentUser", () => {
         userId: null
       })
     ).toBe("agent-user:unknown-agent:unknown-user");
+  });
+
+  it("summarizes collapsed stack scroll sync keys without every stacked item id", () => {
+    const stack = partitionMessageCenterItemsByAgentUser([
+      item({
+        agentSessionId: "codex-user-a-1",
+        provider: "codex",
+        userId: "user-a"
+      }),
+      item({
+        agentSessionId: "codex-user-a-2",
+        provider: "codex",
+        userId: "user-a"
+      }),
+      item({
+        agentSessionId: "codex-user-a-3",
+        provider: "codex",
+        userId: "user-a"
+      })
+    ])[0];
+    if (!stack) {
+      throw new Error("Expected a stack to be created.");
+    }
+
+    const collapsed = messageCenterStackScrollSyncSegment({
+      expanded: false,
+      groupId: "working",
+      stack
+    });
+    const expanded = messageCenterStackScrollSyncSegment({
+      expanded: true,
+      groupId: "working",
+      stack
+    });
+
+    expect(collapsed).toContain("collapsed:working:agent-user:codex:user-a");
+    expect(collapsed).toContain("message-center-codex-user-a-1");
+    expect(collapsed).not.toContain("message-center-codex-user-a-2");
+    expect(collapsed).not.toContain("message-center-codex-user-a-3");
+    expect(expanded).toContain("message-center-codex-user-a-1");
+    expect(expanded).toContain("message-center-codex-user-a-2");
+    expect(expanded).toContain("message-center-codex-user-a-3");
   });
 });
 

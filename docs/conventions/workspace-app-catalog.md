@@ -45,6 +45,14 @@ App Center opening should call `POST /v1/workspaces/{workspaceID}/apps/catalog/r
   "schemaVersion": "tutti.app.catalog.v1",
   "apps": [
     {
+      "localizations": [
+        {
+          "locale": "zh-CN",
+          "name": "产品原型设计",
+          "description": "创建并迭代产品原型设计",
+          "tags": ["设计", "原型"]
+        }
+      ],
       "manifest": {
         "schemaVersion": "tutti.app.manifest.v1",
         "appId": "vibe-design",
@@ -72,6 +80,12 @@ App Center opening should call `POST /v1/workspaces/{workspaceID}/apps/catalog/r
 ```
 
 Remote catalog entries must include `distribution.iconUrl`, `distribution.artifactUrl`, `distribution.artifactSha256`, and a manifest icon asset. The zip package must contain a complete app package with `tutti.app.json`, `bootstrap.sh`, `AGENTS.md`, and the manifest icon asset.
+
+When a package manifest declares `localizationInfo`, release tooling reads the
+referenced package-local manifest locale files and writes their `name`,
+`description`, and `tags` into the catalog entry `localizations` field. App
+Center uses this catalog metadata for uninstalled remote apps, because it must
+not download or unzip the app package just to render localized catalog cards.
 
 Workspace app packages do not declare arbitrary runtime kinds or bundle Python/Node. Packages that only need the managed Node/static runtime may declare `runtime.profile: "node-static"`; all other managed runtime release and download rules belong to [Workspace App Runtime](./workspace-app-runtime.md).
 

@@ -553,6 +553,7 @@ async function openWorkspaceFilesNode(
     },
     {
       payload: {
+        ...(request.mode ? { mode: request.mode } : {}),
         path: request.path
       },
       type: "reveal-file"

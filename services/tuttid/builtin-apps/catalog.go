@@ -22,9 +22,10 @@ import (
 var files embed.FS
 
 type App struct {
-	Manifest     workspacebiz.AppManifest
-	SourceDir    string
-	Distribution Distribution
+	Manifest      workspacebiz.AppManifest
+	SourceDir     string
+	Localizations []workspacebiz.AppManifestLocalization
+	Distribution  Distribution
 }
 
 type DistributionKind string
@@ -80,8 +81,9 @@ type remoteCatalogDocument struct {
 }
 
 type remoteCatalogApp struct {
-	Manifest     workspacebiz.AppManifest `json:"manifest"`
-	Distribution remoteDistribution       `json:"distribution"`
+	Localizations []workspacebiz.AppManifestLocalization `json:"localizations,omitempty"`
+	Manifest      workspacebiz.AppManifest               `json:"manifest"`
+	Distribution  remoteDistribution                     `json:"distribution"`
 }
 
 type remoteDistribution struct {
@@ -571,9 +573,14 @@ func parseRemoteCatalog(data []byte) ([]App, error) {
 		if err != nil {
 			return nil, err
 		}
+		localizations, err := parseRemoteCatalogLocalizations(appID, entry.Localizations)
+		if err != nil {
+			return nil, err
+		}
 		apps = append(apps, App{
-			Manifest:     entry.Manifest,
-			Distribution: distribution,
+			Manifest:      entry.Manifest,
+			Localizations: localizations,
+			Distribution:  distribution,
 		})
 	}
 	return apps, nil
@@ -602,6 +609,40 @@ func parseRemoteDistribution(appID string, manifest workspacebiz.AppManifest, di
 		ArtifactSHA256: artifactSHA256,
 		IconURL:        iconURL,
 	}, nil
+}
+
+func parseRemoteCatalogLocalizations(appID string, localizations []workspacebiz.AppManifestLocalization) ([]workspacebiz.AppManifestLocalization, error) {
+	if len(localizations) == 0 {
+		return nil, nil
+	}
+	result := make([]workspacebiz.AppManifestLocalization, 0, len(localizations))
+	seenLocales := make(map[string]struct{}, len(localizations))
+	for index, localization := range localizations {
+		locale := strings.TrimSpace(localization.Locale)
+		if locale == "" {
+			return nil, fmt.Errorf("app catalog app %q localizations[%d].locale is required", appID, index)
+		}
+		localeKey := strings.ToLower(locale)
+		if _, ok := seenLocales[localeKey]; ok {
+			return nil, fmt.Errorf("app catalog app %q localizations[%d].locale must be unique", appID, index)
+		}
+		seenLocales[localeKey] = struct{}{}
+		normalized := workspacebiz.AppManifestLocalization{
+			Locale:      locale,
+			Name:        strings.TrimSpace(localization.Name),
+			Description: strings.TrimSpace(localization.Description),
+		}
+		for _, tag := range localization.Tags {
+			if trimmed := strings.TrimSpace(tag); trimmed != "" {
+				normalized.Tags = append(normalized.Tags, trimmed)
+			}
+		}
+		if normalized.Name == "" && normalized.Description == "" && len(normalized.Tags) == 0 {
+			continue
+		}
+		result = append(result, normalized)
+	}
+	return result, nil
 }
 
 func mergeCatalogs(embeddedApps []App, remoteApps []App) ([]App, error) {

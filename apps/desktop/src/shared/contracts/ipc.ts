@@ -261,6 +261,15 @@ export interface DesktopLocalFileTextResult {
 
 export interface DesktopCreateUserDocumentsProjectDirectoryInput {
   name: string;
+  /**
+   * When true, an already-existing target directory is treated as success
+   * instead of failing with `projectDirectoryAlreadyExists`. Used for
+   * auto-generated `session-<uuid>` working directories, where a name
+   * collision is harmless (the directory belongs to the same session).
+   * User-named project creation must leave this unset to keep the
+   * name-conflict error.
+   */
+  allowExisting?: boolean;
 }
 
 export interface DesktopCreateUserDocumentsProjectDirectoryResult {
@@ -601,8 +610,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.appExternal.filesSelect]: TuttiExternalFileSelectInput;
   [desktopIpcChannels.appExternal
     .permissionsRequest]: TuttiExternalPermissionRequestInput;
-  [desktopIpcChannels.appExternal
-    .pdfPrintHtml]: TuttiExternalPdfPrintHtmlInput;
+  [desktopIpcChannels.appExternal.pdfPrintHtml]: TuttiExternalPdfPrintHtmlInput;
   [desktopIpcChannels.appExternal
     .referencesOpen]: TuttiExternalReferenceOpenInput;
   [desktopIpcChannels.appExternal.settingsOpen]: TuttiExternalSettingsOpenInput;

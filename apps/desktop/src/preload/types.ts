@@ -116,6 +116,7 @@ export interface DesktopWorkspaceAppExternalHostApi {
 export interface DesktopHostFilesApi {
   createUserDocumentsProjectDirectory(input: {
     name: string;
+    allowExisting?: boolean;
   }): Promise<DesktopCreateUserDocumentsProjectDirectoryResult>;
   selectAppArchive(): Promise<string | null>;
   selectAppArchiveExportPath(input: {
