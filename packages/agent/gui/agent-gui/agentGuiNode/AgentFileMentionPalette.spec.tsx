@@ -11,7 +11,6 @@ vi.mock("../../i18n/index", async () => {
       "../../i18n/index"
     );
   const labels: Record<string, string> = {
-    "agentHost.agentGui.mentionFilterAll": "All",
     "agentHost.agentGui.mentionFilterApp": "Apps",
     "agentHost.agentGui.mentionFilterFile": "Files",
     "agentHost.agentGui.mentionFilterSession": "Sessions",
@@ -494,7 +493,7 @@ describe("AgentFileMentionPalette", () => {
       status: "ready",
       query: "公主",
       mode: "results",
-      filter: "all",
+      filter: "issue",
       categories: [],
       groups: [
         {
@@ -575,7 +574,7 @@ describe("AgentFileMentionPalette", () => {
       status: "loading",
       query: "read",
       mode: "results",
-      filter: "all",
+      filter: "file",
       categories: [],
       groups: [
         {
@@ -708,7 +707,6 @@ describe("AgentFileMentionPalette", () => {
       mode: "browse",
       filter: "file",
       categories: [
-        { id: "all", label: "All" },
         { id: "file", label: "Files" },
         { id: "app", label: "Apps" },
         { id: "session", label: "Sessions" },
@@ -774,7 +772,6 @@ describe("AgentFileMentionPalette", () => {
       mode: "browse",
       filter: "file",
       categories: [
-        { id: "all", label: "All" },
         { id: "file", label: "Files" },
         { id: "app", label: "Apps" },
         { id: "session", label: "Sessions" },
@@ -931,7 +928,7 @@ describe("AgentFileMentionPalette", () => {
       status: "ready",
       query: "",
       mode: "results",
-      filter: "all",
+      filter: "session",
       categories: [],
       groups: [],
       error: null
@@ -968,7 +965,7 @@ describe("AgentFileMentionPalette", () => {
       status: "loading",
       query: "image",
       mode: "results",
-      filter: "all",
+      filter: "file",
       categories: [],
       groups: [
         {
@@ -1209,7 +1206,7 @@ describe("AgentFileMentionPalette", () => {
       status: "ready",
       query: "",
       mode: "browse",
-      filter: "all",
+      filter: "session",
       categories: [],
       groups: [
         {
@@ -1397,11 +1394,8 @@ describe("AgentFileMentionPalette", () => {
       status: "loading",
       query: "",
       mode: "browse",
-      filter: "all",
-      categories: [
-        { id: "all", label: "All" },
-        { id: "session", label: "Sessions" }
-      ],
+      filter: "session",
+      categories: [{ id: "session", label: "Sessions" }],
       groups: [
         {
           id: "my_sessions",
@@ -1457,7 +1451,7 @@ describe("AgentFileMentionPalette", () => {
       status: "ready",
       query: "",
       mode: "results",
-      filter: "all",
+      filter: "file",
       categories: [],
       groups: [
         {

@@ -106,7 +106,10 @@ import {
   AgentFileMentionPalette,
   flattenAgentMentionPaletteEntries
 } from "./AgentFileMentionPalette";
-import { AGENT_MENTION_FILTER_TAB_ORDER } from "./agentMentionSearchHelpers";
+import {
+  AGENT_MENTION_FILTER_TAB_ORDER,
+  DEFAULT_AGENT_MENTION_FILTER
+} from "./agentMentionSearchHelpers";
 import {
   exitAgentFileMentionSuggestion,
   parseMentionItemFromHref,
@@ -729,7 +732,7 @@ export function AgentComposer({
       status: "idle",
       query: "",
       mode: "browse",
-      filter: "all",
+      filter: DEFAULT_AGENT_MENTION_FILTER,
       categories: [],
       groups: [],
       error: null

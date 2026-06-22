@@ -428,7 +428,7 @@ function shouldRenderMentionGroupLabel(input: {
   if (shouldSuppressFileSearchGroupChrome(input.filter, input.query)) {
     return false;
   }
-  if (input.filter === "all" || input.groupCount !== 1) {
+  if (input.groupCount !== 1) {
     return true;
   }
   return (
@@ -595,9 +595,6 @@ function mentionStatusTone(
 }
 
 function browseHintForFilter(filter: AgentMentionFilterId): string {
-  if (filter === "all") {
-    return translate("agentHost.agentGui.contextPickerBrowseAllHint");
-  }
   switch (filter) {
     case "app":
       return translate("agentHost.agentGui.contextPickerBrowseAppHint");

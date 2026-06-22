@@ -13,14 +13,13 @@ import {
   AGENT_MENTION_FILTER_TAB_ORDER,
   buildEmptyGroup,
   compactText,
-  filterForGroup,
+  DEFAULT_AGENT_MENTION_FILTER,
   DEFAULT_MENTION_GROUP_PAGE_SIZE,
   groupIdsForFilter,
   mentionGroupPageSize,
   normalizeQuery,
   resolveMentionGroupItems,
   resolveMentionGroupTotalCount,
-  shouldPrefetchBrowseFilter,
   shouldShowEmptyGroup
 } from "./agentMentionSearchHelpers";
 import { agentMentionFilterLabel } from "./AgentMentionLabels";
@@ -42,7 +41,7 @@ import type {
   MentionPaletteState
 } from "@tutti-os/ui-rich-text/at-panel";
 
-export type AgentMentionFilterId = "all" | "app" | "file" | "session" | "issue";
+export type AgentMentionFilterId = "session" | "file" | "issue" | "app";
 export type AgentMentionGroupId =
   | "apps"
   | "files"
@@ -53,6 +52,11 @@ export type AgentMentionGroupId =
   | "issues";
 
 type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
+type AgentMentionRawGroups = Record<
+  AgentMentionRawGroupId,
+  AgentContextMentionItem[]
+>;
+type AgentMentionTotalCounts = Partial<Record<AgentMentionGroupId, number>>;
 
 export interface AgentMentionBrowseCategory {
   id: AgentMentionFilterId;
@@ -86,13 +90,6 @@ const DEFAULT_PROVIDER_TIMEOUT_MS = 3500;
 const DEFAULT_DIAGNOSTIC_SLOW_THRESHOLD_MS = 250;
 const DEFAULT_BROWSE_CACHE_TTL_MS = 30_000;
 const AGENT_MENTION_LIFECYCLE_LOG_PREFIX = "[agent-gui] mention-lifecycle";
-
-type AgentMentionRawGroups = Record<
-  AgentMentionRawGroupId,
-  AgentContextMentionItem[]
->;
-
-type AgentMentionTotalCounts = Partial<Record<AgentMentionGroupId, number>>;
 
 interface AgentMentionBrowseFetchResult {
   providerDiagnostics: AgentMentionProviderQueryDiagnostic[];
@@ -222,8 +219,7 @@ export class AgentMentionSearchController {
   private readonly expandedCounts: Partial<
     Record<AgentMentionGroupId, number>
   > = {};
-  private readonly totalCounts: Partial<Record<AgentMentionGroupId, number>> =
-    {};
+  private readonly totalCounts: AgentMentionTotalCounts = {};
   private timer: ReturnType<typeof setTimeout> | null = null;
   private preloadCancel: (() => void) | null = null;
   private pendingPreloadKey: string | null = null;
@@ -231,7 +227,7 @@ export class AgentMentionSearchController {
   private disposed = false;
   private activeWorkspaceId = "";
   private currentUserId = "";
-  private currentFilter: AgentMentionFilterId = "all";
+  private currentFilter: AgentMentionFilterId = DEFAULT_AGENT_MENTION_FILTER;
   private currentQuery = "";
   private currentSessionCwd = "";
   private currentFileSearchLimit: number;
@@ -242,7 +238,7 @@ export class AgentMentionSearchController {
     status: "idle",
     query: "",
     mode: "browse",
-    filter: "all",
+    filter: DEFAULT_AGENT_MENTION_FILTER,
     categories: buildBrowseCategories(),
     groups: [],
     error: null
@@ -301,6 +297,7 @@ export class AgentMentionSearchController {
     this.resetAgentGeneratedBrowsePath();
     this.resetExpandedCounts();
     this.resetSearchLimits();
+    this.resetRawGroups();
 
     if (!this.activeWorkspaceId) {
       this.setState({
@@ -334,7 +331,8 @@ export class AgentMentionSearchController {
         workspaceId: this.activeWorkspaceId,
         currentUserId: this.currentUserId,
         query: this.currentQuery,
-        requestId
+        requestId,
+        filter: this.currentFilter
       });
     }, this.debounceMs);
   }
@@ -344,20 +342,43 @@ export class AgentMentionSearchController {
       return;
     }
     this.currentFilter = filter;
+    this.clearTimer();
+    const requestId = ++this.requestId;
     this.resetAgentGeneratedBrowsePath();
     this.resetExpandedCounts();
+    this.resetSearchLimits();
+    this.resetRawGroups();
     if (!this.currentQuery) {
       this.startBrowseModeFetch(filter);
       return;
     }
+    if (!this.activeWorkspaceId) {
+      this.setState({
+        status: "ready",
+        query: this.currentQuery,
+        mode: "results",
+        filter: this.currentFilter,
+        categories: buildBrowseCategories(),
+        groups: [],
+        error: null
+      });
+      return;
+    }
     this.setState({
-      status: "ready",
+      status: "loading",
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
       categories: buildBrowseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
+    });
+    void this.runSearch({
+      workspaceId: this.activeWorkspaceId,
+      currentUserId: this.currentUserId,
+      query: this.currentQuery,
+      requestId,
+      filter
     });
   }
 
@@ -374,10 +395,7 @@ export class AgentMentionSearchController {
     if (!workspaceId) {
       return;
     }
-    const filter = input.filter ?? "all";
-    if (!shouldPrefetchBrowseFilter(filter)) {
-      return;
-    }
+    const filter = input.filter ?? DEFAULT_AGENT_MENTION_FILTER;
     const currentUserId = input.currentUserId?.trim() ?? "";
     const sessionCwd = input.sessionCwd?.trim() ?? "";
     const cacheKey = this.browseCacheKey({
@@ -386,16 +404,12 @@ export class AgentMentionSearchController {
       sessionCwd,
       workspaceId
     });
-    // Already warm — nothing to schedule.
     if (this.readBrowseCache(cacheKey).isFresh) {
       return;
     }
-    // A warm-up for this exact key is already queued; let it run rather than
-    // re-scheduling on every focus/dependency churn.
     if (this.pendingPreloadKey === cacheKey) {
       return;
     }
-    // The controller owns *when* the warm-up runs: callers just declare intent.
     this.cancelPendingPreload();
     this.pendingPreloadKey = cacheKey;
     this.preloadCancel = scheduleIdleTask(() => {
@@ -436,8 +450,6 @@ export class AgentMentionSearchController {
       reason: "preload",
       workspaceId
     });
-    // Re-check freshness: another path may have warmed this key while the idle
-    // task was queued.
     if (cached.isFresh) {
       return;
     }
@@ -468,37 +480,8 @@ export class AgentMentionSearchController {
     this.pendingPreloadKey = null;
   }
 
-  enterCategory(category: Exclude<AgentMentionFilterId, "all">): void {
-    if (this.disposed) {
-      return;
-    }
-    this.currentFilter = category;
-    this.resetExpandedCounts();
-    this.clearTimer();
-    if (!this.currentQuery) {
-      this.startBrowseModeFetch(category);
-      return;
-    }
-    if (!this.activeWorkspaceId) {
-      this.emitBrowseState("ready");
-      return;
-    }
-    const requestId = ++this.requestId;
-    this.setState({
-      status: "loading",
-      query: this.currentQuery,
-      mode: "results",
-      filter: this.currentFilter,
-      categories: buildBrowseCategories(),
-      groups: this.groupsFromRawGroups(),
-      error: null
-    });
-    void this.runSearch({
-      workspaceId: this.activeWorkspaceId,
-      currentUserId: this.currentUserId,
-      query: this.currentQuery,
-      requestId
-    });
+  enterCategory(category: AgentMentionFilterId): void {
+    this.setFilter(category);
   }
 
   selectAgentGeneratedMentionItem(item: AgentContextMentionItem): boolean {
@@ -543,10 +526,6 @@ export class AgentMentionSearchController {
     const current = this.expandedCounts[groupId] ?? pageSize;
     this.expandedCounts[groupId] = current + pageSize;
     if (!this.currentQuery) {
-      const nextFilter = filterForGroup(groupId);
-      if (this.currentFilter === "all") {
-        this.currentFilter = nextFilter;
-      }
       this.setState({
         status: "ready",
         query: "",
@@ -592,7 +571,8 @@ export class AgentMentionSearchController {
         workspaceId: this.activeWorkspaceId,
         currentUserId: this.currentUserId,
         query: this.currentQuery,
-        requestId
+        requestId,
+        filter: this.currentFilter
       });
       return;
     }
@@ -610,16 +590,17 @@ export class AgentMentionSearchController {
   close(): void {
     this.clearTimer();
     this.requestId += 1;
-    this.currentFilter = "all";
+    this.currentFilter = DEFAULT_AGENT_MENTION_FILTER;
     this.resetAgentGeneratedBrowsePath();
     this.resetExpandedCounts();
     this.resetSearchLimits();
+    this.resetRawGroups();
     this.currentQuery = "";
     this.setState({
       status: "idle",
       query: "",
       mode: "browse",
-      filter: "all",
+      filter: DEFAULT_AGENT_MENTION_FILTER,
       categories: buildBrowseCategories(),
       groups: [],
       error: null
@@ -639,9 +620,8 @@ export class AgentMentionSearchController {
   }
 
   private startBrowseModeFetch(filter: AgentMentionFilterId): void {
-    if (!this.activeWorkspaceId || !shouldPrefetchBrowseFilter(filter)) {
-      this.rawGroups = emptyAgentMentionRawGroups();
-      this.resetTotalCounts();
+    if (!this.activeWorkspaceId) {
+      this.resetRawGroups();
       this.emitBrowseState("ready");
       return;
     }
@@ -707,69 +687,33 @@ export class AgentMentionSearchController {
     currentUserId: string;
     query: string;
     requestId: number;
+    filter: AgentMentionFilterId;
   }): Promise<void> {
     const startedAt = this.diagnosticNow();
-    const providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
+    let providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
     try {
-      const [fileItems, appItems, issueItems, sessionItems] = await Promise.all(
-        [
-          this.queryProviderMentionItemsById({
-            providerId: FILE_PROVIDER_ID,
-            workspaceId: input.workspaceId,
-            currentUserId: input.currentUserId,
-            query: input.query,
-            limit: this.currentFileSearchLimit,
-            diagnostics: providerDiagnostics
-          }),
-          this.queryProviderMentionItemsById({
-            providerId: WORKSPACE_APP_PROVIDER_ID,
-            workspaceId: input.workspaceId,
-            currentUserId: input.currentUserId,
-            query: input.query,
-            limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-            diagnostics: providerDiagnostics
-          }),
-          this.queryProviderMentionItemsById({
-            providerId: WORKSPACE_ISSUE_PROVIDER_ID,
-            workspaceId: input.workspaceId,
-            currentUserId: input.currentUserId,
-            query: input.query,
-            limit: this.currentIssueSearchLimit,
-            diagnostics: providerDiagnostics
-          }),
-          this.queryProviderMentionItemsById({
-            providerId: AGENT_SESSION_PROVIDER_ID,
-            workspaceId: input.workspaceId,
-            currentUserId: input.currentUserId,
-            query: input.query,
-            limit: DEFAULT_SESSION_LIMIT,
-            diagnostics: providerDiagnostics
-          })
-        ]
-      );
+      const result = await this.fetchFilterResult({
+        workspaceId: input.workspaceId,
+        currentUserId: input.currentUserId,
+        query: input.query,
+        filter: input.filter,
+        sessionCwd: this.currentSessionCwd,
+        includeAgentGeneratedFiles: false
+      });
+      providerDiagnostics = result.providerDiagnostics;
 
-      if (!this.canApply(input.requestId, input.workspaceId, input.query)) {
+      if (
+        !this.canApply(
+          input.requestId,
+          input.workspaceId,
+          input.query,
+          input.filter
+        )
+      ) {
         return;
       }
 
-      this.rawGroups = {
-        apps: appItems.filter((item) => item.kind === "workspace-app"),
-        opened_files: fileItems.filter((item) => item.kind === "file"),
-        agent_generated_files: [],
-        my_sessions: sessionItems.filter(
-          (item) => item.kind === "session" && item.scope === "my_sessions"
-        ),
-        collab_sessions: sessionItems.filter(
-          (item) => item.kind === "session" && item.scope === "collab_sessions"
-        ),
-        issues: issueItems.filter((item) => item.kind === "workspace-issue")
-      };
-      this.totalCounts.apps = this.rawGroups.apps.length;
-      this.totalCounts.opened_files = this.rawGroups.opened_files.length;
-      this.totalCounts.agent_generated_files = 0;
-      this.totalCounts.my_sessions = this.rawGroups.my_sessions.length;
-      this.totalCounts.collab_sessions = this.rawGroups.collab_sessions.length;
-      this.totalCounts.issues = this.rawGroups.issues.length;
+      this.applyBrowseFetchResult(result);
       const groups = this.groupsFromRawGroups();
 
       this.setState({
@@ -782,7 +726,7 @@ export class AgentMentionSearchController {
         error: null
       });
       this.logSearchDiagnostic({
-        filter: this.currentFilter,
+        filter: input.filter,
         groups,
         mode: "results",
         providerDiagnostics,
@@ -793,7 +737,14 @@ export class AgentMentionSearchController {
         workspaceId: input.workspaceId
       });
     } catch (error) {
-      if (!this.canApply(input.requestId, input.workspaceId, input.query)) {
+      if (
+        !this.canApply(
+          input.requestId,
+          input.workspaceId,
+          input.query,
+          input.filter
+        )
+      ) {
         return;
       }
       this.setState({
@@ -807,7 +758,7 @@ export class AgentMentionSearchController {
       });
       this.logSearchDiagnostic({
         error,
-        filter: this.currentFilter,
+        filter: input.filter,
         groups: [],
         mode: "results",
         providerDiagnostics,
@@ -833,7 +784,9 @@ export class AgentMentionSearchController {
     try {
       const result = await this.loadBrowseFetchResult(input, cacheKey, "open");
       providerDiagnostics = result.providerDiagnostics;
-      if (!this.canApply(input.requestId, input.workspaceId, "")) {
+      if (
+        !this.canApply(input.requestId, input.workspaceId, "", input.filter)
+      ) {
         this.logLifecycle("browse.apply.skipped", {
           filter: input.filter,
           requestId: input.requestId,
@@ -855,7 +808,7 @@ export class AgentMentionSearchController {
         error: null
       });
       this.logSearchDiagnostic({
-        filter: this.currentFilter,
+        filter: input.filter,
         groups,
         mode: "browse",
         providerDiagnostics,
@@ -866,7 +819,9 @@ export class AgentMentionSearchController {
         workspaceId: input.workspaceId
       });
     } catch (error) {
-      if (!this.canApply(input.requestId, input.workspaceId, "")) {
+      if (
+        !this.canApply(input.requestId, input.workspaceId, "", input.filter)
+      ) {
         return;
       }
       this.setState({
@@ -880,7 +835,7 @@ export class AgentMentionSearchController {
       });
       this.logSearchDiagnostic({
         error,
-        filter: this.currentFilter,
+        filter: input.filter,
         groups: [],
         mode: "browse",
         providerDiagnostics,
@@ -952,183 +907,123 @@ export class AgentMentionSearchController {
     filter: AgentMentionFilterId;
     sessionCwd: string;
   }): Promise<AgentMentionBrowseFetchResult> {
+    return this.fetchFilterResult({
+      ...input,
+      query: "",
+      includeAgentGeneratedFiles: input.filter === "file"
+    });
+  }
+
+  private async fetchFilterResult(input: {
+    workspaceId: string;
+    currentUserId: string;
+    query: string;
+    filter: AgentMentionFilterId;
+    sessionCwd: string;
+    includeAgentGeneratedFiles: boolean;
+  }): Promise<AgentMentionBrowseFetchResult> {
     const providerDiagnostics: AgentMentionProviderQueryDiagnostic[] = [];
-    if (input.filter === "file") {
-      const [fileItems, agentGeneratedFileItems] = await Promise.all([
-        this.queryProviderMentionItemsById({
+    switch (input.filter) {
+      case "file": {
+        const fileQuery = this.queryProviderMentionItemsById({
           providerId: FILE_PROVIDER_ID,
           workspaceId: input.workspaceId,
           currentUserId: input.currentUserId,
-          query: "",
-          limit: this.fileLimit,
+          query: input.query,
+          limit: input.query ? this.currentFileSearchLimit : this.fileLimit,
           sessionCwd: input.sessionCwd,
           diagnostics: providerDiagnostics
-        }),
-        this.queryProviderMentionItemsById({
-          providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
+        });
+        const agentGeneratedFileQuery = input.includeAgentGeneratedFiles
+          ? this.queryProviderMentionItemsById({
+              providerId: AGENT_GENERATED_FILE_PROVIDER_ID,
+              workspaceId: input.workspaceId,
+              currentUserId: input.currentUserId,
+              query: input.query,
+              limit: this.fileLimit,
+              sessionCwd: input.sessionCwd,
+              diagnostics: providerDiagnostics
+            })
+          : Promise.resolve([] as AgentContextMentionItem[]);
+        const [fileItems, agentGeneratedFileItems] = await Promise.all([
+          fileQuery,
+          agentGeneratedFileQuery
+        ]);
+        const rawGroups = emptyAgentMentionRawGroups();
+        rawGroups.opened_files = fileItems.filter(
+          (item) => item.kind === "file"
+        );
+        rawGroups.agent_generated_files = agentGeneratedFileItems.filter(
+          (item) => item.kind === "file"
+        );
+        return {
+          providerDiagnostics,
+          rawGroups,
+          totalCounts: totalCountsFromRawGroups(rawGroups)
+        };
+      }
+      case "session": {
+        const sessionItems = await this.queryProviderMentionItemsById({
+          providerId: AGENT_SESSION_PROVIDER_ID,
           workspaceId: input.workspaceId,
           currentUserId: input.currentUserId,
-          query: "",
-          limit: this.fileLimit,
+          query: input.query,
+          limit: DEFAULT_SESSION_LIMIT,
           sessionCwd: input.sessionCwd,
           diagnostics: providerDiagnostics
-        })
-      ]);
-      const rawGroups: AgentMentionRawGroups = {
-        apps: [],
-        opened_files: fileItems.filter((item) => item.kind === "file"),
-        agent_generated_files: agentGeneratedFileItems.filter(
-          (item) => item.kind === "file"
-        ),
-        my_sessions: [],
-        collab_sessions: [],
-        issues: []
-      };
-      return {
-        providerDiagnostics,
-        rawGroups,
-        totalCounts: totalCountsFromRawGroups(rawGroups)
-      };
-    }
-    if (input.filter === "app") {
-      const appItems = await this.queryProviderMentionItemsById({
-        providerId: WORKSPACE_APP_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      });
-      const rawGroups: AgentMentionRawGroups = {
-        apps: appItems.filter((item) => item.kind === "workspace-app"),
-        opened_files: [],
-        agent_generated_files: [],
-        my_sessions: [],
-        collab_sessions: [],
-        issues: []
-      };
-      return {
-        providerDiagnostics,
-        rawGroups,
-        totalCounts: totalCountsFromRawGroups(rawGroups)
-      };
-    }
-    if (input.filter === "issue") {
-      const issueItems = await this.queryProviderMentionItemsById({
-        providerId: WORKSPACE_ISSUE_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: this.currentIssueSearchLimit,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      });
-      const rawGroups: AgentMentionRawGroups = {
-        apps: [],
-        opened_files: [],
-        agent_generated_files: [],
-        my_sessions: [],
-        collab_sessions: [],
-        issues: issueItems.filter((item) => item.kind === "workspace-issue")
-      };
-      return {
-        providerDiagnostics,
-        rawGroups,
-        totalCounts: totalCountsFromRawGroups(rawGroups)
-      };
-    }
-    if (input.filter === "session") {
-      const sessionItems = await this.queryProviderMentionItemsById({
-        providerId: AGENT_SESSION_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: DEFAULT_SESSION_LIMIT,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      });
-      const sessionMentionItems = sessionItems.filter(
-        (item) => item.kind === "session"
-      );
-      const mySessionItems = sessionMentionItems
-        .filter((item) =>
-          input.currentUserId ? item.scope === "my_sessions" : true
-        )
-        .map((item) =>
-          item.scope === "my_sessions"
-            ? item
-            : { ...item, scope: "my_sessions" as const }
+        });
+        const rawGroups = emptyAgentMentionRawGroups();
+        rawGroups.my_sessions = normalizeSessionMentionItemsForMySessions({
+          currentUserId: input.currentUserId,
+          items: sessionItems
+        });
+        return {
+          providerDiagnostics,
+          rawGroups,
+          totalCounts: totalCountsFromRawGroups(rawGroups)
+        };
+      }
+      case "issue": {
+        const issueItems = await this.queryProviderMentionItemsById({
+          providerId: WORKSPACE_ISSUE_PROVIDER_ID,
+          workspaceId: input.workspaceId,
+          currentUserId: input.currentUserId,
+          query: input.query,
+          limit: this.currentIssueSearchLimit,
+          sessionCwd: input.sessionCwd,
+          diagnostics: providerDiagnostics
+        });
+        const rawGroups = emptyAgentMentionRawGroups();
+        rawGroups.issues = issueItems.filter(
+          (item) => item.kind === "workspace-issue"
         );
-      const rawGroups: AgentMentionRawGroups = {
-        apps: [],
-        opened_files: [],
-        agent_generated_files: [],
-        my_sessions: mySessionItems,
-        collab_sessions: [],
-        issues: []
-      };
-      return {
-        providerDiagnostics,
-        rawGroups,
-        totalCounts: totalCountsFromRawGroups(rawGroups)
-      };
+        return {
+          providerDiagnostics,
+          rawGroups,
+          totalCounts: totalCountsFromRawGroups(rawGroups)
+        };
+      }
+      case "app": {
+        const appItems = await this.queryProviderMentionItemsById({
+          providerId: WORKSPACE_APP_PROVIDER_ID,
+          workspaceId: input.workspaceId,
+          currentUserId: input.currentUserId,
+          query: input.query,
+          limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
+          sessionCwd: input.sessionCwd,
+          diagnostics: providerDiagnostics
+        });
+        const rawGroups = emptyAgentMentionRawGroups();
+        rawGroups.apps = appItems.filter(
+          (item) => item.kind === "workspace-app"
+        );
+        return {
+          providerDiagnostics,
+          rawGroups,
+          totalCounts: totalCountsFromRawGroups(rawGroups)
+        };
+      }
     }
-    const [appItems, fileItems, issueItems, sessionItems] = await Promise.all([
-      this.queryProviderMentionItemsById({
-        providerId: WORKSPACE_APP_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: DEFAULT_MENTION_GROUP_PAGE_SIZE,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      }),
-      this.queryProviderMentionItemsById({
-        providerId: FILE_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: this.fileLimit,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      }),
-      this.queryProviderMentionItemsById({
-        providerId: WORKSPACE_ISSUE_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: this.currentIssueSearchLimit,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      }),
-      this.queryProviderMentionItemsById({
-        providerId: AGENT_SESSION_PROVIDER_ID,
-        workspaceId: input.workspaceId,
-        currentUserId: input.currentUserId,
-        query: "",
-        limit: DEFAULT_SESSION_LIMIT,
-        sessionCwd: input.sessionCwd,
-        diagnostics: providerDiagnostics
-      })
-    ]);
-    const rawGroups: AgentMentionRawGroups = {
-      apps: appItems.filter((item) => item.kind === "workspace-app"),
-      opened_files: fileItems.filter((item) => item.kind === "file"),
-      agent_generated_files: [],
-      my_sessions: sessionItems.filter(
-        (item) => item.kind === "session" && item.scope === "my_sessions"
-      ),
-      collab_sessions: sessionItems.filter(
-        (item) => item.kind === "session" && item.scope === "collab_sessions"
-      ),
-      issues: issueItems.filter((item) => item.kind === "workspace-issue")
-    };
-    return {
-      providerDiagnostics,
-      rawGroups,
-      totalCounts: totalCountsFromRawGroups(rawGroups)
-    };
   }
 
   private async queryProviderMentionItems(input: {
@@ -1232,24 +1127,7 @@ export class AgentMentionSearchController {
     entry: AgentMentionBrowseCacheEntry | null;
     isFresh: boolean;
   } {
-    const direct = this.readBrowseCache(input.cacheKey);
-    if (direct.entry || input.filter === "all") {
-      return direct;
-    }
-    const allCacheKey = this.browseCacheKey({
-      workspaceId: input.workspaceId,
-      currentUserId: input.currentUserId,
-      filter: "all",
-      sessionCwd: input.sessionCwd
-    });
-    const allCached = this.readBrowseCache(allCacheKey);
-    if (!allCached.entry || !canDeriveBrowseFilterFromAll(input.filter)) {
-      return direct;
-    }
-    return {
-      entry: deriveBrowseCacheEntryForFilter(allCached.entry, input.filter),
-      isFresh: allCached.isFresh
-    };
+    return this.readBrowseCache(input.cacheKey);
   }
 
   private browseCacheKey(input: {
@@ -1371,7 +1249,7 @@ export class AgentMentionSearchController {
 
   private groupsFromRawGroups(): AgentMentionGroup[] {
     const orderedGroupIds = groupIdsForFilter(this.currentFilter);
-    const groups = orderedGroupIds
+    return orderedGroupIds
       .map((groupId) => {
         const rawItems = resolveMentionGroupItems(groupId, this.rawGroups);
         const items =
@@ -1419,11 +1297,6 @@ export class AgentMentionSearchController {
         } satisfies AgentMentionGroup;
       })
       .filter((group): group is AgentMentionGroup => group !== null);
-    return orderMentionGroupsForFilter({
-      filter: this.currentFilter,
-      groups,
-      query: this.currentQuery
-    });
   }
 
   private emitBrowseState(status: "ready" | "loading"): void {
@@ -1441,13 +1314,15 @@ export class AgentMentionSearchController {
   private canApply(
     requestId: number,
     workspaceId: string,
-    query: string
+    query: string,
+    filter: AgentMentionFilterId
   ): boolean {
     return (
       !this.disposed &&
       requestId === this.requestId &&
       workspaceId === this.activeWorkspaceId &&
-      query === this.currentQuery
+      query === this.currentQuery &&
+      filter === this.currentFilter
     );
   }
 
@@ -1478,6 +1353,11 @@ export class AgentMentionSearchController {
   private resetSearchLimits(): void {
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
+  }
+
+  private resetRawGroups(): void {
+    this.rawGroups = emptyAgentMentionRawGroups();
+    this.resetTotalCounts();
   }
 
   private resetAgentGeneratedBrowsePath(): void {
@@ -1575,59 +1455,6 @@ function rawGroupItemCount(rawGroups: AgentMentionRawGroups): number {
   );
 }
 
-function canDeriveBrowseFilterFromAll(
-  filter: AgentMentionFilterId
-): filter is "app" | "issue" | "session" {
-  return filter === "app" || filter === "issue" || filter === "session";
-}
-
-function deriveBrowseCacheEntryForFilter(
-  entry: AgentMentionBrowseCacheEntry,
-  filter: "app" | "issue" | "session"
-): AgentMentionBrowseCacheEntry {
-  const rawGroups = deriveRawGroupsForFilter(entry.rawGroups, filter);
-  return {
-    providerDiagnostics: entry.providerDiagnostics,
-    rawGroups,
-    totalCounts: totalCountsFromRawGroups(rawGroups),
-    cachedAt: entry.cachedAt
-  };
-}
-
-function deriveRawGroupsForFilter(
-  rawGroups: AgentMentionRawGroups,
-  filter: "app" | "issue" | "session"
-): AgentMentionRawGroups {
-  if (filter === "app") {
-    return {
-      apps: rawGroups.apps,
-      opened_files: [],
-      agent_generated_files: [],
-      my_sessions: [],
-      collab_sessions: [],
-      issues: []
-    };
-  }
-  if (filter === "issue") {
-    return {
-      apps: [],
-      opened_files: [],
-      agent_generated_files: [],
-      my_sessions: [],
-      collab_sessions: [],
-      issues: rawGroups.issues
-    };
-  }
-  return {
-    apps: [],
-    opened_files: [],
-    agent_generated_files: [],
-    my_sessions: rawGroups.my_sessions,
-    collab_sessions: [],
-    issues: []
-  };
-}
-
 function providerDiagnosticsSummary(
   diagnostics: readonly AgentMentionProviderQueryDiagnostic[]
 ): string {
@@ -1676,141 +1503,20 @@ function logAgentMentionLifecycleDiagnostic(
   }
 }
 
-function orderMentionGroupsForFilter(input: {
-  filter: AgentMentionFilterId;
-  groups: AgentMentionGroup[];
-  query: string;
-}): AgentMentionGroup[] {
-  if (input.filter !== "all") {
-    return input.groups;
-  }
-  const query = normalizeQuery(input.query).toLowerCase();
-  return input.groups
-    .map((group, index) => ({
-      group,
-      hasItems: group.items.length > 0,
-      index,
-      score: mentionGroupBestMatchScore(group, query)
-    }))
-    .sort((left, right) => {
-      if (left.hasItems !== right.hasItems) {
-        return left.hasItems ? -1 : 1;
-      }
-      if (query && left.score !== right.score) {
-        return right.score - left.score;
-      }
-      return left.index - right.index;
-    })
-    .map((entry) => entry.group);
-}
-
-function mentionGroupBestMatchScore(
-  group: AgentMentionGroup,
-  query: string
-): number {
-  if (!query) {
-    return 0;
-  }
-  return group.items.reduce(
-    (bestScore, item) =>
-      Math.max(bestScore, mentionItemMatchScore(item, query)),
-    0
-  );
-}
-
-function mentionItemMatchScore(
-  item: AgentContextMentionItem,
-  query: string
-): number {
-  const primary: string[] = [];
-  const secondary: string[] = [];
-  let kindBoost = 0;
-
-  if (item.kind === "workspace-app") {
-    kindBoost = 8;
-    primary.push(item.name, item.appId, item.targetId);
-    secondary.push(item.description ?? "");
-  } else if (item.kind === "file") {
-    primary.push(item.name);
-    secondary.push(item.path, item.directoryPath);
-  } else if (item.kind === "session") {
-    primary.push(item.title);
-    secondary.push(
-      item.name,
-      item.initiatorName,
-      item.agentName,
-      item.inputPreview ?? "",
-      item.summaryPreview ?? ""
+function normalizeSessionMentionItemsForMySessions(input: {
+  currentUserId: string;
+  items: readonly AgentContextMentionItem[];
+}): AgentContextMentionItem[] {
+  return input.items
+    .filter((item) => item.kind === "session")
+    .filter((item) =>
+      input.currentUserId ? item.scope === "my_sessions" : true
+    )
+    .map((item) =>
+      item.scope === "my_sessions"
+        ? item
+        : { ...item, scope: "my_sessions" as const }
     );
-  } else if (item.kind === "workspace-issue") {
-    primary.push(item.title, item.name);
-    secondary.push(
-      item.creatorName ?? "",
-      item.status ?? "",
-      item.contentPreview ?? ""
-    );
-  } else if (item.kind === "workspace-app-factory") {
-    primary.push(item.name, item.jobId, item.targetId);
-    secondary.push(item.action ?? "", item.contextPath ?? "");
-  }
-
-  const primaryScore = maxTextMatchScore(primary, query, {
-    contains: 60,
-    exact: 100,
-    prefix: 90,
-    wordPrefix: 80
-  });
-  const secondaryScore = maxTextMatchScore(secondary, query, {
-    contains: 25,
-    exact: 60,
-    prefix: 50,
-    wordPrefix: 40
-  });
-  const score = Math.max(primaryScore, secondaryScore);
-  return score > 0 ? score + kindBoost : 0;
-}
-
-function maxTextMatchScore(
-  values: readonly string[],
-  query: string,
-  scores: {
-    contains: number;
-    exact: number;
-    prefix: number;
-    wordPrefix: number;
-  }
-): number {
-  return values.reduce(
-    (bestScore, value) =>
-      Math.max(bestScore, textMatchScore(value, query, scores)),
-    0
-  );
-}
-
-function textMatchScore(
-  value: string,
-  query: string,
-  scores: {
-    contains: number;
-    exact: number;
-    prefix: number;
-    wordPrefix: number;
-  }
-): number {
-  const normalized = normalizeQuery(value).toLowerCase();
-  if (!normalized) {
-    return 0;
-  }
-  if (normalized === query) {
-    return scores.exact;
-  }
-  if (normalized.startsWith(query)) {
-    return scores.prefix;
-  }
-  if (normalized.split(/[^a-z0-9]+/i).some((word) => word.startsWith(query))) {
-    return scores.wordPrefix;
-  }
-  return normalized.includes(query) ? scores.contains : 0;
 }
 
 function providerItemToAgentMentionItem(input: {

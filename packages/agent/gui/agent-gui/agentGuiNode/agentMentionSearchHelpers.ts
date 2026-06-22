@@ -216,23 +216,21 @@ export function matchesSessionQuery(
 }
 
 export const AGENT_MENTION_FILTER_TAB_ORDER = [
-  "all",
   "session",
   "file",
   "issue",
   "app"
 ] as const satisfies readonly AgentMentionFilterId[];
 
-export const DEFAULT_MENTION_ALL_TAB_PAGE_SIZE = 5;
+export const DEFAULT_AGENT_MENTION_FILTER =
+  "session" satisfies AgentMentionFilterId;
 export const DEFAULT_MENTION_GROUP_PAGE_SIZE = 10;
 
 export function mentionGroupPageSize(
-  filter: AgentMentionFilterId,
+  _filter: AgentMentionFilterId,
   _groupId: AgentMentionGroupId
 ): number {
-  return filter === "all"
-    ? DEFAULT_MENTION_ALL_TAB_PAGE_SIZE
-    : DEFAULT_MENTION_GROUP_PAGE_SIZE;
+  return DEFAULT_MENTION_GROUP_PAGE_SIZE;
 }
 
 export function mentionGroupExpandCount(
@@ -259,9 +257,6 @@ export function groupIdsForFilter(
       return ["my_sessions"];
     case "issue":
       return ["issues"];
-    case "all":
-    default:
-      return ["my_sessions", "files", "issues", "apps"];
   }
 }
 
@@ -272,21 +267,21 @@ export function shouldShowEmptyGroup(
 ): boolean {
   const hasQuery = query.trim().length > 0;
   if (groupId === "files") {
-    return filter === "all";
+    return false;
   }
   if (groupId === "opened_files" || groupId === "agent_generated_files") {
     return filter === "file" && !hasQuery;
   }
   if (groupId === "apps") {
-    return filter === "all" || filter === "app";
+    return filter === "app";
   }
   if (groupId === "my_sessions") {
-    return filter === "all" || filter === "session";
+    return filter === "session";
   }
   if (groupId === "collab_sessions") {
     return false;
   }
-  return filter === "all" || filter === "issue";
+  return filter === "issue";
 }
 
 export function buildEmptyGroup(
@@ -305,37 +300,6 @@ export function buildEmptyGroup(
 
 function emptyGroupLabel(groupId: AgentMentionGroupId, query: string): string {
   return agentMentionEmptyGroupLabel(groupId, query);
-}
-
-export function shouldPrefetchBrowseFilter(
-  filter: AgentMentionFilterId
-): filter is "all" | "app" | "file" | "session" | "issue" {
-  return (
-    filter === "all" ||
-    filter === "app" ||
-    filter === "file" ||
-    filter === "session" ||
-    filter === "issue"
-  );
-}
-
-export function filterForGroup(
-  groupId: AgentMentionGroupId
-): Exclude<AgentMentionFilterId, "all"> {
-  switch (groupId) {
-    case "apps":
-      return "app";
-    case "files":
-    case "opened_files":
-    case "agent_generated_files":
-      return "file";
-    case "my_sessions":
-      return "session";
-    case "collab_sessions":
-      return "session";
-    case "issues":
-      return "issue";
-  }
 }
 
 type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;

@@ -11,7 +11,7 @@ describe("AgentMentionLabels", () => {
   it("localizes mention filters and groups for English", async () => {
     setAgentGuiI18nTestLocale("en");
 
-    expect(agentMentionFilterLabel("all")).toBe("All");
+    expect(agentMentionFilterLabel("session")).toBe("Sessions");
     expect(agentMentionFilterLabel("app")).toBe("Apps");
     expect(agentMentionGroupLabel("apps")).toBe("Apps");
     expect(agentMentionGroupLabel("my_sessions")).toBe("My sessions");
@@ -23,7 +23,6 @@ describe("AgentMentionLabels", () => {
   it("localizes mention filters and groups for Chinese", async () => {
     setAgentGuiI18nTestLocale("zh-CN");
 
-    expect(agentMentionFilterLabel("all")).toBe("全部");
     expect(agentMentionFilterLabel("app")).toBe("应用");
     expect(agentMentionFilterLabel("session")).toBe("会话");
     expect(agentMentionFilterLabel("issue")).toBe("任务");

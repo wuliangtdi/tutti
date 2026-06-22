@@ -25,8 +25,6 @@ export function agentMentionGroupLabel(groupId: AgentMentionGroupId): string {
 
 export function agentMentionFilterLabel(filter: AgentMentionFilterId): string {
   switch (filter) {
-    case "all":
-      return translate("agentHost.agentGui.mentionFilterAll");
     case "app":
       return translate("agentHost.agentGui.mentionFilterApp");
     case "file":

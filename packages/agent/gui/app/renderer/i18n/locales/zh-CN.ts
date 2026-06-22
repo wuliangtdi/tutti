@@ -610,7 +610,6 @@ export const zhCN = {
       searchNoConversations: "暂无相关会话",
       conversationUnavailable: "会话不可用。",
       contextPickerBrowseHint: "根据你输入的内容搜索工作区文件",
-      contextPickerBrowseAllHint: "根据你输入的内容搜索工作区文件",
       contextPickerBrowseFileHint:
         "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
       mentionFileSearchMoreHint: "继续输入文件名可搜索更多本机文件",
@@ -824,7 +823,6 @@ export const zhCN = {
       projectMissingDescription: "此对话的工作目录已不存在",
       fileMentionSwitchCategory: "切换分类",
       fileMentionSwitchSelection: "切换选中",
-      mentionFilterAll: "全部",
       mentionFilterFile: "文件",
       mentionFilterApp: "应用",
       mentionFilterSession: "会话",
