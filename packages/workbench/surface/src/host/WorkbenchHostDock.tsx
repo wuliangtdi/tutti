@@ -185,6 +185,7 @@ export function WorkbenchHostDock({
     new Map<string, (element: HTMLElement | null) => void>()
   );
   const previousAttentionTokenByEntryId = useRef(new Map<string, unknown>());
+  const pendingLaunchEntryIdsRef = useRef(new Set<string>());
   const attentionTimeouts = useRef(
     new Map<string, ReturnType<typeof setTimeout>>()
   );
@@ -1355,6 +1356,12 @@ export function WorkbenchHostDock({
                       if (clickResolution.kind === "blocked") {
                         return;
                       }
+                      if (
+                        clickResolution.kind === "launch" &&
+                        pendingLaunchEntryIdsRef.current.has(entry.id)
+                      ) {
+                        return;
+                      }
                       beginDockIconInteraction(anchorKey);
                     }}
                     onClick={(event) => {
@@ -1442,17 +1449,27 @@ export function WorkbenchHostDock({
                           ).catch(() => {});
                           return;
                         case "launch":
+                          if (pendingLaunchEntryIdsRef.current.has(entry.id)) {
+                            return;
+                          }
+                          pendingLaunchEntryIdsRef.current.add(entry.id);
                           closePopup();
                           context.genie.launchNodeFromAnchor(
                             anchorKey,
                             entry.id,
                             () =>
-                              host.launchNode({
-                                dockEntryId: entry.id,
-                                payload: entry.launchPayload,
-                                reason: "dock",
-                                typeId: entry.typeId
-                              })
+                              host
+                                .launchNode({
+                                  dockEntryId: entry.id,
+                                  payload: entry.launchPayload,
+                                  reason: "dock",
+                                  typeId: entry.typeId
+                                })
+                                .finally(() => {
+                                  pendingLaunchEntryIdsRef.current.delete(
+                                    entry.id
+                                  );
+                                })
                           );
                           return;
                         case "blocked":

@@ -248,11 +248,30 @@ test("dock presence animation callback does not retrigger the presence effect", 
 test("dock new window launch returns the created node id to the genie boundary", () => {
   assert.match(
     source,
-    /context\.genie\.launchNodeFromAnchor\(\s*anchorKey,\s*entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
+    /context\.genie\.launchNodeFromAnchor\(\s*anchorKey,\s*entry\.id,\s*\(\) =>\s*host\s*\.launchNode\(\{/
   );
   assert.match(
     source,
     /context\.genie\.launchNodeFromAnchor\(\s*anchorKeyFromPopupEntry\(popupEntry\),\s*popupEntry\.entry\.id,\s*\(\) =>\s*host\.launchNode\(\{/
+  );
+});
+
+test("dock entry launch ignores rapid repeat clicks while a launch is in flight", () => {
+  assert.match(
+    source,
+    /const pendingLaunchEntryIdsRef = useRef\(new Set<string>\(\)\);/
+  );
+  assert.match(
+    source,
+    /onPointerDown=\{\(\) => \{\s*if \(clickResolution\.kind === "blocked"\) \{\s*return;\s*\}\s*if \(\s*clickResolution\.kind === "launch" &&\s*pendingLaunchEntryIdsRef\.current\.has\(entry\.id\)\s*\) \{\s*return;\s*\}\s*beginDockIconInteraction\(anchorKey\);\s*\}\}/
+  );
+  assert.match(
+    source,
+    /case "launch":\s*if \(pendingLaunchEntryIdsRef\.current\.has\(entry\.id\)\) \{\s*return;\s*\}\s*pendingLaunchEntryIdsRef\.current\.add\(entry\.id\);\s*closePopup\(\);/
+  );
+  assert.match(
+    source,
+    /\.finally\(\(\) => \{\s*pendingLaunchEntryIdsRef\.current\.delete\(\s*entry\.id\s*\);\s*\}\)/
   );
 });
 
