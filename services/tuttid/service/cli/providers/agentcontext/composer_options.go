@@ -11,6 +11,7 @@ import (
 
 type composerOptionsInput struct {
 	Provider                 string `cli:"provider" validate:"required"`
+	Cwd                      string `cli:"cwd"`
 	Locale                   string `cli:"locale"`
 	Model                    string `cli:"model"`
 	PermissionMode           string `cli:"permission-mode"`
@@ -23,7 +24,7 @@ func (p Provider) newComposerOptionsCommand() cliservice.Command {
 		ID:          appID + ".agent.composer-options",
 		Path:        []string{"agent", "composer-options"},
 		Summary:     "Get agent composer options",
-		Description: "Get provider-specific model and reasoning options without starting an agent session.",
+		Description: "Get provider-specific model and reasoning options without starting an agent session. Claude Code may spin up a short-lived hidden discovery session.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceOptional,
 		Inputs:      framework.FromStruct[composerOptionsInput](),
@@ -41,7 +42,7 @@ func (p Provider) newComposerOptionsCommand() cliservice.Command {
 	})
 }
 
-func (p Provider) runComposerOptions(ctx context.Context, _ framework.InvokeContext, input composerOptionsInput) (any, error) {
+func (p Provider) runComposerOptions(ctx context.Context, invoke framework.InvokeContext, input composerOptionsInput) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
@@ -63,8 +64,10 @@ func (p Provider) runComposerOptions(ctx context.Context, _ framework.InvokeCont
 		reasoningEffort = defaults.ReasoningEffort
 	}
 	return p.sessions.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
+		Cwd:                      input.Cwd,
 		Locale:                   locale,
 		Provider:                 input.Provider,
+		WorkspaceID:              invoke.WorkspaceID,
 		IncludeCapabilityCatalog: input.IncludeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
 			Model:            model,

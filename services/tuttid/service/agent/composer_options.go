@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -65,6 +66,7 @@ type ComposerOptionsInput struct {
 	Cwd                      string
 	Locale                   string
 	Provider                 string
+	WorkspaceID              string
 	Settings                 ComposerSettings
 	IncludeCapabilityCatalog *bool
 }
@@ -158,7 +160,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			runtimeContext["modelCatalogSource"] = source
 		}
 	}
-	return ComposerOptions{
+	options := ComposerOptions{
 		Provider:          provider,
 		ModelConfig:       composerModelConfig(provider, effectiveSettings.Model, modelOptions),
 		PermissionConfig:  permissionConfig,
@@ -168,7 +170,22 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		RuntimeContext:    runtimeContext,
 		Skills:            skills,
 		CapabilityCatalog: capabilityCatalog,
-	}, nil
+	}
+	if provider == agentprovider.ClaudeCode && strings.TrimSpace(input.WorkspaceID) != "" {
+		now := time.Now().UTC()
+		liveModels, ok := s.getLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now)
+		if !ok {
+			discovered, err := s.discoverLiveComposerModels(ctx, input.WorkspaceID, input.Cwd, effectiveSettings)
+			if err == nil && len(discovered) > 0 {
+				liveModels = discovered
+				s.setLiveComposerModelOptions(provider, input.WorkspaceID, input.Cwd, now, discovered)
+			}
+		}
+		if len(liveModels) > 0 {
+			options = mergeLiveModelsIntoComposerOptions(options, liveModels)
+		}
+	}
+	return options, nil
 }
 
 func composerOptionsIncludeCapabilityCatalog(input ComposerOptionsInput) bool {
@@ -774,12 +791,4 @@ func normalizeReasoningEffortForProvider(provider string, value string) string {
 		return "high"
 	}
 	return normalized
-}
-
-func nullableString(value string) any {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return value
 }

@@ -28,6 +28,7 @@ func NewService(runtime RuntimeController) *Service {
 		skillOptionsCache:         newComposerSkillOptionsCache(),
 		providerAvailabilityCache: newProviderAvailabilityCache(),
 		capabilityCatalogCache:    newComposerCapabilityCatalogCache(),
+		liveModelCache:            newComposerLiveModelCache(),
 	}
 }
 

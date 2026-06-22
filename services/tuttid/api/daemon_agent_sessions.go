@@ -102,6 +102,7 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 	}
 	if request.Body != nil {
 		input.Cwd = optionalStringValue(request.Body.Cwd)
+		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
 	}
 	input.Settings = api.composerDefaultsForProvider(ctx, input.Provider)
 	if request.Body != nil && request.Body.Settings != nil {

@@ -2158,6 +2158,9 @@ type GetAgentProviderComposerOptionsRequest struct {
 	Cwd      *string                       `json:"cwd,omitempty"`
 	Locale   *DesktopLocale                `json:"locale,omitempty"`
 	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+
+	// WorkspaceId Workspace used for Claude Code live model discovery.
+	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
 // HealthStatusResponse defines model for HealthStatusResponse.

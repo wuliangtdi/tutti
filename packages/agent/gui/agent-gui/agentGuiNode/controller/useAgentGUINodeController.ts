@@ -3832,17 +3832,19 @@ export function useAgentGUINodeController({
         defaultReasoningEffort,
         drafts: draftSettingsBySessionIdRef.current
       });
+      const composerOptionsCwd =
+        selectedProjectPathRef.current?.trim() || workspacePath.trim() || "";
       void Promise.resolve(
         agentActivityRuntime.getComposerOptions({
           workspaceId,
-          cwd: selectedProjectPathRef.current ?? "",
+          cwd: composerOptionsCwd,
           force: options?.force,
           provider,
           settings
         })
       ).catch(() => undefined);
     },
-    [agentActivityRuntime, defaultReasoningEffort, workspaceId]
+    [agentActivityRuntime, defaultReasoningEffort, workspaceId, workspacePath]
   );
 
   useEffect(() => {

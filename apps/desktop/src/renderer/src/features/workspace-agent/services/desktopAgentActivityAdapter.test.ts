@@ -322,6 +322,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
       "codex",
       {
         cwd: "/repo",
+        workspaceId,
         settings: { model: "gpt-5.4" }
       }
     ]
@@ -471,34 +472,38 @@ test("desktop agent activity adapter normalizes legacy runtime config options", 
 });
 
 test("desktop agent activity adapter uses Claude draft live model list", async () => {
+  const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
-      async createWorkspaceAgentSession(_workspaceId, request) {
-        return createSession({
-          id: request.agentSessionId,
-          provider: "claude-code",
-          runtimeContext: {
-            configOptions: [
+      async getAgentProviderComposerOptions(provider, request) {
+        calls.push([provider, request]);
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: {
+            configurable: true,
+            currentValue: "default",
+            options: [
               {
-                id: "model",
-                currentValue: "default",
-                options: [
-                  {
-                    value: "default",
-                    name: "Default",
-                    description: "Opus 4.8 with 1M context"
-                  },
-                  {
-                    value: "claude-opus-4-6",
-                    name: "Opus 4.6",
-                    description: "Most capable for complex work"
-                  }
-                ]
+                id: "default",
+                value: "default",
+                label: "Default",
+                description: "Opus 4.8 with 1M context"
+              },
+              {
+                id: "claude-opus-4-6",
+                value: "claude-opus-4-6",
+                label: "Opus 4.6",
+                description: "Most capable for complex work"
               }
             ]
           },
-          visible: false
-        });
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: { configurable: false, options: [] },
+          runtimeContext: {},
+          skills: [],
+          capabilityCatalog: []
+        };
       }
     }),
     runtimeApi: createRuntimeApi()
@@ -521,15 +526,23 @@ test("desktop agent activity adapter uses Claude draft live model list", async (
       description: "Most capable for complex work"
     }
   ]);
+  assert.deepEqual(calls, [["claude-code", { settings: {}, workspaceId }]]);
 });
 
 test("desktop agent activity adapter flattens grouped runtime config options", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
-      async createWorkspaceAgentSession(_workspaceId, request) {
-        return createSession({
-          id: request.agentSessionId,
-          provider: "claude-code",
+      async getAgentProviderComposerOptions(provider) {
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: {
+            configurable: true,
+            currentValue: "sonnet",
+            options: []
+          },
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: { configurable: false, options: [] },
           runtimeContext: {
             configOptions: [
               {
@@ -551,8 +564,9 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
               }
             ]
           },
-          visible: false
-        });
+          skills: [],
+          capabilityCatalog: []
+        };
       }
     }),
     runtimeApi: createRuntimeApi()
@@ -572,37 +586,39 @@ test("desktop agent activity adapter flattens grouped runtime config options", a
   ]);
 });
 
-test("desktop agent activity adapter loads Claude models from draft session", async () => {
-  const createCalls: unknown[] = [];
+test("desktop agent activity adapter loads Claude models via composer options request", async () => {
+  const composerOptionsCalls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
-      async createWorkspaceAgentSession(requestWorkspaceId, request) {
-        createCalls.push({ request, workspaceId: requestWorkspaceId });
-        return createSession({
-          id: request.agentSessionId,
-          provider: "claude-code",
-          runtimeContext: {
-            configOptions: [
+      async getAgentProviderComposerOptions(provider, request) {
+        composerOptionsCalls.push({ provider, request });
+        return {
+          provider,
+          effectiveSettings: {},
+          modelConfig: {
+            configurable: true,
+            currentValue: "default",
+            options: [
               {
-                id: "model",
-                currentValue: "default",
-                options: [
-                  {
-                    value: "default",
-                    name: "Default",
-                    description: "Opus 4.8 with 1M context"
-                  },
-                  {
-                    value: "opus",
-                    name: "Opus",
-                    description: "Most capable"
-                  }
-                ]
+                id: "default",
+                value: "default",
+                label: "Default",
+                description: "Opus 4.8 with 1M context"
+              },
+              {
+                id: "opus",
+                value: "opus",
+                label: "Opus",
+                description: "Most capable"
               }
             ]
           },
-          visible: false
-        });
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: { configurable: false, options: [] },
+          runtimeContext: {},
+          skills: [],
+          capabilityCatalog: []
+        };
       }
     }),
     runtimeApi: createRuntimeApi()
@@ -614,19 +630,12 @@ test("desktop agent activity adapter loads Claude models from draft session", as
     workspaceId
   });
 
-  assert.equal(createCalls.length, 1);
-  assert.deepEqual(
-    (
-      createCalls[0] as {
-        request: { initialContent: unknown[]; visible: boolean };
-      }
-    ).request.initialContent,
-    []
-  );
-  assert.equal(
-    (createCalls[0] as { request: { visible: boolean } }).request.visible,
-    false
-  );
+  assert.deepEqual(composerOptionsCalls, [
+    {
+      provider: "claude-code",
+      request: { cwd: "/repo", settings: {}, workspaceId }
+    }
+  ]);
   assert.equal(options.modelConfigurable, true);
   assert.deepEqual(options.models, [
     {
@@ -636,7 +645,6 @@ test("desktop agent activity adapter loads Claude models from draft session", as
     },
     { value: "opus", label: "Opus", description: "Most capable" }
   ]);
-  assert.equal(typeof options.runtimeContext?.draftAgentSessionId, "string");
 });
 
 test("desktop agent activity adapter promotes Claude draft on first prompt", async () => {
@@ -715,10 +723,25 @@ test("desktop agent activity adapter promotes Claude draft on first prompt", asy
   assert.equal(session.visible, true);
 });
 
-test("desktop agent activity adapter updates the Claude draft in place when settings change", async () => {
+test("desktop agent activity adapter loads Claude options without mutating draft sessions", async () => {
   const calls: string[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
+      async getAgentProviderComposerOptions(provider, request) {
+        calls.push(
+          `options:${provider}:${String(request?.settings?.planMode)}`
+        );
+        return {
+          provider,
+          effectiveSettings: request?.settings ?? {},
+          modelConfig: { configurable: true, options: [] },
+          permissionConfig: { configurable: false, modes: [] },
+          reasoningConfig: { configurable: true, options: [] },
+          runtimeContext: {},
+          skills: [],
+          capabilityCatalog: []
+        };
+      },
       async createWorkspaceAgentSession(_workspaceId, request) {
         calls.push(`create:${request.planMode === true ? "plan" : "default"}`);
         return createSession({
@@ -747,29 +770,22 @@ test("desktop agent activity adapter updates the Claude draft in place when sett
     runtimeApi: createRuntimeApi()
   });
 
-  const first = await adapter.loadComposerOptions({
+  await adapter.loadComposerOptions({
     provider: "claude-code",
     settings: { planMode: false },
     workspaceId
   });
-  const draftAgentSessionId = String(first.runtimeContext?.draftAgentSessionId);
 
-  const second = await adapter.loadComposerOptions({
+  await adapter.loadComposerOptions({
     provider: "claude-code",
     settings: { planMode: true },
     workspaceId
   });
 
-  // The same pre-warm draft is reused and patched in place; no teardown or
-  // second hidden session is created when toggling plan mode.
   assert.deepEqual(calls, [
-    "create:default",
-    `update:${draftAgentSessionId}:plan=true`
+    "options:claude-code:false",
+    "options:claude-code:true"
   ]);
-  assert.equal(
-    String(second.runtimeContext?.draftAgentSessionId),
-    draftAgentSessionId
-  );
 });
 
 function createTuttidClient(

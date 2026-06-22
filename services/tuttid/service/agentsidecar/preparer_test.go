@@ -757,6 +757,29 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T) {
+	binDir := t.TempDir()
+	claudePath := filepath.Join(binDir, "claude")
+	if err := os.WriteFile(claudePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("CLAUDE_CODE_EXECUTABLE", "")
+
+	prepared, err := NewDefaultPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if got := envValue(prepared.Env, "CLAUDE_CODE_EXECUTABLE"); got != claudePath {
+		t.Fatalf("CLAUDE_CODE_EXECUTABLE = %q, want %q", got, claudePath)
+	}
+}
+
 // Plan mode must NOT override CLAUDE_CONFIG_DIR. Doing so points the CLI at a
 // fresh config directory without the user's credentials, which made plan turns
 // fail with "Not logged in · Please run /login" (-32000) for OAuth users while

@@ -21,9 +21,12 @@ type Service struct {
 	CapabilityLister             ComposerCapabilityLister
 	ProviderAvailabilityCacheTTL time.Duration
 	CapabilityCatalogCacheTTL    time.Duration
+	LiveModelCacheTTL            time.Duration
+	LiveModelDiscoveryTimeout    time.Duration
 	skillOptionsCache            *composerSkillOptionsCache
 	providerAvailabilityCache    *providerAvailabilityCache
 	capabilityCatalogCache       *composerCapabilityCatalogCache
+	liveModelCache               *composerLiveModelCache
 }
 
 type StaleTurnResumeReconciler interface {

@@ -1288,7 +1288,7 @@ export const importWorkspaceExternalAgentSessions = <
   });
 
 /**
- * Get provider composer options without creating an agent session
+ * Get provider composer options with short-lived Claude Code discovery
  */
 export const getAgentProviderComposerOptions = <
   ThrowOnError extends boolean = false

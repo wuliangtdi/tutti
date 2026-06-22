@@ -1014,6 +1014,7 @@ test("desktop agent host api loads composer options through tuttid without creat
       args: [
         "codex",
         {
+          workspaceId,
           settings: {
             model: "gpt-5",
             permissionModeId: "auto",

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
@@ -39,6 +41,9 @@ func (ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput)
 		claudeSystemPromptFileEnv + "=" + systemPromptPath,
 		claudePluginDirEnv + "=" + pluginDir,
 		claudeSkillListingBudgetEnv + "=" + claudeSkillListingBudgetChars,
+	}
+	if claudeExecutableEnv := claudeCodeExecutableEnv(); claudeExecutableEnv != "" {
+		env = append(env, claudeExecutableEnv)
 	}
 	// Plan mode is enabled exclusively through the ACP `set_mode("plan")` call
 	// (see effectiveModeID in the daemon runtime). We intentionally do NOT set
@@ -78,4 +83,15 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 		return fmt.Errorf("install claude tutti skill plugin: %w", err)
 	}
 	return nil
+}
+
+func claudeCodeExecutableEnv() string {
+	if configured := strings.TrimSpace(os.Getenv("CLAUDE_CODE_EXECUTABLE")); configured != "" {
+		return "CLAUDE_CODE_EXECUTABLE=" + configured
+	}
+	claudePath, err := exec.LookPath("claude")
+	if err != nil {
+		return ""
+	}
+	return "CLAUDE_CODE_EXECUTABLE=" + claudePath
 }

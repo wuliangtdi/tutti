@@ -1289,6 +1289,124 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 	}
 }
 
+func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			return session
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "default",
+					"options": []any{
+						map[string]any{"name": "Default", "value": "default"},
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+					},
+				},
+				map[string]any{
+					"id":           "effort",
+					"currentValue": "high",
+					"options": []any{
+						map[string]any{"name": "High", "value": "high"},
+					},
+				},
+			},
+		}
+		return session
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
+		t.Fatalf("modelConfig = %#v, want discovered model options", options.ModelConfig)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
+		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	}
+	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want model option merged into runtime context", options.RuntimeContext["configOptions"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			return session
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "default",
+					"options": []any{
+						map[string]any{"name": "Default", "value": "default"},
+					},
+				},
+			},
+		}
+		return session
+	}
+	service := NewService(runtime)
+
+	for range 2 {
+		_, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+			Provider:    "claude-code",
+			WorkspaceID: "ws-1",
+			Cwd:         "/repo",
+		})
+		if err != nil {
+			t.Fatalf("GetComposerOptions returned error: %v", err)
+		}
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1 with cache", len(runtime.startCalls))
+	}
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1 with cache", len(runtime.closeCalls))
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeLiveModelsTimeoutDegradesGracefully(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.LiveModelDiscoveryTimeout = 250 * time.Millisecond
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-timeout",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if len(runtime.closeCalls) != 1 {
+		t.Fatalf("close calls = %d, want 1 even on timeout", len(runtime.closeCalls))
+	}
+	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
+		t.Fatalf("modelConfig = %#v, want untouched static fallback after timeout", options.ModelConfig)
+	}
+}
+
 func TestServiceGetsComposerOptionsLeavesUnresolvedProviderModelUnset(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
@@ -2569,6 +2687,7 @@ type fakeRuntime struct {
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
 	startErr               error
 	startCalls             []RuntimeStartInput
+	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
 	validateErr            error
 	validateCalls          []RuntimeExecInput
 }
@@ -2882,6 +3001,9 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		WorkspaceID:     input.WorkspaceID,
 		CreatedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
+	}
+	if f.startHook != nil {
+		session = f.startHook(input, session)
 	}
 	f.sessions[input.WorkspaceID+":"+session.ID] = session
 	return session, nil

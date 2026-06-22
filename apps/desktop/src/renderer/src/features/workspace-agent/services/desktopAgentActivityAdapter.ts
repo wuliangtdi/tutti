@@ -51,7 +51,9 @@ export function createDesktopAgentActivityAdapter({
     settingsKey: string
   ): Promise<WorkspaceAgentSession> => {
     const draftKey = claudeDraftKey({ ...input, cwd });
-    const agentSessionId = createDesktopAgentActivitySessionId();
+    const agentSessionId =
+      normalizeText(input.agentSessionId) ??
+      createDesktopAgentActivitySessionId();
     const promise = tuttidClient
       .createWorkspaceAgentSession(input.workspaceId, {
         agentSessionId,
@@ -103,7 +105,8 @@ export function createDesktopAgentActivityAdapter({
       existing &&
       existing.status !== "disposed" &&
       existing.status !== "failed" &&
-      existing.cwd === cwd
+      existing.cwd === cwd &&
+      (!input.agentSessionId || existing.sessionId === input.agentSessionId)
     ) {
       if (existing.settingsKey === settingsKey) {
         return existing.promise;
@@ -219,27 +222,11 @@ export function createDesktopAgentActivityAdapter({
     },
     async loadComposerOptions(input) {
       const cwd = input.cwd?.trim();
-      if (workspaceAgentProvider(input.provider) === "claude-code") {
-        try {
-          const session = await ensureClaudeDraft({
-            cwd: cwd || null,
-            settings: normalizedClaudeDraftSettings(input.settings),
-            workspaceId: input.workspaceId
-          });
-          return agentActivityComposerOptionsFromTuttidResult(input.provider, {
-            permissionConfig: session.permissionConfig,
-            provider: session.provider,
-            runtimeContext: session.runtimeContext
-          });
-        } catch {
-          // Fall through to daemon composer options. Claude no longer gets a
-          // static model list there; this only preserves capabilities/skills.
-        }
-      }
       const result = await tuttidClient.getAgentProviderComposerOptions(
         workspaceAgentProvider(input.provider),
         {
           ...(cwd ? { cwd } : {}),
+          workspaceId: input.workspaceId,
           settings: input.settings ?? {}
         }
       );
@@ -265,6 +252,30 @@ export function createDesktopAgentActivityAdapter({
       const promoted = await promoteClaudeDraft(input);
       if (promoted) {
         return promoted;
+      }
+      if (
+        workspaceAgentProvider(input.provider) === "claude-code" &&
+        (input.initialContent?.length ?? 0) > 0
+      ) {
+        const draft = await ensureClaudeDraft({
+          agentSessionId: input.agentSessionId?.trim() ?? null,
+          cwd: input.cwd ?? null,
+          settings: normalizedClaudeDraftSettings({
+            model: input.model,
+            permissionModeId: input.permissionModeId,
+            planMode: input.planMode,
+            reasoningEffort: input.reasoningEffort,
+            speed: input.speed
+          }),
+          workspaceId: input.workspaceId
+        });
+        const promotedDraft = await promoteClaudeDraft({
+          ...input,
+          agentSessionId: draft.id
+        });
+        if (promotedDraft) {
+          return promotedDraft;
+        }
       }
       const session = await tuttidClient.createWorkspaceAgentSession(
         input.workspaceId,
@@ -357,6 +368,7 @@ interface ClaudeDraftSettings {
 }
 
 interface ClaudeDraftInput {
+  agentSessionId?: string | null;
   cwd: string | null;
   settings: ClaudeDraftSettings;
   workspaceId: string;

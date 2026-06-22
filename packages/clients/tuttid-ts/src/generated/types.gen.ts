@@ -752,6 +752,10 @@ export type AgentProviderComposerConfig = {
 
 export type GetAgentProviderComposerOptionsRequest = {
   cwd?: string;
+  /**
+   * Workspace used for Claude Code live model discovery.
+   */
+  workspaceId?: string;
   locale?: DesktopLocale;
   settings?: AgentSessionComposerSettings;
 };
@@ -4130,7 +4134,7 @@ export type GetAgentProviderComposerOptionsError =
 
 export type GetAgentProviderComposerOptionsResponses = {
   /**
-   * Agent provider composer options
+   * Agent provider composer options with short-lived Claude Code discovery when needed
    */
   200: AgentProviderComposerOptionsResponse;
 };

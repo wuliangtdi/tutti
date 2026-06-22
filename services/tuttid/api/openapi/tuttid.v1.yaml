@@ -1438,7 +1438,7 @@ paths:
       operationId: getAgentProviderComposerOptions
       tags:
         - agent-session
-      summary: Get provider composer options without creating an agent session
+      summary: Get provider composer options with short-lived Claude Code discovery
       requestBody:
         required: false
         content:
@@ -1447,7 +1447,7 @@ paths:
               $ref: "#/components/schemas/GetAgentProviderComposerOptionsRequest"
       responses:
         "200":
-          description: Agent provider composer options
+          description: Agent provider composer options with short-lived Claude Code discovery when needed
           content:
             application/json:
               schema:
@@ -4742,6 +4742,9 @@ components:
       properties:
         cwd:
           type: string
+        workspaceId:
+          type: string
+          description: Workspace used for Claude Code live model discovery.
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         settings:

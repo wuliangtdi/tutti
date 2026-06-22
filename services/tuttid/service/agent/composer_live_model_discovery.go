@@ -1,0 +1,375 @@
+package agent
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	"golang.org/x/sync/singleflight"
+)
+
+const (
+	defaultLiveModelDiscoveryTimeout = 8 * time.Second
+	liveModelDiscoveryPollInterval   = 100 * time.Millisecond
+)
+
+var liveComposerModelDiscoveryGroup singleflight.Group
+
+func (s *Service) liveModelDiscoveryTimeout() time.Duration {
+	if s.LiveModelDiscoveryTimeout != 0 {
+		return s.LiveModelDiscoveryTimeout
+	}
+	return defaultLiveModelDiscoveryTimeout
+}
+
+func (s *Service) discoverLiveComposerModels(
+	ctx context.Context,
+	workspaceID string,
+	cwd string,
+	settings ComposerSettings,
+) ([]ComposerConfigOptionValue, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return nil, ErrInvalidArgument
+	}
+	provider := agentprovider.ClaudeCode
+	cacheKey := composerLiveModelCacheKey(provider, workspaceID, cwd)
+	result, err, _ := liveComposerModelDiscoveryGroup.Do(cacheKey, func() (any, error) {
+		now := time.Now().UTC()
+		if cached, ok := s.getLiveComposerModelOptions(provider, workspaceID, cwd, now); ok && len(cached) > 0 {
+			return cached, nil
+		}
+		discovered, discoverErr := s.discoverLiveComposerModelsUncached(ctx, workspaceID, cwd, settings)
+		if discoverErr != nil {
+			return nil, discoverErr
+		}
+		s.setLiveComposerModelOptions(provider, workspaceID, cwd, now, discovered)
+		return discovered, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	models, _ := result.([]ComposerConfigOptionValue)
+	return cloneComposerConfigOptionValues(models), nil
+}
+
+func (s *Service) discoverLiveComposerModelsUncached(
+	ctx context.Context,
+	workspaceID string,
+	cwd string,
+	settings ComposerSettings,
+) ([]ComposerConfigOptionValue, error) {
+	provider := agentprovider.ClaudeCode
+	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
+		return nil, err
+	}
+	resolvedCwd := strings.TrimSpace(cwd)
+	if resolvedCwd != "" {
+		resolved, err := s.resolveCwd(ctx, &resolvedCwd)
+		if err != nil {
+			return nil, err
+		}
+		resolvedCwd = resolved
+	}
+	visible := false
+	startInput := CreateSessionInput{
+		AgentSessionID:   uuid.NewString(),
+		Provider:         provider,
+		Cwd:              &resolvedCwd,
+		PermissionModeID: stringPointer(strings.TrimSpace(settings.PermissionModeID)),
+		Model:            stringPointer(strings.TrimSpace(settings.Model)),
+		PlanMode:         boolPointer(settings.PlanMode),
+		BrowserUse:       settings.BrowserUse,
+		ComputerUse:      settings.ComputerUse,
+		ReasoningEffort:  stringPointer(strings.TrimSpace(settings.ReasoningEffort)),
+		Speed:            stringPointer(strings.TrimSpace(settings.Speed)),
+		Visible:          &visible,
+	}
+	prepared, err := s.prepareRuntime(ctx, workspaceID, resolvedCwd, startInput)
+	if err != nil {
+		return nil, err
+	}
+	session, err := s.controller().Start(ctx, RuntimeStartInput{
+		WorkspaceID:      workspaceID,
+		AgentSessionID:   startInput.AgentSessionID,
+		Provider:         provider,
+		Cwd:              prepared.Cwd,
+		Env:              prepared.Env,
+		PermissionModeID: value(startInput.PermissionModeID),
+		Model:            clampComposerModelForProvider(provider, value(startInput.Model)),
+		PlanMode:         clampComposerPlanModeForProvider(provider, valueBool(startInput.PlanMode)),
+		BrowserUse:       startInput.BrowserUse,
+		ComputerUse:      startInput.ComputerUse,
+		ReasoningEffort:  normalizeReasoningEffortForProvider(provider, value(startInput.ReasoningEffort)),
+		Speed:            normalizeSpeedForProvider(provider, value(startInput.Speed)),
+		Visible:          startInput.Visible,
+	})
+	if err != nil {
+		cleanupErr := s.cleanupRuntime(ctx, workspaceID, startInput.AgentSessionID)
+		if cleanupErr != nil {
+			return nil, errors.Join(normalizeRuntimeError(err), cleanupErr)
+		}
+		return nil, normalizeRuntimeError(err)
+	}
+	defer func() {
+		_ = s.controller().Close(context.Background(), RuntimeCloseInput{
+			WorkspaceID:    workspaceID,
+			AgentSessionID: session.ID,
+		})
+		_ = s.cleanupRuntime(context.Background(), workspaceID, session.ID)
+	}()
+	return s.pollComposerModelOptions(ctx, workspaceID, session)
+}
+
+func (s *Service) pollComposerModelOptions(
+	ctx context.Context,
+	workspaceID string,
+	session RuntimeSession,
+) ([]ComposerConfigOptionValue, error) {
+	timeout := s.liveModelDiscoveryTimeout()
+	pollCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(liveModelDiscoveryPollInterval)
+	defer ticker.Stop()
+	current := session
+	for {
+		if options := extractModelOptionsFromRuntimeContext(current.RuntimeContext); len(options) > 0 {
+			return options, nil
+		}
+		select {
+		case <-pollCtx.Done():
+			return nil, pollCtx.Err()
+		case <-ticker.C:
+			refreshed, ok := s.controller().Session(workspaceID, current.ID)
+			if ok {
+				current = refreshed
+			}
+		}
+	}
+}
+
+func extractModelOptionsFromRuntimeContext(runtimeContext map[string]any) []ComposerConfigOptionValue {
+	if len(runtimeContext) == 0 {
+		return nil
+	}
+	configOptions, ok := runtimeContext["configOptions"].([]any)
+	if !ok {
+		if typed, typedOK := runtimeContext["configOptions"].([]map[string]any); typedOK {
+			configOptions = make([]any, 0, len(typed))
+			for _, item := range typed {
+				configOptions = append(configOptions, item)
+			}
+		}
+	}
+	if len(configOptions) == 0 {
+		return nil
+	}
+	for _, optionRaw := range configOptions {
+		optionMap, ok := optionRaw.(map[string]any)
+		if !ok || strings.TrimSpace(stringFromAny(optionMap["id"])) != "model" {
+			continue
+		}
+		return composerConfigOptionValuesFromAny(optionMap["options"])
+	}
+	return nil
+}
+
+func composerConfigOptionValuesFromAny(input any) []ComposerConfigOptionValue {
+	rawOptions, ok := input.([]any)
+	if !ok {
+		if typed, typedOK := input.([]map[string]string); typedOK {
+			rawOptions = make([]any, 0, len(typed))
+			for _, item := range typed {
+				rawOptions = append(rawOptions, item)
+			}
+		}
+	}
+	if len(rawOptions) == 0 {
+		return nil
+	}
+	options := make([]ComposerConfigOptionValue, 0, len(rawOptions))
+	for _, raw := range rawOptions {
+		optionMap, ok := raw.(map[string]any)
+		if !ok {
+			if typed, typedOK := raw.(map[string]string); typedOK {
+				optionMap = map[string]any{
+					"id":    typed["id"],
+					"name":  typed["name"],
+					"label": typed["label"],
+					"value": typed["value"],
+				}
+			} else {
+				continue
+			}
+		}
+		value := strings.TrimSpace(stringFromAny(optionMap["value"]))
+		if value == "" {
+			continue
+		}
+		label := strings.TrimSpace(stringFromAny(optionMap["label"]))
+		if label == "" {
+			label = strings.TrimSpace(stringFromAny(optionMap["name"]))
+		}
+		if label == "" {
+			label = value
+		}
+		id := strings.TrimSpace(stringFromAny(optionMap["id"]))
+		if id == "" {
+			id = value
+		}
+		options = append(options, ComposerConfigOptionValue{
+			ID:          id,
+			Label:       label,
+			Value:       value,
+			Description: strings.TrimSpace(stringFromAny(optionMap["description"])),
+		})
+	}
+	return options
+}
+
+func stringFromAny(input any) string {
+	if value, ok := input.(string); ok {
+		return value
+	}
+	return ""
+}
+
+func mergeLiveModelsIntoComposerOptions(options ComposerOptions, liveModels []ComposerConfigOptionValue) ComposerOptions {
+	normalized := normalizeLiveComposerModelOptions(liveModels, options.EffectiveSettings.Model)
+	if len(normalized) == 0 {
+		return options
+	}
+	selected := strings.TrimSpace(options.EffectiveSettings.Model)
+	options.ModelConfig = ComposerConfigOption{
+		Configurable: true,
+		CurrentValue: selected,
+		DefaultValue: selected,
+		Options:      cloneComposerConfigOptionValues(normalized),
+	}
+	options.RuntimeContext = mergeLiveModelsIntoRuntimeContext(options.RuntimeContext, selected, normalized)
+	return options
+}
+
+func normalizeLiveComposerModelOptions(
+	options []ComposerConfigOptionValue,
+	selectedModel string,
+) []ComposerConfigOptionValue {
+	if len(options) == 0 {
+		return nil
+	}
+	normalized := make([]ComposerConfigOptionValue, 0, len(options)+1)
+	seen := make(map[string]struct{}, len(options)+1)
+	for _, option := range options {
+		value := strings.TrimSpace(option.Value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		label := strings.TrimSpace(option.Label)
+		if label == "" {
+			label = value
+		}
+		id := strings.TrimSpace(option.ID)
+		if id == "" {
+			id = value
+		}
+		normalized = append(normalized, ComposerConfigOptionValue{
+			ID:          id,
+			Label:       label,
+			Value:       value,
+			Description: strings.TrimSpace(option.Description),
+		})
+	}
+	selectedModel = strings.TrimSpace(selectedModel)
+	if selectedModel != "" {
+		if _, ok := seen[selectedModel]; !ok {
+			normalized = append(normalized, ComposerConfigOptionValue{
+				ID:    selectedModel,
+				Label: selectedModel,
+				Value: selectedModel,
+			})
+		}
+	}
+	return normalized
+}
+
+func mergeLiveModelsIntoRuntimeContext(
+	runtimeContext map[string]any,
+	selectedModel string,
+	liveModels []ComposerConfigOptionValue,
+) map[string]any {
+	if runtimeContext == nil {
+		runtimeContext = map[string]any{}
+	}
+	modelOption := map[string]any{
+		"id":           "model",
+		"currentValue": nullableString(selectedModel),
+		"options":      composerConfigOptionValuesToRuntimeModelOptions(liveModels),
+	}
+	configOptions := make([]map[string]any, 0, 4)
+	configOptions = append(configOptions, modelOption)
+	for _, option := range runtimeConfigOptionsAsMapSlice(runtimeContext["configOptions"]) {
+		if strings.TrimSpace(stringFromAny(option["id"])) == "model" {
+			continue
+		}
+		configOptions = append(configOptions, option)
+	}
+	runtimeContext["configOptions"] = configOptions
+	runtimeContext["modelCatalogSource"] = "acp-live-discovery"
+	return runtimeContext
+}
+
+func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOptionValue) []map[string]string {
+	if len(options) == 0 {
+		return []map[string]string{}
+	}
+	result := make([]map[string]string, 0, len(options))
+	for _, option := range options {
+		value := strings.TrimSpace(option.Value)
+		if value == "" {
+			continue
+		}
+		label := strings.TrimSpace(option.Label)
+		if label == "" {
+			label = value
+		}
+		result = append(result, map[string]string{
+			"name":  label,
+			"value": value,
+		})
+	}
+	return result
+}
+
+func runtimeConfigOptionsAsMapSlice(input any) []map[string]any {
+	switch typed := input.(type) {
+	case []map[string]any:
+		return append([]map[string]any(nil), typed...)
+	case []any:
+		result := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			result = append(result, entry)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func nullableString(value string) any {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return value
+}
