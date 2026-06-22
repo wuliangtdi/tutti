@@ -1,4 +1,5 @@
 import {
+  cloneElement,
   memo,
   useCallback,
   useEffect,
@@ -6,9 +7,11 @@ import {
   useRef,
   useState,
   type AnimationEvent as ReactAnimationEvent,
+  type FocusEvent as ReactFocusEvent,
   type JSX,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  type ReactElement,
   type ReactNode
 } from "react";
 import { ChevronDown, ChevronUp, ExternalLink, Info } from "lucide-react";
@@ -97,23 +100,19 @@ export const WorkspaceAgentMessageCenterCard = memo(
       >
         <div className="flex min-w-0 items-center justify-between gap-2.5">
           <div className="flex min-w-0 items-center gap-1.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <h3
-                  className="workspace-agent-message-center__copy-text min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]"
-                  onPointerDown={stopMessageCenterTextPointerPropagation}
-                >
-                  {displayTitle}
-                </h3>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                align="start"
-                className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+            <LazyMessageCenterTooltip
+              content={displayTitle}
+              side="top"
+              align="start"
+              className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+            >
+              <h3
+                className="workspace-agent-message-center__copy-text min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]"
+                onPointerDown={stopMessageCenterTextPointerPropagation}
               >
                 {displayTitle}
-              </TooltipContent>
-            </Tooltip>
+              </h3>
+            </LazyMessageCenterTooltip>
             {item.cwd ? <ProjectPathInfo path={item.cwd} /> : null}
           </div>
           <span
@@ -176,9 +175,11 @@ export const WorkspaceAgentMessageCenterCard = memo(
 );
 
 const STACK_PRESENCE_FALLBACK_MS = 380;
-const MESSAGE_CENTER_STACK_RENDER_LIMIT = 100;
-const MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT = 99;
+const MESSAGE_CENTER_STACK_INITIAL_RENDER_COUNT = 24;
+const MESSAGE_CENTER_STACK_RENDER_BATCH_SIZE = 24;
+const MESSAGE_CENTER_STACK_RENDER_BATCH_DELAY_MS = 40;
 const MESSAGE_CENTER_SUMMARY_LAZY_ROOT_MARGIN = "480px 0px";
+const MESSAGE_CENTER_SUMMARY_OVERFLOW_MEASURE_DELAY_MS = 80;
 
 function useStackRegionPresence(visible: boolean): {
   closing: boolean;
@@ -223,6 +224,7 @@ export const WorkspaceAgentMessageCenterStack = memo(
     className,
     expanded,
     groupId,
+    highlightedItemId,
     items,
     renderCard,
     onCollapse,
@@ -231,6 +233,7 @@ export const WorkspaceAgentMessageCenterStack = memo(
     className?: string;
     expanded: boolean;
     groupId: string;
+    highlightedItemId?: string | null;
     items: WorkspaceAgentMessageCenterItem[];
     renderCard: (
       item: WorkspaceAgentMessageCenterItem,
@@ -243,7 +246,12 @@ export const WorkspaceAgentMessageCenterStack = memo(
     const { t } = useTranslation();
     const summaryRegion = useStackRegionPresence(!expanded);
     const cardsRegion = useStackRegionPresence(expanded);
-    const visibleItems = items.slice(0, MESSAGE_CENTER_STACK_RENDER_LIMIT);
+    const visibleItems = useBatchedMessageCenterStackItems({
+      expanded,
+      highlightedItemId,
+      items,
+      mounted: cardsRegion.mounted
+    });
     if (items.length < 2) {
       return null;
     }
@@ -310,28 +318,27 @@ export const WorkspaceAgentMessageCenterStack = memo(
                     {t(
                       "agentHost.workspaceAgentMessageCenterStackSummaryCount",
                       {
-                        count: messageCenterStackDisplayCount(items.length)
+                        count: items.length
                       }
                     )}
                   </span>
                 </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={collapseLabel}
-                      className="size-6 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
-                      onClick={() => onCollapse(groupId)}
-                    >
-                      <ChevronUp className="size-3.5" aria-hidden="true" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" align="center">
-                    {collapseLabel}
-                  </TooltipContent>
-                </Tooltip>
+                <LazyMessageCenterTooltip
+                  content={collapseLabel}
+                  side="top"
+                  align="center"
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={collapseLabel}
+                    className="size-6 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                    onClick={() => onCollapse(groupId)}
+                  >
+                    <ChevronUp className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </LazyMessageCenterTooltip>
               </div>
               <div className="flex min-w-0 flex-col gap-2.5">
                 {visibleItems.map((item, stackedIndex) =>
@@ -345,6 +352,55 @@ export const WorkspaceAgentMessageCenterStack = memo(
     );
   }
 );
+
+function useBatchedMessageCenterStackItems({
+  expanded,
+  highlightedItemId,
+  items,
+  mounted
+}: {
+  expanded: boolean;
+  highlightedItemId?: string | null;
+  items: WorkspaceAgentMessageCenterItem[];
+  mounted: boolean;
+}): WorkspaceAgentMessageCenterItem[] {
+  const limit = items.length;
+  const highlightedIndex =
+    highlightedItemId === null || highlightedItemId === undefined
+      ? -1
+      : items.findIndex((item) => item.id === highlightedItemId);
+  const initialCount = Math.min(
+    limit,
+    Math.max(MESSAGE_CENTER_STACK_INITIAL_RENDER_COUNT, highlightedIndex + 1)
+  );
+  const [renderCount, setRenderCount] = useState(initialCount);
+
+  useEffect(() => {
+    if (!mounted) {
+      setRenderCount(initialCount);
+      return;
+    }
+    setRenderCount((current) =>
+      Math.min(Math.max(current, initialCount), limit)
+    );
+  }, [initialCount, limit, mounted]);
+
+  useEffect(() => {
+    if (!expanded || !mounted || renderCount >= limit) {
+      return undefined;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setRenderCount((current) =>
+        Math.min(current + MESSAGE_CENTER_STACK_RENDER_BATCH_SIZE, limit)
+      );
+    }, MESSAGE_CENTER_STACK_RENDER_BATCH_DELAY_MS);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [expanded, limit, mounted, renderCount]);
+
+  return items.slice(0, Math.min(renderCount, limit));
+}
 
 function MessageCenterStackSummary({
   groupId,
@@ -367,7 +423,7 @@ function MessageCenterStackSummary({
     <button
       type="button"
       aria-label={t("agentHost.workspaceAgentMessageCenterExpandStackAria", {
-        count: messageCenterStackDisplayCount(items.length)
+        count: items.length
       })}
       className={cn(
         "group/stack-peek relative block w-full min-w-0 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
@@ -398,7 +454,7 @@ function MessageCenterStackSummary({
             />
             <span className="min-w-0 truncate text-[13px] font-bold leading-5 text-[var(--text-secondary)]">
               {t("agentHost.workspaceAgentMessageCenterStackSummaryCount", {
-                count: messageCenterStackDisplayCount(items.length)
+                count: items.length
               })}
             </span>
           </span>
@@ -415,12 +471,6 @@ function MessageCenterStackSummary({
       </span>
     </button>
   );
-}
-
-function messageCenterStackDisplayCount(count: number): string {
-  return count > MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT
-    ? `${MESSAGE_CENTER_STACK_DISPLAY_COUNT_LIMIT}+`
-    : String(count);
 }
 
 function messageCenterStackPreviewText(
@@ -564,6 +614,10 @@ function MessageCenterSummary({
     summaryRef,
     lazy
   );
+  const shouldMeasureOverflow = useDeferredMessageCenterSummaryMeasureReady(
+    summaryRef,
+    shouldRenderRichSummary
+  );
   const handleLinkAction = useCallback(
     (action: WorkspaceLinkAction): void => {
       onLinkAction?.(
@@ -575,23 +629,31 @@ function MessageCenterSummary({
     [item.provider, onLinkAction]
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
+    if (!shouldMeasureOverflow) {
+      setIsOverflowing(false);
+      return undefined;
+    }
     const element = summaryRef.current;
     if (!element) {
-      return;
+      return undefined;
     }
 
     const updateOverflowState = () => {
       setIsOverflowing(element.scrollHeight > element.clientHeight + 1);
     };
 
-    updateOverflowState();
-    const resizeObserver = new ResizeObserver(updateOverflowState);
-    resizeObserver.observe(element);
+    let resizeObserver: ResizeObserver | null = null;
+    const timeoutId = window.setTimeout(() => {
+      updateOverflowState();
+      resizeObserver = new ResizeObserver(updateOverflowState);
+      resizeObserver.observe(element);
+    }, MESSAGE_CENTER_SUMMARY_OVERFLOW_MEASURE_DELAY_MS);
     return () => {
-      resizeObserver.disconnect();
+      window.clearTimeout(timeoutId);
+      resizeObserver?.disconnect();
     };
-  }, [summary]);
+  }, [shouldMeasureOverflow, summary]);
 
   return (
     <AgentVerticalScrollArea
@@ -663,6 +725,57 @@ function useLazyMessageCenterSummaryReady(
     observer.observe(element);
     return () => observer.disconnect();
   }, [lazy, ready, ref]);
+
+  return ready;
+}
+
+function useDeferredMessageCenterSummaryMeasureReady(
+  ref: RefObject<HTMLDivElement | null>,
+  enabled: boolean
+): boolean {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      setReady(false);
+      return undefined;
+    }
+    if (ready) {
+      return undefined;
+    }
+    const element = ref.current;
+    if (!element || typeof IntersectionObserver === "undefined") {
+      const timeoutId = window.setTimeout(
+        () => setReady(true),
+        MESSAGE_CENTER_SUMMARY_OVERFLOW_MEASURE_DELAY_MS
+      );
+      return () => {
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    let timeoutId: number | null = null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) {
+          return;
+        }
+        observer.disconnect();
+        timeoutId = window.setTimeout(
+          () => setReady(true),
+          MESSAGE_CENTER_SUMMARY_OVERFLOW_MEASURE_DELAY_MS
+        );
+      },
+      { rootMargin: MESSAGE_CENTER_SUMMARY_LAZY_ROOT_MARGIN }
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [enabled, ready, ref]);
 
   return ready;
 }
@@ -846,22 +959,83 @@ function ProjectPathInfo({ path }: { path: string }): JSX.Element {
   "use memo";
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="workspace-agent-message-center__project-info-button invisible inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-[background-color,color,opacity,visibility] group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:bg-[var(--transparency-hover)] focus-visible:text-[var(--text-primary)] focus-visible:outline-none"
-          aria-label={path}
-        >
-          <Info className="size-3.5" strokeWidth={2} aria-hidden="true" />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent
-        side="top"
-        align="start"
-        className="max-w-[320px] text-[11px] [overflow-wrap:anywhere]"
+    <LazyMessageCenterTooltip
+      content={path}
+      side="top"
+      align="start"
+      className="max-w-[320px] text-[11px] [overflow-wrap:anywhere]"
+    >
+      <button
+        type="button"
+        className="workspace-agent-message-center__project-info-button invisible inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-[var(--text-secondary)] opacity-0 transition-[background-color,color,opacity,visibility] group-hover/message-card:visible group-hover/message-card:opacity-100 group-focus-within/message-card:visible group-focus-within/message-card:opacity-100 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:bg-[var(--transparency-hover)] focus-visible:text-[var(--text-primary)] focus-visible:outline-none"
+        aria-label={path}
       >
-        {path}
+        <Info className="size-3.5" strokeWidth={2} aria-hidden="true" />
+      </button>
+    </LazyMessageCenterTooltip>
+  );
+}
+
+type LazyTooltipChildProps = {
+  onBlur?: (event: ReactFocusEvent<HTMLElement>) => void;
+  onFocus?: (event: ReactFocusEvent<HTMLElement>) => void;
+  onPointerEnter?: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerLeave?: (event: ReactPointerEvent<HTMLElement>) => void;
+};
+
+function LazyMessageCenterTooltip({
+  align,
+  children,
+  className,
+  content,
+  side
+}: {
+  align?: "center" | "end" | "start";
+  children: ReactElement<LazyTooltipChildProps>;
+  className?: string;
+  content: ReactNode;
+  side?: "bottom" | "left" | "right" | "top";
+}): JSX.Element {
+  "use memo";
+  const [hydrated, setHydrated] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const showTooltip = useCallback(() => {
+    setHydrated(true);
+    setOpen(true);
+  }, []);
+  const hideTooltip = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  const trigger = cloneElement(children, {
+    onBlur: (event: ReactFocusEvent<HTMLElement>) => {
+      children.props.onBlur?.(event);
+      hideTooltip();
+    },
+    onFocus: (event: ReactFocusEvent<HTMLElement>) => {
+      children.props.onFocus?.(event);
+      showTooltip();
+    },
+    onPointerEnter: (event: ReactPointerEvent<HTMLElement>) => {
+      children.props.onPointerEnter?.(event);
+      showTooltip();
+    },
+    onPointerLeave: (event: ReactPointerEvent<HTMLElement>) => {
+      children.props.onPointerLeave?.(event);
+      hideTooltip();
+    }
+  });
+
+  if (!hydrated) {
+    return trigger;
+  }
+
+  return (
+    <Tooltip open={open} onOpenChange={setOpen}>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+      <TooltipContent side={side} align={align} className={className}>
+        {content}
       </TooltipContent>
     </Tooltip>
   );

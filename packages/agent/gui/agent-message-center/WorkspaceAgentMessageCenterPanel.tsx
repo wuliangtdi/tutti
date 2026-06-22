@@ -573,6 +573,7 @@ function WorkspaceAgentMessageCenterPanelContent({
                             key={stackId}
                             expanded={expandedStackIds.has(stackId)}
                             groupId={stackId}
+                            highlightedItemId={highlightedItemId}
                             items={stack.items}
                             renderCard={renderMessageCenterCard}
                             onCollapse={collapseStack}

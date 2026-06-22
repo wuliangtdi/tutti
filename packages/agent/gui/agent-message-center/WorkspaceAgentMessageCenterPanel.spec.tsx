@@ -685,7 +685,7 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     );
   });
 
-  it("uses a shared tooltip trigger for truncated card titles", () => {
+  it("hydrates the shared tooltip trigger for truncated card titles on hover", () => {
     render(
       <TooltipProvider>
         <WorkspaceAgentMessageCenterCard
@@ -698,6 +698,13 @@ describe("WorkspaceAgentMessageCenterCard", () => {
         />
       </TooltipProvider>
     );
+
+    const heading = screen.getByRole("heading", {
+      name: "请基于下面这个 Issue 帮我做一个非常长的设计资讯整理任务标题"
+    });
+    expect(heading).not.toHaveAttribute("data-slot", "tooltip-trigger");
+
+    fireEvent.pointerEnter(heading);
 
     expect(
       screen.getByRole("heading", {
@@ -1363,7 +1370,7 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(screen.queryByText("Running task 5")).toBeNull();
   });
 
-  it("caps oversized stack labels and expanded card rendering", () => {
+  it("shows full oversized stack labels and batches all expanded cards", async () => {
     const items = Array.from({ length: 127 }, (_, index) =>
       createMessageCenterItem({
         agentSessionId: `working-session-${index + 1}`,
@@ -1391,21 +1398,29 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
       "workspace-agent-message-stack-summary-working:agent-user:codex:unknown-user"
     );
     expect(summary).toHaveAttribute("data-stack-summary-count", "127");
-    expect(summary).toHaveTextContent("99+ messages");
+    expect(summary).toHaveTextContent("127 messages");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Expand 99+ collapsed messages" })
+      screen.getByRole("button", { name: "Expand 127 collapsed messages" })
     );
 
     expect(stack).toHaveAttribute("data-stack-state", "expanded");
-    expect(screen.getByText("Running task 100")).toBeTruthy();
-    expect(screen.queryByText("Running task 101")).toBeNull();
+    expect(screen.getByText("Running task 24")).toBeTruthy();
+    expect(screen.queryByText("Running task 100")).toBeNull();
     expect(
-      stack.querySelectorAll("[data-message-center-item-id]")
-    ).toHaveLength(100);
+      stack.querySelectorAll("[data-message-center-item-id]").length
+    ).toBeLessThan(100);
+
+    await waitFor(() => {
+      expect(
+        stack.querySelectorAll("[data-message-center-item-id]")
+      ).toHaveLength(127);
+    });
+
+    expect(screen.getByText("Running task 127")).toBeTruthy();
     expect(
       screen
-        .getAllByText("99+ messages")
+        .getAllByText("127 messages")
         .some((element) =>
           element.parentElement?.classList.contains("text-[13px]")
         )
