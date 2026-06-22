@@ -1,5 +1,12 @@
 import type * as React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from "react";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   defaultIssueManagerWorkbenchTypeId,
@@ -416,11 +423,11 @@ function ReadyWorkspaceWorkbench({
       const agentBound = snapshot.statuses.some(
         (s) => s.availability.status === "ready"
       );
-      window.tutti?.host?.workspace?.broadcastAgentStatus({ agentBound });
+      runtime.workbenchHostService.broadcastAgentStatus({ agentBound });
     };
     broadcastAgentBound();
     return agentProviderStatusService.subscribe(broadcastAgentBound);
-  }, [agentProviderStatusService]);
+  }, [agentProviderStatusService, runtime.workbenchHostService]);
 
   useEffect(() => {
     const missionControlShortcutsEnabled =

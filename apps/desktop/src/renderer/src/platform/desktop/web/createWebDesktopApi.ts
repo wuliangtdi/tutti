@@ -298,6 +298,7 @@ function createWebHostApi(): DesktopHostApi {
       }
     },
     workspace: {
+      broadcastAgentStatus() {},
       onOpenFeatureRequest() {
         return () => {};
       },

@@ -162,6 +162,7 @@ export interface IWorkspaceWorkbenchHostService {
     wallpaperId: WorkspaceWallpaperId
   ): void;
   subscribeWallpaperChanges(listener: () => void): () => void;
+  broadcastAgentStatus(payload: { agentBound: boolean }): void;
 }
 
 export const IWorkspaceWorkbenchHostService =

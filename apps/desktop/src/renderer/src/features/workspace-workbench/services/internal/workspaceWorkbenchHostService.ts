@@ -130,7 +130,7 @@ export interface WorkspaceWorkbenchHostServiceDependencies {
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
-    "onOpenFeatureRequest" | "onOpenFileRequest"
+    "broadcastAgentStatus" | "onOpenFeatureRequest" | "onOpenFileRequest"
   >;
   workspaceFileManagerService: IWorkspaceFileManagerService;
   workspaceUserProjectService: IWorkspaceUserProjectService;
@@ -159,7 +159,7 @@ export interface WorkspaceWorkbenchHostExternalDependencies {
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
-    "onOpenFeatureRequest" | "onOpenFileRequest"
+    "broadcastAgentStatus" | "onOpenFeatureRequest" | "onOpenFileRequest"
   >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -571,6 +571,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return () => {
       this.wallpaperListeners.delete(listener);
     };
+  }
+
+  broadcastAgentStatus(payload: { agentBound: boolean }): void {
+    this.dependencies.hostWorkspaceApi.broadcastAgentStatus(payload);
   }
 
   private async persistPendingWallpaperSettings(

@@ -34,7 +34,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
-    "onOpenFeatureRequest" | "onOpenFileRequest"
+    "broadcastAgentStatus" | "onOpenFeatureRequest" | "onOpenFileRequest"
   >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
