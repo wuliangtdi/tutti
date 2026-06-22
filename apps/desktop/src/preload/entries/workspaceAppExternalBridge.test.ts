@@ -389,7 +389,10 @@ test("workspace app external bridge invokes permission request with activation",
     send: unexpectedSend,
     async invoke<TResult>(channel: string, payload?: unknown) {
       calls.push({ channel, payload });
-      return { code: "grant-code-1" } as TResult;
+      return {
+        code: "grant-code-1",
+        contextToken: "context-token-1"
+      } as TResult;
     }
   });
 
@@ -401,7 +404,7 @@ test("workspace app external bridge invokes permission request with activation",
       scopes: ["model:invoke"],
       state: "state-1"
     }),
-    { code: "grant-code-1" }
+    { code: "grant-code-1", contextToken: "context-token-1" }
   );
   assert.deepEqual(calls, [
     {

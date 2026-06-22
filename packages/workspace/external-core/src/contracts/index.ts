@@ -116,6 +116,7 @@ export interface TuttiExternalPermissionRequestInput {
 
 export interface TuttiExternalPermissionRequestResult {
   code: string;
+  contextToken?: string;
   expiresAt?: string;
   models?: readonly TuttiExternalManagedAiModel[];
   providers?: readonly TuttiExternalManagedAiModelProviderId[];

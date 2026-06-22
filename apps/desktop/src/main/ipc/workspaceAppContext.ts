@@ -757,7 +757,10 @@ async function requestManagedAiModelPermission(
     throw new Error(message);
   }
   const payload: unknown = await response.json();
-  return normalizeManagedAiModelPermissionResponse(payload);
+  return {
+    ...normalizeManagedAiModelPermissionResponse(payload),
+    contextToken
+  };
 }
 
 async function readManagedAiModelGrantError(
@@ -785,6 +788,9 @@ function normalizeManagedAiModelPermissionResponse(
   }
   return {
     code: value.grantCode,
+    ...(typeof value.contextToken === "string"
+      ? { contextToken: value.contextToken }
+      : {}),
     ...(typeof value.expiresAt === "string"
       ? { expiresAt: value.expiresAt }
       : {}),
