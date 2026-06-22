@@ -7,7 +7,9 @@ import {
   useSyncExternalStore
 } from "react";
 import { createPortal } from "react-dom";
+import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
+import { INotificationService } from "@tutti-os/ui-notifications";
 import type { DesktopComputerUseStatus } from "@shared/contracts/ipc";
 import {
   AddIcon,
@@ -17,6 +19,7 @@ import {
   CloseIcon,
   DeleteIcon,
   EyeIcon,
+  GitHubBrandIcon,
   ImportLinedIcon,
   Input,
   LinkIcon,
@@ -30,7 +33,8 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-  UploadIcon
+  UploadIcon,
+  WebIcon
 } from "@tutti-os/ui-system";
 import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics-debug";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
@@ -99,6 +103,12 @@ const workspaceSettingsInputClass =
 
 const developerPanelUnlockTaps = 7;
 const computerUseOperationSettleMs = 280;
+const tuttiWebsiteUrl = "https://tutti.sh/";
+const tuttiGitHubUrl = "https://github.com/tutti-os/tutti";
+const tuttiDesktopIconUrl = new URL(
+  "../../../../../../build/icon.png",
+  import.meta.url
+).href;
 const workspaceSettingsDefaultAgentProviders = [
   "codex",
   "claude-code"
@@ -128,6 +138,7 @@ export function WorkspaceSettingsPanel({
   workspace: WorkspaceSummary;
 }) {
   const { t } = useTranslation();
+  const notifications = useService(INotificationService);
   const {
     service: analyticsDebugPreferenceService,
     state: analyticsDebugPreferenceState
@@ -153,7 +164,9 @@ export function WorkspaceSettingsPanel({
     if (versionTapCountRef.current >= developerPanelUnlockTaps) {
       versionTapCountRef.current = 0;
       settingsService.setDeveloperPanelVisible(true);
-      settingsService.selectSection("developer");
+      notifications.success({
+        title: t("workspace.settings.about.developerModeEnabled")
+      });
     }
   };
 
@@ -2418,27 +2431,82 @@ function WorkspaceAboutSettingsSection({
   onVersionTap: () => void;
 }) {
   const { t } = useTranslation();
+  const hostService = useWorkspaceWorkbenchHostService();
   const logs = developerLogs.logs;
+  const desktopVersion =
+    developerLogs.loading && logs === null
+      ? t("common.loading")
+      : (logs?.desktopVersion ?? "0.0.0");
+
+  const openExternal = useCallback(
+    (url: string) => {
+      void hostService.openExternal(url);
+    },
+    [hostService]
+  );
 
   return (
-    <SettingsRows>
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="min-w-0">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.general.versionLabel")}
-          </strong>
+    <div className="flex w-full flex-col gap-4 px-5 pb-5 pt-7">
+      <div className="flex min-w-0 items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-start">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <img
+            alt=""
+            className="size-14 shrink-0 object-contain"
+            draggable={false}
+            src={tuttiDesktopIconUrl}
+          />
+          <div className="min-w-0">
+            <strong className="block truncate text-[18px] font-semibold leading-7 text-[var(--text-primary)]">
+              {t("workspace.settings.about.appName")}
+            </strong>
+          </div>
         </div>
         <button
-          className="m-0 inline-flex h-5 cursor-default select-none items-center justify-end rounded-[5px] border-0 bg-transparent p-0 text-right font-mono text-[13px] leading-5 text-[var(--text-secondary)] outline-none focus-visible:outline-none max-[560px]:justify-start max-[560px]:text-left"
+          className="inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 text-[12px] leading-5 text-[var(--text-secondary)] outline-none focus-visible:border-[var(--border-focus)] max-[560px]:ml-[70px]"
           type="button"
           onClick={onVersionTap}
         >
-          {developerLogs.loading && logs === null
-            ? t("common.loading")
-            : (logs?.desktopVersion ?? "0.0.0")}
+          <span>{t("workspace.settings.about.versionLabel")}</span>
+          <span className="font-mono text-[13px] leading-5 text-[var(--text-primary)]">
+            {desktopVersion}
+          </span>
         </button>
       </div>
-    </SettingsRows>
+
+      <div className="flex flex-wrap gap-2 border-t border-[var(--border-1)] pt-4">
+        <AboutActionButton
+          icon={<WebIcon className="size-3.5" />}
+          label={t("workspace.settings.about.websiteAction")}
+          onClick={() => openExternal(tuttiWebsiteUrl)}
+        />
+        <AboutActionButton
+          icon={<GitHubBrandIcon className="size-3.5" />}
+          label={t("workspace.settings.about.githubAction")}
+          onClick={() => openExternal(tuttiGitHubUrl)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AboutActionButton({
+  icon,
+  label,
+  onClick
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[var(--border-1)] bg-[var(--background-fronted)] px-3 text-[13px] font-semibold text-[var(--text-secondary)] outline-none transition-colors duration-150 hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:border-[var(--border-focus)]"
+      type="button"
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }
 

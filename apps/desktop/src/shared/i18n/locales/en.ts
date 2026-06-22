@@ -381,6 +381,13 @@ export const en = {
         developer: "Developer",
         general: "General"
       },
+      about: {
+        appName: "Tutti",
+        developerModeEnabled: "Developer mode is now on",
+        githubAction: "GitHub",
+        versionLabel: "Version",
+        websiteAction: "Website"
+      },
       apps: {
         appCatalogChannelDescription:
           "Choose whether App Center shows released apps or test versions.",

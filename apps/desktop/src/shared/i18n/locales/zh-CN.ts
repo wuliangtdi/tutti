@@ -361,6 +361,13 @@ export const zhCN = {
         developer: "开发者",
         general: "通用"
       },
+      about: {
+        appName: "Tutti",
+        developerModeEnabled: "开发者模式已打开",
+        githubAction: "GitHub",
+        versionLabel: "版本",
+        websiteAction: "官方网站"
+      },
       apps: {
         appCatalogChannelDescription:
           "选择应用中心显示已正式发布的应用，还是用于试用的新版本。",

@@ -121,6 +121,7 @@ export interface IWorkspaceWorkbenchHostService {
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;
   createWorkspaceAppExternalUserProjectApi(): WorkspaceUserProjectApi;
+  openExternal(url: string): Promise<void>;
   queryWorkspaceAppExternalAt(input: {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;

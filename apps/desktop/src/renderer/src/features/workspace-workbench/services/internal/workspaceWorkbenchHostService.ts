@@ -282,6 +282,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     );
   }
 
+  openExternal(url: string): Promise<void> {
+    return this.dependencies.hostFilesApi.openExternal(url);
+  }
+
   async queryWorkspaceAppExternalAt(input: {
     query: TuttiExternalAtQueryInput;
     workspaceId: string;

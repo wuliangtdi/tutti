@@ -82,14 +82,22 @@ test("workspace settings general panel does not expose update preferences", () =
   assert.doesNotMatch(source, /app_update\.settings_rendered/);
 });
 
-test("workspace settings version value stays vertically centered", () => {
+test("workspace settings about card keeps version pill compact", () => {
   assert.match(
     source,
-    /inline-flex h-5 cursor-default select-none items-center justify-end[\s\S]*font-mono text-\[13px\] leading-5/
+    /inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full[\s\S]*font-mono text-\[13px\] leading-5/
+  );
+  assert.doesNotMatch(
+    source,
+    /inline-flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-full[^\n]*hover:/
+  );
+  assert.match(
+    source,
+    /flex w-full flex-col gap-4 px-5 pb-5 pt-7[\s\S]*items-center justify-between gap-4/
   );
 });
 
-test("workspace settings version lives in about settings and keeps developer unlock tap", () => {
+test("workspace settings about panel owns product info and keeps developer unlock tap", () => {
   const generalSectionStart = source.indexOf(
     "function WorkspaceGeneralSettingsSection"
   );
@@ -109,7 +117,28 @@ test("workspace settings version lives in about settings and keeps developer unl
   );
   assert.match(
     source.slice(aboutSectionStart, appearanceSectionStart),
-    /versionLabel[\s\S]*onClick=\{onVersionTap\}/
+    /tuttiDesktopIconUrl[\s\S]*onClick=\{onVersionTap\}[\s\S]*workspace\.settings\.about\.versionLabel/
+  );
+  assert.doesNotMatch(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /workspace\.settings\.about\.(title|description)/
+  );
+  assert.match(
+    source,
+    /setDeveloperPanelVisible\(true\);[\s\S]*notifications\.success\(\{[\s\S]*workspace\.settings\.about\.developerModeEnabled/
+  );
+  assert.doesNotMatch(source, /selectSection\("developer"\)/);
+  assert.match(
+    source,
+    /const tuttiDesktopIconUrl = new URL\(\s*"[^"]*build\/icon\.png"/
+  );
+  assert.match(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /WebIcon[\s\S]*openExternal\(tuttiWebsiteUrl\)[\s\S]*GitHubBrandIcon[\s\S]*openExternal\(tuttiGitHubUrl\)/
+  );
+  assert.doesNotMatch(
+    source.slice(aboutSectionStart, appearanceSectionStart),
+    /releaseNotesAction|checkForUpdates|checkUpdatesAction/
   );
 });
 
