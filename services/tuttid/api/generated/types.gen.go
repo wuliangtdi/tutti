@@ -2595,6 +2595,7 @@ type UpdateIssueManagerTaskRequest struct {
 	Content   *string               `json:"content,omitempty"`
 	DueAtUnix *int64                `json:"dueAtUnix,omitempty"`
 	Priority  *IssueManagerPriority `json:"priority,omitempty"`
+	SortIndex *int                  `json:"sortIndex,omitempty"`
 	Status    *IssueManagerStatus   `json:"status,omitempty"`
 	Title     *string               `json:"title,omitempty"`
 }

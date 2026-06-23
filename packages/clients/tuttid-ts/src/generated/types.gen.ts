@@ -1686,6 +1686,7 @@ export type UpdateIssueManagerTaskRequest = {
   status?: IssueManagerStatus;
   priority?: IssueManagerPriority;
   dueAtUnix?: number;
+  sortIndex?: number;
 };
 
 export type AddIssueManagerContextRefItem = {
