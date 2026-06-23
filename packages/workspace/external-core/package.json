@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/workspace-external-core",
-  "version": "0.0.33",
+  "version": "0.1.0",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -24,8 +24,8 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/workspace-file-reference": "0.0.33",
-    "@tutti-os/workspace-user-project": "0.0.33"
+    "@tutti-os/workspace-file-reference": "workspace:*",
+    "@tutti-os/workspace-user-project": "workspace:*"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",
