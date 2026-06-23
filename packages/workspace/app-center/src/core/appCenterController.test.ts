@@ -52,6 +52,44 @@ test("WorkspaceAppCenterController merges catalog fields without runtime regress
   assert.equal(controller.store.apps[0]?.updateAvailable, true);
 });
 
+test("WorkspaceAppCenterController accepts running snapshots after daemon revision reset", () => {
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway()
+  });
+
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          launchUrl: null,
+          runtimeStatus: "preparing",
+          stateRevision: 100
+        })
+      ]
+    })
+  );
+  controller.applySnapshot(
+    "workspace-1",
+    createSnapshot({
+      apps: [
+        createApp({
+          appId: "app-1",
+          launchUrl: "http://127.0.0.1:3000",
+          runtimeStatus: "running",
+          stateRevision: 3
+        })
+      ]
+    })
+  );
+
+  assert.equal(controller.store.apps[0]?.runtimeStatus, "running");
+  assert.equal(controller.store.apps[0]?.launchUrl, "http://127.0.0.1:3000");
+  assert.equal(controller.store.apps[0]?.stateRevision, 3);
+});
+
 test("WorkspaceAppCenterController asks host to close removed installed apps", () => {
   const closeRequests: Array<{
     appIds: readonly string[];
@@ -564,6 +602,60 @@ test("WorkspaceAppCenterController only marks idle enabled apps as starting", as
   assert.deepEqual(optimisticStatuses, ["preparing", "failed", "stopping"]);
 });
 
+test("WorkspaceAppCenterController refreshes transient runtime apps after startup", async () => {
+  let refreshCalls = 0;
+  const controller = createWorkspaceAppCenterController({
+    formatError: formatError,
+    gateway: createGateway({
+      async startEnabledWorkspaceApps() {
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              runtimeStatus: "preparing",
+              stateRevision: 2
+            })
+          ]
+        });
+      },
+      async listWorkspaceApps() {
+        refreshCalls += 1;
+        return createSnapshot({
+          apps: [
+            createApp({
+              appId: "app-1",
+              launchUrl: "http://127.0.0.1:3000",
+              runtimeStatus: "running",
+              stateRevision: 3
+            })
+          ]
+        });
+      }
+    }),
+    transientRuntimeRefreshDelayMs: 1,
+    transientRuntimeRefreshMaxAttempts: 3
+  });
+  controller.beginWorkspacePolling("workspace-1");
+  try {
+    controller.applySnapshot(
+      "workspace-1",
+      createSnapshot({
+        apps: [createApp({ appId: "app-1", runtimeStatus: "idle" })]
+      })
+    );
+
+    await controller.startEnabledApps("workspace-1");
+    assert.equal(controller.store.apps[0]?.runtimeStatus, "preparing");
+
+    await waitFor(() => controller.store.apps[0]?.runtimeStatus === "running");
+
+    assert.equal(controller.store.apps[0]?.launchUrl, "http://127.0.0.1:3000");
+    assert.equal(refreshCalls, 1);
+  } finally {
+    controller.endWorkspacePolling("workspace-1");
+  }
+});
+
 function createApp(
   overrides: Partial<WorkspaceAppCenterApp> = {}
 ): WorkspaceAppCenterApp {
@@ -644,6 +736,9 @@ function createGateway(
     async installWorkspaceApp() {
       return createSnapshot();
     },
+    async loadLocalWorkspaceApp() {
+      return createSnapshot();
+    },
     async launchWorkspaceApp() {
       return createSnapshot();
     },
@@ -660,6 +755,9 @@ function createGateway(
       };
     },
     async refreshWorkspaceAppCatalog() {
+      return createSnapshot();
+    },
+    async reloadLocalWorkspaceApp() {
       return createSnapshot();
     },
     async retryWorkspaceApp() {
@@ -683,4 +781,14 @@ function createGateway(
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : "error";
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      assert.fail("condition was not reached before timeout");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }

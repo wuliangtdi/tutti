@@ -17,7 +17,9 @@ import {
 } from "./appCenterControllerHelpers.ts";
 import {
   defaultCatalogLoadingRefreshDelayMs,
-  defaultInstallRefreshDelayMs
+  defaultInstallRefreshDelayMs,
+  defaultTransientRuntimeRefreshDelayMs,
+  defaultTransientRuntimeRefreshMaxAttempts
 } from "./appCenterControllerTypes.ts";
 import { reconcilePendingInstallProgress } from "./installProgressMerge.ts";
 
@@ -50,6 +52,10 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
         ? removedOrUninstalledAppIds(this.store.apps, nextApps)
         : [];
     this.scheduleCatalogLoadingRefresh(workspaceId, snapshot);
+    const hasTransientRuntimeApps = this.hasTransientRuntimeApps(
+      workspaceId,
+      nextApps
+    );
     const changed =
       this.store.workspaceId !== workspaceId ||
       this.store.catalogLastError !== (snapshot.catalogLastError ?? null) ||
@@ -60,6 +66,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       this.store.loadStatus !== "ready" ||
       !areWorkspaceAppCenterAppsEqual(this.store.apps, nextApps);
     if (!changed) {
+      this.syncTransientRuntimeRefresh(workspaceId, hasTransientRuntimeApps);
       return;
     }
     this.store.apps = nextApps;
@@ -71,6 +78,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     this.store.workspaceId = workspaceId;
     this.bumpRevision();
     this.closeWorkspaceAppViews(workspaceId, appIdsToClose);
+    this.syncTransientRuntimeRefresh(workspaceId, hasTransientRuntimeApps);
   }
 
   applyFactorySnapshot(
@@ -150,7 +158,11 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
     const currentApp = this.store.apps.find(
       (candidate) => candidate.appId === nextApp.appId
     );
-    if (currentApp && nextApp.stateRevision <= currentApp.stateRevision) {
+    if (
+      currentApp &&
+      nextApp.stateRevision <= currentApp.stateRevision &&
+      !this.shouldAcceptRuntimeSnapshot(currentApp, nextApp)
+    ) {
       this.settlePendingInstallReport({
         app: currentApp,
         failureReason:
@@ -242,6 +254,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
   }
 
   protected markAppStarting(appId: string): void {
+    this.transientRuntimeRefreshAttempts = 0;
     this.store.apps = this.store.apps.map((app) =>
       app.appId === appId
         ? {
@@ -278,6 +291,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       };
     });
     if (changed) {
+      this.transientRuntimeRefreshAttempts = 0;
       this.bumpRevision();
     }
   }
@@ -330,6 +344,7 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       };
     });
     if (changed) {
+      this.transientRuntimeRefreshAttempts = 0;
       this.bumpRevision();
     }
   }
@@ -393,8 +408,41 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
           return snapshotApp;
         }
       }
+      if (this.shouldAcceptRuntimeSnapshot(currentApp, snapshotApp)) {
+        return snapshotApp;
+      }
       return mergeWorkspaceAppCatalogFields(currentApp, snapshotApp);
     });
+  }
+
+  private shouldAcceptRuntimeSnapshot(
+    currentApp: WorkspaceAppCenterApp,
+    snapshotApp: WorkspaceAppCenterApp
+  ): boolean {
+    if (snapshotApp.runtimeStatus === "running") {
+      return (
+        currentApp.runtimeStatus !== "running" ||
+        currentApp.launchUrl !== snapshotApp.launchUrl ||
+        currentApp.runtimeId !== snapshotApp.runtimeId ||
+        currentApp.installationId !== snapshotApp.installationId ||
+        currentApp.installProgress != null ||
+        currentApp.failureReason != null ||
+        currentApp.lastError != null
+      );
+    }
+    if (snapshotApp.runtimeStatus === "failed") {
+      return (
+        currentApp.runtimeStatus !== "failed" &&
+        (snapshotApp.failureReason != null || snapshotApp.lastError != null)
+      );
+    }
+    if (
+      snapshotApp.runtimeStatus === "stopping" ||
+      snapshotApp.runtimeStatus === "unavailable"
+    ) {
+      return currentApp.runtimeStatus !== snapshotApp.runtimeStatus;
+    }
+    return false;
   }
 
   private scheduleCatalogLoadingRefresh(
@@ -419,6 +467,74 @@ export abstract class WorkspaceAppCenterControllerState extends WorkspaceAppCent
       void this.refresh(workspaceId);
     }, this.dependencies.catalogLoadingRefreshDelayMs ?? defaultCatalogLoadingRefreshDelayMs);
     this.catalogRefreshTimer.unref?.();
+  }
+
+  private syncTransientRuntimeRefresh(
+    workspaceId: string,
+    hasTransientRuntimeApps: boolean
+  ): void {
+    if (this.pollingWorkspaceId !== workspaceId) {
+      return;
+    }
+    if (!hasTransientRuntimeApps) {
+      this.clearTransientRuntimeRefreshTimer();
+      return;
+    }
+    if (this.transientRuntimeRefreshTimer) {
+      return;
+    }
+    const maxAttempts =
+      this.dependencies.transientRuntimeRefreshMaxAttempts ??
+      defaultTransientRuntimeRefreshMaxAttempts;
+    if (this.transientRuntimeRefreshAttempts >= maxAttempts) {
+      return;
+    }
+    this.transientRuntimeRefreshTimer = setTimeout(() => {
+      this.transientRuntimeRefreshTimer = null;
+      if (
+        this.pollingWorkspaceId !== workspaceId ||
+        !this.hasTransientRuntimeApps(workspaceId, this.store.apps)
+      ) {
+        this.clearTransientRuntimeRefreshTimer();
+        return;
+      }
+      this.transientRuntimeRefreshAttempts += 1;
+      void this.refreshTransientRuntimeState(workspaceId);
+    }, this.dependencies.transientRuntimeRefreshDelayMs ?? defaultTransientRuntimeRefreshDelayMs);
+    this.transientRuntimeRefreshTimer.unref?.();
+  }
+
+  private hasTransientRuntimeApps(
+    workspaceId: string,
+    apps: readonly WorkspaceAppCenterApp[]
+  ): boolean {
+    return apps.some(
+      (app) =>
+        app.enabled &&
+        app.installed &&
+        (app.runtimeStatus === "preparing" ||
+          app.runtimeStatus === "starting") &&
+        !this.pendingInstallKeys.has(appRuntimeKey(workspaceId, app.appId))
+    );
+  }
+
+  private async refreshTransientRuntimeState(
+    workspaceId: string
+  ): Promise<void> {
+    try {
+      const snapshot =
+        await this.dependencies.gateway.listWorkspaceApps(workspaceId);
+      this.applySnapshot(workspaceId, snapshot);
+    } catch (error) {
+      this.setOperationError(error, {
+        operation: "app_center.refresh",
+        workspaceId
+      });
+      this.syncTransientRuntimeRefresh(
+        workspaceId,
+        this.hasTransientRuntimeApps(workspaceId, this.store.apps)
+      );
+    }
   }
 
   protected mergeActiveInstallAppState(
