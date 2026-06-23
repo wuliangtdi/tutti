@@ -46,6 +46,7 @@ export function createWorkspaceDockPreviewCacheStore(
   const maxEntryBytes = options.maxEntryBytes ?? defaultMaxEntryBytes;
   const maxTotalBytes = options.maxTotalBytes ?? defaultMaxTotalBytes;
   let writeQueue = Promise.resolve();
+  let lastUpdatedAtUnixMs = 0;
 
   const readIndex = async (): Promise<WorkspaceDockPreviewCacheIndex> => {
     try {
@@ -114,7 +115,7 @@ export function createWorkspaceDockPreviewCacheStore(
       byteLength: image.bytes.byteLength,
       file: nextFile,
       mimeType: image.mimeType,
-      updatedAtUnixMs: Date.now()
+      updatedAtUnixMs: nextUpdatedAtUnixMs()
     };
     await pruneIndex({ directory, index, maxEntries, maxTotalBytes });
     await writeIndex(index);
@@ -145,6 +146,11 @@ export function createWorkspaceDockPreviewCacheStore(
       }
     }
   };
+
+  function nextUpdatedAtUnixMs(): number {
+    lastUpdatedAtUnixMs = Math.max(Date.now(), lastUpdatedAtUnixMs + 1);
+    return lastUpdatedAtUnixMs;
+  }
 }
 
 function emptyIndex(): WorkspaceDockPreviewCacheIndex {
