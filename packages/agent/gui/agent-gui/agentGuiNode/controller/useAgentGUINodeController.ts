@@ -1115,6 +1115,36 @@ function normalizeOptionalText(
   return trimmed ? trimmed : null;
 }
 
+function resolveSameProviderActiveSessionModel(input: {
+  activeProvider?: string | null;
+  agentSessionId?: string | null;
+  provider: string;
+  runtime: AgentActivityRuntime;
+  sessionState?: { settings?: AgentSessionComposerSettings | null } | null;
+  workspaceId: string;
+}): string | null {
+  const agentSessionId = normalizeOptionalText(input.agentSessionId);
+  if (agentSessionId === null) {
+    return null;
+  }
+  const runtimeSession =
+    input.runtime
+      .getSnapshot(input.workspaceId)
+      .sessions.find(
+        (candidate) => candidate.agentSessionId.trim() === agentSessionId
+      ) ?? null;
+  const activeProvider =
+    normalizeOptionalText(runtimeSession?.provider) ??
+    normalizeOptionalText(input.activeProvider);
+  if (activeProvider !== input.provider) {
+    return null;
+  }
+  return (
+    normalizeOptionalText(input.sessionState?.settings?.model) ??
+    normalizeOptionalText(runtimeSession?.model)
+  );
+}
+
 function normalizeOptionalPrompt(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -2434,6 +2464,7 @@ export function useAgentGUINodeController({
   const startingConversationIdRef = useRef<string | null>(null);
   const activatedConversationIdsRef = useRef(new Set<string>());
   const failedNewConversationIdsRef = useRef(new Set<string>());
+  const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
   const pendingTurnIdBySessionIdRef = useRef<Record<string, string>>({});
   const conversationIdsRef = useRef(
     new Set(conversations.map((conversation) => conversation.id))
@@ -4421,6 +4452,32 @@ export function useAgentGUINodeController({
         const initialSettings = resolveEffectiveComposerSettings({
           settings: initialNodeSettings
         });
+        const currentActiveConversationId = activeConversationIdRef.current;
+        const currentActiveConversation = currentActiveConversationId
+          ? resolveConversationSummaryById(
+              conversationsRef.current,
+              currentActiveConversationId,
+              transientConversationRef.current
+            )
+          : null;
+        const inheritedModel =
+          normalizeOptionalText(initialNodeSettings.model) === null
+            ? (resolveSameProviderActiveSessionModel({
+                activeProvider: currentActiveConversation?.provider ?? null,
+                agentSessionId: currentActiveConversationId,
+                provider,
+                runtime: agentActivityRuntime,
+                sessionState: activeSessionState,
+                workspaceId
+              }) ??
+              normalizeOptionalText(
+                lastActiveModelByProviderRef.current[provider]
+              ))
+            : null;
+        const effectiveInitialSettings =
+          inheritedModel === null
+            ? initialSettings
+            : { ...initialSettings, model: inheritedModel };
         const snapshotComposerOptions =
           agentActivityRuntime.getSnapshot(workspaceId)
             .composerOptionsByProvider?.[provider] ?? null;
@@ -4476,11 +4533,11 @@ export function useAgentGUINodeController({
         startingConversationIdRef.current = agentSessionId;
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
-          [agentSessionId]: initialSettings
+          [agentSessionId]: effectiveInitialSettings
         };
         setDraftSettingsBySessionId((current) => ({
           ...current,
-          [agentSessionId]: initialSettings
+          [agentSessionId]: effectiveInitialSettings
         }));
         setIsLoadingMessages(true);
         return activation.activate({
@@ -4491,7 +4548,7 @@ export function useAgentGUINodeController({
           initialContent: normalizedInitialContent,
           initialDisplayPrompt,
           title: initialConversationTitle,
-          settings: initialSettings,
+          settings: effectiveInitialSettings,
           openclawGatewayReady:
             provider === "openclaw"
               ? openclawGateway?.status === "ready"
@@ -4676,6 +4733,7 @@ export function useAgentGUINodeController({
         });
     },
     [
+      activeSessionState,
       currentUserId,
       data,
       defaultReasoningEffort,
@@ -7147,6 +7205,29 @@ export function useAgentGUINodeController({
     serverInteractivePrompt ?? planImplementationPromptVM;
   const activeRuntimeSession =
     runtimeSessionsBySessionId.get(activeConversationId ?? "") ?? null;
+  useEffect(() => {
+    const provider = normalizeOptionalText(
+      activeRuntimeSession?.provider ?? activeConversation?.provider
+    );
+    if (provider === null) {
+      return;
+    }
+    const model =
+      normalizeOptionalText(activeSessionState?.settings?.model) ??
+      normalizeOptionalText(activeRuntimeSession?.model);
+    if (model === null) {
+      return;
+    }
+    lastActiveModelByProviderRef.current = {
+      ...lastActiveModelByProviderRef.current,
+      [provider]: model
+    };
+  }, [
+    activeConversation?.provider,
+    activeRuntimeSession?.model,
+    activeRuntimeSession?.provider,
+    activeSessionState?.settings?.model
+  ]);
   const activeActivityDisplayStatus = activeConversationId
     ? (agentActivityDisplayStatuses.get(activeConversationId) ?? null)
     : null;

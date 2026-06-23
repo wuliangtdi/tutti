@@ -1889,6 +1889,70 @@ describe("useAgentGUINodeController", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("inherits the current same-provider model when creating a new conversation without a draft model", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    const getState = vi.fn(
+      async ({ agentSessionId }: { agentSessionId: string }) =>
+        agentSessionState(agentSessionId, {
+          settings: {
+            model: "gpt-5.5",
+            reasoningEffort: "high",
+            permissionModeId: "auto"
+          }
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () =>
+        snapshotWithSession("session-1", {
+          model: "gpt-5.5"
+        } as Partial<AgentHostWorkspaceAgentSession>)
+      ),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      getState
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+    await waitFor(() => {
+      expect(getState).toHaveBeenCalled();
+    });
+
+    act(() => {
+      result.current.actions.createConversation();
+      result.current.actions.submitPrompt(promptBlocks("start on same model"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          settings: expect.objectContaining({
+            model: "gpt-5.5"
+          })
+        })
+      );
+    });
+  });
+
   it("ignores stale session list results while creating a new session from home", async () => {
     let resolveList:
       | ((value: AgentHostWorkspaceAgentSnapshot) => void)

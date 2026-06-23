@@ -407,6 +407,181 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{ID: "gpt-5", DisplayName: "GPT-5"},
+				{ID: "gpt-5.1", DisplayName: "GPT-5.1"},
+			},
+		},
+	}
+	var prepareInput agentsidecarservice.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input: &prepareInput,
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		Provider: "codex",
+		Model:    stringRef("gpt-6"),
+		Cwd:      stringRef("/repo"),
+	})
+	if err == nil {
+		t.Fatal("Create returned nil error, want invalid model error")
+	}
+	var invalidModel *InvalidModelError
+	if !errors.As(err, &invalidModel) {
+		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
+	}
+	if invalidModel.Model != "gpt-6" || !slices.Equal(invalidModel.AvailableModels, []string{"gpt-5", "gpt-5.1"}) {
+		t.Fatalf("invalid model error = %#v", invalidModel)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+	}
+	if prepareInput.Provider != "" {
+		t.Fatalf("runtime preparer was called: %#v", prepareInput)
+	}
+}
+
+func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", time.Now().UTC(), []ComposerConfigOptionValue{
+		{Value: "default", Label: "Default"},
+		{Value: "sonnet", Label: "Sonnet"},
+	})
+	var prepareInput agentsidecarservice.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input: &prepareInput,
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		Provider: "claude-code",
+		Model:    stringRef("not-a-claude-model"),
+		Cwd:      stringRef("/repo"),
+	})
+	if err == nil {
+		t.Fatal("Create returned nil error, want invalid model error")
+	}
+	var invalidModel *InvalidModelError
+	if !errors.As(err, &invalidModel) {
+		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
+	}
+	if invalidModel.Provider != "claude-code" || !slices.Equal(invalidModel.AvailableModels, []string{"default", "sonnet"}) {
+		t.Fatalf("invalid model error = %#v", invalidModel)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+	}
+	if prepareInput.Provider != "" {
+		t.Fatalf("runtime preparer was called: %#v", prepareInput)
+	}
+}
+
+func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Visible == nil || *input.Visible {
+			t.Fatalf("discovery start visible = %#v, want hidden draft session", input.Visible)
+		}
+		if input.Model != "" {
+			t.Fatalf("discovery start model = %q, want empty model", input.Model)
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id": "model",
+					"options": []any{
+						map[string]any{"value": "default", "name": "Default"},
+						map[string]any{"value": "sonnet", "name": "Sonnet"},
+						map[string]any{"value": "mimo-v2.5-pro", "name": "MIMO V2.5 Pro"},
+					},
+				},
+			},
+		}
+		return session
+	}
+	service := NewService(runtime)
+	var prepareInput agentsidecarservice.PrepareInput
+	var cleanupCalls []agentsidecarservice.CleanupInput
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input:        &prepareInput,
+		cleanupCalls: &cleanupCalls,
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		Provider: "claude-code",
+		Model:    stringRef("MiniMax-M2.7"),
+		Cwd:      stringRef("/repo"),
+	})
+	if err == nil {
+		t.Fatal("Create returned nil error, want invalid model error")
+	}
+	var invalidModel *InvalidModelError
+	if !errors.As(err, &invalidModel) {
+		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
+	}
+	if invalidModel.Provider != "claude-code" ||
+		invalidModel.Model != "MiniMax-M2.7" ||
+		!slices.Equal(invalidModel.AvailableModels, []string{"default", "sonnet", "mimo-v2.5-pro"}) {
+		t.Fatalf("invalid model error = %#v", invalidModel)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want only hidden discovery session", len(runtime.startCalls))
+	}
+	if prepareInput.Provider != "claude-code" || prepareInput.Model != "" {
+		t.Fatalf("discovery prepare input = %#v, want claude-code without requested model", prepareInput)
+	}
+	if len(cleanupCalls) == 0 {
+		t.Fatal("cleanup calls = 0, want discovery runtime cleanup")
+	}
+}
+
+func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{ID: "gpt-5", DisplayName: "GPT-5", IsDefault: true},
+				{ID: "gpt-5.1", DisplayName: "GPT-5.1"},
+			},
+		},
+	}
+	var prepareInput agentsidecarservice.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{
+		input: &prepareInput,
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		Provider:       "codex",
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if runtime.startCalls[0].Model != "gpt-5" {
+		t.Fatalf("runtime model = %q, want default gpt-5", runtime.startCalls[0].Model)
+	}
+	if prepareInput.Model != "gpt-5" {
+		t.Fatalf("prepare model = %q, want default gpt-5", prepareInput.Model)
+	}
+	if session.Settings == nil || session.Settings.Model != "gpt-5" {
+		t.Fatalf("session settings = %#v, want default model", session.Settings)
+	}
+}
+
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)

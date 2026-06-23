@@ -223,13 +223,18 @@ func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, ses
 		claudeOptions := map[string]any{
 			"planModeInstructions": claudePlanModeInstructions,
 		}
+		extraArgs := map[string]string{}
 		if pluginDir != "" {
-			claudeOptions["extraArgs"] = map[string]any{
-				"plugin-dir": pluginDir,
-			}
+			extraArgs["plugin-dir"] = pluginDir
 			claudeOptions["plugins"] = []map[string]string{
 				{"type": "local", "path": pluginDir},
 			}
+		}
+		if model := claudeCodeCustomModel(session); model != "" {
+			extraArgs["model"] = model
+		}
+		if len(extraArgs) > 0 {
+			claudeOptions["extraArgs"] = extraArgs
 		}
 		claudeCodeMeta := map[string]any{
 			"options": claudeOptions,
@@ -2443,11 +2448,15 @@ func standardACPEnv(session Session, host HostMetadata) []string {
 func claudeACPEnv(session Session, host HostMetadata) []string {
 	env := standardACPEnv(session, host)
 	env = append(env, "IS_SANDBOX=1")
-	model := strings.TrimSpace(session.SettingsValue().Model)
-	if model != "" && !claudeCodeACPModelAliases[model] {
-		env = append(env, "ANTHROPIC_MODEL="+model)
-	}
 	return env
+}
+
+func claudeCodeCustomModel(session Session) string {
+	model := strings.TrimSpace(session.SettingsValue().Model)
+	if model == "" || claudeCodeACPModelAliases[model] {
+		return ""
+	}
+	return model
 }
 
 func openclawACPEnv(session Session, host HostMetadata) []string {

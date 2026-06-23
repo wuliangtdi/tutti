@@ -309,6 +309,17 @@ func Classify(err error) *ProtocolError {
 	if errors.As(err, &providerUnavailableErr) {
 		return AgentProviderUnavailable(providerUnavailableErr)
 	}
+	var invalidModelErr *agentservice.InvalidModelError
+	if errors.As(err, &invalidModelErr) {
+		params := map[string]any{
+			"provider": strings.TrimSpace(invalidModelErr.Provider),
+			"model":    strings.TrimSpace(invalidModelErr.Model),
+		}
+		if len(invalidModelErr.AvailableModels) > 0 {
+			params["availableModels"] = invalidModelErr.AvailableModels
+		}
+		return InvalidRequest("agent.invalid_model", WithCause(err), WithParams(params))
+	}
 	switch {
 	case errors.Is(err, workspacedata.ErrWorkspaceNotFound):
 		return WorkspaceNotFound(ReasonWorkspaceNotFound, WithCause(err))

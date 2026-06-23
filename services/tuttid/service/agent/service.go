@@ -113,6 +113,10 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
 		return Session{}, err
 	}
+	input.Model = s.resolveCreateSessionModel(ctx, provider, input.Model)
+	if err := s.validateComposerModelForCreate(ctx, provider, workspaceID, value(input.Cwd), value(input.Model)); err != nil {
+		return Session{}, err
+	}
 	cwd, err := s.resolveCwd(ctx, input.Cwd)
 	if err != nil {
 		return Session{}, err
@@ -196,6 +200,20 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		s.controller().CanResume(runtimeResumeInputFromRuntimeSession(session)),
 		s.discoverComposerSkillOptions(session.Provider, session.Cwd, session.Env),
 	), nil
+}
+
+func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, model *string) *string {
+	resolved := normalizeComposerModelForProvider(
+		provider,
+		clampComposerModelForProvider(provider, value(model)),
+	)
+	if resolved == "" {
+		resolved = composerDefaultModel(ctx, provider, s.ModelCatalog)
+	}
+	if resolved == "" {
+		return nil
+	}
+	return &resolved
 }
 
 func agentSessionIDOrNew(agentSessionID string) string {

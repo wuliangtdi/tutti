@@ -88,11 +88,17 @@ func runtimeCommandFromCapability(cliName string, capability cliservice.Capabili
 		}
 		description += "App id: " + strings.TrimSpace(capability.Source.AppID) + "."
 	}
+	if agentLauncherCommandUsesDefaultModel(id) {
+		if description != "" {
+			description += " "
+		}
+		description += "Omit --model unless the user explicitly requested a model; tuttid uses the target provider default."
+	}
 	return runtimeCommand{
 		ID:          id,
 		Summary:     firstNonEmptyText(capability.Summary, id),
 		Description: description,
-		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHint(capability.InputSchema) + commandExampleSuffix(id),
+		Example:     normalizeCLICommandName(cliName) + " " + path + requiredInputHintForCommand(id, capability.InputSchema) + commandExampleSuffix(id),
 		Rank:        commandRank(id),
 	}, true
 }
@@ -108,8 +114,21 @@ func commandPath(path []string) string {
 	return strings.Join(parts, " ")
 }
 
-func requiredInputHint(schema map[string]any) string {
+func requiredInputHintForCommand(id string, schema map[string]any) string {
 	required := stringSliceSchemaValue(schema["required"])
+	if agentLauncherCommandUsesDefaultModel(id) {
+		filtered := make([]string, 0, len(required))
+		for _, name := range required {
+			if strings.TrimSpace(name) != "model" {
+				filtered = append(filtered, name)
+			}
+		}
+		required = filtered
+	}
+	return requiredInputHintFromNames(required)
+}
+
+func requiredInputHintFromNames(required []string) string {
 	if len(required) == 0 {
 		return ""
 	}
@@ -125,6 +144,15 @@ func requiredInputHint(schema map[string]any) string {
 		return ""
 	}
 	return " " + strings.Join(parts, " ")
+}
+
+func agentLauncherCommandUsesDefaultModel(id string) bool {
+	switch strings.TrimSpace(id) {
+	case "agent-context.codex.start", "agent-context.claude.start":
+		return true
+	default:
+		return false
+	}
 }
 
 func commandExampleSuffix(id string) string {

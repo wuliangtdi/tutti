@@ -2355,8 +2355,27 @@ func TestClaudeCodeAdapterStartSkipsCustomModelConfigOption(t *testing.T) {
 	if len(transport.specs) != 1 {
 		t.Fatalf("process starts = %d, want 1", len(transport.specs))
 	}
-	if !containsString(transport.specs[0].Env, "ANTHROPIC_MODEL=MiniMax-M2.7") {
-		t.Fatalf("env = %#v, want selected custom model exported for Claude Code", transport.specs[0].Env)
+	if containsString(transport.specs[0].Env, "ANTHROPIC_MODEL=MiniMax-M2.7") {
+		t.Fatalf("env = %#v, want selected custom model passed as Claude Code --model arg", transport.specs[0].Env)
+	}
+	meta, ok := transport.conn.lastNewSessionParams["_meta"].(map[string]any)
+	if !ok {
+		t.Fatalf("session/new missing _meta params snapshot")
+	}
+	claudeCode, ok := meta["claudeCode"].(map[string]any)
+	if !ok {
+		t.Fatalf("claudeCode = %#v, want map", meta["claudeCode"])
+	}
+	options, ok := claudeCode["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("claudeCode.options = %#v, want map", claudeCode["options"])
+	}
+	extraArgs, ok := options["extraArgs"].(map[string]any)
+	if !ok {
+		t.Fatalf("claudeCode.options.extraArgs = %#v, want map", options["extraArgs"])
+	}
+	if got, _ := extraArgs["model"].(string); got != "MiniMax-M2.7" {
+		t.Fatalf("claudeCode.options.extraArgs.model = %q, want MiniMax-M2.7", got)
 	}
 	calls := transport.conn.setConfigOptionCalls()
 	if len(calls) != 1 {

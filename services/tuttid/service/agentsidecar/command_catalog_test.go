@@ -164,11 +164,17 @@ func TestCommandGuideFromCapabilitiesIncludesProviderAgentApps(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(guide, "tutti-dev codex start --model <model> --prompt <prompt>") {
+	if !strings.Contains(guide, "tutti-dev codex start --prompt <prompt>") {
 		t.Fatalf("guide missing codex start: %q", guide)
 	}
-	if !strings.Contains(guide, "tutti-dev claude start --model <model> --prompt <prompt>") {
+	if !strings.Contains(guide, "tutti-dev claude start --prompt <prompt>") {
 		t.Fatalf("guide missing claude start: %q", guide)
+	}
+	if strings.Contains(guide, "start --model <model>") {
+		t.Fatalf("guide should omit agent launcher model requirement: %q", guide)
+	}
+	if !strings.Contains(guide, "Omit --model unless the user explicitly requested a model") {
+		t.Fatalf("guide missing default model guidance: %q", guide)
 	}
 	if !strings.Contains(guide, "App id: agent-codex.") ||
 		!strings.Contains(guide, "App id: agent-claude-code.") {

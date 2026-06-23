@@ -21,11 +21,11 @@ import type {
   RichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/types";
 import {
-  tuttiAgentAssetUrls,
   tuttiFileAssetUrls,
   tuttiFolderAssetUrls,
   tuttiIssueAssetUrls
 } from "../../../../../../shared/tuttiAssetProtocol.ts";
+import { resolveDesktopWorkspaceAppDefaultIconUrl } from "../../../../../../shared/workspaceAppIconDefaults.ts";
 import type {
   DesktopRichTextAtCapability,
   DesktopRichTextTriggerProviderRequest,
@@ -427,21 +427,8 @@ function workspaceAppIconUrl(
   return (
     candidate.iconUrl?.trim() ||
     candidate.availableIconUrl?.trim() ||
-    workspaceAppDefaultIconUrl(appId)
+    resolveDesktopWorkspaceAppDefaultIconUrl(appId)
   );
-}
-
-function workspaceAppDefaultIconUrl(appId: string): string | null {
-  switch (appId.trim()) {
-    case "agent-claude-code":
-      return tuttiAgentAssetUrls.claudeCode;
-    case "agent-codex":
-      return tuttiAgentAssetUrls.codex;
-    case "issue-manager":
-      return tuttiIssueAssetUrls.default;
-    default:
-      return null;
-  }
 }
 
 function workspaceAppMatchesKeyword(
