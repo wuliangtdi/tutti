@@ -135,6 +135,11 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	command = append(command, distribution.Args...)
 	spec.AdapterCommand = command
 	spec.AdapterEnv = append(appRuntime.EnvOverrides, envMapToList(distribution.Env)...)
+	// Select the registry for the `npm exec` fallback (used when the installed bin
+	// isn't found). This single-shot path can't retry a chain, so use the primary
+	// registry (override, else official). Harmless when running the installed bin
+	// directly, which never consults npm.
+	spec.AdapterEnv = append(spec.AdapterEnv, "npm_config_registry="+s.primaryAgentNPMRegistry())
 	return spec
 }
 

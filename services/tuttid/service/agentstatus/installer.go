@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
@@ -530,11 +531,35 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, spec 
 		"install",
 		packageSpec,
 	})
-	env := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
-	return s.installCommand(ctx, InstallCommandInput{
-		Command: command,
-		Env:     env,
-	})
+	baseEnv := managedruntime.ProcessEnv(append(appRuntime.EnvOverrides, envMapToList(npmSpec.Env)...)...)
+
+	// Try official npm first (fastest when reachable), then fall back through the
+	// CN-available mirrors when it is slow or blocked. Each attempt is bounded so a
+	// blocked registry fails over quickly instead of consuming the whole budget;
+	// the npm_config_registry value selects the source.
+	registries := s.agentNPMRegistries()
+	var result InstallCommandResult
+	for i, registry := range registries {
+		env := append(slices.Clone(baseEnv), "npm_config_registry="+registry)
+		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
+		result, err = s.installCommand(attemptCtx, InstallCommandInput{
+			Command: command,
+			Env:     env,
+		})
+		cancel()
+		if err == nil && result.ExitCode == 0 {
+			return result, nil
+		}
+		if i < len(registries)-1 {
+			slog.Warn(
+				"agent adapter npm install failed on registry, trying next",
+				"registry", registry,
+				"exitCode", result.ExitCode,
+				"error", err,
+			)
+		}
+	}
+	return result, err
 }
 
 func (s Service) selectInstallDir() (string, error) {
