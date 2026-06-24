@@ -326,6 +326,43 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("renders workspace markdown videos from workspace file bytes", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([0, 0, 0, 24])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-video")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={
+          "![generated video](/workspace/output/generated_videos/dance.mp4)"
+        }
+      />
+    );
+
+    const video = await screen.findByLabelText("generated video");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute("src", "blob:tsh-markdown-video");
+    expect(video).toHaveAttribute("controls");
+    expect(readFile).toHaveBeenCalledWith({
+      path: "/workspace/output/generated_videos/dance.mp4"
+    });
+  });
+
   it("shows a loading placeholder while a workspace markdown image is still being read", async () => {
     let resolveRead: ((value: { bytes: Uint8Array }) => void) | undefined;
     const readFile = vi.fn(
@@ -426,6 +463,62 @@ describe("AgentMessageMarkdown", () => {
       "src",
       "file:///Users/example/Documents/a/output/imagegen/lamb-storybook.png"
     );
+    expect(screen.queryByText("Loading preview...")).toBeNull();
+  });
+
+  it("falls back to a file URL video for local absolute markdown video paths when workspace file access is unavailable", () => {
+    const workspace = { ...(window.agentHostApi?.workspace ?? {}) } as Partial<
+      NonNullable<typeof window.agentHostApi>["workspace"]
+    >;
+    delete workspace.readFile;
+
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: workspace as NonNullable<
+        typeof window.agentHostApi
+      >["workspace"]
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentMessageMarkdown
+        content={
+          "![generated video](/Users/example/.tutti/agent/runs/session/codex-home/generated_videos/dance.mp4)"
+        }
+      />
+    );
+
+    const video = screen.getByLabelText("generated video");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute(
+      "src",
+      "file:///Users/example/.tutti/agent/runs/session/codex-home/generated_videos/dance.mp4"
+    );
+    expect(screen.queryByText("Loading preview...")).toBeNull();
+  });
+
+  it("does not render arbitrary local absolute markdown video paths when workspace file access is unavailable", () => {
+    const workspace = { ...(window.agentHostApi?.workspace ?? {}) } as Partial<
+      NonNullable<typeof window.agentHostApi>["workspace"]
+    >;
+    delete workspace.readFile;
+
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: workspace as NonNullable<
+        typeof window.agentHostApi
+      >["workspace"]
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentMessageMarkdown
+        content={"![private video](/Users/example/Movies/private.mp4)"}
+      />
+    );
+
+    expect(screen.queryByLabelText("private video")).toBeNull();
+    expect(
+      screen.queryByText("Preview is not available for this file.")
+    ).toBeTruthy();
     expect(screen.queryByText("Loading preview...")).toBeNull();
   });
 

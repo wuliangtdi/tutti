@@ -127,7 +127,7 @@ export function resolveWorkspaceFilePathCandidate({
   const normalizedPath = normalizeWorkspaceFilePath(rawPath);
   if (
     isAbsoluteLocalPath(normalizedPath) &&
-    (isDirectAgentGeneratedImagePath(normalizedPath) ||
+    (isDirectAgentGeneratedMediaPath(normalizedPath) ||
       isDirectWorkspaceAppDataPath(normalizedPath))
   ) {
     const directoryPath = dirname(normalizedPath);
@@ -149,7 +149,7 @@ export function resolveWorkspaceFilePathCandidate({
     : normalizeWorkspaceFilePath(`${base}/${normalizedPath}`);
   if (
     !isInsideOrEqual(resolvedPath, root) &&
-    !isDirectAgentGeneratedImagePath(resolvedPath)
+    !isDirectAgentGeneratedMediaPath(resolvedPath)
   ) {
     return null;
   }
@@ -371,7 +371,7 @@ function isInsideOrEqual(path: string, root: string): boolean {
   );
 }
 
-function isDirectAgentGeneratedImagePath(path: string): boolean {
+export function isDirectAgentGeneratedMediaPath(path: string): boolean {
   if (!isAbsoluteLocalPath(path)) {
     return false;
   }
@@ -382,11 +382,12 @@ function isDirectAgentGeneratedImagePath(path: string): boolean {
   if (
     statePath[1] !== "agent" ||
     statePath[2] !== "runs" ||
-    !statePath.includes("generated_images")
+    (!statePath.includes("generated_images") &&
+      !statePath.includes("generated_videos"))
   ) {
     return false;
   }
-  return /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path);
+  return /\.(?:png|jpe?g|gif|webp|bmp|mp4|webm)$/i.test(path);
 }
 
 function isDirectWorkspaceAppDataPath(path: string): boolean {

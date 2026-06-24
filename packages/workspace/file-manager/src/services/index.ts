@@ -46,6 +46,7 @@ export {
   resolveWorkspaceFileExtension,
   resolveWorkspaceFileVisualKind,
   resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType,
   workspaceFilePreviewMaxBytes,
   workspaceFileTextMaxBytes,
   type WorkspaceFileVisualKind

@@ -23,6 +23,7 @@ export {
   resolveWorkspaceFileActivationTarget,
   resolveWorkspaceFileExtension,
   resolveWorkspaceImageMimeType,
+  resolveWorkspaceVideoMimeType,
   workspaceFilePreviewMaxBytes,
   workspaceFileTextMaxBytes
 } from "./services/workspaceFileManagerModel.ts";
