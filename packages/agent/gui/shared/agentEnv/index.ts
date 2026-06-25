@@ -25,3 +25,14 @@ export type {
   CodexSetupStep,
   CodexSetupStepStatus
 } from "./codexSetupContract";
+export {
+  deriveAgentSetupStages,
+  resolveWizardAutoStartAction
+} from "./agentEnvWizardFlow";
+export type {
+  AgentSetupStage,
+  AgentSetupStageId,
+  AgentSetupStageLabels,
+  DeriveAgentSetupStagesInput,
+  ResolveWizardAutoStartInput
+} from "./agentEnvWizardFlow";
