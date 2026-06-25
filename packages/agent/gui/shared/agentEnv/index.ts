@@ -3,36 +3,36 @@ export {
   getAgentEnvPanelStore,
   openAgentEnvPanel,
   useAgentEnvPanelRequest
-} from "./agentEnvPanelStore";
+} from "./agentEnvPanelStore.ts";
 export type {
   AgentEnvPanelFocus,
   AgentEnvPanelRequest,
   OpenAgentEnvPanelInput
-} from "./agentEnvPanelStore";
+} from "./agentEnvPanelStore.ts";
 export {
   CODEX_ERROR_CODES,
   resolveCodexErrorPresentation
-} from "./codexErrorPresentation";
+} from "./codexErrorPresentation.ts";
 export type {
   CodexErrorCode,
   CodexErrorPresentation
-} from "./codexErrorPresentation";
-export { readCodexSetupActiveAction } from "./codexSetupContract";
+} from "./codexErrorPresentation.ts";
+export { readCodexSetupActiveAction } from "./codexSetupContract.ts";
 export type {
   CodexSetupActiveAction,
   CodexSetupActiveActionError,
   CodexSetupPhase,
   CodexSetupStep,
   CodexSetupStepStatus
-} from "./codexSetupContract";
+} from "./codexSetupContract.ts";
 export {
   deriveAgentSetupStages,
   resolveWizardAutoStartAction
-} from "./agentEnvWizardFlow";
+} from "./agentEnvWizardFlow.ts";
 export type {
   AgentSetupStage,
   AgentSetupStageId,
   AgentSetupStageLabels,
   DeriveAgentSetupStagesInput,
   ResolveWizardAutoStartInput
-} from "./agentEnvWizardFlow";
+} from "./agentEnvWizardFlow.ts";
