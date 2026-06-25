@@ -193,6 +193,42 @@ func TestResolverReplacesPathEnv(t *testing.T) {
 	}
 }
 
+func TestResolverMergesMultiplePathOverrides(t *testing.T) {
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env([]string{
+		"PATH=/state/bin:/usr/bin:/bin",
+		"PATH=/managed/node/bin:/usr/bin:/bin",
+	})
+	pathCount := 0
+	pathValue := ""
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok && key == "PATH" {
+			pathCount++
+			pathValue = value
+		}
+	}
+	if pathCount != 1 {
+		t.Fatalf("PATH entry count = %d, want 1 in %#v", pathCount, env)
+	}
+	pathDirs := filepath.SplitList(pathValue)
+	if len(pathDirs) < 4 ||
+		pathDirs[0] != "/managed/node/bin" ||
+		pathDirs[1] != "/state/bin" ||
+		pathDirs[2] != "/usr/bin" ||
+		pathDirs[3] != "/bin" {
+		t.Fatalf("PATH = %q, want override prefixes before inherited base path", pathValue)
+	}
+}
+
 func TestResolverEnvStripsClaudeCodeNestingGuards(t *testing.T) {
 	resolver := Resolver{
 		Environ: func() []string {

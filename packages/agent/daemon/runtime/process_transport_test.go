@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -78,6 +79,41 @@ func TestLocalProcessTransportFindsKnownNodeGlobalBin(t *testing.T) {
 	frame := receiveRuntimeStdoutFrame(t, conn)
 	if string(frame.Stdout) != "nested-ok\n" {
 		t.Fatalf("stdout = %q, want nested-ok", string(frame.Stdout))
+	}
+}
+
+func TestProcessStartEnvDiagnosticsSummarizesFinalPath(t *testing.T) {
+	tuttiBin := filepath.Join(string(os.PathSeparator), "Users", "Sun", ".tutti", "bin")
+	managedBin := filepath.Join(string(os.PathSeparator), "managed", "node", "bin")
+	env := []string{
+		"PATH=" + managedBin + string(os.PathListSeparator) + tuttiBin + string(os.PathListSeparator) + "/usr/bin",
+		"TUTTI_APP_NODE=" + filepath.Join(managedBin, "node"),
+		"TUTTI_AGENT_SESSION_ID=agent-session-1",
+	}
+	diag := processStartEnvDiagnostics(ProcessSpec{
+		Provider:       ProviderClaudeCode,
+		AgentSessionID: "agent-session-1",
+		Env: []string{
+			"PATH=" + tuttiBin + string(os.PathListSeparator) + "/usr/bin",
+			"PATH=" + managedBin + string(os.PathListSeparator) + "/usr/bin",
+		},
+	}, env)
+
+	if got := diag["path_override_count"]; got != 2 {
+		t.Fatalf("path_override_count = %v, want 2", got)
+	}
+	if got := diag["path_contains_tutti_bin"]; got != true {
+		t.Fatalf("path_contains_tutti_bin = %v, want true", got)
+	}
+	if got := diag["path_contains_app_node_bin"]; got != true {
+		t.Fatalf("path_contains_app_node_bin = %v, want true", got)
+	}
+	if got := diag["agent_session_env_present"]; got != true {
+		t.Fatalf("agent_session_env_present = %v, want true", got)
+	}
+	wantHead := []string{managedBin, tuttiBin, "/usr/bin"}
+	if got := diag["path_head"]; !reflect.DeepEqual(got, wantHead) {
+		t.Fatalf("path_head = %#v, want %#v", got, wantHead)
 	}
 }
 
