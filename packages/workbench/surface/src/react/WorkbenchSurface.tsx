@@ -17,6 +17,7 @@ import {
 } from "./WorkbenchProvider.tsx";
 import type { WorkbenchDebugDiagnostics } from "../store/types.ts";
 import { useWorkbenchShortcuts } from "./hooks/useWorkbenchShortcuts.ts";
+import type { WorkbenchWindowManagementShortcutPreset } from "./hooks/workbenchShortcutIntent.ts";
 import { useWorkbenchSurfaceSize } from "./hooks/useWorkbenchSurfaceSize.ts";
 import { useWorkbenchGenieAnimation } from "./useWorkbenchGenieAnimation.tsx";
 import type { WorkbenchNodeGeniePreviewRenderer } from "./useWorkbenchGenieAnimation.tsx";
@@ -69,10 +70,16 @@ export interface WorkbenchSurfaceProps<TData = unknown> {
   shortcutsEnabled?: boolean;
   shouldCaptureNodePreviewImage?: (node: WorkbenchNode<TData>) => boolean;
   wallpaper?: WorkbenchSurfaceWallpaper;
+  windowManagement?: WorkbenchWindowManagementConfig;
   windowChromeMode?:
     | WorkbenchWindowChromeMode
     | WorkbenchResolveWindowChromeMode<TData>;
   windowChromeI18n?: WorkbenchWindowChromeI18nRuntime;
+}
+
+export interface WorkbenchWindowManagementConfig {
+  edgeSnapEnabled?: boolean;
+  shortcutPreset?: WorkbenchWindowManagementShortcutPreset | null;
 }
 
 export type WorkbenchSurfaceWallpaperFit =
@@ -116,6 +123,7 @@ export function WorkbenchSurface<TData>({
   shortcutsEnabled,
   shouldCaptureNodePreviewImage,
   wallpaper,
+  windowManagement,
   windowChromeMode,
   windowChromeI18n
 }: WorkbenchSurfaceProps<TData>) {
@@ -148,6 +156,7 @@ export function WorkbenchSurface<TData>({
         shortcutsEnabled={shortcutsEnabled}
         shouldCaptureNodePreviewImage={shouldCaptureNodePreviewImage}
         wallpaper={wallpaper}
+        windowManagement={windowManagement}
         windowChromeMode={windowChromeMode}
         windowChromeI18n={windowChromeI18n}
       />
@@ -182,6 +191,7 @@ function WorkbenchSurfaceInner<TData>({
   shortcutsEnabled,
   shouldCaptureNodePreviewImage,
   wallpaper,
+  windowManagement,
   windowChromeMode,
   windowChromeI18n
 }: Omit<WorkbenchSurfaceProps<TData>, "controller">) {
@@ -204,7 +214,10 @@ function WorkbenchSurfaceInner<TData>({
     resolveDockPreviewCacheKey,
     shouldCaptureNodePreviewImage
   });
-  useWorkbenchShortcuts<TData>((shortcutsEnabled ?? true) && interactive);
+  useWorkbenchShortcuts<TData>({
+    enabled: (shortcutsEnabled ?? true) && interactive,
+    windowManagementShortcutPreset: windowManagement?.shortcutPreset ?? null
+  });
   useEffect(() => {
     if (!layoutConstraints) {
       return;
@@ -245,6 +258,7 @@ function WorkbenchSurfaceInner<TData>({
         interactive={interactive}
         presentation={presentation}
         renderNode={renderNode}
+        edgeSnapEnabled={windowManagement?.edgeSnapEnabled === true}
         renderWindowActions={renderWindowActions}
         renderWindowHeader={renderWindowHeader}
         shouldKeepMinimizedNodeMounted={shouldKeepMinimizedNodeMounted}

@@ -312,6 +312,39 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
+	if request.Body.Preferences.WorkbenchWindowSnapping != nil {
+		windowSnappingShortcutPreset := strings.TrimSpace(
+			string(request.Body.Preferences.WorkbenchWindowSnapping.ShortcutPreset),
+		)
+		if windowSnappingShortcutPreset == "" {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonMissingDesktopWindowSnappingShortcutPreset,
+						apierrors.WithDeveloperMessage("desktop workbench window snapping shortcut preset is required when provided"),
+						apierrors.WithParams(map[string]any{"field": "preferences.workbenchWindowSnapping.shortcutPreset"}),
+					),
+				),
+			}, nil
+		}
+		if !preferencesbiz.IsDesktopWindowSnappingShortcutPreset(windowSnappingShortcutPreset) {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonUnsupportedDesktopWindowSnappingShortcutPreset,
+						apierrors.WithDeveloperMessage("desktop workbench window snapping shortcut preset is unsupported"),
+						apierrors.WithParams(map[string]any{"field": "preferences.workbenchWindowSnapping.shortcutPreset"}),
+					),
+				),
+			}, nil
+		}
+		windowSnapping = &preferencesservice.DesktopWindowSnappingInput{
+			Enabled:        request.Body.Preferences.WorkbenchWindowSnapping.Enabled,
+			ShortcutPreset: windowSnappingShortcutPreset,
+		}
+	}
+
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,
@@ -333,6 +366,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		ThemeSource:         themeSource,
 		UpdateChannel:       updateChannel,
 		UpdatePolicy:        updatePolicy,
+		WindowSnapping:      windowSnapping,
 	})
 	if err != nil {
 		return tuttigenerated.PutDesktopPreferences502JSONResponse{

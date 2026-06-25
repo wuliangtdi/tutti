@@ -64,6 +64,7 @@ import {
   desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
+  desktopWorkbenchWindowSnappingShortcutPresets,
   normalizeDesktopFileExtension,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
@@ -71,7 +72,9 @@ import {
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
-  type DesktopSleepPreventionMode
+  type DesktopSleepPreventionMode,
+  type DesktopWorkbenchWindowSnapping,
+  type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "../../../../../shared/preferences/index.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 import {
@@ -189,7 +192,7 @@ export function WorkspaceSettingsPanel({
       <section
         aria-labelledby="workspace-settings-title"
         aria-modal="true"
-        className="grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
+        className="relative z-[1] grid h-[min(500px,calc(100vh-40px))] w-[min(760px,calc(100vw-40px))] origin-center grid-cols-[160px_minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-panel transition-[background,opacity] duration-[180ms] ease-[cubic-bezier(0.22,1,0.36,1)] [-webkit-app-region:no-drag] motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.96] motion-safe:duration-[250ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none max-[760px]:h-[min(100vh-24px,520px)] max-[760px]:w-[min(calc(100vw-24px),640px)] max-[760px]:grid-cols-1 max-[760px]:grid-rows-[auto_auto_minmax(0,1fr)]"
         data-workspace-settings-panel="true"
         role="dialog"
         onClick={(event) => event.stopPropagation()}
@@ -323,6 +326,9 @@ export function WorkspaceSettingsPanel({
                 changingMinimizeAnimation={
                   desktopPreferencesState.changingMinimizeAnimation
                 }
+                changingWorkbenchWindowSnapping={
+                  desktopPreferencesState.changingWorkbenchWindowSnapping
+                }
                 dockPlacement={desktopPreferencesState.dockPlacement}
                 minimizeAnimation={desktopPreferencesState.minimizeAnimation}
                 onDockPlacementChange={(placement) => {
@@ -330,6 +336,9 @@ export function WorkspaceSettingsPanel({
                 }}
                 onMinimizeAnimationChange={(animation) => {
                   void settingsService.changeMinimizeAnimation(animation);
+                }}
+                onWorkbenchWindowSnappingChange={(value) => {
+                  void settingsService.changeWorkbenchWindowSnapping(value);
                 }}
                 onSelectWallpaper={onSelectWallpaper}
                 onSelectWallpaperDisplayMode={onSelectWallpaperDisplayMode}
@@ -340,6 +349,9 @@ export function WorkspaceSettingsPanel({
                 selectedWallpaperID={selectedWallpaperID}
                 themeAppearance={desktopPreferencesState.theme.appearance}
                 themeSource={desktopPreferencesState.theme.source}
+                workbenchWindowSnapping={
+                  desktopPreferencesState.workbenchWindowSnapping
+                }
               />
             ) : settingsState.activeSection === "apps" ? (
               <WorkspaceAppsSettingsSection
@@ -1771,6 +1783,17 @@ function workspaceSettingsMinimizeAnimationOptionLabelKey(
   }
 }
 
+function workspaceSettingsWindowSnappingShortcutLabelKey(
+  preset: DesktopWorkbenchWindowSnappingShortcutPreset
+): DesktopI18nKey {
+  switch (preset) {
+    case "commandArrows":
+      return "workspace.settings.appearance.workbenchWindowSnappingShortcutOptions.commandArrows";
+    case "commandShiftArrows":
+      return "workspace.settings.appearance.workbenchWindowSnappingShortcutOptions.commandShiftArrows";
+  }
+}
+
 function workspaceSettingsFileDefaultOpenerLabelKey(
   opener: DesktopFileDefaultOpener
 ): DesktopI18nKey {
@@ -1806,6 +1829,11 @@ function WorkspaceSettingsPanelPortal({
       style={{ zIndex: "var(--z-panel)" }}
       onClick={onClose}
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-auto absolute inset-x-0 top-0 z-0 h-[52px] [-webkit-app-region:drag]"
+        data-workspace-settings-window-drag-region="true"
+      />
       {children}
     </div>
   );
@@ -2617,25 +2645,32 @@ function WorkspaceAppearanceSettingsSection({
   changingDockPlacement,
   changingMinimizeAnimation,
   changingThemeSource,
+  changingWorkbenchWindowSnapping,
   dockPlacement,
   minimizeAnimation,
   onDockPlacementChange,
   onMinimizeAnimationChange,
+  onWorkbenchWindowSnappingChange,
   onSelectWallpaper,
   onSelectWallpaperDisplayMode,
   onThemeChange,
   selectedWallpaperDisplayMode,
   selectedWallpaperID,
   themeAppearance,
-  themeSource
+  themeSource,
+  workbenchWindowSnapping
 }: {
   changingDockPlacement: DesktopDockPlacement | null;
   changingMinimizeAnimation: DesktopMinimizeAnimation | null;
   changingThemeSource: DesktopThemeSource | null;
+  changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   dockPlacement: DesktopDockPlacement;
   minimizeAnimation: DesktopMinimizeAnimation;
   onDockPlacementChange: (placement: DesktopDockPlacement) => void;
   onMinimizeAnimationChange: (animation: DesktopMinimizeAnimation) => void;
+  onWorkbenchWindowSnappingChange: (
+    value: DesktopWorkbenchWindowSnapping
+  ) => void;
   onSelectWallpaper: (id: WorkspaceWallpaperId) => void;
   onSelectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -2645,6 +2680,7 @@ function WorkspaceAppearanceSettingsSection({
   selectedWallpaperID: WorkspaceWallpaperId;
   themeAppearance: DesktopThemeAppearance;
   themeSource: DesktopThemeSource;
+  workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }) {
   const { t } = useTranslation();
   const isUpdatingTheme = changingThemeSource !== null;
@@ -2654,6 +2690,10 @@ function WorkspaceAppearanceSettingsSection({
   const isUpdatingMinimizeAnimation = changingMinimizeAnimation !== null;
   const pendingMinimizeAnimation =
     changingMinimizeAnimation ?? minimizeAnimation;
+  const isUpdatingWorkbenchWindowSnapping =
+    changingWorkbenchWindowSnapping !== null;
+  const pendingWorkbenchWindowSnapping =
+    changingWorkbenchWindowSnapping ?? workbenchWindowSnapping;
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
@@ -2775,6 +2815,69 @@ function WorkspaceAppearanceSettingsSection({
                   {t(
                     workspaceSettingsMinimizeAnimationOptionLabelKey(animation)
                   )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="flex w-full items-start justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.appearance.workbenchWindowSnappingLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.appearance.workbenchWindowSnappingDescription"
+            )}
+          </p>
+        </div>
+        <div className="flex w-[220px] min-w-[220px] flex-col gap-2 max-[560px]:w-full max-[560px]:min-w-0">
+          <div className="flex min-h-9 items-center justify-end max-[560px]:justify-start">
+            <Switch
+              aria-label={t(
+                "workspace.settings.appearance.workbenchWindowSnappingLabel"
+              )}
+              checked={pendingWorkbenchWindowSnapping.enabled}
+              disabled={isUpdatingWorkbenchWindowSnapping}
+              onCheckedChange={(enabled) =>
+                onWorkbenchWindowSnappingChange({
+                  ...pendingWorkbenchWindowSnapping,
+                  enabled
+                })
+              }
+            />
+          </div>
+          <Select
+            disabled={
+              isUpdatingWorkbenchWindowSnapping ||
+              !pendingWorkbenchWindowSnapping.enabled
+            }
+            value={pendingWorkbenchWindowSnapping.shortcutPreset}
+            onValueChange={(value) =>
+              onWorkbenchWindowSnappingChange({
+                ...pendingWorkbenchWindowSnapping,
+                shortcutPreset:
+                  value as DesktopWorkbenchWindowSnappingShortcutPreset
+              })
+            }
+          >
+            <SelectTrigger
+              aria-label={t(
+                "workspace.settings.appearance.workbenchWindowSnappingShortcutLabel"
+              )}
+              className={workspaceSettingsSelectTriggerClass}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              className={workspaceSettingsSelectContentClass}
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              {desktopWorkbenchWindowSnappingShortcutPresets.map((preset) => (
+                <SelectItem key={preset} value={preset}>
+                  {t(workspaceSettingsWindowSnappingShortcutLabelKey(preset))}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -18,6 +18,7 @@ import {
 import {
   defaultWorkbenchSurfaceSize,
   defaultWorkbenchLayoutConstraints,
+  type WorkbenchLayoutPreset,
   type WorkbenchNode,
   type WorkbenchState
 } from "./types.ts";
@@ -191,53 +192,15 @@ export function reduceWorkbenchState<TData>(
         };
       });
 
-    case "applyLayoutPreset": {
-      const nodeIDs = uniqueKnownNodeIDs(state.nodes, action.nodeIDs);
-      if (nodeIDs.length === 0) {
-        return state;
-      }
+    case "applyLayoutPreset":
+      return applyLayoutPresetToNodes(state, action.nodeIDs, action.preset);
 
-      const frames = getWorkbenchLayoutPresetFrames(
-        nodeIDs.length,
-        action.preset,
-        state.surfaceSize,
-        state.layoutConstraints
+    case "applyVisibleLayoutPreset":
+      return applyLayoutPresetToNodes(
+        state,
+        state.nodes.filter((node) => !node.isMinimized).map((node) => node.id),
+        action.preset
       );
-      if (!frames) {
-        return state;
-      }
-
-      const frameByNodeID = new Map(
-        nodeIDs.map((nodeID, index) => [nodeID, frames[index]] as const)
-      );
-      const nodes: WorkbenchNode<TData>[] = state.nodes.map((node) => {
-        const frame = frameByNodeID.get(node.id);
-        if (!frame) {
-          return node;
-        }
-        const nextFrame = clampWorkbenchRect(
-          frame,
-          state.surfaceSize,
-          state.layoutConstraints,
-          node.sizeConstraints
-        );
-        return {
-          ...node,
-          frame: nextFrame,
-          displayMode: "floating" as const,
-          restoreFrame: null,
-          isMinimized: false,
-          minimizedAtUnixMs: null
-        };
-      });
-
-      let nodeStack = state.nodeStack;
-      for (const nodeID of nodeIDs) {
-        nodeStack = focusWorkbenchStack(nodeStack, nodeID);
-      }
-
-      return { ...state, nodes, nodeStack };
-    }
 
     case "applyActiveSnapTarget":
     case "applySnapTarget":
@@ -510,6 +473,58 @@ function updateNode<TData>(
     nodes,
     nodeStack: focusWorkbenchStack(state.nodeStack, nodeID)
   };
+}
+
+function applyLayoutPresetToNodes<TData>(
+  state: WorkbenchState<TData>,
+  inputNodeIDs: readonly string[],
+  preset: WorkbenchLayoutPreset
+): WorkbenchState<TData> {
+  const nodeIDs = uniqueKnownNodeIDs(state.nodes, inputNodeIDs);
+  if (nodeIDs.length === 0) {
+    return state;
+  }
+
+  const frames = getWorkbenchLayoutPresetFrames(
+    nodeIDs.length,
+    preset,
+    state.surfaceSize,
+    state.layoutConstraints
+  );
+  if (!frames) {
+    return state;
+  }
+
+  const frameByNodeID = new Map(
+    nodeIDs.map((nodeID, index) => [nodeID, frames[index]] as const)
+  );
+  const nodes: WorkbenchNode<TData>[] = state.nodes.map((node) => {
+    const frame = frameByNodeID.get(node.id);
+    if (!frame) {
+      return node;
+    }
+    const nextFrame = clampWorkbenchRect(
+      frame,
+      state.surfaceSize,
+      state.layoutConstraints,
+      node.sizeConstraints
+    );
+    return {
+      ...node,
+      frame: nextFrame,
+      displayMode: "floating" as const,
+      restoreFrame: null,
+      isMinimized: false,
+      minimizedAtUnixMs: null
+    };
+  });
+
+  let nodeStack = state.nodeStack;
+  for (const nodeID of nodeIDs) {
+    nodeStack = focusWorkbenchStack(nodeStack, nodeID);
+  }
+
+  return { ...state, nodes, nodeStack };
 }
 
 function uniqueKnownNodeIDs<TData>(

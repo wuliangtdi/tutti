@@ -101,6 +101,10 @@ export interface PreferencesDesktopPreferencesV1 {
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";
+  workbenchWindowSnapping?: {
+    enabled: boolean;
+    shortcutPreset: "commandArrows" | "commandShiftArrows";
+  };
 }
 
 export interface WorkspaceWorkspaceAppFactoryJobV1 {

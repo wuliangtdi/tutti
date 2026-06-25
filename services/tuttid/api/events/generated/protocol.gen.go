@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:ff1c86a41db3a5a4"
+	BusinessEventCatalogRevision = "sha256:1f4baa742a2dbf19"
 )
 
 type Topic string
@@ -111,6 +111,10 @@ type PreferencesDesktopPreferences struct {
 	ThemeSource                   string            `json:"themeSource"`
 	UpdateChannel                 string            `json:"updateChannel"`
 	UpdatePolicy                  string            `json:"updatePolicy"`
+	WorkbenchWindowSnapping       *struct {
+		Enabled        bool   `json:"enabled"`
+		ShortcutPreset string `json:"shortcutPreset"`
+	} `json:"workbenchWindowSnapping,omitempty"`
 }
 
 type WorkspaceWorkspaceAppFactoryJob struct {

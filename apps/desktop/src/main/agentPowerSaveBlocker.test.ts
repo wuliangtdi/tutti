@@ -308,6 +308,12 @@ function createFakePreferences(
     getUpdatePolicy() {
       return "prompt";
     },
+    getWorkbenchWindowSnapping() {
+      return {
+        enabled: false,
+        shortcutPreset: "commandArrows"
+      };
+    },
     setSleepPreventionMode(nextMode) {
       mode = nextMode;
       for (const listener of listeners) {

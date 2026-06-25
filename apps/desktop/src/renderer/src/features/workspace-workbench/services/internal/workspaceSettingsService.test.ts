@@ -1032,6 +1032,7 @@ function createDesktopPreferencesService(input: {
   onSetThemeSource?: IDesktopPreferencesService["setThemeSource"];
   onSetUpdateChannel?: IDesktopPreferencesService["setUpdateChannel"];
   onSetUpdatePolicy?: IDesktopPreferencesService["setUpdatePolicy"];
+  onSetWorkbenchWindowSnapping?: IDesktopPreferencesService["setWorkbenchWindowSnapping"];
   state: DesktopPreferencesReadableStoreState;
 }): IDesktopPreferencesService {
   return {
@@ -1056,6 +1057,8 @@ function createDesktopPreferencesService(input: {
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
+    setWorkbenchWindowSnapping:
+      input.onSetWorkbenchWindowSnapping ?? (async (value) => value),
     setThemeSource:
       input.onSetThemeSource ?? (async (source) => createTheme(source)),
     setUpdateChannel: input.onSetUpdateChannel ?? (async (channel) => channel),
@@ -1082,6 +1085,7 @@ function createPreferencesState(
     changingThemeSource: null,
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
+    changingWorkbenchWindowSnapping: null,
     defaultAgentProvider: "codex",
     dockIconStyle: "default",
     dockPlacement: "bottom",
@@ -1092,6 +1096,10 @@ function createPreferencesState(
     theme: createTheme("system"),
     updateChannel: "stable",
     updatePolicy: "prompt",
+    workbenchWindowSnapping: {
+      enabled: false,
+      shortcutPreset: "commandArrows"
+    },
     ...overrides
   };
 }

@@ -11,7 +11,8 @@ import type {
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
-  DesktopUpdatePolicy
+  DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 
@@ -27,6 +28,7 @@ export interface DesktopPreferencesStoreState {
   changingThemeSource: DesktopThemeSource | null;
   changingUpdateChannel: DesktopUpdateChannel | null;
   changingUpdatePolicy: DesktopUpdatePolicy | null;
+  changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   appCatalogChannel: DesktopAppCatalogChannel;
@@ -41,6 +43,7 @@ export interface DesktopPreferencesStoreState {
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }
 
 export interface DesktopPreferencesReadableStoreState {
@@ -55,6 +58,7 @@ export interface DesktopPreferencesReadableStoreState {
   readonly changingThemeSource: DesktopThemeSource | null;
   readonly changingUpdateChannel: DesktopUpdateChannel | null;
   readonly changingUpdatePolicy: DesktopUpdatePolicy | null;
+  readonly changingWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping | null;
   readonly agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
   readonly agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
   readonly appCatalogChannel: DesktopAppCatalogChannel;
@@ -69,4 +73,5 @@ export interface DesktopPreferencesReadableStoreState {
   readonly theme: DesktopThemeState;
   readonly updateChannel: DesktopUpdateChannel;
   readonly updatePolicy: DesktopUpdatePolicy;
+  readonly workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }

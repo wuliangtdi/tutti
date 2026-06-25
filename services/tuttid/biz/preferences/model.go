@@ -18,6 +18,8 @@ const (
 	DefaultDesktopThemeSource              = "dark"
 	DefaultDesktopUpdateChannel            = "rc"
 	DefaultDesktopUpdatePolicy             = "prompt"
+	DefaultDesktopWindowSnappingEnabled    = false
+	DefaultDesktopWindowSnappingShortcut   = "commandArrows"
 )
 
 type DesktopPreferences struct {
@@ -36,6 +38,8 @@ type DesktopPreferences struct {
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
+	WindowSnappingEnabled                       bool
+	WindowSnappingShortcutPreset                string
 }
 
 type AgentComposerDefaults struct {
@@ -59,13 +63,15 @@ func DefaultDesktopPreferences() DesktopPreferences {
 			"shtml": "appBrowser",
 			"xhtml": "appBrowser",
 		},
-		Initialized:         false,
-		Locale:              DefaultDesktopLocale,
-		MinimizeAnimation:   DefaultDesktopMinimizeAnimation,
-		SleepPreventionMode: DefaultDesktopSleepPreventionMode,
-		ThemeSource:         DefaultDesktopThemeSource,
-		UpdateChannel:       DefaultDesktopUpdateChannel,
-		UpdatePolicy:        DefaultDesktopUpdatePolicy,
+		Initialized:                  false,
+		Locale:                       DefaultDesktopLocale,
+		MinimizeAnimation:            DefaultDesktopMinimizeAnimation,
+		SleepPreventionMode:          DefaultDesktopSleepPreventionMode,
+		ThemeSource:                  DefaultDesktopThemeSource,
+		UpdateChannel:                DefaultDesktopUpdateChannel,
+		UpdatePolicy:                 DefaultDesktopUpdatePolicy,
+		WindowSnappingEnabled:        DefaultDesktopWindowSnappingEnabled,
+		WindowSnappingShortcutPreset: DefaultDesktopWindowSnappingShortcut,
 	}
 }
 
@@ -126,6 +132,15 @@ func IsDesktopDockPlacement(value string) bool {
 func IsDesktopMinimizeAnimation(value string) bool {
 	switch value {
 	case "scale", "genie", "off":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsDesktopWindowSnappingShortcutPreset(value string) bool {
+	switch value {
+	case "commandArrows", "commandShiftArrows":
 		return true
 	default:
 		return false

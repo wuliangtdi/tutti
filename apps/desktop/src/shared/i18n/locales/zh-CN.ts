@@ -281,6 +281,15 @@ export const zhCN = {
           scale: "缩放"
         },
         minimizeAnimationSaveFailed: "暂时无法更新最小化动画。",
+        workbenchWindowSnappingDescription:
+          "开启边缘、四角吸附以及键盘窗口整理",
+        workbenchWindowSnappingLabel: "窗口吸附",
+        workbenchWindowSnappingSaveFailed: "暂时无法更新窗口吸附设置。",
+        workbenchWindowSnappingShortcutLabel: "窗口吸附快捷键",
+        workbenchWindowSnappingShortcutOptions: {
+          commandArrows: "Command + 方向键",
+          commandShiftArrows: "Command + Shift + 方向键"
+        },
         themeDescription: "控制窗口外观以及信息的颜色模式",
         themeLabel: "外观",
         themeOptions: {
@@ -547,7 +556,11 @@ export const zhCN = {
         checking: "正在检测本地 CLI 状态...",
         comingSoon: "敬请期待",
         install: "连接",
-        installFailed: "安装失败",
+        installFailed: "连接失败",
+        installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
+        installFailedMissingRuntime:
+          "找不到本地 Agent 可执行文件，请检查是否已正确安装",
+        installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
         installing: "安装中...",

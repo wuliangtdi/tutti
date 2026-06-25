@@ -15,6 +15,19 @@ export function selectFocusedWorkbenchNode<TData>(
   return state.nodes.find((node) => node.id === focusedID) ?? null;
 }
 
+export function selectFocusedVisibleWorkbenchNode<TData>(
+  state: WorkbenchState<TData>
+): WorkbenchNode<TData> | null {
+  const nodeByID = new Map(state.nodes.map((node) => [node.id, node]));
+  for (let index = state.nodeStack.length - 1; index >= 0; index -= 1) {
+    const node = nodeByID.get(state.nodeStack[index] ?? "");
+    if (node && !node.isMinimized) {
+      return node;
+    }
+  }
+  return state.nodes.find((node) => !node.isMinimized) ?? null;
+}
+
 export function selectFullscreenNodeToExitBeforeDockLaunch<TData>(
   state: WorkbenchState<TData>,
   targetNodeID?: string

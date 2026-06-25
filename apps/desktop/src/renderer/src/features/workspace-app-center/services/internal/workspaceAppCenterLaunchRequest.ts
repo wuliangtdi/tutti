@@ -42,6 +42,17 @@ export async function resolveWorkspaceAppCenterLaunchRequest(input: {
   const appBeforeLaunch = appId
     ? findWorkspaceApp(input.appCenterService, appId)
     : null;
+  if (
+    !payload?.prepared &&
+    appId &&
+    appBeforeLaunch?.runtimeStatus === "installed_pending_restart"
+  ) {
+    await input.appCenterService.restartAndOpenApp({
+      appId,
+      workspaceId: input.request.workspaceId
+    });
+    return null;
+  }
   const app = payload?.prepared
     ? appBeforeLaunch
     : appId
@@ -130,6 +141,18 @@ export function readWorkspaceAppIdFromInstanceId(
   return value?.startsWith(prefix)
     ? decodeURIComponent(value.slice(prefix.length))
     : null;
+}
+
+export function readWorkspaceAppIdFromNodeId(
+  value: string | null | undefined
+): string | null {
+  const webviewPrefix = `${workspaceAppWebviewTypeID}:`;
+  return (
+    readWorkspaceAppIdFromDockEntryId(value) ??
+    (value?.startsWith(webviewPrefix)
+      ? readWorkspaceAppIdFromInstanceId(value.slice(webviewPrefix.length))
+      : null)
+  );
 }
 
 export function reportWorkspaceAppOpenedFromDockEntry(input: {

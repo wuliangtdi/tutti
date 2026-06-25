@@ -9,9 +9,13 @@ import type {
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
-  DesktopUpdatePolicy
+  DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
-import { defaultDesktopMinimizeAnimation } from "../../../../../../shared/preferences/index.ts";
+import {
+  defaultDesktopMinimizeAnimation,
+  desktopWorkbenchWindowSnappingEqual
+} from "../../../../../../shared/preferences/index.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -309,6 +313,34 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.appearance.minimizeAnimationSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeWorkbenchWindowSnapping(
+    value: DesktopWorkbenchWindowSnapping
+  ): Promise<void> {
+    if (
+      desktopWorkbenchWindowSnappingEqual(
+        this.desktopPreferences.store.workbenchWindowSnapping,
+        value
+      ) ||
+      (this.desktopPreferences.store.changingWorkbenchWindowSnapping !== null &&
+        desktopWorkbenchWindowSnappingEqual(
+          this.desktopPreferences.store.changingWorkbenchWindowSnapping,
+          value
+        ))
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setWorkbenchWindowSnapping(value);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.appearance.workbenchWindowSnappingSaveFailed"
         )
       });
     }
@@ -1041,6 +1073,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingThemeSource: null,
   changingUpdateChannel: null,
   changingUpdatePolicy: null,
+  changingWorkbenchWindowSnapping: null,
   defaultAgentProvider: "codex",
   dockIconStyle: "default",
   dockPlacement: "bottom",
@@ -1050,7 +1083,11 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   sleepPreventionMode: "never",
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
-  updatePolicy: "prompt"
+  updatePolicy: "prompt",
+  workbenchWindowSnapping: {
+    enabled: false,
+    shortcutPreset: "commandArrows"
+  }
 };
 
 const noopDesktopPreferences: DesktopPreferencesService = {
@@ -1079,6 +1116,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setMinimizeAnimation(animation) {
     return Promise.resolve(animation);
+  },
+  setWorkbenchWindowSnapping(value) {
+    return Promise.resolve(value);
   },
   setSleepPreventionMode(mode) {
     return Promise.resolve(mode);

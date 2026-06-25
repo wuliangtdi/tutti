@@ -18,6 +18,25 @@ export type DesktopMinimizeAnimation =
 export const defaultDesktopMinimizeAnimation: DesktopMinimizeAnimation =
   "genie";
 
+export const desktopWorkbenchWindowSnappingShortcutPresets = [
+  "commandArrows",
+  "commandShiftArrows"
+] as const;
+
+export type DesktopWorkbenchWindowSnappingShortcutPreset =
+  (typeof desktopWorkbenchWindowSnappingShortcutPresets)[number];
+
+export interface DesktopWorkbenchWindowSnapping {
+  enabled: boolean;
+  shortcutPreset: DesktopWorkbenchWindowSnappingShortcutPreset;
+}
+
+export const defaultDesktopWorkbenchWindowSnapping: DesktopWorkbenchWindowSnapping =
+  {
+    enabled: false,
+    shortcutPreset: "commandArrows"
+  };
+
 export const desktopBrowserUseConnectionModes = [
   "isolated",
   "autoConnect"
@@ -74,6 +93,17 @@ export function isDesktopMinimizeAnimation(
   return (
     typeof value === "string" &&
     desktopMinimizeAnimations.includes(value as DesktopMinimizeAnimation)
+  );
+}
+
+export function isDesktopWorkbenchWindowSnappingShortcutPreset(
+  value: unknown
+): value is DesktopWorkbenchWindowSnappingShortcutPreset {
+  return (
+    typeof value === "string" &&
+    desktopWorkbenchWindowSnappingShortcutPresets.includes(
+      value as DesktopWorkbenchWindowSnappingShortcutPreset
+    )
   );
 }
 
@@ -213,6 +243,34 @@ export function isDesktopFileDefaultOpener(
   return (
     typeof value === "string" &&
     desktopFileDefaultOpeners.includes(value as DesktopFileDefaultOpener)
+  );
+}
+
+export function normalizeDesktopWorkbenchWindowSnapping(
+  value: unknown
+): DesktopWorkbenchWindowSnapping {
+  if (!isRecord(value)) {
+    return { ...defaultDesktopWorkbenchWindowSnapping };
+  }
+  return {
+    enabled: value.enabled === true,
+    shortcutPreset: isDesktopWorkbenchWindowSnappingShortcutPreset(
+      value.shortcutPreset
+    )
+      ? value.shortcutPreset
+      : defaultDesktopWorkbenchWindowSnapping.shortcutPreset
+  };
+}
+
+export function desktopWorkbenchWindowSnappingEqual(
+  left: DesktopWorkbenchWindowSnapping | null | undefined,
+  right: DesktopWorkbenchWindowSnapping | null | undefined
+): boolean {
+  const normalizedLeft = normalizeDesktopWorkbenchWindowSnapping(left);
+  const normalizedRight = normalizeDesktopWorkbenchWindowSnapping(right);
+  return (
+    normalizedLeft.enabled === normalizedRight.enabled &&
+    normalizedLeft.shortcutPreset === normalizedRight.shortcutPreset
   );
 }
 

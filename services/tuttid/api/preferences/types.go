@@ -6,6 +6,10 @@ import (
 )
 
 func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences) tuttigenerated.DesktopPreferences {
+	windowSnapping := tuttigenerated.DesktopWorkbenchWindowSnapping{
+		Enabled:        value.WindowSnappingEnabled,
+		ShortcutPreset: tuttigenerated.DesktopWorkbenchWindowSnappingShortcutPreset(value.WindowSnappingShortcutPreset),
+	}
 	return tuttigenerated.DesktopPreferences{
 		AgentComposerDefaultsByProvider:             generatedAgentComposerDefaultsByProvider(value.AgentComposerDefaultsByProvider),
 		AgentGuiConversationRailCollapsedByProvider: generatedAgentGUIConversationRailCollapsedByProvider(value.AgentGUIConversationRailCollapsedByProvider),
@@ -21,6 +25,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		ThemeSource:                                 tuttigenerated.DesktopThemeSource(value.ThemeSource),
 		UpdateChannel:                               tuttigenerated.DesktopUpdateChannel(value.UpdateChannel),
 		UpdatePolicy:                                tuttigenerated.DesktopUpdatePolicy(value.UpdatePolicy),
+		WorkbenchWindowSnapping:                     &windowSnapping,
 	}
 }
 

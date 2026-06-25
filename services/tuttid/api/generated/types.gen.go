@@ -661,6 +661,24 @@ func (e DesktopUpdatePolicy) Valid() bool {
 	}
 }
 
+// Defines values for DesktopWorkbenchWindowSnappingShortcutPreset.
+const (
+	CommandArrows      DesktopWorkbenchWindowSnappingShortcutPreset = "commandArrows"
+	CommandShiftArrows DesktopWorkbenchWindowSnappingShortcutPreset = "commandShiftArrows"
+)
+
+// Valid indicates whether the value is a known member of the DesktopWorkbenchWindowSnappingShortcutPreset enum.
+func (e DesktopWorkbenchWindowSnappingShortcutPreset) Valid() bool {
+	switch e {
+	case CommandArrows:
+		return true
+	case CommandShiftArrows:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusResponseStatus.
 const (
 	Ok HealthStatusResponseStatus = "ok"
@@ -2093,6 +2111,7 @@ type DesktopPreferences struct {
 	ThemeSource                                 DesktopThemeSource                                 `json:"themeSource"`
 	UpdateChannel                               DesktopUpdateChannel                               `json:"updateChannel"`
 	UpdatePolicy                                DesktopUpdatePolicy                                `json:"updatePolicy"`
+	WorkbenchWindowSnapping                     *DesktopWorkbenchWindowSnapping                    `json:"workbenchWindowSnapping,omitempty"`
 }
 
 // DesktopPreferencesStateResponse defines model for DesktopPreferencesStateResponse.
@@ -2112,6 +2131,15 @@ type DesktopUpdateChannel string
 
 // DesktopUpdatePolicy defines model for DesktopUpdatePolicy.
 type DesktopUpdatePolicy string
+
+// DesktopWorkbenchWindowSnapping defines model for DesktopWorkbenchWindowSnapping.
+type DesktopWorkbenchWindowSnapping struct {
+	Enabled        bool                                         `json:"enabled"`
+	ShortcutPreset DesktopWorkbenchWindowSnappingShortcutPreset `json:"shortcutPreset"`
+}
+
+// DesktopWorkbenchWindowSnappingShortcutPreset defines model for DesktopWorkbenchWindowSnappingShortcutPreset.
+type DesktopWorkbenchWindowSnappingShortcutPreset string
 
 // ExportWorkspaceAppRequest defines model for ExportWorkspaceAppRequest.
 type ExportWorkspaceAppRequest struct {
