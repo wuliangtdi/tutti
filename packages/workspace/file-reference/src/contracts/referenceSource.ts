@@ -131,6 +131,8 @@ export interface SelectedReference {
   path: string;
   kind: "file" | "folder";
   displayName?: string;
+  /** Host-local original path, when path is an opaque transfer handle. */
+  hostPath?: string;
   /** 保留引用来源,供上层区分 workspace 文件与 host 本地文件等同形 path。 */
   sourceId?: string;
 }

@@ -147,12 +147,14 @@ export interface ReferenceSourcePickerController {
    *    故递归 listChildren 枚举,展开成多条文件引用。
    * 含异步枚举,故返回 Promise;结果按 path 去重、保序。
    */
-  confirm(): Promise<SelectedReference[]>;
+  confirm(selection?: readonly ReferenceNode[]): Promise<SelectedReference[]>;
   /**
    * 与 confirm 同源,但保留分组:navigable 源的每个选中文件夹折叠成一个 bundle
    * (文件已递归展开在内),其余作为单条文件。供「文件夹 = 一个节点」的插入形态用。
    */
-  confirmGrouped(): Promise<ReferenceConfirmGroupedResult>;
+  confirmGrouped(
+    selection?: readonly ReferenceNode[]
+  ): Promise<ReferenceConfirmGroupedResult>;
 }
 
 export interface CreateReferenceSourcePickerControllerInput {
@@ -911,7 +913,7 @@ export function createReferenceSourcePickerController(
     clearSelection() {
       setSnapshot({ selection: [] });
     },
-    async confirm() {
+    async confirm(selection = snapshot.selection) {
       const resolved: SelectedReference[] = [];
       const seenPaths = new Set<string>();
       const push = (ref: SelectedReference) => {
@@ -921,7 +923,7 @@ export function createReferenceSourcePickerController(
         seenPaths.add(ref.path);
         resolved.push(ref);
       };
-      for (const node of snapshot.selection) {
+      for (const node of selection) {
         if (node.kind !== "folder") {
           push(aggregator.resolveSelection(node));
           continue;
@@ -942,7 +944,7 @@ export function createReferenceSourcePickerController(
       }
       return resolved;
     },
-    async confirmGrouped() {
+    async confirmGrouped(selection = snapshot.selection) {
       const files: SelectedReference[] = [];
       const bundles: ReferenceConfirmBundle[] = [];
       const seenPaths = new Set<string>();
@@ -953,7 +955,7 @@ export function createReferenceSourcePickerController(
         seenPaths.add(ref.path);
         files.push(ref);
       };
-      for (const node of snapshot.selection) {
+      for (const node of selection) {
         const source = aggregator.getLoadedSource(node.ref.sourceId);
         const navigable =
           node.kind === "folder" && (source?.capabilities.navigable ?? false);

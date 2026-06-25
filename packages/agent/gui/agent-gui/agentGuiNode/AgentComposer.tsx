@@ -1932,9 +1932,53 @@ export function AgentComposer({
   );
 
   const applyReferencePickResult = useCallback(
-    (result: WorkspaceReferencePickResult) => {
+    async (result: WorkspaceReferencePickResult) => {
       if (result.files.length > 0) {
-        editorHandleRef.current?.insertWorkspaceReferences(result.files);
+        const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+        const uploadedFiles = await Promise.all(
+          result.files.map(async (file) => {
+            const hostPath = file.hostPath?.trim() ?? "";
+            if (!hostPath) {
+              return file;
+            }
+            if (!uploadPromptContent) {
+              throw new Error(
+                "Prompt file uploads are not supported by this agent runtime."
+              );
+            }
+            const uploaded = await uploadPromptContent({
+              workspaceId,
+              content: [
+                {
+                  type: "file",
+                  hostPath,
+                  name: file.displayName,
+                  kind: "file"
+                }
+              ]
+            });
+            const uploadedFile = uploaded.content.find(
+              (block) => block.type === "file"
+            );
+            const uploadedPath = uploadedFile?.path?.trim() ?? "";
+            if (!uploadedPath) {
+              throw new Error("Prompt file upload completed without path.");
+            }
+            return {
+              ...file,
+              path: uploadedPath,
+              ...(uploadedFile?.name
+                ? { displayName: uploadedFile.name }
+                : file.displayName
+                  ? { displayName: file.displayName }
+                  : {}),
+              ...(uploadedFile?.sizeBytes
+                ? { sizeBytes: uploadedFile.sizeBytes }
+                : {})
+            };
+          })
+        );
+        editorHandleRef.current?.insertWorkspaceReferences(uploadedFiles);
       }
       if (result.mentionItems.length > 0) {
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
@@ -1943,14 +1987,14 @@ export function AgentComposer({
         addDraftFiles(result.hostAttachments);
       }
     },
-    [addDraftFiles]
+    [addDraftFiles, agentActivityRuntime, workspaceId]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
     if (!onRequestWorkspaceReferences) {
       return;
     }
-    applyReferencePickResult(await onRequestWorkspaceReferences());
+    await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
 
   // @ 面板里点任务/应用行的「查看产物文件」图标:关掉面板,打开引用 picker 并定位到该实体;
@@ -1961,7 +2005,9 @@ export function AgentComposer({
       if (!onRequestWorkspaceReferences) {
         return;
       }
-      void onRequestWorkspaceReferences(entity).then(applyReferencePickResult);
+      void onRequestWorkspaceReferences(entity).then((result) =>
+        applyReferencePickResult(result)
+      );
     },
     [
       closeFileMentionPalette,

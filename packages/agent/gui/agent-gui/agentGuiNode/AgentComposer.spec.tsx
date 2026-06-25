@@ -82,50 +82,85 @@ vi.mock("../../app/renderer/components/ui/popover", () => ({
   )
 }));
 
-vi.mock("./agentRichText/AgentRichTextEditor", () => ({
-  AgentRichTextEditor: ({
-    disabled,
-    onPasteImages,
-    onKeyDownForPalette,
-    value,
-    placeholder
-  }: {
-    disabled?: boolean;
-    onPasteImages?: (images: unknown[]) => void;
-    onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
-    value: string;
-    placeholder: string;
-  }) => (
-    <>
-      <textarea
-        value={value}
-        placeholder={placeholder}
-        disabled={disabled}
-        readOnly
-        onKeyDown={(event) => {
-          if (onKeyDownForPalette?.(event.nativeEvent)) {
-            event.preventDefault();
+vi.mock("./agentRichText/AgentRichTextEditor", async () => {
+  const React = await import("react");
+  return {
+    AgentRichTextEditor: React.forwardRef(
+      (
+        {
+          disabled,
+          onChange,
+          onPasteImages,
+          onKeyDownForPalette,
+          value,
+          placeholder
+        }: {
+          disabled?: boolean;
+          onChange: (value: string) => void;
+          onPasteImages?: (images: unknown[]) => void;
+          onKeyDownForPalette?: (event: KeyboardEvent) => boolean;
+          value: string;
+          placeholder: string;
+        },
+        ref
+      ) => {
+        React.useImperativeHandle(ref, () => ({
+          focusAtStart() {},
+          focusAtEnd() {},
+          getPromptTextBeforeSelection() {
+            return value;
+          },
+          insertWorkspaceReferences(
+            items: ReadonlyArray<{ displayName?: string; path: string }>
+          ) {
+            const mentions = items
+              .map((item) => {
+                const name = item.displayName?.trim() || item.path;
+                return `[@${name}](${item.path})`;
+              })
+              .join(" ");
+            onChange(`${value}${mentions} `);
+          },
+          insertMentionItems() {},
+          replaceTextBeforeSelection(_length: number, text: string) {
+            onChange(`${value}${text}`);
+            return `${value}${text}`;
           }
-        }}
-      />
-      <button
-        type="button"
-        data-testid="mock-paste-image"
-        onClick={() =>
-          onPasteImages?.([
-            {
-              name: "screen.png",
-              mimeType: "image/png",
-              data: "aW1hZ2U="
-            }
-          ])
-        }
-      >
-        paste image
-      </button>
-    </>
-  )
-}));
+        }));
+        return (
+          <>
+            <textarea
+              value={value}
+              placeholder={placeholder}
+              disabled={disabled}
+              readOnly
+              onKeyDown={(event) => {
+                if (onKeyDownForPalette?.(event.nativeEvent)) {
+                  event.preventDefault();
+                }
+              }}
+            />
+            <button
+              type="button"
+              data-testid="mock-paste-image"
+              onClick={() =>
+                onPasteImages?.([
+                  {
+                    name: "screen.png",
+                    mimeType: "image/png",
+                    data: "aW1hZ2U="
+                  }
+                ])
+              }
+            >
+              paste image
+            </button>
+          </>
+        );
+      }
+    )
+  };
+});
 
 vi.mock("./AgentComposerSettingsMenus", () => ({
   AgentProjectDropdown: ({
@@ -2643,6 +2678,113 @@ describe("AgentComposer", () => {
         path: "/var/cache/tsh/local-assets/workspace-1/user-1/1.webp",
         name: "1.webp",
         kind: "file"
+      }
+    ]);
+  });
+
+  it("uploads host-local references before inserting file mention anchors", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("看下这张图");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={async () => ({
+          files: [
+            {
+              path: "f37ec5e4-bbf2-49a2-90a9-d2b9d42e9b91",
+              hostPath: "/Users/vector/Downloads/首页 (1).jpg",
+              displayName: "首页 (1).jpg",
+              kind: "file",
+              sourceId: "host-local-file"
+            }
+          ],
+          mentionItems: [],
+          hostAttachments: []
+        })}
+      />
+    );
+    const { container, rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByRole("combobox", { name: "引用空间文件" }));
+    await waitFor(() =>
+      expect(uploadPromptContent).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        content: [
+          {
+            type: "file",
+            hostPath: "/Users/vector/Downloads/首页 (1).jpg",
+            name: "首页 (1).jpg",
+            kind: "file"
+          }
+        ]
+      })
+    );
+    resolveUpload({
+      content: [
+        {
+          type: "file",
+          path: "/var/cache/tsh/local-assets/workspace-1/user-1/home.jpg",
+          name: "首页 (1).jpg",
+          kind: "file"
+        }
+      ]
+    });
+    await waitFor(() =>
+      expect(draftContent.prompt).toBe(
+        "看下这张图[@首页 (1).jpg](/var/cache/tsh/local-assets/workspace-1/user-1/home.jpg) "
+      )
+    );
+    expect(draftContent.prompt).not.toContain(
+      "f37ec5e4-bbf2-49a2-90a9-d2b9d42e9b91"
+    );
+    rerender(renderComposer());
+
+    fireEvent.submit(container.querySelector("form")!);
+    expect(onSubmit).toHaveBeenCalledWith([
+      {
+        type: "text",
+        text: "看下这张图[@首页 (1).jpg](/var/cache/tsh/local-assets/workspace-1/user-1/home.jpg)"
       }
     ]);
   });

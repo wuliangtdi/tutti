@@ -513,7 +513,7 @@ export function useReferenceSourcePickerView({
     setIsConfirming(true);
     try {
       if (onConfirmBundles) {
-        const grouped = await controller.confirmGrouped();
+        const grouped = await controller.confirmGrouped(selectableSelection);
         onConfirmBundles({
           files: grouped.files.map(selectedReferenceToWorkspaceFileReference),
           bundles: grouped.bundles.map((bundle) => ({
@@ -527,7 +527,8 @@ export function useReferenceSourcePickerView({
           }))
         });
       } else {
-        const selected: SelectedReference[] = await controller.confirm();
+        const selected: SelectedReference[] =
+          await controller.confirm(selectableSelection);
         onConfirm(selected.map(selectedReferenceToWorkspaceFileReference));
       }
       onClose();
@@ -540,7 +541,7 @@ export function useReferenceSourcePickerView({
     onClose,
     onConfirm,
     onConfirmBundles,
-    selectableSelection.length
+    selectableSelection
   ]);
 
   // 焦点节点预览:文件夹→directory;文件→走源 readPreview,字节经 file-preview 分类

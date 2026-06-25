@@ -86,12 +86,14 @@ test("selectedReferenceToWorkspaceFileReference 形状兼容", () => {
       path: "/a",
       kind: "folder",
       displayName: "A",
+      hostPath: "/Users/test/A",
       sourceId: "host-local-file"
     }),
     {
       path: "/a",
       kind: "folder",
       displayName: "A",
+      hostPath: "/Users/test/A",
       sourceId: "host-local-file"
     }
   );
