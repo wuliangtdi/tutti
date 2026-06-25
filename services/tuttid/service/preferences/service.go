@@ -34,6 +34,12 @@ type PutInput struct {
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
+	WindowSnapping                              *DesktopWindowSnappingInput
+}
+
+type DesktopWindowSnappingInput struct {
+	Enabled        bool
+	ShortcutPreset string
 }
 
 func (s Service) Get(ctx context.Context) (preferencesbiz.DesktopPreferences, error) {
@@ -47,6 +53,11 @@ func (s Service) Get(ctx context.Context) (preferencesbiz.DesktopPreferences, er
 func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.DesktopPreferences, error) {
 	if s.Store == nil {
 		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences store is not configured")
+	}
+
+	windowSnapping, err := s.resolveWindowSnapping(ctx, input.WindowSnapping)
+	if err != nil {
+		return preferencesbiz.DesktopPreferences{}, err
 	}
 
 	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
@@ -65,6 +76,8 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		ThemeSource:                                 strings.TrimSpace(input.ThemeSource),
 		UpdateChannel:                               strings.TrimSpace(input.UpdateChannel),
 		UpdatePolicy:                                strings.TrimSpace(input.UpdatePolicy),
+		WindowSnappingEnabled:                       windowSnapping.Enabled,
+		WindowSnappingShortcutPreset:                windowSnapping.ShortcutPreset,
 	})
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
@@ -73,6 +86,24 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func (s Service) resolveWindowSnapping(ctx context.Context, input *DesktopWindowSnappingInput) (DesktopWindowSnappingInput, error) {
+	if input != nil {
+		return DesktopWindowSnappingInput{
+			Enabled:        input.Enabled,
+			ShortcutPreset: normalizeWindowSnappingShortcutPreset(input.ShortcutPreset),
+		}, nil
+	}
+
+	preferences, err := s.Store.GetDesktopPreferences(ctx)
+	if err != nil {
+		return DesktopWindowSnappingInput{}, err
+	}
+	return DesktopWindowSnappingInput{
+		Enabled:        preferences.WindowSnappingEnabled,
+		ShortcutPreset: normalizeWindowSnappingShortcutPreset(preferences.WindowSnappingShortcutPreset),
+	}, nil
 }
 
 func normalizeAppCatalogChannel(value string) string {
@@ -116,6 +147,14 @@ func normalizeMinimizeAnimation(value string) string {
 		return normalized
 	}
 	return preferencesbiz.DefaultDesktopMinimizeAnimation
+}
+
+func normalizeWindowSnappingShortcutPreset(value string) string {
+	normalized := strings.TrimSpace(value)
+	if preferencesbiz.IsDesktopWindowSnappingShortcutPreset(normalized) {
+		return normalized
+	}
+	return preferencesbiz.DefaultDesktopWindowSnappingShortcut
 }
 
 func normalizeAgentGUIConversationRailCollapsedByProvider(input map[string]bool) map[string]bool {

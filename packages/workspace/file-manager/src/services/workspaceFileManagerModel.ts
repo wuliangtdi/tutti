@@ -36,4 +36,5 @@ export {
   workspaceFileName,
   workspaceFilePathHasHiddenSegment
 } from "./internal/model/paths.ts";
+export { workspaceFileSearchEntryToEntry } from "./internal/model/searchEntries.ts";
 export { validateWorkspaceFileEntryName } from "./internal/model/validation.ts";

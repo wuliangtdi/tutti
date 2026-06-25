@@ -11,7 +11,8 @@ import type {
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
-  DesktopUpdatePolicy
+  DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import type { DesktopPreferencesReadableStoreState } from "./desktopPreferencesTypes.ts";
@@ -48,6 +49,9 @@ export interface IDesktopPreferencesService {
     channel: DesktopUpdateChannel
   ): Promise<DesktopUpdateChannel>;
   setUpdatePolicy(policy: DesktopUpdatePolicy): Promise<DesktopUpdatePolicy>;
+  setWorkbenchWindowSnapping(
+    value: DesktopWorkbenchWindowSnapping
+  ): Promise<DesktopWorkbenchWindowSnapping>;
   rememberAgentComposerDefaults(
     provider: DesktopAgentProvider,
     defaults: DesktopAgentComposerDefaults | null

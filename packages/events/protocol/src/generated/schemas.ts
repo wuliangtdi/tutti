@@ -192,6 +192,20 @@ export const preferencesDesktopPreferencesSchema = {
     updatePolicy: {
       type: "string",
       enum: ["off", "prompt", "auto"]
+    },
+    workbenchWindowSnapping: {
+      type: "object",
+      additionalProperties: false,
+      required: ["enabled", "shortcutPreset"],
+      properties: {
+        enabled: {
+          type: "boolean"
+        },
+        shortcutPreset: {
+          type: "string",
+          enum: ["commandArrows", "commandShiftArrows"]
+        }
+      }
     }
   },
   $defs: {
@@ -1117,6 +1131,20 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         updatePolicy: {
           type: "string",
           enum: ["off", "prompt", "auto"]
+        },
+        workbenchWindowSnapping: {
+          type: "object",
+          additionalProperties: false,
+          required: ["enabled", "shortcutPreset"],
+          properties: {
+            enabled: {
+              type: "boolean"
+            },
+            shortcutPreset: {
+              type: "string",
+              enum: ["commandArrows", "commandShiftArrows"]
+            }
+          }
         }
       },
       $defs: {
@@ -1347,6 +1375,20 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         updatePolicy: {
           type: "string",
           enum: ["off", "prompt", "auto"]
+        },
+        workbenchWindowSnapping: {
+          type: "object",
+          additionalProperties: false,
+          required: ["enabled", "shortcutPreset"],
+          properties: {
+            enabled: {
+              type: "boolean"
+            },
+            shortcutPreset: {
+              type: "string",
+              enum: ["commandArrows", "commandShiftArrows"]
+            }
+          }
         }
       },
       $defs: {

@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import type {
   AgentComposerDraft,
+  AgentComposerDraftFile,
   AgentComposerDraftImage,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
@@ -35,7 +36,11 @@ import type { AgentConversationPromptVM } from "../../shared/agentConversation/c
 import { cn } from "../../app/renderer/lib/utils";
 import { AddIcon, Select, SelectTrigger } from "@tutti-os/ui-system";
 import { ListChecks, X } from "lucide-react";
-import { makeAtPanelKeyDown } from "@tutti-os/ui-rich-text/at-panel";
+import {
+  createMentionPaletteStateAdapter,
+  makeAtPanelKeyDown,
+  repairMentionPaletteHighlight
+} from "@tutti-os/ui-rich-text/at-panel";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import {
@@ -101,11 +106,12 @@ import type { AgentCapabilityTokenOption } from "./agentRichText/agentCapability
 import {
   AgentMentionSearchController,
   type AgentMentionFilterId,
+  type AgentMentionGroupId,
   type AgentMentionSearchState
 } from "./AgentMentionSearchController";
 import {
-  AgentFileMentionPalette,
-  flattenAgentMentionPaletteEntries
+  agentMentionItemKey,
+  AgentFileMentionPalette
 } from "./AgentFileMentionPalette";
 import {
   AGENT_MENTION_FILTER_TAB_ORDER,
@@ -145,6 +151,13 @@ export { formatSlashStatusTokenCount };
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
   mentionItems: readonly AgentContextMentionItem[];
+  hostAttachments?: readonly AgentComposerHostAttachment[];
+}
+
+export interface AgentComposerHostAttachment {
+  hostPath: string;
+  name: string;
+  mimeType?: string | null;
 }
 
 export interface AgentComposerProps {
@@ -600,6 +613,8 @@ const MENTION_PALETTE_MIN_HEIGHT_PX = 280;
 const MENTION_PALETTE_MAX_HEIGHT_PX = 320;
 const MENTION_PALETTE_GAP_PX = 8;
 const MENTION_PALETTE_VIEWPORT_PADDING_PX = 8;
+const promptFileUploadUnsupportedError =
+  "Prompt file uploads are not supported by this agent runtime.";
 const EMPTY_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
   [];
 const EMPTY_PROMPT_TIPS: readonly AgentComposerPromptTip[] = [];
@@ -719,6 +734,7 @@ export function AgentComposer({
   "use memo";
   const draftPrompt = draftContent.prompt;
   const draftImages = draftContent.images;
+  const draftFiles = draftContent.files ?? [];
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
@@ -764,6 +780,7 @@ export function AgentComposer({
   const paletteContentRef = useRef<HTMLDivElement | null>(null);
   const draftPromptRef = useRef(draftPrompt);
   const draftImagesRef = useRef<AgentComposerDraftImage[]>(draftImages);
+  const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
   const submittedImagePreviewObservedBusyRef = useRef(false);
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
@@ -955,10 +972,6 @@ export function AgentComposer({
     highlightedIndex,
     slashPaletteEntries.length
   );
-  const mentionPaletteEntries = useMemo(
-    () => flattenAgentMentionPaletteEntries(mentionSearchState),
-    [mentionSearchState]
-  );
   const [mentionPaletteFrame, setMentionPaletteFrame] =
     useState<MentionPaletteFrame | null>(null);
 
@@ -967,36 +980,42 @@ export function AgentComposer({
   }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
 
   useEffect(() => {
-    const firstKey = mentionPaletteEntries[0]?.key ?? null;
-    if (!firstKey) {
-      autoMentionHighlightedKeyRef.current = null;
-      setMentionHighlightedKey(null);
-      return;
-    }
+    const preferredKey =
+      shouldResetMentionHighlightToFilter &&
+      mentionSearchState.mode === "browse"
+        ? `category:${mentionSearchState.filter}`
+        : null;
     if (shouldResetMentionHighlightToFilter) {
-      const resetKey =
-        mentionSearchState.mode === "browse"
-          ? `category:${mentionSearchState.filter}`
-          : null;
-      autoMentionHighlightedKeyRef.current = resetKey;
-      setMentionHighlightedKey(resetKey);
+      const nextKey = repairMentionPaletteHighlight({
+        state: mentionSearchState,
+        currentKey: null,
+        preferredKey,
+        getItemKey: agentMentionItemKey
+      });
+      autoMentionHighlightedKeyRef.current = nextKey;
+      setMentionHighlightedKey(nextKey);
       setShouldResetMentionHighlightToFilter(false);
       return;
     }
     setMentionHighlightedKey((current) => {
-      const hasCurrent =
-        current !== null &&
-        mentionPaletteEntries.some((entry) => entry.key === current);
-      if (hasCurrent && current !== autoMentionHighlightedKeyRef.current) {
+      const nextKey = repairMentionPaletteHighlight({
+        state: mentionSearchState,
+        currentKey: current,
+        getItemKey: agentMentionItemKey
+      });
+      if (
+        nextKey === current &&
+        current !== autoMentionHighlightedKeyRef.current
+      ) {
         return current;
       }
-      autoMentionHighlightedKeyRef.current = firstKey;
-      return firstKey;
+      autoMentionHighlightedKeyRef.current = nextKey;
+      return nextKey;
     });
   }, [
-    mentionPaletteEntries,
     mentionSearchState.filter,
     mentionSearchState.mode,
+    mentionSearchState,
     shouldResetMentionHighlightToFilter
   ]);
 
@@ -1029,6 +1048,10 @@ export function AgentComposer({
   useEffect(() => {
     draftImagesRef.current = draftImages;
   }, [draftImages]);
+
+  useEffect(() => {
+    draftFilesRef.current = draftFiles;
+  }, [draftFiles]);
 
   useEffect(() => {
     if (
@@ -1242,11 +1265,15 @@ export function AgentComposer({
     const canSubmitWhileSending = canQueueWhileBusy && isSendingTurn;
     const hasUploadingImages = draftImages.some((image) => image.uploading);
     const hasFailedImages = draftImages.some((image) => image.uploadError);
+    const hasUploadingFiles = draftFiles.some((file) => file.uploading);
+    const hasFailedFiles = draftFiles.some((file) => file.uploadError);
     if (
       isSelectedProjectMissing ||
       submitDisabled ||
       hasUploadingImages ||
       hasFailedImages ||
+      hasUploadingFiles ||
+      hasFailedFiles ||
       (disabled && !canQueueWhileBusy) ||
       (isSendingTurn && !canSubmitWhileSending)
     ) {
@@ -1398,26 +1425,45 @@ export function AgentComposer({
     setIsPaletteOpen(false);
   }, [closeFileMentionPalette, showFileMentionPalette]);
 
+  const createFileMentionPaletteAdapter = useCallback(
+    (highlightedKey: string | null = mentionHighlightedKey) =>
+      createMentionPaletteStateAdapter({
+        state: mentionSearchState,
+        highlightedKey,
+        categoryCycleOrder:
+          mentionSearchState.mode === "browse"
+            ? mentionSearchState.categories
+            : AGENT_MENTION_FILTER_TAB_ORDER,
+        getItemKey: agentMentionItemKey,
+        callbacks: {
+          onHighlightChange: (key) => {
+            setShouldCenterMentionHighlight(true);
+            autoMentionHighlightedKeyRef.current = null;
+            setMentionHighlightedKey(key);
+          },
+          onActiveCategoryIdChange: (categoryId) => {
+            mentionControllerRef.current?.setFilter(
+              categoryId as AgentMentionFilterId
+            );
+            setShouldResetMentionHighlightToFilter(true);
+            setShouldCenterMentionHighlight(false);
+          },
+          onExpandGroup: (groupId) => {
+            mentionControllerRef.current?.expandGroup(
+              groupId as AgentMentionGroupId
+            );
+          },
+          onSelectItem: selectFileMention
+        }
+      }),
+    [mentionHighlightedKey, mentionSearchState, selectFileMention]
+  );
+
   const moveFileMentionSelection = useCallback(
     (delta: 1 | -1): void => {
-      const focusableEntries =
-        flattenAgentMentionPaletteEntries(mentionSearchState);
-      if (focusableEntries.length === 0) {
-        return;
-      }
-      const currentIndex = mentionHighlightedKey
-        ? focusableEntries.findIndex(
-            (entry) => entry.key === mentionHighlightedKey
-          )
-        : -1;
-      const baseIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
-      const nextIndex =
-        (baseIndex + delta + focusableEntries.length) % focusableEntries.length;
-      setShouldCenterMentionHighlight(true);
-      autoMentionHighlightedKeyRef.current = null;
-      setMentionHighlightedKey(focusableEntries[nextIndex]?.key ?? null);
+      createFileMentionPaletteAdapter().moveSelection(delta);
     },
-    [mentionHighlightedKey, mentionSearchState]
+    [createFileMentionPaletteAdapter]
   );
 
   const handleMentionHighlightChange = useCallback((key: string): void => {
@@ -1427,29 +1473,9 @@ export function AgentComposer({
 
   const cycleFileMentionFilter = useCallback(
     (delta: 1 | -1 = 1): void => {
-      const filters = (
-        mentionSearchState.mode === "browse"
-          ? mentionSearchState.categories.map((category) => category.id)
-          : [...AGENT_MENTION_FILTER_TAB_ORDER]
-      ) as AgentMentionFilterId[];
-      if (filters.length === 0) {
-        return;
-      }
-      const currentFilterIndex = filters.findIndex(
-        (filter) => filter === mentionSearchState.filter
-      );
-      const baseIndex =
-        currentFilterIndex >= 0 ? currentFilterIndex : delta > 0 ? -1 : 0;
-      const nextIndex = (baseIndex + delta + filters.length) % filters.length;
-      const nextFilter = filters[nextIndex];
-      if (!nextFilter) {
-        return;
-      }
-      mentionControllerRef.current?.setFilter(nextFilter);
-      setShouldResetMentionHighlightToFilter(true);
-      setShouldCenterMentionHighlight(false);
+      createFileMentionPaletteAdapter().cycleCategory(delta);
     },
-    [mentionSearchState]
+    [createFileMentionPaletteAdapter]
   );
 
   const handleFileMentionKeyDown = useCallback(
@@ -1457,39 +1483,10 @@ export function AgentComposer({
       if (!showFileMentionPalette) {
         return false;
       }
-      const focusableEntries =
-        flattenAgentMentionPaletteEntries(mentionSearchState);
       return makeAtPanelKeyDown({
         close: closeFileMentionPalette,
         commitSelection: () => {
-          const activeEntry = focusableEntries.find(
-            (entry) => entry.key === mentionHighlightedKey
-          );
-          if (!activeEntry) {
-            const highlightedCategoryId = mentionHighlightedKey?.startsWith(
-              "category:"
-            )
-              ? mentionHighlightedKey.slice("category:".length)
-              : null;
-            if (
-              highlightedCategoryId &&
-              mentionSearchState.categories.some(
-                (category) => category.id === highlightedCategoryId
-              )
-            ) {
-              mentionControllerRef.current?.setFilter(
-                highlightedCategoryId as AgentMentionFilterId
-              );
-            }
-            return;
-          }
-          if (activeEntry.type === "category" && activeEntry.categoryId) {
-            mentionControllerRef.current?.setFilter(activeEntry.categoryId);
-          } else if (activeEntry.type === "expand" && activeEntry.groupId) {
-            mentionControllerRef.current?.expandGroup(activeEntry.groupId);
-          } else if (activeEntry.type === "item" && activeEntry.item) {
-            selectFileMention(activeEntry.item);
-          }
+          createFileMentionPaletteAdapter().commitHighlighted();
         },
         cycleFilter: cycleFileMentionFilter,
         moveSelection: moveFileMentionSelection
@@ -1497,11 +1494,9 @@ export function AgentComposer({
     },
     [
       closeFileMentionPalette,
+      createFileMentionPaletteAdapter,
       cycleFileMentionFilter,
-      mentionHighlightedKey,
-      mentionSearchState,
       moveFileMentionSelection,
-      selectFileMention,
       showFileMentionPalette
     ]
   );
@@ -1709,7 +1704,8 @@ export function AgentComposer({
       draftImagesRef.current = nextDraftImages;
       onDraftContentChange({
         prompt: draftPromptRef.current,
-        images: nextDraftImages
+        images: nextDraftImages,
+        files: draftFilesRef.current
       });
       if (!uploadPromptContent) {
         return;
@@ -1730,9 +1726,9 @@ export function AgentComposer({
             const uploadedImage = result.content.find(
               (block) => block.type === "image"
             );
-            const uploadedUrl = uploadedImage?.url?.trim() ?? "";
-            if (!uploadedUrl) {
-              throw new Error("Prompt image upload completed without url.");
+            const uploadedPath = uploadedImage?.path?.trim() ?? "";
+            if (!uploadedPath) {
+              throw new Error("Prompt image upload completed without path.");
             }
             const uploadedDraftImages = draftImagesRef.current.map((image) =>
               image.id === draftImage.id
@@ -1740,8 +1736,8 @@ export function AgentComposer({
                     id: image.id,
                     name: image.name,
                     mimeType: image.mimeType,
-                    url: uploadedUrl,
-                    previewUrl: uploadedUrl,
+                    path: uploadedPath,
+                    previewUrl: image.previewUrl,
                     uploading: false
                   }
                 : image
@@ -1749,7 +1745,8 @@ export function AgentComposer({
             draftImagesRef.current = uploadedDraftImages;
             onDraftContentChange({
               prompt: draftPromptRef.current,
-              images: uploadedDraftImages
+              images: uploadedDraftImages,
+              files: draftFilesRef.current
             });
           })
           .catch((error: unknown) => {
@@ -1767,7 +1764,8 @@ export function AgentComposer({
             draftImagesRef.current = failedDraftImages;
             onDraftContentChange({
               prompt: draftPromptRef.current,
-              images: failedDraftImages
+              images: failedDraftImages,
+              files: draftFilesRef.current
             });
           });
       }
@@ -1796,7 +1794,115 @@ export function AgentComposer({
       draftImagesRef.current = nextDraftImages;
       onDraftContentChange({
         prompt: draftPromptRef.current,
-        images: nextDraftImages
+        images: nextDraftImages,
+        files: draftFilesRef.current
+      });
+    },
+    [onDraftContentChange]
+  );
+
+  const addDraftFiles = useCallback(
+    (attachments: readonly AgentComposerHostAttachment[]): void => {
+      if (attachments.length === 0) {
+        return;
+      }
+      const uploadPromptContent = agentActivityRuntime?.uploadPromptContent;
+      const nextFiles = attachments.map((attachment) => ({
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+        name: attachment.name,
+        mimeType: attachment.mimeType?.trim() || "application/octet-stream",
+        hostPath: attachment.hostPath,
+        uploading: Boolean(uploadPromptContent),
+        ...(uploadPromptContent
+          ? {}
+          : { uploadError: promptFileUploadUnsupportedError })
+      }));
+      const nextDraftFiles = [...draftFilesRef.current, ...nextFiles];
+      draftFilesRef.current = nextDraftFiles;
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: draftImagesRef.current,
+        files: nextDraftFiles
+      });
+      if (!uploadPromptContent) {
+        return;
+      }
+      for (const draftFile of nextFiles) {
+        void uploadPromptContent({
+          workspaceId,
+          content: [
+            {
+              type: "file",
+              mimeType: draftFile.mimeType,
+              hostPath: draftFile.hostPath,
+              name: draftFile.name,
+              kind: "file"
+            }
+          ]
+        })
+          .then((result) => {
+            const uploadedFile = result.content.find(
+              (block) => block.type === "file"
+            );
+            const uploadedPath = uploadedFile?.path?.trim() ?? "";
+            if (!uploadedPath) {
+              throw new Error("Prompt file upload completed without path.");
+            }
+            const uploadedDraftFiles = draftFilesRef.current.map((file) =>
+              file.id === draftFile.id
+                ? {
+                    id: file.id,
+                    name: uploadedFile?.name ?? file.name,
+                    mimeType: uploadedFile?.mimeType ?? file.mimeType,
+                    path: uploadedPath,
+                    hostPath: uploadedFile?.hostPath ?? file.hostPath,
+                    assetId: uploadedFile?.assetId,
+                    sizeBytes: uploadedFile?.sizeBytes,
+                    uploading: false
+                  }
+                : file
+            );
+            draftFilesRef.current = uploadedDraftFiles;
+            onDraftContentChange({
+              prompt: draftPromptRef.current,
+              images: draftImagesRef.current,
+              files: uploadedDraftFiles
+            });
+          })
+          .catch((error: unknown) => {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            const failedDraftFiles = draftFilesRef.current.map((file) =>
+              file.id === draftFile.id
+                ? {
+                    ...file,
+                    uploading: false,
+                    uploadError: message
+                  }
+                : file
+            );
+            draftFilesRef.current = failedDraftFiles;
+            onDraftContentChange({
+              prompt: draftPromptRef.current,
+              images: draftImagesRef.current,
+              files: failedDraftFiles
+            });
+          });
+      }
+    },
+    [agentActivityRuntime, onDraftContentChange, workspaceId]
+  );
+
+  const removeDraftFile = useCallback(
+    (id: string): void => {
+      const nextDraftFiles = draftFilesRef.current.filter(
+        (file) => file.id !== id
+      );
+      draftFilesRef.current = nextDraftFiles;
+      onDraftContentChange({
+        prompt: draftPromptRef.current,
+        images: draftImagesRef.current,
+        files: nextDraftFiles
       });
     },
     [onDraftContentChange]
@@ -1810,8 +1916,11 @@ export function AgentComposer({
       if (result.mentionItems.length > 0) {
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
+      if (result.hostAttachments && result.hostAttachments.length > 0) {
+        addDraftFiles(result.hostAttachments);
+      }
     },
-    []
+    [addDraftFiles]
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
@@ -2129,6 +2238,8 @@ export function AgentComposer({
   const hasDraftContent = agentComposerDraftHasContent(draftContent);
   const hasUploadingDraftImages = draftImages.some((image) => image.uploading);
   const hasFailedDraftImages = draftImages.some((image) => image.uploadError);
+  const hasUploadingDraftFiles = draftFiles.some((file) => file.uploading);
+  const hasFailedDraftFiles = draftFiles.some((file) => file.uploadError);
   const isQueueMode = canQueueWhileBusy && hasDraftContent;
   const shouldShowStopButton = showStopButton && !isQueueMode;
   const sendButtonState = isQueueMode
@@ -2155,6 +2266,7 @@ export function AgentComposer({
     draftImages.length === 0 && submittedImagePreview.length > 0;
   const visibleDraftImages =
     draftImages.length > 0 ? draftImages : submittedImagePreview;
+  const visibleDraftFiles = draftFiles;
 
   useEffect(() => {
     if (submittedImagePreview.length === 0) {
@@ -2398,6 +2510,55 @@ export function AgentComposer({
                     ))}
                   </div>
                 ) : null}
+                {visibleDraftFiles.length > 0 ? (
+                  <div
+                    className="mb-2 flex max-w-[520px] flex-wrap gap-2"
+                    data-testid="agent-gui-composer-file-drafts"
+                  >
+                    {visibleDraftFiles.map((file) => (
+                      <div
+                        key={file.id}
+                        className={cn(
+                          "group inline-flex max-w-full items-center gap-2 rounded-[6px] border border-[var(--line-1)] bg-[var(--background-fronted)] px-2 py-1 text-xs text-[var(--text-primary)]",
+                          file.uploadError &&
+                            "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
+                        )}
+                        data-uploading={file.uploading ? "true" : undefined}
+                        data-upload-error={
+                          file.uploadError ? "true" : undefined
+                        }
+                        title={file.hostPath ?? file.path ?? file.name}
+                      >
+                        {file.uploading ? (
+                          <Spinner
+                            className="shrink-0 text-[var(--text-primary)]"
+                            size={14}
+                            strokeWidth={2.4}
+                            trackColor="var(--transparency-hover)"
+                            testId="agent-gui-composer-file-upload-spinner"
+                          />
+                        ) : (
+                          <span
+                            className="size-2 shrink-0 rounded-full bg-[var(--text-tertiary)]"
+                            aria-hidden
+                          />
+                        )}
+                        <span className="min-w-0 max-w-[220px] truncate">
+                          {file.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[var(--text-secondary)] transition hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)]"
+                          aria-label={labels.removeMention}
+                          title={labels.removeMention}
+                          onClick={() => removeDraftFile(file.id)}
+                        >
+                          <X size={12} strokeWidth={2.4} aria-hidden />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <AgentRichTextEditor
                   ref={editorHandleRef}
                   value={paletteDraftPrompt}
@@ -2453,8 +2614,6 @@ export function AgentComposer({
                       onExpandGroup={(groupId) =>
                         mentionControllerRef.current?.expandGroup(groupId)
                       }
-                      onCycleFilter={cycleFileMentionFilter}
-                      onMoveSelection={moveFileMentionSelection}
                       onOpenReferences={
                         onRequestWorkspaceReferences
                           ? handleOpenReferencesForEntity
@@ -2728,6 +2887,8 @@ export function AgentComposer({
                     !hasDraftContent ||
                     hasUploadingDraftImages ||
                     hasFailedDraftImages ||
+                    hasUploadingDraftFiles ||
+                    hasFailedDraftFiles ||
                     sendButtonBusy
                   }
                   aria-label={labels.send}

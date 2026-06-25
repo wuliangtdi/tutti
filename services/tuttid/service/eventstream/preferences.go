@@ -45,6 +45,10 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			ThemeSource:         preferences.ThemeSource,
 			UpdateChannel:       preferences.UpdateChannel,
 			UpdatePolicy:        preferences.UpdatePolicy,
+			WorkbenchWindowSnapping: &desktopWorkbenchWindowSnappingPayload{
+				Enabled:        preferences.WindowSnappingEnabled,
+				ShortcutPreset: preferences.WindowSnappingShortcutPreset,
+			},
 		},
 	})
 	if err != nil {
@@ -79,6 +83,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			ThemeSource:                                 decoded.ThemeSource,
 			UpdateChannel:                               decoded.UpdateChannel,
 			UpdatePolicy:                                decoded.UpdatePolicy,
+			WindowSnapping:                              decoded.WindowSnapping,
 		})
 		if err != nil {
 			return fmt.Errorf("put desktop preferences: %w", err)
@@ -102,6 +107,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	ThemeSource                                 string
 	UpdateChannel                               string
 	UpdatePolicy                                string
+	WindowSnapping                              *preferencesservice.DesktopWindowSnappingInput
 }
 
 func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPreferencesMutationPayload, error) {
@@ -109,6 +115,14 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return decodedDesktopPreferencesMutationPayload{}, fmt.Errorf("decode payload: %w", err)
 	}
+	var windowSnapping *preferencesservice.DesktopWindowSnappingInput
+	if decoded.Preferences.WorkbenchWindowSnapping != nil {
+		windowSnapping = &preferencesservice.DesktopWindowSnappingInput{
+			Enabled:        decoded.Preferences.WorkbenchWindowSnapping.Enabled,
+			ShortcutPreset: decoded.Preferences.WorkbenchWindowSnapping.ShortcutPreset,
+		}
+	}
+
 	return decodedDesktopPreferencesMutationPayload{
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromPayload(
 			decoded.Preferences.AgentComposerDefaultsByProvider,
@@ -130,6 +144,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		ThemeSource:         decoded.Preferences.ThemeSource,
 		UpdateChannel:       decoded.Preferences.UpdateChannel,
 		UpdatePolicy:        decoded.Preferences.UpdatePolicy,
+		WindowSnapping:      windowSnapping,
 	}, nil
 }
 

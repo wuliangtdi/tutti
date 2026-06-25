@@ -12,7 +12,8 @@ test("workspace files contribution exposes file manager state through runtime an
     currentDirectoryPath: "/workspace/docs",
     navigationBackStack: ["/workspace"],
     navigationForwardStack: [],
-    schemaVersion: 2
+    selectedLocationId: null,
+    schemaVersion: 3
   };
   const service = createFileManagerServiceStub(snapshotState);
   const contribution = createWorkspaceFilesContribution({
@@ -65,7 +66,8 @@ test("workspace files contribution passes restored state to the node body render
     currentDirectoryPath: "/workspace/docs",
     navigationBackStack: [],
     navigationForwardStack: ["/workspace/archive"],
-    schemaVersion: 2
+    selectedLocationId: null,
+    schemaVersion: 3
   };
   let capturedState: WorkspaceFileManagerPersistedState | null = null;
   const contribution = createWorkspaceFilesContribution({

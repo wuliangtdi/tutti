@@ -164,8 +164,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -328,8 +326,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -387,20 +383,17 @@ describe("AgentFileMentionPalette", () => {
     );
     const selectedOption = screen.getByRole("option", { selected: true });
     expect(selectedOption).toHaveClass(
-      "rounded-[6px]",
-      "bg-[var(--transparency-block)]"
+      "rich-text-at-mention-palette__row-button"
     );
+    expect(selectedOption).toHaveAttribute("data-highlighted");
     const sessionRow = selectedOption.querySelector(
-      ".grid-cols-\\[minmax\\(0\\,1fr\\)_auto\\]"
+      ".rich-text-at-mention-row--session"
     );
     expect(sessionRow).toHaveClass(
-      "grid",
-      "w-full",
-      "min-w-0",
-      "items-center",
-      "gap-3"
+      "rich-text-at-mention-row",
+      "rich-text-at-mention-row--session"
     );
-    expect(statusTags[0]).toHaveClass("shrink-0");
+    expect(statusTags[0]).toHaveClass("rich-text-at-mention-status");
     const userAvatarImage = selectedOption.querySelector(
       '[data-agent-mention-user-avatar="true"] img'
     );
@@ -413,9 +406,15 @@ describe("AgentFileMentionPalette", () => {
     const agentAvatar = selectedOption.querySelector(
       '[data-agent-mention-agent-avatar="true"]'
     );
-    expect(avatarStack).toHaveClass("h-5", "w-9");
-    expect(userAvatar).toHaveClass("h-5", "w-5");
-    expect(agentAvatar).toHaveClass("left-4", "h-5", "w-5");
+    expect(avatarStack).toHaveClass("rich-text-at-mention-avatar-stack");
+    expect(userAvatar).toHaveClass(
+      "rich-text-at-mention-avatar",
+      "rich-text-at-mention-avatar--user"
+    );
+    expect(agentAvatar).toHaveClass(
+      "rich-text-at-mention-avatar",
+      "rich-text-at-mention-avatar--agent"
+    );
     expect(userAvatarImage).toHaveAttribute(
       "src",
       expect.stringContaining("user-avatar-placeholder")
@@ -472,8 +471,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -533,8 +530,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -544,22 +539,12 @@ describe("AgentFileMentionPalette", () => {
       '[data-agent-mention-status-tag="true"]'
     );
 
-    expect(option).toHaveClass("min-w-0", "overflow-hidden");
-    expect(title).toHaveClass(
-      "min-w-0",
-      "truncate",
-      "text-[13px]",
-      "text-[var(--text-primary)]"
-    );
-    expect(title.parentElement).toHaveClass(
-      "min-w-0",
-      "items-center",
-      "gap-2",
-      "overflow-hidden"
-    );
+    expect(option).toHaveClass("rich-text-at-mention-palette__row-button");
+    expect(title).toHaveClass("rich-text-at-mention-row__title");
+    expect(title.parentElement).toHaveClass("rich-text-at-mention-row__inline");
     expect(title.parentElement?.parentElement).toHaveClass(
-      "min-w-0",
-      "overflow-hidden"
+      "rich-text-at-mention-row__text-stack",
+      "rich-text-at-mention-row__text-stack--fill"
     );
     expect(statusTag).toHaveAttribute("data-slot", "badge");
     expect(statusTag).toHaveClass("shrink-0");
@@ -612,8 +597,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -648,8 +631,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -687,8 +668,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -748,8 +727,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -821,8 +798,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -876,8 +851,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -915,8 +888,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -949,12 +920,12 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
-    expect(screen.getByRole("listbox")).toHaveClass("max-h-[320px]");
+    expect(screen.getByRole("listbox")).toHaveClass(
+      "rich-text-at-mention-palette__shell"
+    );
     expect(
       screen.queryByTestId("agent-gui-mention-palette-scrollbar")
     ).toBeNull();
@@ -1004,8 +975,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1059,8 +1028,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1121,8 +1088,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1184,8 +1149,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1242,8 +1205,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1257,19 +1218,13 @@ describe("AgentFileMentionPalette", () => {
     );
     expect(dividers).toHaveLength(1);
     expect(dividers[0]).toHaveClass(
-      "mx-3",
-      "border-t",
-      "border-[var(--line-1)]"
+      "rich-text-at-mention-palette__group-divider"
     );
     expect(screen.getByText("任务")).toHaveClass(
-      "text-[13px]",
-      "font-normal",
-      "text-[var(--text-secondary)]"
+      "rich-text-at-mention-palette__group-label"
     );
     expect(screen.getByText("暂无任务")).toHaveClass(
-      "text-[13px]",
-      "font-normal",
-      "text-[var(--text-tertiary)]"
+      "rich-text-at-mention-palette__group-empty"
     );
   });
 
@@ -1319,8 +1274,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1331,33 +1284,23 @@ describe("AgentFileMentionPalette", () => {
     ).toHaveAttribute("src", "data:image/png;base64,automation");
     expect(
       document.querySelector('[data-agent-mention-app-icon="true"]')
-    ).toHaveClass("h-5", "w-5");
+    ).toHaveClass("rich-text-at-mention-app-icon");
     expect(
       screen.getByText(
         "Schedule and review recurring automation runs for this workspace."
       )
     ).toBeVisible();
     expect(screen.getByText("Automation").parentElement).toHaveClass(
-      "flex",
-      "items-baseline",
-      "gap-1"
+      "rich-text-at-mention-row__app-text"
     );
     expect(screen.getByText("Automation")).toHaveClass(
-      "text-[13px]",
-      "text-[var(--text-primary)]",
-      "max-w-[40%]",
-      "shrink-0"
+      "rich-text-at-mention-row__app-name"
     );
     expect(
       screen.getByText(
         "Schedule and review recurring automation runs for this workspace."
       )
-    ).toHaveClass(
-      "text-[13px]",
-      "font-normal",
-      "truncate",
-      "text-[var(--text-secondary)]"
-    );
+    ).toHaveClass("rich-text-at-mention-row__app-description");
     expect(screen.queryByText("automation")).toBeNull();
     expect(
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []
@@ -1374,7 +1317,7 @@ describe("AgentFileMentionPalette", () => {
     // (product tokens, never raw shadcn tokens) stays enforced.
     const rowSource = readFileSync(
       resolve(
-        "node_modules/@tutti-os/ui-rich-text/src/at-panel/MentionRow.tsx"
+        "node_modules/@tutti-os/ui-rich-text/src/at-panel/mentionPalette.css"
       ),
       "utf8"
     );
@@ -1385,8 +1328,8 @@ describe("AgentFileMentionPalette", () => {
     expect(source).toContain("text-[var(--text-tertiary)]");
     expect(rowSource).not.toContain("text-foreground");
     expect(rowSource).not.toContain("text-muted-foreground");
-    expect(rowSource).toContain("text-[var(--text-primary)]");
-    expect(rowSource).toContain("text-[var(--text-secondary)]");
+    expect(rowSource).toContain("--rich-text-at-mention-text-primary");
+    expect(rowSource).toContain("--rich-text-at-mention-text-secondary");
   });
 
   it("shows only loading while browse results are refreshing", () => {
@@ -1436,8 +1379,6 @@ describe("AgentFileMentionPalette", () => {
         onSelectCategory={vi.fn()}
         onSelectFilter={vi.fn()}
         onExpandGroup={vi.fn()}
-        onCycleFilter={vi.fn()}
-        onMoveSelection={vi.fn()}
       />
     );
 
@@ -1474,8 +1415,9 @@ describe("AgentFileMentionPalette", () => {
       ],
       error: null
     };
-    const onCycleFilter = vi.fn();
-    const onMoveSelection = vi.fn();
+    const onHighlightChange = vi.fn();
+    const onSelectCategory = vi.fn();
+    const onSelectFilter = vi.fn();
 
     render(
       <AgentFileMentionPalette
@@ -1487,25 +1429,30 @@ describe("AgentFileMentionPalette", () => {
         errorLabel="error"
         tabHintLabel="hint"
         maxHeightPx={320}
-        onHighlightChange={vi.fn()}
+        onHighlightChange={onHighlightChange}
         onSelectItem={vi.fn()}
-        onSelectCategory={vi.fn()}
-        onSelectFilter={vi.fn()}
+        onSelectCategory={onSelectCategory}
+        onSelectFilter={onSelectFilter}
         onExpandGroup={vi.fn()}
-        onCycleFilter={onCycleFilter}
-        onMoveSelection={onMoveSelection}
       />
     );
 
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
 
-    fireEvent.click(within(hint).getByRole("button", { name: "切换分类" }));
+    fireEvent.click(within(hint).getByRole("button", { name: "Tab 切换分类" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↓ 切换选中" }));
 
-    expect(onCycleFilter).toHaveBeenCalledTimes(1);
-    expect(onMoveSelection).toHaveBeenNthCalledWith(1, -1);
-    expect(onMoveSelection).toHaveBeenNthCalledWith(2, 1);
+    expect(onSelectCategory).toHaveBeenCalledWith("issue");
+    expect(onSelectFilter).toHaveBeenCalledWith("issue");
+    expect(onHighlightChange).toHaveBeenNthCalledWith(
+      1,
+      "opened_files:file:/workspace/assets/demo.png"
+    );
+    expect(onHighlightChange).toHaveBeenNthCalledWith(
+      2,
+      "opened_files:file:/workspace/assets/demo.png"
+    );
   });
 
   it("keeps the shortcut hint visible in constrained mention panels", () => {
@@ -1824,11 +1771,22 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps composer chrome notices inset by 24px", () => {
+  it("keeps non-hero chrome notices inset by 8px", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-chrome__session-chrome\s*{[^}]*margin:\s*0 8px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
+    );
+  });
+
+  it("keeps new conversation hero composer chrome notices inset by 24px", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-input-group-hero\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
     );
   });
 
@@ -1846,11 +1804,14 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("keeps composer danger chrome outlined through the bottom edge", () => {
+  it("keeps composer danger chrome open through the bottom edge", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s*\)\s*>\s*\.agent-gui-chrome__card--danger\s*{[^}]*border-bottom:\s*1px solid\s+color-mix\(\s*in srgb,\s*var\(--status-danger,\s*var\(--state-danger\)\)\s*16%,\s*transparent\s*\)/s
+      /\.agent-gui-chrome__card--danger\s*{[^}]*border-bottom:\s*0/s
+    );
+    expect(css).not.toMatch(
+      /\.agent-gui-node__empty-hero-body\s*>\s*\.agent-gui-chrome__session-chrome\s*>\s*\.agent-gui-chrome__card--danger,[\s\S]*?border-bottom:\s*1px solid/s
     );
   });
 
@@ -1861,10 +1822,10 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*36px[^}]*margin-left:\s*36px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*16px[^}]*margin-left:\s*16px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
     );
   });
 

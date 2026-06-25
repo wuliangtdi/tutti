@@ -16,13 +16,16 @@ import {
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
+  defaultDesktopWorkbenchWindowSnapping,
   mergeDesktopAgentComposerDefaultsByProvider,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaults,
   normalizeDesktopAgentComposerDefaultsByProvider,
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
+  normalizeDesktopWorkbenchWindowSnapping,
   desktopFileDefaultOpenersByExtensionEqual,
+  desktopWorkbenchWindowSnappingEqual,
   type DesktopAgentComposerDefaults,
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentGuiConversationRailCollapsedByProvider,
@@ -35,7 +38,8 @@ import {
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
-  type DesktopUpdatePolicy
+  type DesktopUpdatePolicy,
+  type DesktopWorkbenchWindowSnapping
 } from "../../../../../../shared/preferences/index.ts";
 
 export interface DesktopPreferencesServiceDependencies {
@@ -74,7 +78,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       sleepPreventionMode: defaultDesktopSleepPreventionMode,
       theme: this.dependencies.initialTheme,
       updateChannel: defaultDesktopUpdateChannel,
-      updatePolicy: defaultDesktopUpdatePolicy
+      updatePolicy: defaultDesktopUpdatePolicy,
+      workbenchWindowSnapping: defaultDesktopWorkbenchWindowSnapping
     });
     this.unsubscribePreferencesUpdates =
       this.dependencies.client.subscribeToDesktopPreferencesUpdated(
@@ -321,6 +326,49 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async setWorkbenchWindowSnapping(
+    value: DesktopWorkbenchWindowSnapping
+  ): Promise<DesktopWorkbenchWindowSnapping> {
+    const nextValue = normalizeDesktopWorkbenchWindowSnapping(value);
+    if (
+      this.store.changingWorkbenchWindowSnapping &&
+      desktopWorkbenchWindowSnappingEqual(
+        this.store.changingWorkbenchWindowSnapping,
+        nextValue
+      )
+    ) {
+      return nextValue;
+    }
+
+    const previousValue = this.store.workbenchWindowSnapping;
+    this.store.changingWorkbenchWindowSnapping = nextValue;
+    this.store.workbenchWindowSnapping = nextValue;
+    try {
+      const authoritativePreferences =
+        await this.dependencies.client.updateDesktopPreferences({
+          preferences: this.currentPreferences({
+            workbenchWindowSnapping: nextValue
+          })
+        });
+      return normalizeDesktopWorkbenchWindowSnapping(
+        authoritativePreferences.workbenchWindowSnapping
+      );
+    } catch (error) {
+      this.store.workbenchWindowSnapping = previousValue;
+      throw error;
+    } finally {
+      if (
+        this.store.changingWorkbenchWindowSnapping &&
+        desktopWorkbenchWindowSnappingEqual(
+          this.store.changingWorkbenchWindowSnapping,
+          nextValue
+        )
+      ) {
+        this.store.changingWorkbenchWindowSnapping = null;
+      }
+    }
+  }
+
   async setThemeSource(source: DesktopThemeSource): Promise<DesktopThemeState> {
     if (this.store.changingThemeSource === source) {
       return this.store.theme;
@@ -558,6 +606,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
+    workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void {
     this.store.agentComposerDefaultsByProvider =
       normalizeDesktopAgentComposerDefaultsByProvider(
@@ -586,6 +635,10 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
     this.store.updateChannel = preferences.updateChannel;
     this.store.updatePolicy = preferences.updatePolicy;
+    this.store.workbenchWindowSnapping =
+      normalizeDesktopWorkbenchWindowSnapping(
+        preferences.workbenchWindowSnapping
+      );
   }
 
   private currentPreferences(
@@ -604,6 +657,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       themeSource: DesktopThemeSource;
       updateChannel: DesktopUpdateChannel;
       updatePolicy: DesktopUpdatePolicy;
+      workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
     }> = {}
   ): {
     agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
@@ -620,7 +674,13 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     themeSource: DesktopThemeSource;
     updateChannel: DesktopUpdateChannel;
     updatePolicy: DesktopUpdatePolicy;
+    workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   } {
+    const hasWorkbenchWindowSnappingOverride =
+      "workbenchWindowSnapping" in overrides;
+    const workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
+      overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
+    );
     return {
       agentComposerDefaultsByProvider:
         normalizeDesktopAgentComposerDefaultsByProvider(
@@ -653,7 +713,14 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
       themeSource: overrides.themeSource ?? this.store.theme.source,
       updateChannel: overrides.updateChannel ?? this.store.updateChannel,
-      updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy
+      updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy,
+      ...(hasWorkbenchWindowSnappingOverride ||
+      !desktopWorkbenchWindowSnappingEqual(
+        workbenchWindowSnapping,
+        defaultDesktopWorkbenchWindowSnapping
+      )
+        ? { workbenchWindowSnapping }
+        : {})
     };
   }
 }

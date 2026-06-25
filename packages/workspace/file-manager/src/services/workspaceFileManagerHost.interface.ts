@@ -4,6 +4,7 @@ import type {
   WorkspaceFileEntryKind,
   WorkspaceFileManagerFileDefaultOpener,
   WorkspaceFileOpenWithApplication,
+  WorkspaceFileLocationSection,
   WorkspaceFileSearchInput,
   WorkspaceFileSearchResult
 } from "./workspaceFileManagerTypes.ts";
@@ -34,6 +35,10 @@ export interface WorkspaceFileManagerHost {
       workspaceID: string;
     }
   ): Promise<WorkspaceFileSearchResult>;
+  listRecentEntries?(input: {
+    limit?: number;
+    workspaceID: string;
+  }): Promise<WorkspaceFileDirectoryListing>;
   createDirectory?(input: {
     path: string;
     workspaceID: string;
@@ -123,6 +128,8 @@ export interface CreateWorkspaceFileManagerSessionInput {
   i18n: WorkspaceFileManagerI18nRuntime;
   host: WorkspaceFileManagerHost;
   initialDirectoryPath?: string;
+  defaultLocationId?: string | null;
+  locationSections?: WorkspaceFileLocationSection[];
   onHostActionMessage?: (
     message: WorkspaceFileManagerHostActionMessage
   ) => void;

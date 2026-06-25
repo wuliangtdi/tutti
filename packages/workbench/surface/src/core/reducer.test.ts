@@ -5,6 +5,7 @@ import {
   reduceWorkbenchState
 } from "./reducer.ts";
 import {
+  selectFocusedVisibleWorkbenchNode,
   selectFocusedWorkbenchNode,
   selectFullscreenNodeToExitBeforeDockLaunch
 } from "./selectors.ts";
@@ -41,6 +42,22 @@ test("opens, focuses, minimizes, and restores nodes", (t) => {
     state.nodes.find((node) => node.id === "a")?.minimizedAtUnixMs,
     null
   );
+});
+
+test("selects the focused visible node when the stack top is minimized", () => {
+  const state = createWorkbenchInitialState({
+    nodes: [
+      makeNode("a"),
+      {
+        ...makeNode("b"),
+        isMinimized: true
+      }
+    ],
+    nodeStack: ["a", "b"]
+  });
+
+  assert.equal(selectFocusedWorkbenchNode(state)?.id, "b");
+  assert.equal(selectFocusedVisibleWorkbenchNode(state)?.id, "a");
 });
 
 test("tracks active resize node separately from active drag node", () => {
@@ -474,6 +491,54 @@ test("applies a batch layout preset without touching unselected nodes", () => {
     height: 220
   });
   assert.deepEqual(state.nodeStack.slice(-3), ["a", "c", "b"]);
+});
+
+test("applies a visible layout preset without restoring minimized nodes", () => {
+  let state = createWorkbenchInitialState({
+    surfaceSize: { width: 1000, height: 700 },
+    layoutConstraints: {
+      minWidth: 220,
+      minHeight: 160,
+      surfacePadding: 0,
+      safeArea: { top: 52, right: 0, bottom: 64, left: 0 }
+    },
+    nodes: [
+      makeNode("a"),
+      makeNode("b", { x: 120, y: 96, width: 360, height: 240 }),
+      {
+        ...makeNode("c", { x: 240, y: 140, width: 420, height: 280 }),
+        isMinimized: true,
+        minimizedAtUnixMs: 1720000000000
+      }
+    ],
+    nodeStack: ["a", "b", "c"]
+  });
+
+  state = reduceWorkbenchState(state, {
+    type: "applyVisibleLayoutPreset",
+    preset: { kind: "row" }
+  });
+
+  assert.deepEqual(state.nodes.find((node) => node.id === "a")?.frame, {
+    x: 0,
+    y: 52,
+    width: 494,
+    height: 584
+  });
+  assert.deepEqual(state.nodes.find((node) => node.id === "b")?.frame, {
+    x: 506,
+    y: 52,
+    width: 494,
+    height: 584
+  });
+  assert.deepEqual(state.nodes.find((node) => node.id === "c")?.frame, {
+    x: 240,
+    y: 140,
+    width: 420,
+    height: 280
+  });
+  assert.equal(state.nodes.find((node) => node.id === "c")?.isMinimized, true);
+  assert.deepEqual(state.nodeStack.slice(-2), ["a", "b"]);
 });
 
 test("enforces node size constraints when resizing and updating constraints", () => {

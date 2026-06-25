@@ -1,21 +1,29 @@
 import { useCallback } from "react";
-import { inferWorkbenchSnapTarget } from "../../core/geometry.ts";
+import {
+  inferWorkbenchSnapTarget,
+  WORKBENCH_EDGE_SNAP_THRESHOLD_PX
+} from "../../core/geometry.ts";
 import type { WorkbenchSnapTarget } from "../../core/types.ts";
 import { useWorkbenchController } from "../WorkbenchProvider.tsx";
+import { resolveWorkbenchActiveSnapTarget } from "./workbenchSnapTarget.ts";
 
 export function useWorkbenchSnap<TData = unknown>() {
   const controller = useWorkbenchController<TData>();
 
   return useCallback(
-    (pointerClientY: number): WorkbenchSnapTarget => {
+    (
+      pointerClientPoint: { x: number; y: number },
+      options: { edgeSnapEnabled?: boolean } = {}
+    ): WorkbenchSnapTarget => {
       const target = inferWorkbenchSnapTarget(
-        { y: pointerClientY },
+        pointerClientPoint,
         controller.getSnapshot().surfaceSize,
-        undefined,
+        options.edgeSnapEnabled ? WORKBENCH_EDGE_SNAP_THRESHOLD_PX : 0,
         controller.getSnapshot().layoutConstraints
       );
-      controller.commands.setActiveSnapTarget(target);
-      return target;
+      const activeTarget = resolveWorkbenchActiveSnapTarget(target, options);
+      controller.commands.setActiveSnapTarget(activeTarget);
+      return activeTarget;
     },
     [controller]
   );

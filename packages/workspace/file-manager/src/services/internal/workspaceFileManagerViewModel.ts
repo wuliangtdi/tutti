@@ -3,9 +3,14 @@ import {
   normalizeWorkspaceFilePath,
   resolveWorkspaceFileActivationTarget
 } from "../workspaceFileManagerModel.ts";
+import {
+  findWorkspaceFileLocationById,
+  isWorkspaceFileRecentLocation
+} from "../workspaceFileManagerLocations.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileSearchEntry,
   WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
 import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
@@ -14,16 +19,21 @@ export interface WorkspaceFileManagerRootViewState {
   canImportFromDrop: boolean;
   currentDirectoryPath: string;
   isBusy: boolean;
+  locationSections: WorkspaceFileManagerState["locationSections"];
+  selectedLocationId: string | null;
 }
 
 export interface WorkspaceFileManagerToolbarViewState {
   breadcrumbs: Array<{ label: string; path: string }>;
+  canSearch: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   currentDirectoryPath: string;
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
+  isSearching: boolean;
+  searchQuery: string;
   isImporting: boolean;
   showImportAction: boolean;
 }
@@ -33,12 +43,17 @@ export interface WorkspaceFileManagerPanelsViewState {
   contextMenuEntryPath: string | null;
   entries: readonly WorkspaceFileEntry[];
   error: string | null;
+  isSearchMode: boolean;
   inlineRenameEntryPath: string | null;
   inlineRenameValidation: WorkspaceFileManagerState["inlineRenameValidation"];
   isLoading: boolean;
   isRenaming: boolean;
+  isSearching: boolean;
   pendingDirectoryPath: string | null;
   previewState: WorkspaceFileManagerState["previewState"];
+  searchEntries: readonly WorkspaceFileSearchEntry[];
+  searchError: string | null;
+  searchQuery: string;
   selectedEntry: WorkspaceFileEntry | null;
   selectedPath: string | null;
   showDropOverlay: boolean;
@@ -76,7 +91,9 @@ export interface WorkspaceFileManagerContextMenuViewState {
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
+  showCreateAction: boolean;
   showCopyAction: boolean;
+  showDeleteAction: boolean;
   showExportAction: boolean;
   showImportAction: boolean;
   showMoveAction: boolean;
@@ -93,10 +110,22 @@ export function resolveWorkspaceFileManagerRootViewState(input: {
   state: WorkspaceFileManagerState;
 }): WorkspaceFileManagerRootViewState {
   const { state } = input;
+  const isRecentLocation = isWorkspaceFileRecentLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
+  const isSearchMode = state.searchQuery.trim().length > 0;
   return {
-    canImportFromDrop: state.capabilities.canImportFromDrop,
+    canImportFromDrop:
+      state.capabilities.canImportFromDrop &&
+      !isRecentLocation &&
+      !isSearchMode,
     currentDirectoryPath: state.currentDirectoryPath,
-    isBusy: state.busyAction !== null
+    isBusy: state.busyAction !== null,
+    locationSections: state.locationSections,
+    selectedLocationId: state.selectedLocationId
   };
 }
 
@@ -115,6 +144,7 @@ export function resolveWorkspaceFileManagerToolbarViewState(input: {
       copy.t("breadcrumbRootLabel"),
       state.root
     ),
+    canSearch: state.capabilities.canSearch,
     canGoBack:
       currentDirectoryPath !== normalizeWorkspaceFilePath(state.root) &&
       state.navigationBackStack.length > 0,
@@ -123,6 +153,8 @@ export function resolveWorkspaceFileManagerToolbarViewState(input: {
     isBusy: state.busyAction !== null,
     isLoading: state.isLoading,
     isMutating: state.isMutating,
+    isSearching: state.isSearching,
+    searchQuery: state.searchQuery,
     isImporting: state.busyAction === "import",
     showImportAction: state.capabilities.canImportFromPicker
   };
@@ -132,17 +164,28 @@ export function resolveWorkspaceFileManagerPanelsViewState(input: {
   state: WorkspaceFileManagerState;
 }): WorkspaceFileManagerPanelsViewState {
   const { state } = input;
+  const isRecentLocation = isWorkspaceFileRecentLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
   return {
-    canMove: state.capabilities.canMove,
+    canMove: state.capabilities.canMove && !isRecentLocation,
     contextMenuEntryPath: state.contextMenuEntryPath,
     entries: state.entries,
     error: state.error,
+    isSearchMode: state.searchQuery.trim().length > 0,
     inlineRenameEntryPath: state.inlineRenameEntryPath,
     inlineRenameValidation: state.inlineRenameValidation,
     isLoading: state.isLoading,
     isRenaming: state.busyAction === "rename",
+    isSearching: state.isSearching,
     pendingDirectoryPath: state.pendingDirectoryPath,
     previewState: state.previewState,
+    searchEntries: state.searchEntries,
+    searchError: state.searchError,
+    searchQuery: state.searchQuery,
     selectedEntry: findSelectedEntry(state),
     selectedPath: state.selectedPath,
     showDropOverlay:
@@ -187,6 +230,13 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
   state: WorkspaceFileManagerState;
 }): WorkspaceFileManagerContextMenuViewState {
   const { state } = input;
+  const isRecentLocation = isWorkspaceFileRecentLocation(
+    findWorkspaceFileLocationById(
+      state.locationSections,
+      state.selectedLocationId
+    )
+  );
+  const isSearchMode = state.searchQuery.trim().length > 0;
   const contextMenuEntry = state.contextMenu?.entryPath
     ? findEntry(state, state.contextMenu.entryPath)
     : null;
@@ -204,10 +254,21 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     isBusy: state.busyAction !== null,
     isLoading: state.isLoading,
     isMutating: state.isMutating,
+    showCreateAction:
+      !isRecentLocation &&
+      !isSearchMode &&
+      (state.capabilities.canCreateDirectory ||
+        state.capabilities.canCreateFile),
     showCopyAction: state.capabilities.canCopy,
+    showDeleteAction:
+      state.capabilities.canDelete && !isRecentLocation && !isSearchMode,
     showExportAction: state.capabilities.canExport,
-    showImportAction: state.capabilities.canImportFromPicker,
-    showMoveAction: state.capabilities.canMove,
+    showImportAction:
+      state.capabilities.canImportFromPicker &&
+      !isRecentLocation &&
+      !isSearchMode,
+    showMoveAction:
+      state.capabilities.canMove && !isRecentLocation && !isSearchMode,
     showOpenInAppBrowserAction: state.capabilities.canOpenInAppBrowser,
     showOpenInDefaultBrowserAction: state.capabilities.canOpenInDefaultBrowser,
     showOpenInFileViewerAction:
@@ -218,7 +279,8 @@ export function resolveWorkspaceFileManagerContextMenuViewState(input: {
     showOpenWithOtherAction:
       state.capabilities.canPickOtherOpenWithApplication && isContextMenuFile,
     showRevealInFolderAction: state.capabilities.canRevealInFolder,
-    showRenameAction: state.capabilities.canRename
+    showRenameAction:
+      state.capabilities.canRename && !isRecentLocation && !isSearchMode
   };
 }
 

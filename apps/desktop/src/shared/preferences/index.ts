@@ -9,6 +9,7 @@ export {
   defaultDesktopSleepPreventionMode,
   defaultDesktopUpdateChannel,
   defaultDesktopUpdatePolicy,
+  defaultDesktopWorkbenchWindowSnapping,
   desktopAgentComposerDefaultsByProviderEqual,
   desktopAgentComposerDefaultsEqual,
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
@@ -23,6 +24,8 @@ export {
   desktopSleepPreventionModes,
   desktopUpdateChannels,
   desktopUpdatePolicies,
+  desktopWorkbenchWindowSnappingEqual,
+  desktopWorkbenchWindowSnappingShortcutPresets,
   isDesktopAgentProvider,
   isDesktopAppCatalogChannel,
   isDesktopBrowserUseConnectionMode,
@@ -33,6 +36,7 @@ export {
   isDesktopSleepPreventionMode,
   isDesktopUpdateChannel,
   isDesktopUpdatePolicy,
+  isDesktopWorkbenchWindowSnappingShortcutPreset,
   mergeDesktopAgentComposerDefaultsByProvider,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopAgentComposerDefaults,
@@ -40,6 +44,7 @@ export {
   normalizeDesktopFileDefaultOpenersByExtension,
   normalizeDesktopFileExtension,
   normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
+  normalizeDesktopWorkbenchWindowSnapping,
   readInitialDockPlacementFromLocation,
   type DesktopAgentComposerDefaults,
   type DesktopAgentComposerDefaultsByProvider,
@@ -54,5 +59,7 @@ export {
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
-  type DesktopUpdatePolicy
+  type DesktopUpdatePolicy,
+  type DesktopWorkbenchWindowSnapping,
+  type DesktopWorkbenchWindowSnappingShortcutPreset
 } from "./core.ts";

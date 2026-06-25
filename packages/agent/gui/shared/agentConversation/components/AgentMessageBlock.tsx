@@ -7,7 +7,7 @@ import {
   type JSX,
   type ReactNode
 } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, LoaderCircle } from "lucide-react";
 import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import { Button } from "../../../app/renderer/components/ui/button";
 import { AgentPlanCard } from "./AgentPlanCard";
@@ -36,6 +36,9 @@ import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles"
 import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentation/renderer/components/shared/CanvasNodeGhostIconButton";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
+const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
+const TRANSPORT_RETRY_PROGRESS_PATTERN =
+  /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -292,7 +295,8 @@ function AgentUserImageGrid({
 }): JSX.Element {
   "use memo";
   const images = message.images ?? [];
-  const loadedImages = useAgentMessageImageSources(images);
+  const { loadingIds, sources: loadedImages } =
+    useAgentMessageImageSources(images);
   const columnCount = Math.min(Math.max(images.length, 1), 4);
   return (
     <div
@@ -301,6 +305,7 @@ function AgentUserImageGrid({
     >
       {images.map((image) => {
         const src = loadedImages.get(image.id) ?? imageDataUrl(image);
+        const loading = !src && loadingIds.has(image.id);
         return (
           <div
             key={image.id}
@@ -313,6 +318,17 @@ function AgentUserImageGrid({
                 className="size-full object-cover"
                 draggable={false}
               />
+            ) : loading ? (
+              <div
+                className="flex size-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
+                data-testid="agent-gui-message-image-loading"
+              >
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
+                  strokeWidth={2}
+                />
+              </div>
             ) : (
               <div className="size-full animate-pulse bg-[color-mix(in_srgb,var(--text-primary)_8%,transparent)]" />
             )}
@@ -323,11 +339,13 @@ function AgentUserImageGrid({
   );
 }
 
-function useAgentMessageImageSources(
-  images: readonly AgentMessageImageVM[]
-): ReadonlyMap<string, string> {
+function useAgentMessageImageSources(images: readonly AgentMessageImageVM[]): {
+  loadingIds: ReadonlySet<string>;
+  sources: ReadonlyMap<string, string>;
+} {
   const runtime = getOptionalAgentActivityRuntime();
   const [sources, setSources] = useState<Map<string, string>>(() => new Map());
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
   const missingImages = useMemo(
     () =>
       images.filter(
@@ -336,23 +354,45 @@ function useAgentMessageImageSources(
           !sources.has(image.id) &&
           image.workspaceId &&
           image.agentSessionId &&
-          image.attachmentId
+          (image.attachmentId || image.path)
       ),
     [images, sources]
   );
 
   useEffect(() => {
-    if (!runtime?.readSessionAttachment || missingImages.length === 0) {
+    if (
+      (!runtime?.readSessionAttachment && !runtime?.readPromptAsset) ||
+      missingImages.length === 0
+    ) {
       return;
     }
     let canceled = false;
     for (const image of missingImages) {
-      void runtime
-        .readSessionAttachment({
-          workspaceId: image.workspaceId ?? "",
-          agentSessionId: image.agentSessionId,
-          attachmentId: image.attachmentId ?? ""
-        })
+      const readImage = image.attachmentId
+        ? runtime.readSessionAttachment?.({
+            workspaceId: image.workspaceId ?? "",
+            agentSessionId: image.agentSessionId,
+            attachmentId: image.attachmentId ?? ""
+          })
+        : runtime.readPromptAsset?.({
+            workspaceId: image.workspaceId ?? "",
+            agentSessionId: image.agentSessionId,
+            mimeType: image.mimeType,
+            name: image.name,
+            path: image.path
+          });
+      if (!readImage) {
+        continue;
+      }
+      setLoadingIds((current) => {
+        if (current.has(image.id)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(image.id);
+        return next;
+      });
+      void readImage
         .then((attachment) => {
           if (canceled) {
             return;
@@ -369,14 +409,27 @@ function useAgentMessageImageSources(
             return next;
           });
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          if (canceled) {
+            return;
+          }
+          setLoadingIds((current) => {
+            if (!current.has(image.id)) {
+              return current;
+            }
+            const next = new Set(current);
+            next.delete(image.id);
+            return next;
+          });
+        });
     }
     return () => {
       canceled = true;
     };
   }, [missingImages, runtime]);
 
-  return sources;
+  return { loadingIds, sources };
 }
 
 function imageDataUrl(image: AgentMessageImageVM): string | null {
@@ -396,6 +449,36 @@ function AgentSystemNoticeMessage({
   "use memo";
   const notice = message.systemNotice;
   const detail = notice?.detail?.trim() ?? "";
+  const title = systemNoticeTitle(message);
+  if (notice?.noticeKind === "transport_retry") {
+    const retryText = transportRetryNoticeText(message);
+    return (
+      <div
+        role="status"
+        className="box-border w-full min-w-0 py-1 text-[13px] leading-5 text-[var(--text-primary)]"
+      >
+        {retryText}
+      </div>
+    );
+  }
+  if (isContextCompactionNotice(message, title)) {
+    return (
+      <div
+        role="status"
+        className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+      >
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+        <span className="shrink-0 whitespace-nowrap">{title}</span>
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+      </div>
+    );
+  }
   const isWarning =
     notice?.severity === "warning" || notice?.severity === "error";
   return (
@@ -404,14 +487,46 @@ function AgentSystemNoticeMessage({
       className="box-border w-full min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)] p-3 text-[13px] leading-5 text-[var(--text-primary)]"
     >
       <div className="min-w-0">
-        <div className="font-medium text-[var(--text-primary)]">
-          {systemNoticeTitle(message)}
-        </div>
+        <div className="font-medium text-[var(--text-primary)]">{title}</div>
         {detail ? (
           <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
         ) : null}
       </div>
     </section>
+  );
+}
+
+function transportRetryNoticeText(message: AgentMessageContentVM): string {
+  const notice = message.systemNotice;
+  const detail = notice?.detail?.trim() ?? "";
+  const progressText =
+    transportRetryProgressText(detail) ??
+    transportRetryProgressText(notice?.title ?? "") ??
+    transportRetryProgressText(message.body);
+  if (progressText) {
+    return progressText;
+  }
+  return (
+    notice?.title?.trim() ||
+    message.body.trim() ||
+    translate("agentHost.agentGui.systemNoticeTransportRetry")
+  );
+}
+
+function transportRetryProgressText(value: string): string | null {
+  const match = TRANSPORT_RETRY_PROGRESS_PATTERN.exec(value.trim());
+  return match?.[1]?.replace(/\s+/g, " ").trim() || null;
+}
+
+function isContextCompactionNotice(
+  message: AgentMessageContentVM,
+  title: string
+): boolean {
+  const notice = message.systemNotice;
+  return (
+    notice?.noticeKind === "system_notice" &&
+    (notice.detail?.trim() ?? "") === "" &&
+    title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
   );
 }
 

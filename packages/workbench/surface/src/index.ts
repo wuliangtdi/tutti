@@ -88,7 +88,8 @@ export {
   WorkbenchSurface,
   type WorkbenchSurfaceProps,
   type WorkbenchSurfaceWallpaper,
-  type WorkbenchSurfaceWallpaperFit
+  type WorkbenchSurfaceWallpaperFit,
+  type WorkbenchWindowManagementConfig
 } from "./react/WorkbenchSurface.tsx";
 export { useWorkbenchSelector } from "./react/hooks/useWorkbenchSelector.ts";
 export { getWorkbenchLayoutFrame } from "./core/geometry.ts";

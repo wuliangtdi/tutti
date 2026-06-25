@@ -415,6 +415,35 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
   ]);
 });
 
+test("desktop agent activity adapter rejects unuploaded file prompt blocks", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession() {
+        throw new Error("createWorkspaceAgentSession should not be called");
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await assert.rejects(
+    adapter.createSession({
+      agentSessionId: "22222222-2222-4222-8222-222222222222",
+      initialContent: [
+        {
+          type: "file",
+          hostPath: "/Users/vector/Desktop/notes.txt",
+          name: "notes.txt",
+          mimeType: "text/plain",
+          kind: "file"
+        }
+      ],
+      provider: "codex",
+      workspaceId
+    }),
+    /File prompt blocks must be uploaded before desktop submission/
+  );
+});
+
 test("desktop agent activity adapter normalizes legacy runtime config options", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({

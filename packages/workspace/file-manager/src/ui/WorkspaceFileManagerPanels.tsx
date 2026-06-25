@@ -83,6 +83,7 @@ export function WorkspaceFileManagerPanels({
   dateLocale,
   entryDragMode,
   entrySelectionEnabled = true,
+  entryContextByPath = null,
   copy,
   iconUrlByCacheKey,
   inlineRenameEntryPath,
@@ -115,6 +116,7 @@ export function WorkspaceFileManagerPanels({
   dateLocale?: TuttiDateLocale;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   entrySelectionEnabled?: boolean;
+  entryContextByPath?: ReadonlyMap<string, string> | null;
   copy: WorkspaceFileManagerI18nRuntime;
   iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
   inlineRenameEntryPath: string | null;
@@ -131,6 +133,7 @@ export function WorkspaceFileManagerPanels({
     entries: readonly WorkspaceFileEntry[];
     error: string | null;
     isLoading: boolean;
+    isSearchMode: boolean;
   };
   showDropOverlay: boolean;
   treeRows: readonly WorkspaceFileManagerVisibleTreeRow[];
@@ -537,7 +540,11 @@ export function WorkspaceFileManagerPanels({
       ) : state.isLoading && state.entries.length === 0 ? (
         <FeedbackState message={copy.t("loading")} />
       ) : state.entries.length === 0 ? (
-        <FeedbackState message={copy.t("emptyDirectory")} />
+        <FeedbackState
+          message={copy.t(
+            state.isSearchMode ? "noSearchResults" : "emptyDirectory"
+          )}
+        />
       ) : (
         <ScrollArea className="min-h-0 flex-1 [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100">
           {layoutMode === "icon" ? (
@@ -611,6 +618,7 @@ export function WorkspaceFileManagerPanels({
                     dateLocale={dateLocale}
                     depth={row.depth}
                     entry={row.entry}
+                    contextLabel={entryContextByPath?.get(row.entry.path)}
                     expanded={row.expanded}
                     expandable={row.expandable}
                     iconUrlByCacheKey={iconUrlByCacheKey}
@@ -796,6 +804,7 @@ function EntryRow({
   arrangeMode,
   canMove,
   contextMenuActive,
+  contextLabel,
   copy,
   dateLocale,
   depth,
@@ -830,6 +839,7 @@ function EntryRow({
   arrangeMode: WorkspaceFileManagerArrangeMode;
   canMove: boolean;
   contextMenuActive: boolean;
+  contextLabel?: string | null;
   copy: WorkspaceFileManagerI18nRuntime;
   dateLocale?: TuttiDateLocale;
   depth: number;
@@ -912,6 +922,7 @@ function EntryRow({
     <span className={tableCellPaddingClassName}>
       <EntryNameCell
         copy={copy}
+        contextLabel={contextLabel}
         entry={entry}
         iconUrlByCacheKey={iconUrlByCacheKey}
         inlineRenameValidation={inlineRenameValidation}
@@ -1232,6 +1243,7 @@ function workspaceFileManagerTreeIndentStyle(depth: number): CSSProperties {
 }
 
 function EntryNameCell({
+  contextLabel = null,
   copy,
   entry,
   iconUrlByCacheKey,
@@ -1250,6 +1262,7 @@ function EntryNameCell({
   onConfirmInlineRename,
   onToggleDirectoryExpanded
 }: {
+  contextLabel?: string | null;
   copy: WorkspaceFileManagerI18nRuntime;
   entry: WorkspaceFileEntry;
   iconUrlByCacheKey?: ReadonlyMap<string, string | null>;
@@ -1415,13 +1428,20 @@ function EntryNameCell({
         onViewportLeave={onEntryIconViewportLeave}
         onViewportEnter={onEntryIconViewportEnter}
       />
-      <span className="flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-sm">
-        <span className="min-w-0 overflow-hidden text-ellipsis">
-          {nameParts.start}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex min-w-0 max-w-full overflow-hidden whitespace-nowrap text-sm">
+          <span className="min-w-0 overflow-hidden text-ellipsis">
+            {nameParts.start}
+          </span>
+          {nameParts.end ? (
+            <span className="flex-none overflow-hidden text-ellipsis">
+              {nameParts.end}
+            </span>
+          ) : null}
         </span>
-        {nameParts.end ? (
-          <span className="flex-none overflow-hidden text-ellipsis">
-            {nameParts.end}
+        {contextLabel ? (
+          <span className="block max-w-full truncate text-[11px] leading-3 text-[var(--text-tertiary)]">
+            {contextLabel}
           </span>
         ) : null}
       </span>

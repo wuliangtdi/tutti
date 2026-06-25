@@ -2,10 +2,11 @@ import {
   createWorkspaceFileManagerService,
   resolveWorkspaceFileExtension,
   type WorkspaceFileEntry,
+  type WorkspaceFileLocationSection,
   type WorkspaceFileManagerFileDefaultOpener,
   type WorkspaceFileManagerI18nRuntime,
-  type WorkspaceFileManagerPersistedState,
-  type WorkspaceFileManagerMutationErrorMessage
+  type WorkspaceFileManagerMutationErrorMessage,
+  type WorkspaceFileManagerPersistedState
 } from "@tutti-os/workspace-file-manager/services";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
 import { createDesktopWorkspaceFileManagerAdapter } from "./desktopWorkspaceFileManagerAdapter.ts";
@@ -26,6 +27,12 @@ import { FileManagerOpenedReporter } from "../../../analytics/reporters/file-man
 import { createAnalyticsOpenedSourceParams } from "../../../analytics/reporters/openedSource.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
+import type { IWorkspaceUserProjectService } from "../../../workspace-user-project/index.ts";
+import {
+  getCurrentDesktopWorkspaceFileLocationSections,
+  loadDesktopWorkspaceFileLocationSections,
+  resolveDesktopWorkspaceFileDefaultLocationId
+} from "../desktopWorkspaceFileLocations.ts";
 
 export interface WorkspaceFileManagerServiceDependencies {
   hostFilesApi: DesktopHostFilesApi;
@@ -36,6 +43,7 @@ export interface WorkspaceFileManagerServiceDependencies {
   >;
   desktopPreferencesService?: Pick<IDesktopPreferencesService, "store">;
   reporterService?: Pick<IReporterService, "trackEvents">;
+  workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
 
 export class WorkspaceFileManagerService implements IWorkspaceFileManagerService {
@@ -46,6 +54,10 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   >();
   private readonly dependencies: WorkspaceFileManagerServiceDependencies;
   private readonly listeners = new Map<string, Set<() => void>>();
+  private readonly locationRefreshSnapshotByWorkspace = new Map<
+    string,
+    string
+  >();
   private readonly notifications: NotificationService;
   private readonly sharedService = createWorkspaceFileManagerService();
   private readonly sessions = new Map<string, WorkspaceFileManagerSession>();
@@ -56,6 +68,9 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
   ) {
     this.dependencies = dependencies;
     this.notifications = notifications;
+    dependencies.workspaceUserProjectService?.subscribe(() => {
+      void this.refreshAllSessionLocations();
+    });
   }
 
   get hostOs(): NodeJS.Platform {
@@ -72,6 +87,22 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       existing.setI18nRuntime(i18n);
       return existing;
     }
+    const locationSections = getCurrentDesktopWorkspaceFileLocationSections({
+      homeDirectory: this.dependencies.platformApi.homeDirectory,
+      workspaceUserProjectService: this.dependencies.workspaceUserProjectService
+    });
+    const defaultLocationId = resolveDesktopWorkspaceFileDefaultLocationId({
+      projects:
+        this.dependencies.workspaceUserProjectService?.getSnapshot().projects ??
+        []
+    });
+    this.locationRefreshSnapshotByWorkspace.set(
+      workspaceID,
+      serializeWorkspaceFileLocationRefreshSnapshot({
+        defaultLocationId,
+        locationSections
+      })
+    );
 
     const session = this.sharedService.createSession({
       i18n,
@@ -102,7 +133,9 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
             this.openCanvasPreview(workspaceID, target)
         }
       ),
+      defaultLocationId,
       initialDirectoryPath: this.dependencies.platformApi.homeDirectory,
+      locationSections,
       onMutationErrorMessage: (message) =>
         this.notifyHandledMutationError(message),
       persistence: {
@@ -117,6 +150,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       workspaceID
     });
     this.sessions.set(workspaceID, session);
+    void this.refreshSessionLocations(workspaceID, session);
     return session;
   }
 
@@ -166,6 +200,44 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     for (const listener of this.listeners.get(workspaceID) ?? []) {
       listener();
     }
+  }
+
+  private async refreshAllSessionLocations(): Promise<void> {
+    await Promise.all(
+      [...this.sessions].map(([workspaceID, session]) =>
+        this.refreshSessionLocations(workspaceID, session)
+      )
+    );
+  }
+
+  private async refreshSessionLocations(
+    workspaceID: string,
+    session: WorkspaceFileManagerSession
+  ): Promise<void> {
+    const workspaceUserProjectService =
+      this.dependencies.workspaceUserProjectService;
+    const locationSections = await loadDesktopWorkspaceFileLocationSections({
+      homeDirectory: this.dependencies.platformApi.homeDirectory,
+      workspaceUserProjectService
+    });
+    const defaultLocationId = resolveDesktopWorkspaceFileDefaultLocationId({
+      projects: workspaceUserProjectService?.getSnapshot().projects ?? []
+    });
+    const snapshotKey = serializeWorkspaceFileLocationRefreshSnapshot({
+      defaultLocationId,
+      locationSections
+    });
+    if (
+      this.locationRefreshSnapshotByWorkspace.get(workspaceID) === snapshotKey
+    ) {
+      return;
+    }
+    this.locationRefreshSnapshotByWorkspace.set(workspaceID, snapshotKey);
+    await session.setLocations({
+      defaultLocationId,
+      sections: locationSections
+    });
+    this.notify(workspaceID);
   }
 
   private async openCanvasPreview(
@@ -235,6 +307,35 @@ function resolveDesktopFileDefaultOpener(
     desktopPreferencesService?.store.fileDefaultOpenersByExtension[extension] ??
     null
   );
+}
+
+function serializeWorkspaceFileLocationRefreshSnapshot(input: {
+  defaultLocationId: string;
+  locationSections: readonly WorkspaceFileLocationSection[];
+}): string {
+  return JSON.stringify({
+    defaultLocationId: input.defaultLocationId,
+    sections: input.locationSections.map((section) => ({
+      id: section.id,
+      label: section.label,
+      locations: section.locations.map((location) =>
+        location.kind === "directory"
+          ? {
+              contextLabel: location.contextLabel,
+              id: location.id,
+              kind: location.kind,
+              label: location.label,
+              path: location.path,
+              referenceNodeId: location.referenceNodeId
+            }
+          : {
+              id: location.id,
+              kind: location.kind,
+              label: location.label
+            }
+      )
+    }))
+  });
 }
 
 // Avoid decorator syntax so the renderer Babel pass can parse this file.

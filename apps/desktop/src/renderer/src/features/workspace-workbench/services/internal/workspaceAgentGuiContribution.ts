@@ -143,6 +143,8 @@ export function createWorkspaceAgentGuiContribution(input: {
         agentGUIWorkbenchHostInput.referenceSourceAggregator,
       resolveMentionReferenceTarget:
         agentGUIWorkbenchHostInput.resolveMentionReferenceTarget,
+      resolveWorkspaceReferenceInitialTarget:
+        agentGUIWorkbenchHostInput.resolveWorkspaceReferenceInitialTarget,
       workspaceId: input.workspaceId
     });
 

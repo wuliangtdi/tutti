@@ -1,9 +1,15 @@
 import { subscribe } from "valtio/vanilla";
 import {
   normalizeWorkspaceFilePath,
-  validateWorkspaceFileEntryName
+  validateWorkspaceFileEntryName,
+  workspaceFileDirectory
 } from "../workspaceFileManagerModel.ts";
 import { getWorkspaceFileManagerPersistedState } from "./workspaceFileManagerStore.ts";
+import {
+  findWorkspaceFileLocationById,
+  isWorkspaceFileRecentLocation,
+  resolveWorkspaceFileLocationDefaultId
+} from "../workspaceFileManagerLocations.ts";
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type {
   CreateWorkspaceFileManagerSessionInput,
@@ -19,8 +25,11 @@ import type {
 import type { WorkspaceFileManagerSession } from "../workspaceFileManagerService.interface.ts";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileLocation,
+  WorkspaceFileLocationSection,
   WorkspaceFileOpenWithApplication,
   WorkspaceFileManagerPersistedState,
+  WorkspaceFileSearchEntry,
   WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
 import { WorkspaceFileManagerActivationController } from "./workspaceFileManagerActivationController.ts";
@@ -107,7 +116,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.activationController = new WorkspaceFileManagerActivationController({
       copy: () => this.copy,
       host: input.host,
-      loadDirectory: (path) => this.navigationController.loadDirectory(path),
+      loadDirectory: (path) => this.loadDirectory(path),
       resolveErrorMessage: (error, overrides) =>
         this.resolveErrorMessage(error, overrides),
       resolveFileDefaultOpener: input.resolveFileDefaultOpener,
@@ -225,6 +234,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async confirmCreateDialog(): Promise<void> {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     const createDialog = this.store.createDialog;
     if (!createDialog) {
       return;
@@ -315,14 +327,23 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async createDirectory(path: string): Promise<void> {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     await this.mutationController.createDirectory(path);
   }
 
   async createFile(path: string): Promise<void> {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     await this.mutationController.createFile(path);
   }
 
   async deleteSelected(): Promise<void> {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     await this.mutationController.deleteSelected();
   }
 
@@ -345,10 +366,12 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
   async goBack(): Promise<void> {
     await this.navigationController.goBack();
+    this.syncSelectedDirectoryLocation();
   }
 
   async goForward(): Promise<void> {
     await this.navigationController.goForward();
+    this.syncSelectedDirectoryLocation();
   }
 
   getPersistedState(): WorkspaceFileManagerPersistedState {
@@ -417,7 +440,7 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     this.initializePromise = (async () => {
       this.observeStore();
       if (!this.hasLoadedDirectoryState()) {
-        await this.navigationController.loadDirectory();
+        await this.loadSelectedLocationOrDirectory();
       }
       await this.previewController.syncPreviewState();
       this.hasInitialized = true;
@@ -430,7 +453,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async loadDirectory(path = this.store.currentDirectoryPath): Promise<void> {
+    this.clearSearchState();
     await this.navigationController.loadDirectory(path);
+    this.syncSelectedDirectoryLocation();
   }
 
   openContextMenu(input: {
@@ -443,6 +468,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openCreateDirectoryDialog(): void {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     this.store.contextMenu = null;
     this.store.contextMenuEntryPath = null;
     this.store.createDialog = {
@@ -453,6 +481,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openCreateFileDialog(): void {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     this.store.contextMenu = null;
     this.store.contextMenuEntryPath = null;
     this.store.createDialog = {
@@ -463,6 +494,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   openDeleteDialog(entry: WorkspaceFileEntry): void {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     this.store.contextMenu = null;
     this.store.contextMenuEntryPath = null;
     this.store.deleteDialog = {
@@ -471,6 +505,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   startInlineRename(entry: WorkspaceFileEntry): void {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     this.store.contextMenu = null;
     this.store.contextMenuEntryPath = null;
     this.store.inlineRenameEntryPath = entry.path;
@@ -609,6 +646,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     entry: WorkspaceFileEntry,
     targetDirectoryPath: string
   ): Promise<void> {
+    if (this.isRecentLocationSelected()) {
+      return;
+    }
     this.store.busyAction = "move";
     try {
       await this.mutationController.moveEntry(entry, targetDirectoryPath);
@@ -618,11 +658,17 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   }
 
   async refresh(): Promise<void> {
+    const selectedLocation = this.selectedLocation();
+    if (selectedLocation?.kind === "recent") {
+      await this.loadRecentLocation(selectedLocation);
+      return;
+    }
     await this.navigationController.refresh();
   }
 
   async revealPath(path: string): Promise<void> {
     await this.navigationController.revealPath(path);
+    this.syncSelectedDirectoryLocation();
   }
 
   resetDragDepth(): void {
@@ -633,7 +679,8 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     const requestID = ++this.searchRequestSeq;
     this.store.searchQuery = query;
     this.store.searchError = null;
-    if (!this.host.search || query.trim() === "") {
+    const trimmedQuery = query.trim();
+    if (trimmedQuery === "") {
       this.store.searchEntries = [];
       this.store.isSearching = false;
       return;
@@ -641,14 +688,14 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
     this.store.isSearching = true;
     try {
-      const result = await this.host.search({
-        query,
-        workspaceID: this.store.workspaceID
-      });
+      const selectedLocation = this.selectedLocation();
+      const entries = isWorkspaceFileRecentLocation(selectedLocation)
+        ? await this.searchRecentEntries(trimmedQuery)
+        : await this.searchDirectoryEntries(query, selectedLocation);
       if (this.isDisposed || requestID !== this.searchRequestSeq) {
         return;
       }
-      this.store.searchEntries = result.entries;
+      this.store.searchEntries = entries;
     } catch (error) {
       if (!this.isDisposed && requestID === this.searchRequestSeq) {
         this.store.searchError = this.resolveErrorMessage(error);
@@ -668,6 +715,29 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       return;
     }
     this.store.selectedPath = nextSelectedPath;
+  }
+
+  async selectLocation(locationId: string): Promise<void> {
+    const location = findWorkspaceFileLocationById(
+      this.store.locationSections,
+      locationId
+    );
+    if (!location) {
+      return;
+    }
+    this.store.selectedLocationId = location.id;
+    this.store.contextMenu = null;
+    this.store.contextMenuEntryPath = null;
+    this.store.createDialog = null;
+    this.store.deleteDialog = null;
+    this.store.inlineRenameEntryPath = null;
+    this.store.inlineRenameValidation = null;
+    this.clearSearchState();
+    if (location.kind === "recent") {
+      await this.loadRecentLocation(location);
+      return;
+    }
+    await this.navigationController.loadDirectory(location.path);
   }
 
   setActive(active: boolean): void {
@@ -691,6 +761,40 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     void this.previewController.syncPreviewState();
   }
 
+  async setLocations(input: {
+    defaultLocationId?: string | null;
+    sections: WorkspaceFileLocationSection[];
+  }): Promise<void> {
+    const previousLocationId = this.store.selectedLocationId;
+    const previousLocation = findWorkspaceFileLocationById(
+      this.store.locationSections,
+      previousLocationId
+    );
+    this.store.locationSections = input.sections;
+    const nextLocationId = resolveWorkspaceFileLocationDefaultId({
+      defaultLocationId: input.defaultLocationId,
+      persistedLocationId: previousLocationId,
+      sections: input.sections
+    });
+    const nextLocation = findWorkspaceFileLocationById(
+      input.sections,
+      nextLocationId
+    );
+    this.store.selectedLocationId = nextLocationId;
+    if (!this.hasInitialized || !nextLocationId) {
+      return;
+    }
+    const selectedLocationChanged =
+      previousLocationId !== nextLocationId ||
+      previousLocation?.kind !== nextLocation?.kind ||
+      (previousLocation?.kind === "directory" &&
+        nextLocation?.kind === "directory" &&
+        !areWorkspaceFilePathsEqual(previousLocation.path, nextLocation.path));
+    if (selectedLocationChanged) {
+      await this.selectLocation(nextLocationId);
+    }
+  }
+
   updateCreateDialogName(name: string): void {
     if (!this.store.createDialog) {
       return;
@@ -710,6 +814,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     dataTransfer: Pick<DataTransfer, "files" | "items">,
     targetDirectoryPath: string
   ): Promise<WorkspaceFileManagerHostActionResult> {
+    if (this.isRecentLocationSelected()) {
+      return { supported: false } as const;
+    }
     return this.importController.importDroppedFiles(
       dataTransfer,
       targetDirectoryPath
@@ -719,6 +826,9 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
   async importFiles(
     targetDirectoryPath: string
   ): Promise<WorkspaceFileManagerHostActionResult> {
+    if (this.isRecentLocationSelected()) {
+      return { supported: false } as const;
+    }
     return this.importController.importFiles(targetDirectoryPath);
   }
 
@@ -759,6 +869,173 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       this.store.entries.length > 0 ||
       this.store.selectedPath !== null
     );
+  }
+
+  private async loadSelectedLocationOrDirectory(): Promise<void> {
+    const selectedLocation = this.selectedLocation();
+    if (selectedLocation?.kind === "recent") {
+      await this.loadRecentLocation(selectedLocation);
+      return;
+    }
+    await this.navigationController.loadDirectory(
+      this.resolveInitialDirectoryPath(selectedLocation)
+    );
+  }
+
+  private async loadRecentLocation(
+    location: Extract<WorkspaceFileLocation, { kind: "recent" }>
+  ): Promise<void> {
+    this.store.isLoading = true;
+    this.store.error = null;
+    try {
+      const listing = await this.host.listRecentEntries?.({
+        workspaceID: this.store.workspaceID
+      });
+      this.store.root = normalizeWorkspaceFilePath(
+        listing?.root ?? this.store.root
+      );
+      this.store.currentDirectoryPath =
+        listing?.directoryPath ?? this.store.root;
+      this.store.entries = listing?.entries ?? [];
+      this.store.directoryExpansionByPath = {};
+      this.store.expandedDirectoryPaths = {};
+      this.store.navigationBackStack = [];
+      this.store.navigationForwardStack = [];
+      this.store.selectedLocationId = location.id;
+      this.store.selectedPath = null;
+    } catch (error) {
+      this.store.error = this.resolveErrorMessage(error);
+    } finally {
+      this.store.isLoading = false;
+    }
+  }
+
+  private selectedLocation(): WorkspaceFileLocation | null {
+    return findWorkspaceFileLocationById(
+      this.store.locationSections,
+      this.store.selectedLocationId
+    );
+  }
+
+  private isRecentLocationSelected(): boolean {
+    return isWorkspaceFileRecentLocation(this.selectedLocation());
+  }
+
+  private resolveInitialDirectoryPath(
+    selectedLocation: WorkspaceFileLocation | null
+  ): string {
+    if (selectedLocation?.kind !== "directory") {
+      return this.store.currentDirectoryPath;
+    }
+    return isWorkspaceFilePathWithinDirectory(
+      this.store.currentDirectoryPath,
+      selectedLocation.path
+    )
+      ? this.store.currentDirectoryPath
+      : selectedLocation.path;
+  }
+
+  private syncSelectedDirectoryLocation(): void {
+    if (this.store.error) {
+      return;
+    }
+    this.store.selectedLocationId = this.resolveDirectoryLocationIdForPath(
+      this.store.currentDirectoryPath
+    );
+  }
+
+  private resolveDirectoryLocationIdForPath(path: string): string | null {
+    let bestLocation: {
+      id: string;
+      path: string;
+    } | null = null;
+    for (const section of this.store.locationSections) {
+      for (const location of section.locations) {
+        if (location.kind !== "directory") {
+          continue;
+        }
+        const normalizedLocationPath = normalizeWorkspaceFilePath(
+          location.path,
+          this.store.root
+        );
+        if (!isWorkspaceFilePathWithinDirectory(path, normalizedLocationPath)) {
+          continue;
+        }
+        if (
+          !bestLocation ||
+          normalizedLocationPath.length > bestLocation.path.length
+        ) {
+          bestLocation = {
+            id: location.id,
+            path: normalizedLocationPath
+          };
+        }
+      }
+    }
+    return bestLocation?.id ?? null;
+  }
+
+  private clearSearchState(): void {
+    if (
+      this.store.searchQuery === "" &&
+      this.store.searchEntries.length === 0 &&
+      this.store.searchError === null &&
+      !this.store.isSearching
+    ) {
+      return;
+    }
+    this.searchRequestSeq += 1;
+    this.store.searchEntries = [];
+    this.store.searchError = null;
+    this.store.searchQuery = "";
+    this.store.isSearching = false;
+  }
+
+  private async searchDirectoryEntries(
+    query: string,
+    selectedLocation: WorkspaceFileLocation | null
+  ): Promise<WorkspaceFileSearchEntry[]> {
+    if (!this.host.search) {
+      return [];
+    }
+    const result = await this.host.search({
+      query,
+      workspaceID: this.store.workspaceID,
+      ...(selectedLocation?.kind === "directory"
+        ? { within: selectedLocation.path }
+        : {})
+    });
+    return result.entries;
+  }
+
+  private async searchRecentEntries(
+    query: string
+  ): Promise<WorkspaceFileSearchEntry[]> {
+    if (!this.host.listRecentEntries) {
+      return [];
+    }
+    const listing = await this.host.listRecentEntries({
+      limit: 100,
+      workspaceID: this.store.workspaceID
+    });
+    const normalizedQuery = query.trim().toLowerCase();
+    return listing.entries
+      .filter((entry) => {
+        const name = entry.name.toLowerCase();
+        const path = entry.path.toLowerCase();
+        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+      })
+      .map((entry, index) => ({
+        directoryPath: workspaceFileDirectory(entry.path, listing.root),
+        kind: entry.kind,
+        matchIndices: [],
+        matchTarget: entry.name.toLowerCase().includes(normalizedQuery)
+          ? "basename"
+          : "path",
+        name: entry.name,
+        path: entry.path,
+        score: listing.entries.length - index
+      }));
   }
 
   private notifyHostActionMessages(
@@ -890,4 +1167,21 @@ function serializePersistedState(
   state: WorkspaceFileManagerPersistedState
 ): string {
   return JSON.stringify(state);
+}
+
+function areWorkspaceFilePathsEqual(left: string, right: string): boolean {
+  return normalizeWorkspaceFilePath(left) === normalizeWorkspaceFilePath(right);
+}
+
+function isWorkspaceFilePathWithinDirectory(
+  path: string,
+  directoryPath: string
+): boolean {
+  const normalizedPath = normalizeWorkspaceFilePath(path);
+  const normalizedDirectoryPath = normalizeWorkspaceFilePath(directoryPath);
+  return (
+    normalizedPath === normalizedDirectoryPath ||
+    normalizedDirectoryPath === "/" ||
+    normalizedPath.startsWith(`${normalizedDirectoryPath}/`)
+  );
 }

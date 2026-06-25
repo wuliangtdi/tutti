@@ -11,6 +11,7 @@ import {
   type WorkbenchContribution,
   type WorkbenchHostHandle,
   type WorkbenchHostDockEntry,
+  type WorkbenchWindowManagementConfig,
   WorkbenchHost
 } from "@tutti-os/workbench-surface";
 import {
@@ -347,6 +348,15 @@ function ReadyWorkspaceWorkbench({
     },
     [appCenterService, runtime, state.workspace.id]
   );
+  const windowManagement = useMemo<WorkbenchWindowManagementConfig>(
+    () => ({
+      edgeSnapEnabled: runtime.workbenchWindowSnapping.enabled,
+      shortcutPreset: runtime.workbenchWindowSnapping.enabled
+        ? runtime.workbenchWindowSnapping.shortcutPreset
+        : null
+    }),
+    [runtime.workbenchWindowSnapping]
+  );
 
   useEffect(() => {
     return () => {
@@ -590,6 +600,7 @@ function ReadyWorkspaceWorkbench({
         snapshotRepository={hostInput.snapshotRepository}
         shortcutsEnabled={runtime.shortcutsEnabled}
         wallpaper={runtime.wallpaper}
+        windowManagement={windowManagement}
         workspaceId={hostInput.workspaceId}
       />
       <WorkspaceAppExternalBridge

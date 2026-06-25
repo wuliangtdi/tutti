@@ -79,8 +79,20 @@ export interface AgentComposerDraftImage {
   name: string;
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   data?: string;
-  url?: string;
+  path?: string;
   previewUrl: string;
+  uploading?: boolean;
+  uploadError?: string;
+}
+
+export interface AgentComposerDraftFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  path?: string;
+  hostPath?: string;
+  assetId?: string;
+  sizeBytes?: number;
   uploading?: boolean;
   uploadError?: string;
 }
@@ -88,6 +100,7 @@ export interface AgentComposerDraftImage {
 export interface AgentComposerDraft {
   prompt: string;
   images: AgentComposerDraftImage[];
+  files?: AgentComposerDraftFile[];
 }
 
 export interface AgentGUIComposerSettingsVM {

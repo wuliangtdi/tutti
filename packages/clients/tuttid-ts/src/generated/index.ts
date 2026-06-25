@@ -387,6 +387,8 @@ export type {
   DesktopThemeSource,
   DesktopUpdateChannel,
   DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping,
+  DesktopWorkbenchWindowSnappingShortcutPreset,
   ExportWorkspaceAppData,
   ExportWorkspaceAppError,
   ExportWorkspaceAppErrors,

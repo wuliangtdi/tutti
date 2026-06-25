@@ -256,25 +256,6 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-type desktopPreferencesMutationPayload struct {
-	Preferences struct {
-		AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
-		AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
-		AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
-		BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
-		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
-		DockIconStyle                               string                                                    `json:"dockIconStyle"`
-		DockPlacement                               string                                                    `json:"dockPlacement"`
-		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
-		Locale                                      string                                                    `json:"locale"`
-		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
-		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
-		ThemeSource                                 string                                                    `json:"themeSource"`
-		UpdateChannel                               string                                                    `json:"updateChannel"`
-		UpdatePolicy                                string                                                    `json:"updatePolicy"`
-	} `json:"preferences"`
-}
-
 type analyticsDebugReportedPayload struct {
 	Events []analyticsDebugReportedEventPayload `json:"events"`
 }
@@ -367,46 +348,12 @@ type agentGUILaunchRequestedPayload struct {
 	RequestID      string `json:"requestId,omitempty"`
 }
 
-type desktopPreferencesUpdatedPayload struct {
-	Initialized bool                              `json:"initialized"`
-	Preferences desktopPreferencesSettingsPayload `json:"preferences"`
-}
-
 type workspaceIssueUpdatedPayload struct {
 	WorkspaceID string `json:"workspaceId"`
 	IssueID     string `json:"issueId"`
 	TaskID      string `json:"taskId,omitempty"`
 	RunID       string `json:"runId,omitempty"`
 	ChangeKind  string `json:"changeKind"`
-}
-
-type desktopPreferencesSettingsPayload struct {
-	AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
-	AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
-	AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
-	BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
-	DockIconStyle                               string                                                    `json:"dockIconStyle"`
-	DockPlacement                               string                                                    `json:"dockPlacement"`
-	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
-	Locale                                      string                                                    `json:"locale"`
-	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
-	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
-	ThemeSource                                 string                                                    `json:"themeSource"`
-	UpdateChannel                               string                                                    `json:"updateChannel"`
-	UpdatePolicy                                string                                                    `json:"updatePolicy"`
-}
-
-type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload
-
-type desktopAgentGUIConversationRailCollapsedByProviderPayload map[string]bool
-
-type desktopFileDefaultOpenersByExtensionPayload map[string]string
-
-type desktopAgentComposerDefaultsPayload struct {
-	Model            string `json:"model,omitempty"`
-	PermissionModeID string `json:"permissionModeId,omitempty"`
-	ReasoningEffort  string `json:"reasoningEffort,omitempty"`
 }
 
 func validateAnalyticsDebugReportedPayload(payload []byte) error {

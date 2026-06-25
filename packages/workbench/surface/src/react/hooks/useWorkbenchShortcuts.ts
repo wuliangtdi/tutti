@@ -1,9 +1,21 @@
 import { useEffect } from "react";
-import { selectFocusedWorkbenchNode } from "../../core/selectors.ts";
+import { selectFocusedVisibleWorkbenchNode } from "../../core/selectors.ts";
 import { useWorkbenchController } from "../WorkbenchProvider.tsx";
+import {
+  resolveWorkbenchShortcutIntent,
+  type WorkbenchWindowManagementShortcutPreset
+} from "./workbenchShortcutIntent.ts";
 
-export function useWorkbenchShortcuts<TData = unknown>(enabled = true): void {
+export function useWorkbenchShortcuts<TData = unknown>(
+  options: {
+    enabled?: boolean;
+    windowManagementShortcutPreset?: WorkbenchWindowManagementShortcutPreset | null;
+  } = {}
+): void {
   const controller = useWorkbenchController<TData>();
+  const enabled = options.enabled ?? true;
+  const windowManagementShortcutPreset =
+    options.windowManagementShortcutPreset ?? null;
 
   useEffect(() => {
     if (!enabled) {
@@ -11,13 +23,43 @@ export function useWorkbenchShortcuts<TData = unknown>(enabled = true): void {
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
+      const intent = resolveWorkbenchShortcutIntent(event, {
+        windowManagementShortcutPreset
+      });
+      if (!intent) {
         return;
       }
 
-      const focusedNode = selectFocusedWorkbenchNode(controller.getSnapshot());
-      if (focusedNode?.displayMode === "fullscreen") {
-        controller.commands.exitFullscreen(focusedNode.id);
+      let handled = false;
+      const focusedNode = selectFocusedVisibleWorkbenchNode(
+        controller.getSnapshot()
+      );
+      if (intent.type === "exitFullscreen") {
+        if (focusedNode?.displayMode === "fullscreen") {
+          controller.commands.exitFullscreen(focusedNode.id);
+          handled = true;
+        }
+      } else if (intent.type === "applyFocusedSnapTarget") {
+        if (focusedNode) {
+          controller.commands.applySnapTarget(
+            focusedNode.id,
+            intent.snapTarget
+          );
+          handled = true;
+        }
+      } else if (intent.type === "applyFocusedQuickLayout") {
+        if (focusedNode) {
+          controller.commands.applyQuickLayout(focusedNode.id, intent.target);
+          handled = true;
+        }
+      } else {
+        controller.commands.applyVisibleLayoutPreset(intent.preset);
+        handled = true;
+      }
+
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
       }
     };
 
@@ -25,5 +67,5 @@ export function useWorkbenchShortcuts<TData = unknown>(enabled = true): void {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [controller, enabled]);
+  }, [controller, enabled, windowManagementShortcutPreset]);
 }

@@ -3,14 +3,17 @@ import {
   ArrowRightIcon,
   Button,
   ChevronDownIcon,
+  CloseIcon,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Input,
   LoadingIcon,
   RefreshIcon,
+  SearchIcon,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -19,13 +22,14 @@ import {
   ViewListLinedIcon,
   cn
 } from "@tutti-os/ui-system";
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerArrangeMode } from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 
 export function WorkspaceFileManagerToolbar({
   breadcrumbs,
+  canSearch,
   canGoBack,
   canGoForward,
   copy,
@@ -33,16 +37,21 @@ export function WorkspaceFileManagerToolbar({
   isBusy,
   isLoading,
   isMutating,
+  isSearching,
   arrangeMode,
   layoutMode,
+  searchQuery,
   onGoBack,
   onGoForward,
   onArrangeModeChange,
   onLayoutModeChange,
   onLoadDirectory,
-  onRefresh
+  onRefresh,
+  onSearchClear,
+  onSearchQueryChange
 }: {
   breadcrumbs: Array<{ label: string; path: string }>;
+  canSearch: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
@@ -50,14 +59,18 @@ export function WorkspaceFileManagerToolbar({
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
+  isSearching: boolean;
   arrangeMode: WorkspaceFileManagerArrangeMode;
   layoutMode: WorkspaceFileManagerLayoutMode;
+  searchQuery: string;
   onGoBack: () => void;
   onGoForward: () => void;
   onArrangeModeChange: (arrangeMode: WorkspaceFileManagerArrangeMode) => void;
   onLayoutModeChange: (layoutMode: WorkspaceFileManagerLayoutMode) => void;
   onLoadDirectory: (path: string) => void;
   onRefresh: () => void;
+  onSearchClear: () => void;
+  onSearchQueryChange: (query: string) => void;
 }): ReactElement {
   const [refreshAnimationKey, setRefreshAnimationKey] = useState(0);
 
@@ -131,8 +144,145 @@ export function WorkspaceFileManagerToolbar({
             {copy.t("refreshLabel")}
           </span>
         </ToolbarActionButton>
+        <WorkspaceFileManagerToolbarSearch
+          canSearch={canSearch}
+          copy={copy}
+          isSearching={isSearching}
+          searchQuery={searchQuery}
+          onClear={onSearchClear}
+          onSearchQueryChange={onSearchQueryChange}
+        />
       </div>
     </header>
+  );
+}
+
+function WorkspaceFileManagerToolbarSearch({
+  canSearch,
+  copy,
+  isSearching,
+  searchQuery,
+  onClear,
+  onSearchQueryChange
+}: {
+  canSearch: boolean;
+  copy: WorkspaceFileManagerI18nRuntime;
+  isSearching: boolean;
+  searchQuery: string;
+  onClear: () => void;
+  onSearchQueryChange: (query: string) => void;
+}): ReactElement {
+  const [expanded, setExpanded] = useState(searchQuery.trim().length > 0);
+  const [inputValue, setInputValue] = useState(searchQuery);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const isComposingRef = useRef(false);
+  const active = expanded || searchQuery.trim().length > 0;
+
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      setExpanded(true);
+    }
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (!expanded) {
+      return;
+    }
+    inputRef.current?.focus();
+  }, [expanded]);
+
+  useEffect(() => {
+    if (isComposingRef.current) {
+      return;
+    }
+    setInputValue(searchQuery);
+  }, [searchQuery]);
+
+  const commitInputValue = (value: string): void => {
+    setInputValue(value);
+    onSearchQueryChange(value);
+  };
+
+  const handleClear = (): void => {
+    isComposingRef.current = false;
+    setInputValue("");
+    onClear();
+    setExpanded(false);
+  };
+
+  if (!active) {
+    return (
+      <ToolbarIconButton
+        ariaLabel={copy.t("searchPlaceholder")}
+        disabled={!canSearch}
+        title={copy.t("searchPlaceholder")}
+        onClick={() => {
+          setExpanded(true);
+        }}
+      >
+        <SearchIcon className="size-4" />
+      </ToolbarIconButton>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "relative h-7 w-[min(220px,34vw)] flex-none overflow-hidden rounded-md border border-[var(--border-1)] bg-[var(--background-fronted)] shadow-sm transition-[width,opacity,border-color,background-color] duration-200 ease-out",
+        "@max-[600px]/workspace-file-manager:w-[min(170px,42vw)]",
+        !canSearch && "opacity-60"
+      )}
+    >
+      <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+      <Input
+        aria-label={copy.t("searchPlaceholder")}
+        className="h-full border-0 bg-transparent pr-8 pl-8 text-sm shadow-none focus-visible:ring-0"
+        disabled={!canSearch}
+        placeholder={copy.t("searchPlaceholder")}
+        ref={inputRef}
+        value={inputValue}
+        onBlur={(event) => {
+          commitInputValue(event.currentTarget.value);
+        }}
+        onChange={(event) => {
+          const nextValue = event.currentTarget.value;
+          if (isComposingRef.current) {
+            setInputValue(nextValue);
+            return;
+          }
+          commitInputValue(nextValue);
+        }}
+        onCompositionEnd={(event) => {
+          isComposingRef.current = false;
+          commitInputValue(event.currentTarget.value);
+        }}
+        onCompositionStart={() => {
+          isComposingRef.current = true;
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") {
+            return;
+          }
+          if (isComposingRef.current || event.nativeEvent.isComposing) {
+            return;
+          }
+          event.preventDefault();
+          handleClear();
+        }}
+      />
+      <button
+        aria-label={copy.t("clearSearchLabel")}
+        className="absolute top-1/2 right-1 grid size-5 -translate-y-1/2 place-items-center rounded-[4px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)]"
+        type="button"
+        onClick={handleClear}
+      >
+        {isSearching ? (
+          <LoadingIcon className="size-3 animate-spin" />
+        ) : (
+          <CloseIcon className="size-3" />
+        )}
+      </button>
+    </div>
   );
 }
 

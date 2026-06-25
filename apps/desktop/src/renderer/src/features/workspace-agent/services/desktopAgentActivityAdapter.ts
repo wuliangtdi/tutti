@@ -6,10 +6,12 @@ import type {
   AgentActivityComposerSettingOption,
   AgentActivityComposerSkillOption,
   AgentActivityMessage,
-  AgentActivitySession
+  AgentActivitySession,
+  AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
+  AgentPromptContentBlock as TuttidAgentPromptContentBlock,
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
@@ -152,7 +154,9 @@ export function createDesktopAgentActivityAdapter({
     input: Parameters<AgentActivityAdapter["createSession"]>[0]
   ): Promise<AgentActivitySession | null> => {
     const agentSessionId = input.agentSessionId?.trim();
-    const initialContent = input.initialContent ?? [];
+    const initialContent = toTuttidPromptContentBlocks(
+      input.initialContent ?? []
+    );
     if (
       workspaceAgentProvider(input.provider) !== "claude-code" ||
       !agentSessionId ||
@@ -284,7 +288,9 @@ export function createDesktopAgentActivityAdapter({
             input.agentSessionId?.trim() ||
             createDesktopAgentActivitySessionId(),
           cwd: input.cwd ?? null,
-          initialContent: input.initialContent ?? [],
+          initialContent: toTuttidPromptContentBlocks(
+            input.initialContent ?? []
+          ),
           initialDisplayPrompt: input.initialDisplayPrompt ?? null,
           model: input.model ?? null,
           planMode: input.planMode ?? null,
@@ -303,7 +309,7 @@ export function createDesktopAgentActivityAdapter({
         input.workspaceId,
         input.agentSessionId,
         {
-          content: input.content,
+          content: toTuttidPromptContentBlocks(input.content),
           displayPrompt: input.displayPrompt ?? null
         }
       );
@@ -428,6 +434,39 @@ function sessionWithClaudeDraftContext(
       draftKey
     }
   };
+}
+
+function toTuttidPromptContentBlocks(
+  content: readonly AgentPromptContentBlock[]
+): TuttidAgentPromptContentBlock[] {
+  return content.flatMap((block) => {
+    if (block.type === "file") {
+      throw new Error(
+        "File prompt blocks must be uploaded before desktop submission."
+      );
+    }
+    const nextBlock: TuttidAgentPromptContentBlock = { type: block.type };
+    if (block.attachmentId !== undefined) {
+      nextBlock.attachmentId = block.attachmentId;
+    }
+    if (block.data !== undefined) {
+      nextBlock.data = block.data;
+    }
+    if (block.mimeType !== undefined) {
+      nextBlock.mimeType =
+        block.mimeType as TuttidAgentPromptContentBlock["mimeType"];
+    }
+    if (block.name !== undefined) {
+      nextBlock.name = block.name;
+    }
+    if (block.path !== undefined) {
+      nextBlock.path = block.path;
+    }
+    if (block.text !== undefined) {
+      nextBlock.text = block.text;
+    }
+    return [nextBlock];
+  });
 }
 
 export function agentActivitySessionFromTuttidSession(

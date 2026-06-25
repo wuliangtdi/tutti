@@ -35,7 +35,8 @@ import type {
 import {
   AgentGUINodeView,
   type AgentGUIViewLabels,
-  type AgentMentionReferenceTargetResolver
+  type AgentMentionReferenceTargetResolver,
+  type AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
 import {
   normalizeAgentGUIProviderIdentity,
@@ -153,6 +154,7 @@ export interface AgentGUINodeProps {
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
+  resolveWorkspaceReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
   title: string;
   state: AgentGUINodeData;
@@ -457,6 +459,8 @@ function areAgentGUINodePropsEqual(
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
     previous.resolveMentionReferenceTarget ===
       next.resolveMentionReferenceTarget &&
+    previous.resolveWorkspaceReferenceInitialTarget ===
+      next.resolveWorkspaceReferenceInitialTarget &&
     previous.onWorkspaceFileReferencesAdded ===
       next.onWorkspaceFileReferencesAdded &&
     previous.agentSettings.avoidGroupingEdits ===
@@ -512,6 +516,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   onRequestGitBranches = null,
   referenceSourceAggregator = null,
   resolveMentionReferenceTarget = null,
+  resolveWorkspaceReferenceInitialTarget = null,
   agentSettings,
   title,
   state,
@@ -1354,6 +1359,9 @@ export const AgentGUINode = memo(function AgentGUINode({
             onRequestGitBranches={onRequestGitBranches}
             referenceSourceAggregator={referenceSourceAggregator}
             resolveMentionReferenceTarget={resolveMentionReferenceTarget}
+            resolveWorkspaceReferenceInitialTarget={
+              resolveWorkspaceReferenceInitialTarget
+            }
             workspaceFileReferenceCopy={workspaceFileReferenceCopy}
             contextMentionProviders={contextMentionProviders}
             workspaceAppIcons={workspaceAppIcons}

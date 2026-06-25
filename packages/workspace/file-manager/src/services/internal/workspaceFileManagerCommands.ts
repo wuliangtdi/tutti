@@ -4,6 +4,7 @@ import type {
 } from "../workspaceFileManagerHostTypes.ts";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileLocationSection,
   WorkspaceFileManagerContextMenuState,
   WorkspaceFileManagerPersistedState,
   WorkspaceFileOpenWithApplication
@@ -86,7 +87,12 @@ export interface WorkspaceFileManagerCommands {
   resetDragDepth(): void;
   search(query: string): Promise<void>;
   select(path: string | null): void;
+  selectLocation(locationId: string): Promise<void>;
   setActive(active: boolean): void;
   setI18nRuntime(copy: WorkspaceFileManagerI18nRuntime): void;
+  setLocations(input: {
+    defaultLocationId?: string | null;
+    sections: WorkspaceFileLocationSection[];
+  }): Promise<void>;
   updateCreateDialogName(name: string): void;
 }

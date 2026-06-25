@@ -42,6 +42,8 @@ export function WorkspaceFileManagerContextMenu({
   contextMenuRef,
   openInAppBrowserIcon,
   showCopyAction,
+  showCreateAction,
+  showDeleteAction,
   showImportAction,
   showExportAction,
   showOpenInAppBrowserAction,
@@ -85,6 +87,8 @@ export function WorkspaceFileManagerContextMenu({
     application: WorkspaceFileOpenWithApplication
   ) => ReactElement | null;
   showCopyAction: boolean;
+  showCreateAction: boolean;
+  showDeleteAction: boolean;
   showImportAction: boolean;
   showExportAction: boolean;
   showOpenInAppBrowserAction: boolean;
@@ -231,29 +235,33 @@ export function WorkspaceFileManagerContextMenu({
         label: copy.t("downloadLabel")
       });
     }
-    dangerItems.push({
-      action: onDelete,
-      disabled: busy,
-      danger: true,
-      icon: <DeleteIcon className="size-4" />,
-      key: "delete",
-      label: copy.t("deleteLabel")
-    });
+    if (showDeleteAction) {
+      dangerItems.push({
+        action: onDelete,
+        disabled: busy,
+        danger: true,
+        icon: <DeleteIcon className="size-4" />,
+        key: "delete",
+        label: copy.t("deleteLabel")
+      });
+    }
   } else {
-    createItems.push({
-      action: onCreateFile,
-      disabled: busy,
-      icon: <NewWorkspaceLinedIcon className="size-4" />,
-      key: "create-file",
-      label: copy.t("createFileLabel")
-    });
-    createItems.push({
-      action: onCreateDirectory,
-      disabled: busy,
-      icon: <FileLinedIcon className="size-4" />,
-      key: "create-directory",
-      label: copy.t("createDirectoryLabel")
-    });
+    if (showCreateAction) {
+      createItems.push({
+        action: onCreateFile,
+        disabled: busy,
+        icon: <NewWorkspaceLinedIcon className="size-4" />,
+        key: "create-file",
+        label: copy.t("createFileLabel")
+      });
+      createItems.push({
+        action: onCreateDirectory,
+        disabled: busy,
+        icon: <FileLinedIcon className="size-4" />,
+        key: "create-directory",
+        label: copy.t("createDirectoryLabel")
+      });
+    }
     if (showImportAction) {
       transferItems.push({
         action: onImport,

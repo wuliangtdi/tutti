@@ -27,6 +27,7 @@ type startInput struct {
 	Prompt          string `cli:"prompt" validate:"required"`
 	ReasoningEffort string `cli:"reasoning-effort"`
 	Show            bool   `cli:"show"`
+	Speed           string `cli:"speed"`
 	Title           string `cli:"title"`
 	Visible         bool   `cli:"visible"`
 }
@@ -39,6 +40,7 @@ type providerStartInput struct {
 	Prompt          string `cli:"prompt" validate:"required"`
 	ReasoningEffort string `cli:"reasoning-effort"`
 	Show            bool   `cli:"show"`
+	Speed           string `cli:"speed"`
 	Title           string `cli:"title"`
 	Visible         bool   `cli:"visible"`
 }
@@ -77,6 +79,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 				Prompt:          input.Prompt,
 				ReasoningEffort: input.ReasoningEffort,
 				Show:            input.Show,
+				Speed:           input.Speed,
 				Title:           input.Title,
 				Visible:         input.Visible,
 			})
@@ -125,6 +128,7 @@ type startFields struct {
 	Prompt          string
 	ReasoningEffort string
 	Show            bool
+	Speed           string
 	Title           string
 	Visible         bool
 }
@@ -146,6 +150,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		Model:                optionalStringPointer(input.Model),
 		PermissionModeID:     optionalStringPointer(input.PermissionMode),
 		ReasoningEffort:      optionalStringPointer(input.ReasoningEffort),
+		Speed:                optionalStringPointer(input.Speed),
 		Title:                optionalStringPointer(input.Title),
 		Visible:              boolPointer(visible),
 	})

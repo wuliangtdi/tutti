@@ -134,6 +134,20 @@ func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentser
 				Value: input.Settings.ReasoningEffort,
 			}},
 		},
+		SpeedConfig: agentservice.ComposerConfigOption{
+			Configurable: true,
+			CurrentValue: "standard",
+			DefaultValue: "standard",
+			Options: []agentservice.ComposerConfigOptionValue{{
+				ID:    "standard",
+				Label: "标准",
+				Value: "standard",
+			}, {
+				ID:    "fast",
+				Label: "快速",
+				Value: "fast",
+			}},
+		},
 		RuntimeContext: map[string]any{
 			"configOptions": []map[string]any{{
 				"currentValue": input.Settings.Model,
@@ -507,6 +521,14 @@ func TestComposerOptionsCommandReturnsProviderOptions(t *testing.T) {
 	if modes[0].(map[string]any)["label"] != "替我审批" {
 		t.Fatalf("permission modes = %#v", modes)
 	}
+	speedConfig := output.Value["speedConfig"].(map[string]any)
+	if speedConfig["currentValue"] != "standard" || speedConfig["defaultValue"] != "standard" {
+		t.Fatalf("speedConfig = %#v", speedConfig)
+	}
+	speedOptions := speedConfig["options"].([]any)
+	if len(speedOptions) != 2 || speedOptions[0].(map[string]any)["value"] != "standard" || speedOptions[1].(map[string]any)["value"] != "fast" {
+		t.Fatalf("speed options = %#v", speedOptions)
+	}
 }
 
 func TestComposerOptionsCommandCanDisableCapabilityCatalog(t *testing.T) {
@@ -616,6 +638,7 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 			"prompt":           "do work",
 			"provider":         "codex",
 			"reasoning-effort": "high",
+			"speed":            "fast",
 		},
 	}); err != nil {
 		t.Fatalf("Handler: %v", err)
@@ -628,6 +651,9 @@ func TestStartCommandPassesComposerSettings(t *testing.T) {
 	}
 	if sessions.createInput.ReasoningEffort == nil || *sessions.createInput.ReasoningEffort != "high" {
 		t.Fatalf("ReasoningEffort = %#v", sessions.createInput.ReasoningEffort)
+	}
+	if sessions.createInput.Speed == nil || *sessions.createInput.Speed != "fast" {
+		t.Fatalf("Speed = %#v", sessions.createInput.Speed)
 	}
 }
 
@@ -907,12 +933,16 @@ func TestProviderHiddenAgentAppCapabilityRemainsInvokable(t *testing.T) {
 		Input: map[string]any{
 			"model":  "gpt-5",
 			"prompt": "do work",
+			"speed":  "fast",
 		},
 	}); err != nil {
 		t.Fatalf("Invoke hidden codex command: %v", err)
 	}
 	if sessions.createInput.Provider != "codex" {
 		t.Fatalf("created provider = %q, want codex", sessions.createInput.Provider)
+	}
+	if sessions.createInput.Speed == nil || *sessions.createInput.Speed != "fast" {
+		t.Fatalf("created speed = %#v, want fast", sessions.createInput.Speed)
 	}
 }
 

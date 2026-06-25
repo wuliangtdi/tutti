@@ -12,7 +12,9 @@ export class DefaultWorkspaceFileManagerService implements WorkspaceFileManagerS
     const capabilities = capabilitiesFromHost(input);
     const store = createWorkspaceFileManagerStore({
       capabilities,
+      defaultLocationId: input.defaultLocationId,
       initialDirectoryPath: input.initialDirectoryPath,
+      locationSections: input.locationSections,
       persistedState: normalizeWorkspaceFileManagerPersistedState(
         input.persistedState ?? input.persistence?.load?.()
       ),

@@ -245,7 +245,17 @@ export type DesktopPreferences = {
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
 };
+
+export type DesktopWorkbenchWindowSnapping = {
+  enabled: boolean;
+  shortcutPreset: DesktopWorkbenchWindowSnappingShortcutPreset;
+};
+
+export type DesktopWorkbenchWindowSnappingShortcutPreset =
+  | "commandArrows"
+  | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
   model?: string;

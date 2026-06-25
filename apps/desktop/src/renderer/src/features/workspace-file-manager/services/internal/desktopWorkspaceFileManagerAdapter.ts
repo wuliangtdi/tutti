@@ -160,6 +160,18 @@ export function createDesktopWorkspaceFileManagerAdapter(
         workspaceID: response.workspaceId
       };
     },
+    async listRecentEntries(input): Promise<WorkspaceFileDirectoryListing> {
+      const response = await tuttidClient.listWorkspaceRecentFiles(
+        input.workspaceID,
+        { limit: input.limit }
+      );
+      return {
+        directoryPath: response.directoryPath,
+        entries: response.entries.map(fileEntryFromDesktop),
+        root: response.root,
+        workspaceID: response.workspaceId
+      };
+    },
     readPreviewFile(workspaceID: string, path: string): Promise<Uint8Array> {
       return hostFilesApi.readPreviewFile(workspaceID, path);
     },
@@ -182,7 +194,8 @@ export function createDesktopWorkspaceFileManagerAdapter(
         {
           includeKinds: input.includeKinds,
           limit: input.limit,
-          query: input.query
+          query: input.query,
+          within: input.within
         }
       );
       return {

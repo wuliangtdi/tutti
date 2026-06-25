@@ -2,15 +2,20 @@ import { proxy } from "valtio";
 import {
   workspaceFileManagerPersistedStateSchemaVersion,
   workspaceFileManagerLogicalRoot,
+  workspaceFileManagerPreviousPersistedStateSchemaVersion,
   type WorkspaceFileManagerCapabilities,
+  type WorkspaceFileLocationSection,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFileManagerState
 } from "../workspaceFileManagerTypes.ts";
 import { normalizeWorkspaceFilePath } from "../workspaceFileManagerModel.ts";
+import { resolveWorkspaceFileLocationDefaultId } from "../workspaceFileManagerLocations.ts";
 
 export function createWorkspaceFileManagerStore(input: {
   capabilities: WorkspaceFileManagerCapabilities;
+  defaultLocationId?: string | null;
   initialDirectoryPath?: string;
+  locationSections?: WorkspaceFileLocationSection[];
   persistedState?: WorkspaceFileManagerPersistedState | null;
   workspaceID: string;
 }): WorkspaceFileManagerState {
@@ -20,6 +25,12 @@ export function createWorkspaceFileManagerStore(input: {
   const initialDirectoryPath = normalizeWorkspaceFilePath(
     input.initialDirectoryPath
   );
+  const locationSections = input.locationSections ?? [];
+  const selectedLocationId = resolveWorkspaceFileLocationDefaultId({
+    defaultLocationId: input.defaultLocationId,
+    persistedLocationId: persistedState?.selectedLocationId,
+    sections: locationSections
+  });
   return proxy<WorkspaceFileManagerState>({
     busyAction: null,
     capabilities: input.capabilities,
@@ -41,6 +52,7 @@ export function createWorkspaceFileManagerStore(input: {
     isLoading: false,
     isMutating: false,
     isSearching: false,
+    locationSections,
     navigationBackStack: persistedState?.navigationBackStack ?? [],
     navigationForwardStack: persistedState?.navigationForwardStack ?? [],
     pendingDirectoryPath: null,
@@ -49,6 +61,7 @@ export function createWorkspaceFileManagerStore(input: {
     searchEntries: [],
     searchError: null,
     searchQuery: "",
+    selectedLocationId,
     selectedPath: null,
     unsupportedDialog: null,
     importConflictDialog: null,
@@ -72,22 +85,33 @@ export function getWorkspaceFileManagerPersistedState(
       state.navigationForwardStack,
       state.root
     ),
+    selectedLocationId: state.selectedLocationId ?? null,
     schemaVersion: workspaceFileManagerPersistedStateSchemaVersion
   };
 }
 
 export function normalizeWorkspaceFileManagerPersistedState(
-  value: WorkspaceFileManagerPersistedState | null | undefined
+  value: unknown
 ): WorkspaceFileManagerPersistedState | null {
   if (
     !isPersistedStateRecord(value) ||
-    value.schemaVersion !== workspaceFileManagerPersistedStateSchemaVersion ||
     typeof value.currentDirectoryPath !== "string" ||
     !isStringArray(value.navigationBackStack) ||
     !isStringArray(value.navigationForwardStack)
   ) {
     return null;
   }
+  if (
+    value.schemaVersion !== workspaceFileManagerPersistedStateSchemaVersion &&
+    value.schemaVersion !==
+      workspaceFileManagerPreviousPersistedStateSchemaVersion
+  ) {
+    return null;
+  }
+  const selectedLocationId =
+    value.schemaVersion === workspaceFileManagerPersistedStateSchemaVersion
+      ? readOptionalString(value.selectedLocationId)
+      : null;
 
   return {
     currentDirectoryPath: normalizeWorkspaceFilePath(
@@ -97,6 +121,7 @@ export function normalizeWorkspaceFileManagerPersistedState(
     navigationForwardStack: normalizePersistedStack(
       value.navigationForwardStack
     ),
+    selectedLocationId,
     schemaVersion: workspaceFileManagerPersistedStateSchemaVersion
   };
 }
@@ -111,6 +136,10 @@ function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === "string")
   );
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function normalizePersistedStack(

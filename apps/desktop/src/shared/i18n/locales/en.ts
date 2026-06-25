@@ -138,6 +138,7 @@ export const en = {
       appSourceLabel: "Apps",
       issueSourceLabel: "Tasks",
       localSourceLabel: "Local",
+      projectSourceLabel: "Projects",
       sidebarDesktop: "Desktop",
       sidebarDocuments: "Documents",
       sidebarDownloads: "Downloads",
@@ -292,6 +293,16 @@ export const en = {
         },
         minimizeAnimationSaveFailed:
           "We couldn't update the minimize animation right now.",
+        workbenchWindowSnappingDescription:
+          "Enables edge and corner snapping plus keyboard window layouts",
+        workbenchWindowSnappingLabel: "Window snapping",
+        workbenchWindowSnappingSaveFailed:
+          "We couldn't update window snapping right now.",
+        workbenchWindowSnappingShortcutLabel: "Window snapping shortcut",
+        workbenchWindowSnappingShortcutOptions: {
+          commandArrows: "Command + Arrow keys",
+          commandShiftArrows: "Command + Shift + Arrow keys"
+        },
         themeDescription:
           "Controls window appearance and the color mode for information",
         themeLabel: "Appearance",

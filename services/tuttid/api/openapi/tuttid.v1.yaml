@@ -3701,6 +3701,24 @@ components:
           $ref: "#/components/schemas/DesktopUpdateChannel"
         updatePolicy:
           $ref: "#/components/schemas/DesktopUpdatePolicy"
+        workbenchWindowSnapping:
+          $ref: "#/components/schemas/DesktopWorkbenchWindowSnapping"
+    DesktopWorkbenchWindowSnapping:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - shortcutPreset
+      properties:
+        enabled:
+          type: boolean
+        shortcutPreset:
+          $ref: "#/components/schemas/DesktopWorkbenchWindowSnappingShortcutPreset"
+    DesktopWorkbenchWindowSnappingShortcutPreset:
+      type: string
+      enum:
+        - commandArrows
+        - commandShiftArrows
     DesktopAgentComposerDefaults:
       type: object
       additionalProperties: false

@@ -9,12 +9,15 @@ export type WorkspaceFileEntryKind = "file" | "directory" | "unknown";
 export type WorkspaceFileSearchMatchTarget = "basename" | "path";
 export type WorkspaceFileImportConflictKind = "replaceable" | "type_mismatch";
 export type WorkspaceFilePreviewKind = "image" | "text" | "video";
+export type WorkspaceFileLocationKind = "directory" | "recent";
 export type WorkspaceFileManagerFileDefaultOpener =
   | "appBrowser"
   | "defaultBrowser"
   | "fileViewer"
   | "system";
-export const workspaceFileManagerPersistedStateSchemaVersion = 2 as const;
+export const workspaceFileManagerPersistedStateSchemaVersion = 3 as const;
+export const workspaceFileManagerPreviousPersistedStateSchemaVersion =
+  2 as const;
 
 export interface WorkspaceFileEntry {
   hasChildren: boolean;
@@ -77,6 +80,32 @@ export interface WorkspaceFileSearchResult {
   workspaceID: string;
 }
 
+export interface WorkspaceFileLocationSection {
+  id: string;
+  label: string;
+  locations: WorkspaceFileLocation[];
+}
+
+export type WorkspaceFileLocation =
+  | WorkspaceFileDirectoryLocation
+  | WorkspaceFileRecentLocation;
+
+export interface WorkspaceFileDirectoryLocation {
+  contextLabel?: string | null;
+  id: string;
+  kind: "directory";
+  label: string;
+  path: string;
+  referenceNodeId: string;
+}
+
+export interface WorkspaceFileRecentLocation {
+  contextLabel?: string | null;
+  id: string;
+  kind: "recent";
+  label: string;
+}
+
 export interface WorkspaceFileImportConflict {
   conflictKind: WorkspaceFileImportConflictKind;
   destinationKind: WorkspaceFileEntryKind;
@@ -106,6 +135,7 @@ export interface WorkspaceFileManagerPersistedState {
   currentDirectoryPath: string;
   navigationBackStack: string[];
   navigationForwardStack: string[];
+  selectedLocationId: string | null;
   schemaVersion: typeof workspaceFileManagerPersistedStateSchemaVersion;
 }
 
@@ -113,6 +143,7 @@ export interface WorkspaceFileSearchInput {
   includeKinds?: Extract<WorkspaceFileEntryKind, "file" | "directory">[];
   limit?: number;
   query: string;
+  within?: string;
 }
 
 export interface WorkspaceFileOpenWithApplication {
@@ -195,6 +226,7 @@ export interface WorkspaceFileManagerState {
   isLoading: boolean;
   isMutating: boolean;
   isSearching: boolean;
+  locationSections: WorkspaceFileLocationSection[];
   navigationBackStack: string[];
   navigationForwardStack: string[];
   pendingDirectoryPath: string | null;
@@ -203,6 +235,7 @@ export interface WorkspaceFileManagerState {
   searchEntries: WorkspaceFileSearchEntry[];
   searchError: string | null;
   searchQuery: string;
+  selectedLocationId: string | null;
   selectedPath: string | null;
   unsupportedDialog: WorkspaceFileManagerUnsupportedDialogState | null;
   importConflictDialog: WorkspaceFileManagerHostImportConflict | null;

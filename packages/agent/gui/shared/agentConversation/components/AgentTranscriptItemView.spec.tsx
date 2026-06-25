@@ -368,6 +368,88 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
   });
 
+  it("shows a loading spinner while a user prompt image is being read", async () => {
+    const readController: {
+      resolve: (value: {
+        attachmentId: string;
+        data: string;
+        mimeType: "image/png";
+        name: string;
+      }) => void;
+    } = {
+      resolve: () => {
+        throw new Error("readSessionAttachment was not called");
+      }
+    };
+    const readSessionAttachment = vi.fn(
+      () =>
+        new Promise<{
+          attachmentId: string;
+          data: string;
+          mimeType: "image/png";
+          name: string;
+        }>((resolvePromise) => {
+          readController.resolve = resolvePromise;
+        })
+    );
+    Object.defineProperty(window, "agentActivityRuntime", {
+      configurable: true,
+      value: {
+        readSessionAttachment
+      } as Partial<AgentActivityRuntime>
+    });
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-loading",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "attachment-loading",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              attachmentId: "attachment-loading",
+              mimeType: "image/png",
+              name: "screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(
+      await screen.findByTestId("agent-gui-message-image-loading")
+    ).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "screen.png" })).toBeNull();
+
+    readController.resolve({
+      attachmentId: "attachment-loading",
+      data: "aW1hZ2U=",
+      mimeType: "image/png",
+      name: "screen.png"
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+      expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+        "src",
+        "data:image/png;base64,aW1hZ2U="
+      );
+    });
+
+    delete (window as { agentActivityRuntime?: unknown }).agentActivityRuntime;
+  });
+
   it("keeps assistant conversation markdown on the compact reading scale", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
@@ -502,7 +584,7 @@ describe("AgentTranscriptItemView render stability", () => {
     expect(onAuthLogin).toHaveBeenCalledWith("claude-code");
   });
 
-  it("shows transport retry notices separately from markdown answers", () => {
+  it("renders transport retry notices as quiet text", () => {
     const { getByText, queryByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -518,7 +600,7 @@ describe("AgentTranscriptItemView render stability", () => {
             severity: "warning",
             title: "Codex connection interrupted. Reconnecting...",
             detail:
-              "ResponseStreamDisconnected: websocket IO error: Broken pipe",
+              "Handled error during turn: Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })",
             retryable: true
           }
         })}
@@ -526,17 +608,55 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(
-      getByText("agentHost.agentGui.systemNoticeTransportRetry")
-    ).toBeTruthy();
-    const notice = getByText(
-      "agentHost.agentGui.systemNoticeTransportRetry"
-    ).closest("section");
-    expect(notice?.firstElementChild?.firstElementChild?.tagName).toBe("DIV");
-    expect(getByText("agentHost.agentGui.visibleErrorDetails")).toBeTruthy();
+    expect(getByText("Reconnecting... 1/5")).toBeTruthy();
+    const notice = getByText("Reconnecting... 1/5");
+    expect(notice.tagName).toBe("DIV");
+    expect(notice.className).toContain("text-[var(--text-primary)]");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    expect(queryByText("agentHost.agentGui.visibleErrorDetails")).toBeNull();
     expect(
       queryByText("Codex connection interrupted. Reconnecting...")
     ).toBeNull();
+    expect(
+      queryByText("agentHost.agentGui.systemNoticeTransportRetry")
+    ).toBeNull();
+  });
+
+  it("renders context compaction notices as an inline divider", () => {
+    const { getByRole, getByText, queryByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-compaction",
+          turnId: "turn-1",
+          body: "Context compacted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            title: "Context compacted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("status");
+    expect(notice.tagName).toBe("DIV");
+    expect(notice.className).toContain("items-center");
+    expect(notice.className).toContain("text-[var(--text-secondary)]");
+    expect(notice.className).not.toContain("rounded-[8px]");
+    const dividers = notice.querySelectorAll('span[aria-hidden="true"]');
+    expect(dividers).toHaveLength(2);
+    for (const divider of dividers) {
+      expect(divider.className).toContain("bg-[var(--line-1)]");
+    }
+    expect(getByText("Context compacted.")).toBeTruthy();
+    expect(queryByText("agentHost.agentGui.systemNoticeDefault")).toBeNull();
   });
 
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {

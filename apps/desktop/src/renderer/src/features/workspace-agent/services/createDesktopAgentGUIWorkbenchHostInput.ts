@@ -21,11 +21,18 @@ import {
 } from "@tutti-os/workspace-file-reference/core";
 import { createDesktopWorkspaceFileReferenceAdapter } from "../../workspace-file-manager/services/createDesktopWorkspaceFileReferenceAdapter.ts";
 import {
+  USER_PROJECT_REFERENCE_SOURCE_ID,
   createAppArtifactReferenceSource,
   createIssueReferenceSource,
-  createWorkspaceFileReferenceSource,
+  WORKSPACE_FILE_SOURCE_ID,
+  createWorkspaceFileLocationReferenceSources,
   resolveMentionReferenceTarget
 } from "../../agent-reference-sources/index.ts";
+import {
+  DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID,
+  getCurrentDesktopWorkspaceFileLocationSections,
+  resolveDesktopWorkspaceFileDefaultLocationId
+} from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentActivityRuntime } from "./createDesktopAgentActivityRuntime.ts";
 import { createDesktopAgentHostApi } from "./createDesktopAgentHostApi.ts";
 import { createAgentWorkspaceFileReferenceTracker } from "./internal/agentWorkspaceFileReferenceAnalytics.ts";
@@ -50,6 +57,9 @@ export interface DesktopAgentGUIWorkbenchHostInput {
   referenceSourceAggregator: ReferenceSourceAggregator;
   resolveMentionReferenceTarget: NonNullable<
     AgentGUIProps["resolveMentionReferenceTarget"]
+  >;
+  resolveWorkspaceReferenceInitialTarget: NonNullable<
+    AgentGUIProps["resolveWorkspaceReferenceInitialTarget"]
   >;
 }
 
@@ -130,14 +140,24 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       tuttidClient,
       workspaceId
     });
-  // 多源引用聚合:本地文件 + 应用产物(任务产物为将来一个新源)。
-  // 应用源的 open/preview 复用本地 adapter 同一条 host 链路。
+  const getLocationSections = () =>
+    getCurrentDesktopWorkspaceFileLocationSections({
+      homeDirectory: platformApi.homeDirectory,
+      workspaceUserProjectService
+    });
+  // 多源引用聚合:项目快捷入口 + 本地文件 + 应用产物 + 任务产物。
+  // 非本地源的 open/preview 复用本地 adapter 同一条 host 链路。
   const referenceSourceAggregator = createReferenceSourceAggregator(
     createStaticReferenceSourceRegistry([
-      createWorkspaceFileReferenceSource({
+      ...createWorkspaceFileLocationReferenceSources({
         adapter: workspaceFileReferenceAdapter,
-        label: translate("workspace.referenceSources.localSourceLabel"),
-        order: 0
+        getLocationSections,
+        localLabel: translate("workspace.referenceSources.localSourceLabel"),
+        localOrder: 0,
+        projectLabel: translate(
+          "workspace.referenceSources.projectSourceLabel"
+        ),
+        projectOrder: -1
       }),
       createAppArtifactReferenceSource({
         tuttidClient,
@@ -190,8 +210,90 @@ export function createDesktopAgentGUIWorkbenchHostInput({
       };
     },
     referenceSourceAggregator,
-    resolveMentionReferenceTarget
+    resolveMentionReferenceTarget,
+    resolveWorkspaceReferenceInitialTarget
   };
+}
+
+const resolveWorkspaceReferenceInitialTarget: NonNullable<
+  AgentGUIProps["resolveWorkspaceReferenceInitialTarget"]
+> = ({ activeConversation, composerSelectedProjectPath, userProjects }) => {
+  const activeConversationProject = findUserProjectByIdentity(
+    userProjects,
+    activeConversation?.project
+  );
+  const locationId = resolveDesktopWorkspaceFileDefaultLocationId({
+    composerSelectedProjectPath,
+    preferredProject: activeConversationProject,
+    projects: userProjects
+  });
+  if (locationId === DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID) {
+    const params: Record<string, string> = { locationId };
+    return {
+      sourceId: WORKSPACE_FILE_SOURCE_ID,
+      params
+    };
+  }
+  const project =
+    activeConversationProject ??
+    findUserProjectByPath(userProjects, composerSelectedProjectPath) ??
+    userProjects[0] ??
+    null;
+  const params: Record<string, string> = {
+    projectId: project?.id ?? "",
+    projectPath: project?.path ?? ""
+  };
+  return {
+    sourceId: USER_PROJECT_REFERENCE_SOURCE_ID,
+    params
+  };
+};
+
+function findUserProjectByIdentity<
+  T extends {
+    id?: string | null;
+    path: string;
+  }
+>(
+  projects: readonly T[],
+  project:
+    | {
+        id?: string | null;
+        path?: string | null;
+      }
+    | null
+    | undefined
+): T | null {
+  if (!project) {
+    return null;
+  }
+  if (project.id) {
+    const byId = projects.find((candidate) => candidate.id === project.id);
+    if (byId) {
+      return byId;
+    }
+  }
+  return findUserProjectByPath(projects, project.path);
+}
+
+function findUserProjectByPath<
+  T extends {
+    path: string;
+  }
+>(projects: readonly T[], path: string | null | undefined): T | null {
+  const normalizedPath = normalizeProjectPath(path);
+  if (!normalizedPath) {
+    return null;
+  }
+  return (
+    projects.find(
+      (project) => normalizeProjectPath(project.path) === normalizedPath
+    ) ?? null
+  );
+}
+
+function normalizeProjectPath(path: string | null | undefined): string {
+  return path?.trim().replaceAll("\\", "/").replace(/\/+$/, "") ?? "";
 }
 
 function richTextTriggerProviderToContextMentionProvider(

@@ -2,6 +2,7 @@ import type {
   WorkspaceFileEntry,
   WorkspaceFileManagerState
 } from "../../workspaceFileManagerTypes.ts";
+import { workspaceFileSearchEntryToEntry } from "./searchEntries.ts";
 
 export function findWorkspaceFileEntry(
   state: WorkspaceFileManagerState,
@@ -23,6 +24,13 @@ export function findWorkspaceFileEntry(
     if (nestedEntry) {
       return nestedEntry;
     }
+  }
+
+  const searchEntry = state.searchEntries.find(
+    (entry) => entry.path === entryPath
+  );
+  if (searchEntry) {
+    return workspaceFileSearchEntryToEntry(searchEntry);
   }
 
   return null;

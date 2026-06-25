@@ -126,6 +126,12 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     "stable";
   let updatePolicy: DesktopPreferencesStateResponse["preferences"]["updatePolicy"] =
     "prompt";
+  let workbenchWindowSnapping: NonNullable<
+    DesktopPreferencesStateResponse["preferences"]["workbenchWindowSnapping"]
+  > = {
+    enabled: false,
+    shortcutPreset: "commandArrows"
+  };
 
   return {
     getAgentComposerDefaultsByProvider() {
@@ -170,6 +176,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     getUpdatePolicy() {
       return updatePolicy;
     },
+    getWorkbenchWindowSnapping() {
+      return workbenchWindowSnapping;
+    },
     subscribe() {
       return () => undefined;
     },
@@ -210,6 +219,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
       }
       if (input.updatePolicy) {
         updatePolicy = input.updatePolicy;
+      }
+      if (input.workbenchWindowSnapping) {
+        workbenchWindowSnapping = input.workbenchWindowSnapping;
       }
     }
   };

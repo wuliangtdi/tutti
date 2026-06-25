@@ -130,13 +130,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     reporterService
   });
-  registerWorkspaceFileManagerServices(registry, {
-    desktopPreferencesService,
-    hostFilesApi: desktopApi.host.files,
-    tuttidClient,
-    platformApi: desktopApi.platform,
-    reporterService
-  });
   registerWorkspaceAppCenterServices(registry, {
     eventStreamClient: tuttidEventStreamClient,
     hostFilesApi: desktopApi.host.files,
@@ -155,6 +148,14 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
       workspaceId: environment.startupWorkspaceID ?? "__default__"
     }
   );
+  registerWorkspaceFileManagerServices(registry, {
+    desktopPreferencesService,
+    hostFilesApi: desktopApi.host.files,
+    tuttidClient,
+    platformApi: desktopApi.platform,
+    reporterService,
+    workspaceUserProjectService
+  });
   const workspaceAgentServices = registerWorkspaceAgentServices(registry, {
     eventStreamClient: tuttidEventStreamClient,
     hostFilesApi: desktopApi.host.files,

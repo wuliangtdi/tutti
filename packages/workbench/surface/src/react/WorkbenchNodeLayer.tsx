@@ -25,6 +25,7 @@ import { resolveWorkbenchWindowChromeMode } from "./windowHeader.ts";
 
 export interface WorkbenchNodeLayerProps<TData = unknown> {
   genie: WorkbenchGenieController<TData>;
+  edgeSnapEnabled?: boolean;
   interactive?: boolean;
   presentation?: WorkbenchSurfacePresentation | null;
   renderNode: WorkbenchRenderNode<TData>;
@@ -40,6 +41,7 @@ export interface WorkbenchNodeLayerProps<TData = unknown> {
 
 export function WorkbenchNodeLayer<TData>({
   genie,
+  edgeSnapEnabled = false,
   interactive = true,
   presentation,
   renderNode,
@@ -94,6 +96,7 @@ export function WorkbenchNodeLayer<TData>({
           key={nodeID}
           fullscreenHeaderMode={resolveFullscreenHeaderMode}
           genie={genie}
+          edgeSnapEnabled={edgeSnapEnabled}
           interactive={interactive}
           nodeID={nodeID}
           presentation={presentation}
@@ -111,6 +114,7 @@ export function WorkbenchNodeLayer<TData>({
 interface WorkbenchNodeLayerItemProps<TData = unknown> {
   fullscreenHeaderMode?: WorkbenchResolveFullscreenHeaderMode<TData>;
   genie: WorkbenchGenieController<TData>;
+  edgeSnapEnabled: boolean;
   interactive: boolean;
   nodeID: string;
   presentation?: WorkbenchSurfacePresentation | null;
@@ -126,6 +130,7 @@ interface WorkbenchNodeLayerItemProps<TData = unknown> {
 function WorkbenchNodeLayerItem<TData>({
   fullscreenHeaderMode,
   genie,
+  edgeSnapEnabled,
   interactive,
   nodeID,
   presentation,
@@ -152,6 +157,7 @@ function WorkbenchNodeLayerItem<TData>({
 
   return (
     <WorkbenchWindowFrame
+      edgeSnapEnabled={edgeSnapEnabled}
       hiddenMounted={node.isMinimized}
       interactive={interactive}
       presentation={presentation}

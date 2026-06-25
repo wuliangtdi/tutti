@@ -88,7 +88,7 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
-  it("converts uploaded image drafts into url prompt content", () => {
+  it("converts staged image drafts into path prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({
         draft: {
@@ -98,8 +98,8 @@ describe("agentComposerDraft", () => {
               id: "image-1",
               name: "screen.png",
               mimeType: "image/png",
-              url: "https://cdn.example.com/screen.png",
-              previewUrl: "https://cdn.example.com/screen.png"
+              path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
+              previewUrl: "data:image/png;base64,aW1hZ2U="
             }
           ]
         },
@@ -110,7 +110,7 @@ describe("agentComposerDraft", () => {
       {
         type: "image",
         mimeType: "image/png",
-        url: "https://cdn.example.com/screen.png",
+        path: "/var/cache/tsh/local-assets/workspace-1/user-1/screen.png",
         name: "screen.png"
       }
     ]);
@@ -162,6 +162,7 @@ describe("agentComposerDraft", () => {
 
     expect(draft).toEqual({
       prompt: "describe this",
+      files: [],
       images: [
         {
           id: "restore-queued-1:image:0",
@@ -174,13 +175,13 @@ describe("agentComposerDraft", () => {
     });
   });
 
-  it("restores url image content into stable draft ids", () => {
+  it("restores path image content into stable draft ids", () => {
     const draft = agentPromptContentToComposerDraft(
       [
         {
           type: "image",
           mimeType: "image/png",
-          url: "https://cdn.example.com/panel.png",
+          path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
           name: "panel.png"
         }
       ],
@@ -189,16 +190,52 @@ describe("agentComposerDraft", () => {
 
     expect(draft).toEqual({
       prompt: "",
+      files: [],
       images: [
         {
           id: "restore-queued-1:image:0",
           name: "panel.png",
           mimeType: "image/png",
-          url: "https://cdn.example.com/panel.png",
-          previewUrl: "https://cdn.example.com/panel.png"
+          path: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png",
+          previewUrl: "/var/cache/tsh/local-assets/workspace-1/user-1/panel.png"
         }
       ]
     });
+  });
+
+  it("converts local file drafts into prompt content", () => {
+    expect(
+      agentComposerDraftToPromptContent({
+        draft: {
+          prompt: "",
+          images: [],
+          files: [
+            {
+              id: "file-1",
+              name: "report.pdf",
+              mimeType: "application/pdf",
+              path: "/var/cache/tsh/local-assets/workspace-1/user-1/report.pdf",
+              hostPath: "/Users/me/report.pdf",
+              assetId: "asset-1",
+              sizeBytes: 42
+            }
+          ]
+        },
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "file",
+        mimeType: "application/pdf",
+        path: "/var/cache/tsh/local-assets/workspace-1/user-1/report.pdf",
+        hostPath: "/Users/me/report.pdf",
+        assetId: "asset-1",
+        sizeBytes: 42,
+        name: "report.pdf",
+        kind: "file"
+      }
+    ]);
   });
 
   it("derives display text from text content only", () => {

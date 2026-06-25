@@ -29,6 +29,7 @@ import { resolveWorkbenchWindowHeader } from "./windowHeader.ts";
 export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
+  edgeSnapEnabled?: boolean;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -85,6 +86,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 
 export function WorkbenchWindowFrame<TData>({
   children,
+  edgeSnapEnabled = false,
   fullscreenHeaderMode,
   genie,
   hiddenMounted = false,
@@ -109,7 +111,7 @@ export function WorkbenchWindowFrame<TData>({
   const isResizing = useWorkbenchSelector(
     (state) => state.activeResizeNodeId === node.id
   );
-  const onDragStart = useWorkbenchDrag(node);
+  const onDragStart = useWorkbenchDrag(node, { edgeSnapEnabled });
   const onHeaderDoubleClick = () => {
     if (!interactive) {
       return;

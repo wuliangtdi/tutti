@@ -13,6 +13,7 @@ import {
 
 export const WORKBENCH_MIN_VISIBLE_PX = 40;
 export const WORKBENCH_LAYOUT_PRESET_GAP_PX = 12;
+export const WORKBENCH_EDGE_SNAP_THRESHOLD_PX = 24;
 
 export function normalizeWorkbenchLayoutConstraints(
   constraints: WorkbenchLayoutConstraintsInput = {}
@@ -204,19 +205,55 @@ export function getWorkbenchSnapRect(
     sizeConstraints
   );
   const full = getWorkbenchSafeLayoutRect(surfaceSize, normalized);
+  const halfWidth = Math.round(full.width / 2);
+  const halfHeight = Math.round(full.height / 2);
   const clampSnapRect = (rect: WorkbenchFrame): WorkbenchFrame =>
     clampWorkbenchRect(rect, surfaceSize, normalized);
-  if (snapTarget === "left") {
-    return clampSnapRect({ ...full, width: Math.round(full.width / 2) });
+
+  switch (snapTarget) {
+    case "left":
+      return clampSnapRect({ ...full, width: halfWidth });
+    case "right":
+      return clampSnapRect({
+        ...full,
+        x: full.x + full.width - halfWidth,
+        width: halfWidth
+      });
+    case "top":
+      return clampSnapRect(full);
+    case "bottom":
+      return clampSnapRect({
+        ...full,
+        y: full.y + full.height - halfHeight,
+        height: halfHeight
+      });
+    case "top-left":
+      return clampSnapRect({ ...full, width: halfWidth, height: halfHeight });
+    case "top-right":
+      return clampSnapRect({
+        ...full,
+        x: full.x + full.width - halfWidth,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case "bottom-left":
+      return clampSnapRect({
+        ...full,
+        y: full.y + full.height - halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case "bottom-right":
+      return clampSnapRect({
+        ...full,
+        x: full.x + full.width - halfWidth,
+        y: full.y + full.height - halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case null:
+      return null;
   }
-  if (snapTarget === "right") {
-    const width = Math.round(full.width / 2);
-    return clampSnapRect({ ...full, x: full.x + full.width - width, width });
-  }
-  if (snapTarget === "top") {
-    return clampSnapRect(full);
-  }
-  return null;
 }
 
 export function getWorkbenchQuickLayoutRect(
@@ -230,6 +267,8 @@ export function getWorkbenchQuickLayoutRect(
     sizeConstraints
   );
   const full = getWorkbenchSafeLayoutRect(surfaceSize, normalized);
+  const halfWidth = Math.round(full.width / 2);
+  const halfHeight = Math.round(full.height / 2);
   const clampQuickLayoutRect = (rect: WorkbenchFrame): WorkbenchFrame =>
     clampWorkbenchRect(rect, surfaceSize, normalized);
 
@@ -253,13 +292,50 @@ export function getWorkbenchQuickLayoutRect(
         height: Math.round(full.height / 2)
       });
     case "bottom": {
-      const height = Math.round(full.height / 2);
       return clampQuickLayoutRect({
         ...full,
-        y: full.y + full.height - height,
+        y: full.y + full.height - halfHeight,
+        height: halfHeight
+      });
+    }
+    case "center": {
+      const width = Math.round(full.width * 0.72);
+      const height = Math.round(full.height * 0.72);
+      return clampQuickLayoutRect({
+        x: full.x + Math.round((full.width - width) / 2),
+        y: full.y + Math.round((full.height - height) / 2),
+        width,
         height
       });
     }
+    case "top-left":
+      return clampQuickLayoutRect({
+        ...full,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case "top-right":
+      return clampQuickLayoutRect({
+        ...full,
+        x: full.x + full.width - halfWidth,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case "bottom-left":
+      return clampQuickLayoutRect({
+        ...full,
+        y: full.y + full.height - halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      });
+    case "bottom-right":
+      return clampQuickLayoutRect({
+        ...full,
+        x: full.x + full.width - halfWidth,
+        y: full.y + full.height - halfHeight,
+        width: halfWidth,
+        height: halfHeight
+      });
   }
 }
 
@@ -330,18 +406,56 @@ function getWorkbenchSafeLayoutRect(
 }
 
 export function inferWorkbenchSnapTarget(
-  dragPoint: Pick<WorkbenchFrame, "y">,
+  dragPoint: Pick<WorkbenchFrame, "x" | "y">,
   surfaceSize: WorkbenchSize,
   threshold = 0,
   constraints: WorkbenchLayoutConstraints = defaultWorkbenchLayoutConstraints
 ): WorkbenchSnapTarget {
   const frame = getWorkbenchLayoutFrame(surfaceSize, constraints);
-  const topSnapBoundary = frame.y - threshold;
-  if (
-    dragPoint.y < topSnapBoundary ||
-    (topSnapBoundary === 0 && dragPoint.y <= 0)
-  ) {
+  const crossesLeft =
+    threshold > 0
+      ? dragPoint.x <= frame.x + threshold
+      : dragPoint.x < frame.x || (frame.x === 0 && dragPoint.x <= 0);
+  const crossesRight =
+    threshold > 0
+      ? dragPoint.x >= frame.x + frame.width - threshold
+      : dragPoint.x > frame.x + frame.width ||
+        (frame.x + frame.width === surfaceSize.width &&
+          dragPoint.x >= surfaceSize.width);
+  const crossesTop =
+    threshold > 0
+      ? dragPoint.y <= frame.y + threshold
+      : dragPoint.y < frame.y || (frame.y === 0 && dragPoint.y <= 0);
+  const crossesBottom =
+    threshold > 0
+      ? dragPoint.y >= frame.y + frame.height - threshold
+      : dragPoint.y > frame.y + frame.height ||
+        (frame.y + frame.height === surfaceSize.height &&
+          dragPoint.y >= surfaceSize.height);
+
+  if (crossesTop && crossesLeft) {
+    return "top-left";
+  }
+  if (crossesTop && crossesRight) {
+    return "top-right";
+  }
+  if (crossesBottom && crossesLeft) {
+    return "bottom-left";
+  }
+  if (crossesBottom && crossesRight) {
+    return "bottom-right";
+  }
+  if (crossesTop) {
     return "top";
+  }
+  if (crossesBottom) {
+    return "bottom";
+  }
+  if (crossesLeft) {
+    return "left";
+  }
+  if (crossesRight) {
+    return "right";
   }
   return null;
 }

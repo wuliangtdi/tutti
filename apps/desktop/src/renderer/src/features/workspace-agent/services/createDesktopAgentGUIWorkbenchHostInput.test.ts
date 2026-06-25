@@ -9,8 +9,15 @@ import type {
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import type { ReporterEventInput } from "@renderer/features/analytics/services/reporterService.interface.ts";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
+import type { IWorkspaceUserProjectService } from "@renderer/features/workspace-user-project";
+import {
+  USER_PROJECT_REFERENCE_SOURCE_ID,
+  WORKSPACE_FILE_SOURCE_ID
+} from "../../agent-reference-sources/index.ts";
+import { DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID } from "../../workspace-file-manager/services/desktopWorkspaceFileLocations.ts";
 import { createDesktopAgentGUIWorkbenchHostInput } from "./createDesktopAgentGUIWorkbenchHostInput.ts";
 import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivityService.interface.ts";
 
@@ -82,6 +89,152 @@ test("desktop agent GUI workbench host input creates the default agent host api"
       directoryPath: "/workspace",
       entries: [],
       rootPath: "/workspace"
+    }
+  );
+});
+
+test("desktop agent GUI workbench host input wires project references first", async () => {
+  const projects = [
+    userProject("project-1", "/Users/local/repo", "Repo"),
+    userProject("project-2", "/Users/local/app", "App")
+  ];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceUserProjectService: createWorkspaceUserProjectService(projects),
+    workspaceId
+  });
+
+  assert.equal(
+    (await hostInput.referenceSourceAggregator.listSources({ workspaceId }))[0]
+      ?.sourceId,
+    USER_PROJECT_REFERENCE_SOURCE_ID
+  );
+  assert.deepEqual(
+    hostInput.resolveWorkspaceReferenceInitialTarget({
+      activeConversation: null,
+      composerSelectedProjectPath: "/Users/local/app",
+      userProjects: projects.map(agentGUIUserProject)
+    }),
+    {
+      sourceId: USER_PROJECT_REFERENCE_SOURCE_ID,
+      params: {
+        projectId: "project-2",
+        projectPath: "/Users/local/app"
+      }
+    }
+  );
+});
+
+test("desktop agent GUI workbench host input prefers active conversation project for reference target", () => {
+  const project = userProject("project-2", "/Users/local/app", "App");
+  const composerProject = userProject("project-1", "/Users/local/repo", "Repo");
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceUserProjectService: createWorkspaceUserProjectService([project]),
+    workspaceId
+  });
+
+  const input: Parameters<
+    typeof hostInput.resolveWorkspaceReferenceInitialTarget
+  >[0] = {
+    activeConversation: {
+      cwd: "/Users/local/app/packages/ui",
+      id: "session-1",
+      project: agentGUIUserProject(project),
+      provider: "codex",
+      status: "ready",
+      title: "Session",
+      updatedAtUnixMs: 1
+    },
+    composerSelectedProjectPath: "/Users/local/repo",
+    userProjects: [
+      agentGUIUserProject(composerProject),
+      agentGUIUserProject(project)
+    ]
+  };
+
+  assert.deepEqual(hostInput.resolveWorkspaceReferenceInitialTarget(input), {
+    sourceId: USER_PROJECT_REFERENCE_SOURCE_ID,
+    params: {
+      projectId: "project-2",
+      projectPath: "/Users/local/app"
+    }
+  });
+});
+
+test("desktop agent GUI workbench host input ignores stale active conversation project", () => {
+  const composerProject = userProject("project-1", "/Users/local/repo", "Repo");
+  const staleProject = userProject("project-2", "/Users/local/app", "App");
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceUserProjectService: createWorkspaceUserProjectService([
+      composerProject
+    ]),
+    workspaceId
+  });
+
+  assert.deepEqual(
+    hostInput.resolveWorkspaceReferenceInitialTarget({
+      activeConversation: {
+        cwd: "/Users/local/app",
+        id: "session-1",
+        project: agentGUIUserProject(staleProject),
+        provider: "codex",
+        status: "ready",
+        title: "Session",
+        updatedAtUnixMs: 1
+      },
+      composerSelectedProjectPath: "/Users/local/repo",
+      userProjects: [agentGUIUserProject(composerProject)]
+    }),
+    {
+      sourceId: USER_PROJECT_REFERENCE_SOURCE_ID,
+      params: {
+        projectId: "project-1",
+        projectPath: "/Users/local/repo"
+      }
+    }
+  );
+});
+
+test("desktop agent GUI workbench host input falls back to local home reference target", () => {
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceUserProjectService: createWorkspaceUserProjectService([]),
+    workspaceId
+  });
+
+  assert.deepEqual(
+    hostInput.resolveWorkspaceReferenceInitialTarget({
+      activeConversation: null,
+      composerSelectedProjectPath: null,
+      userProjects: []
+    }),
+    {
+      sourceId: WORKSPACE_FILE_SOURCE_ID,
+      params: {
+        locationId: DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
+      }
     }
   );
 });
@@ -993,6 +1146,104 @@ function createRuntimeApi(
     async logRendererDiagnostic() {},
     async logTerminalDiagnostic(payload) {
       input.terminalDiagnostics?.push(payload);
+    }
+  };
+}
+
+function userProject(
+  id: string,
+  path: string,
+  label: string
+): WorkspaceUserProject {
+  return {
+    createdAtUnixMs: 1,
+    id,
+    label,
+    path,
+    updatedAtUnixMs: 1
+  };
+}
+
+function agentGUIUserProject(project: WorkspaceUserProject): {
+  createdAtUnixMs?: number;
+  id: string;
+  label: string;
+  lastUsedAtUnixMs?: number;
+  path: string;
+  updatedAtUnixMs?: number;
+} {
+  return {
+    ...(project.createdAtUnixMs === undefined
+      ? {}
+      : { createdAtUnixMs: project.createdAtUnixMs }),
+    id: project.id,
+    label: project.label,
+    ...(typeof project.lastUsedAtUnixMs === "number"
+      ? { lastUsedAtUnixMs: project.lastUsedAtUnixMs }
+      : {}),
+    path: project.path,
+    ...(project.updatedAtUnixMs === undefined
+      ? {}
+      : { updatedAtUnixMs: project.updatedAtUnixMs })
+  };
+}
+
+function createWorkspaceUserProjectService(
+  projects: WorkspaceUserProject[]
+): IWorkspaceUserProjectService {
+  return {
+    _serviceBrand: undefined,
+    async checkProjectPath(path) {
+      return { exists: true, isDirectory: true, path };
+    },
+    async createProject(name) {
+      return userProject("created", `/Users/local/${name}`, name);
+    },
+    async ensureLoaded() {},
+    async getDefaultSelection() {
+      return null;
+    },
+    getRevision() {
+      return 1;
+    },
+    getSnapshot() {
+      return {
+        error: null,
+        initialized: true,
+        isLoading: false,
+        projects,
+        revision: 1
+      };
+    },
+    isNoProjectPath() {
+      return false;
+    },
+    rememberNoProjectPath() {},
+    async prepareSelection() {
+      return {
+        isSelectedPathMissing: false,
+        projects,
+        selection: { kind: "none" }
+      };
+    },
+    async refresh() {},
+    async registerProjectPath(path) {
+      return userProject("registered", path, "Registered");
+    },
+    async removeProjectPath() {},
+    async rememberDefaultSelection() {},
+    async selectDirectory() {
+      return null;
+    },
+    store: {
+      error: null,
+      initialized: true,
+      isLoading: false,
+      projects,
+      revision: 1
+    } as IWorkspaceUserProjectService["store"],
+    subscribe() {
+      return () => {};
     }
   };
 }

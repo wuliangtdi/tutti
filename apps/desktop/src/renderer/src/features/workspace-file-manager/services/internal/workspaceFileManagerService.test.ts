@@ -10,6 +10,7 @@ import {
   type WorkspaceFileManagerPersistedState,
   workspaceFileManagerI18nResources
 } from "@tutti-os/workspace-file-manager/services";
+import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { DesktopHostFilesApi, DesktopPlatformApi } from "@preload/types";
 import type { ReporterEventInput } from "../../../analytics/services/reporterService.interface.ts";
@@ -18,6 +19,14 @@ import {
   WorkspaceFileManagerService,
   type WorkspaceFileManagerServiceDependencies
 } from "./workspaceFileManagerService.ts";
+import {
+  DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID,
+  DESKTOP_WORKSPACE_FILE_LOCAL_SECTION_ID,
+  DESKTOP_WORKSPACE_FILE_PROJECT_SECTION_ID,
+  DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
+  buildDesktopWorkspaceFileLocationSections
+} from "../desktopWorkspaceFileLocations.ts";
+import { createDesktopWorkspaceFileManagerAdapter } from "./desktopWorkspaceFileManagerAdapter.ts";
 
 test("workspace file manager service reuses one long-lived session per workspace", () => {
   const service = new WorkspaceFileManagerService(createDependenciesStub());
@@ -33,6 +42,39 @@ test("workspace file manager service reuses one long-lived session per workspace
 
   assert.equal(first, second);
   assert.notEqual(first, third);
+});
+
+test("workspace file manager service does not refresh unchanged locations during repeated session lookup", async () => {
+  const userProjects = createWorkspaceUserProjectServiceStub();
+  const dependencies = createDependenciesStub();
+  dependencies.workspaceUserProjectService = userProjects.service;
+  const service = new WorkspaceFileManagerService(dependencies);
+  const copy = createWorkspaceFileManagerI18nRuntime(
+    createI18nRuntime({
+      dictionaries: [workspaceFileManagerI18nResources.en]
+    })
+  );
+  const notifications: number[] = [];
+  service.subscribe("workspace-1", () => {
+    notifications.push(notifications.length + 1);
+  });
+
+  const first = service.getSession("workspace-1", copy);
+  await flushMicrotasks();
+  notifications.length = 0;
+  userProjects.resetEnsureLoadedCalls();
+  const second = service.getSession("workspace-1", copy);
+  await flushMicrotasks();
+
+  assert.equal(first, second);
+  assert.equal(userProjects.ensureLoadedCalls, 0);
+  assert.deepEqual(notifications, []);
+
+  userProjects.emit();
+  await flushMicrotasks();
+
+  assert.equal(userProjects.ensureLoadedCalls, 1);
+  assert.deepEqual(notifications, []);
 });
 
 test("workspace file manager service defaults new sessions to the user home directory", () => {
@@ -61,7 +103,8 @@ test("workspace file manager service restores snapshot state without localStorag
       currentDirectoryPath: "/Users/demo/project/docs",
       navigationBackStack: ["/Users/demo/project"],
       navigationForwardStack: ["/Users/demo/project/archive"],
-      schemaVersion: 2
+      selectedLocationId: null,
+      schemaVersion: 3
     };
 
     const first = service.getSession("workspace-1", copy, restoredState);
@@ -69,13 +112,17 @@ test("workspace file manager service restores snapshot state without localStorag
       currentDirectoryPath: "/Users/demo/project/ignored",
       navigationBackStack: [],
       navigationForwardStack: [],
-      schemaVersion: 2
+      selectedLocationId: null,
+      schemaVersion: 3
     });
 
     assert.equal(first, second);
     assert.equal(first.store.currentDirectoryPath, "/Users/demo/project/docs");
     assert.equal(first.store.selectedPath, null);
-    assert.deepEqual(service.getSnapshotState("workspace-1"), restoredState);
+    assert.deepEqual(service.getSnapshotState("workspace-1"), {
+      ...restoredState,
+      selectedLocationId: DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
+    });
   } finally {
     restoreStorage();
   }
@@ -93,7 +140,8 @@ test("workspace file manager service falls back to home when restored state is i
     currentDirectoryPath: 123,
     navigationBackStack: [],
     navigationForwardStack: [],
-    schemaVersion: 2
+    selectedLocationId: null,
+    schemaVersion: 3
   } as unknown as WorkspaceFileManagerPersistedState);
 
   assert.equal(session.store.currentDirectoryPath, "/Users/local");
@@ -386,6 +434,87 @@ test("workspace file manager service includes hidden entries for direct reveal i
   );
 });
 
+test("desktop workspace file locations include projects and local entries", () => {
+  const sections = buildDesktopWorkspaceFileLocationSections({
+    homeDirectory: "/Users/local",
+    projects: [
+      {
+        id: "project-1",
+        label: "Repo (/Users/local/repo)",
+        path: "/Users/local/repo"
+      }
+    ]
+  });
+
+  assert.equal(sections[0]?.id, DESKTOP_WORKSPACE_FILE_PROJECT_SECTION_ID);
+  assert.equal(sections[0]?.locations[0]?.id, "project:project-1");
+  assert.equal(sections[0]?.locations[0]?.label, "Repo");
+  assert.equal(sections[0]?.locations[0]?.kind, "directory");
+  assert.equal(sections[0]?.locations[0]?.path, "/Users/local/repo");
+
+  assert.equal(sections[1]?.id, DESKTOP_WORKSPACE_FILE_LOCAL_SECTION_ID);
+  assert.deepEqual(
+    sections[1]?.locations.map((location) => location.id),
+    [
+      DESKTOP_WORKSPACE_FILE_RECENT_LOCATION_ID,
+      "local:downloads",
+      "local:documents",
+      "local:desktop",
+      DESKTOP_WORKSPACE_FILE_HOME_LOCATION_ID
+    ]
+  );
+});
+
+test("desktop workspace file manager adapter forwards recent and scoped search requests", async () => {
+  const dependencies = createDependenciesStub();
+  let recentLimit: number | undefined;
+  let searchWithin: string | undefined;
+  dependencies.tuttidClient.listWorkspaceRecentFiles = async (
+    workspaceId,
+    input
+  ) => {
+    recentLimit = input?.limit;
+    return {
+      directoryPath: "/Users/local",
+      entries: [],
+      root: "/Users/local",
+      workspaceId
+    };
+  };
+  dependencies.tuttidClient.searchWorkspaceFiles = async (
+    workspaceId,
+    input
+  ) => {
+    searchWithin = input.within;
+    return {
+      entries: [],
+      root: "/Users/local",
+      workspaceId
+    };
+  };
+  const adapter = createDesktopWorkspaceFileManagerAdapter(
+    {
+      ...dependencies,
+      notifyPreviewUnsupportedFallback() {},
+      notifyRevealFailed() {}
+    },
+    () => "en"
+  );
+
+  await adapter.listRecentEntries?.({
+    limit: 7,
+    workspaceID: "workspace-1"
+  });
+  await adapter.search?.({
+    query: "app",
+    within: "/Users/local/repo",
+    workspaceID: "workspace-1"
+  });
+
+  assert.equal(recentLimit, 7);
+  assert.equal(searchWithin, "/Users/local/repo");
+});
+
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -413,6 +542,87 @@ function installForbiddenLocalStorage(): () => void {
   };
 }
 
+function createWorkspaceUserProjectServiceStub(
+  input: {
+    projects?: readonly WorkspaceUserProject[];
+  } = {}
+): {
+  emit(): void;
+  readonly ensureLoadedCalls: number;
+  resetEnsureLoadedCalls(): void;
+  service: NonNullable<
+    WorkspaceFileManagerServiceDependencies["workspaceUserProjectService"]
+  >;
+} {
+  const listeners = new Set<() => void>();
+  let ensureLoadedCalls = 0;
+  const projects = [...(input.projects ?? [])];
+  let revision = 0;
+  const fail = () => {
+    throw new Error("Workspace user project stub method should not be called");
+  };
+  const service = {
+    _serviceBrand: undefined,
+    checkProjectPath: fail,
+    createProject: fail,
+    async ensureLoaded() {
+      ensureLoadedCalls += 1;
+    },
+    getDefaultSelection: fail,
+    getRevision() {
+      return revision;
+    },
+    getSnapshot() {
+      return {
+        error: null,
+        initialized: true,
+        isLoading: false,
+        projects: [...projects],
+        revision
+      };
+    },
+    isNoProjectPath: () => false,
+    prepareSelection: fail,
+    refresh: fail,
+    registerProjectPath: fail,
+    rememberDefaultSelection: fail,
+    rememberNoProjectPath() {},
+    removeProjectPath: fail,
+    selectDirectory: fail,
+    store: {
+      error: null,
+      initialized: true,
+      isLoading: false,
+      projects,
+      revision
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    }
+  } as unknown as NonNullable<
+    WorkspaceFileManagerServiceDependencies["workspaceUserProjectService"]
+  >;
+
+  return {
+    emit() {
+      revision += 1;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    get ensureLoadedCalls() {
+      return ensureLoadedCalls;
+    },
+    resetEnsureLoadedCalls() {
+      ensureLoadedCalls = 0;
+    },
+    service
+  };
+}
+
 function createDependenciesStub(): {
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient;
@@ -420,7 +630,10 @@ function createDependenciesStub(): {
     DesktopPlatformApi,
     "homeDirectory" | "os" | "resolveDroppedPaths"
   >;
-} & Pick<WorkspaceFileManagerServiceDependencies, "reporterService"> {
+} & Pick<
+  WorkspaceFileManagerServiceDependencies,
+  "reporterService" | "workspaceUserProjectService"
+> {
   const fail = () => {
     throw new Error(
       "Desktop dependencies should not be called during session lookup"

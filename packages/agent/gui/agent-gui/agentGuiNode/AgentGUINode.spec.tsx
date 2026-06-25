@@ -71,7 +71,7 @@ const mockPreflightUpload = vi.fn();
 let mockViewModel: AgentGUINodeViewModel;
 
 function createDraft(prompt: string): AgentComposerDraft {
-  return { prompt, images: [] };
+  return { prompt, images: [], files: [] };
 }
 
 function textQueuedPrompt(
@@ -4591,7 +4591,7 @@ describe("AgentGUINode", () => {
       "button"
     );
 
-    expect(fileOption).toHaveClass("py-2");
+    expect(fileOption).toHaveClass("rich-text-at-mention-palette__row-button");
     expect(within(fileOption!).getByText("README.md")).toBeTruthy();
     expect(fileOption?.querySelector("svg")).toBeNull();
     const fileIcon = fileOption?.querySelector(
@@ -4630,19 +4630,16 @@ describe("AgentGUINode", () => {
       "agent-gui-mention-palette-empty-state"
     );
     expect(errorEmptyState).toHaveClass(
-      "flex",
-      "flex-1",
-      "items-center",
-      "justify-center",
-      "text-center",
-      "text-[var(--text-tertiary)]"
+      "rich-text-at-mention-palette__empty-state"
     );
     expect(errorEmptyState).toHaveAttribute(
       "data-empty-state-icon",
       "folder-failed"
     );
     expect(errorEmptyState.querySelector("svg")).not.toBeNull();
-    expect(errorText).toHaveClass("text-[var(--text-tertiary)]");
+    expect(errorText).toHaveClass(
+      "rich-text-at-mention-palette__empty-state-text"
+    );
   });
 
   it("supports arrow navigation in the empty-state session mention palette", async () => {
@@ -4949,17 +4946,14 @@ describe("AgentGUINode", () => {
     expect(scrollRegion).not.toBeNull();
     const palette = surface.querySelector(".agent-gui-node__mention-palette");
     expect(palette).not.toBeNull();
-    expect(palette).toHaveClass(
-      "grid",
-      "grid-rows-[auto_minmax(0,1fr)_auto]",
-      "overflow-hidden"
-    );
+    expect(palette).toHaveClass("rich-text-at-mention-palette__shell");
     expect(scrollRegion?.parentElement).toHaveClass(
-      "min-h-0",
-      "overflow-hidden"
+      "rich-text-at-mention-palette__scroll-shell"
     );
     expect((scrollRegion as HTMLElement).style.maxHeight).toBe("");
-    expect(scrollRegion).toHaveClass("h-full", "min-h-0", "overflow-y-auto");
+    expect(scrollRegion).toHaveClass(
+      "rich-text-at-mention-palette__scroll-body"
+    );
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
     expect(
       hint.closest(".agent-gui-node__mention-palette-footer")
@@ -6044,9 +6038,15 @@ describe("AgentGUINode", () => {
       "utf8"
     );
 
-    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*24px/);
+    expect(css).toMatch(/--agent-gui-detail-padding-x:\s*28px/);
+    expect(css).toMatch(
+      /\.workspace-agents-status-panel__content--detail\s*{[^}]*padding-inline:\s*28px/s
+    );
     expect(css).toMatch(
       /\.agent-gui-node__timeline\s*{[^}]*padding:\s*32px\s+var\(--agent-gui-detail-padding-x\)\s+24px/s
+    );
+    expect(css).toMatch(
+      /\.workspace-agents-status-panel__conversation-timeline\.agent-gui-node__timeline\s*{[^}]*padding-right:\s*28px[^}]*padding-left:\s*28px/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*{[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s

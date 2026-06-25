@@ -28,6 +28,12 @@ export {
   workspaceFileTextMaxBytes
 } from "./services/workspaceFileManagerModel.ts";
 export {
+  findWorkspaceFileLocationById,
+  flattenWorkspaceFileLocations,
+  isWorkspaceFileRecentLocation,
+  resolveWorkspaceFileLocationDefaultId
+} from "./services/workspaceFileManagerLocations.ts";
+export {
   type WorkspaceFileActivationTarget,
   type WorkspaceFileDirectoryListing,
   type WorkspaceFileEntry,
@@ -35,6 +41,11 @@ export {
   type WorkspaceFileImportSummary,
   type WorkspaceFileImportSummaryReason,
   type WorkspaceFileImportSummaryReasonCount,
+  type WorkspaceFileLocation,
+  type WorkspaceFileLocationKind,
+  type WorkspaceFileLocationSection,
+  type WorkspaceFileDirectoryLocation,
+  type WorkspaceFileRecentLocation,
   type WorkspaceFileManagerCapabilities,
   type WorkspaceFileManagerPersistedState,
   type WorkspaceFilePreviewKind,

@@ -14,7 +14,8 @@ import type {
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
-  DesktopUpdatePolicy
+  DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeSource } from "@shared/theme";
 import type {
@@ -73,6 +74,9 @@ export interface IWorkspaceSettingsService {
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
   changeMinimizeAnimation(animation: DesktopMinimizeAnimation): Promise<void>;
+  changeWorkbenchWindowSnapping(
+    value: DesktopWorkbenchWindowSnapping
+  ): Promise<void>;
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;

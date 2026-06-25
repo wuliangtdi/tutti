@@ -4,7 +4,7 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactElement
 } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@tutti-os/ui-system";
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import type { WorkspaceFileManagerSession } from "../services/workspaceFileManagerService.interface.ts";
@@ -26,6 +26,7 @@ import {
   WorkspaceFileManagerPanels
 } from "./WorkspaceFileManagerPanels.tsx";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
+import { WorkspaceFileManagerSidebar } from "./WorkspaceFileManagerSidebar.tsx";
 import {
   sortWorkspaceFileEntriesForArrangeMode,
   type WorkspaceFileManagerArrangeMode
@@ -37,14 +38,18 @@ import { useWorkspaceFileEntryIconUrls } from "./useWorkspaceFileEntryIconUrls.t
 import { shouldTrackDirectoryExpanded } from "./workspaceFileManagerAnalytics.ts";
 import {
   buildWorkspaceFileManagerVisibleTreeRows,
-  collectWorkspaceFileManagerVisibleTreeEntries
+  collectWorkspaceFileManagerVisibleTreeEntries,
+  type WorkspaceFileManagerVisibleTreeRow
 } from "./workspaceFileManagerVisibleTree.ts";
+import { workspaceFileSearchEntryToEntry } from "../services/workspaceFileManagerModel.ts";
 import {
   useWorkspaceFileManagerDialogsView,
   useWorkspaceFileManagerPanelsView,
   useWorkspaceFileManagerRootView,
   useWorkspaceFileManagerToolbarView
 } from "./useWorkspaceFileManagerService.ts";
+
+const workspaceFileManagerSearchDebounceMs = 180;
 
 export interface WorkspaceFileManagerProps {
   className?: string;
@@ -156,7 +161,8 @@ export function WorkspaceFileManager({
         panelsState.busyAction !== null ||
         panelsState.isLoading ||
         panelsState.isMutating ||
-        panelsState.inlineRenameEntryPath !== null
+        panelsState.inlineRenameEntryPath !== null ||
+        panelsState.searchQuery.trim().length > 0
       ) {
         return;
       }
@@ -310,6 +316,17 @@ export function WorkspaceFileManager({
       onDrop={handleDrop}
       ref={rootRef}
     >
+      <WorkspaceFileManagerSidebar
+        disabled={rootView.isBusy || panelsState.isLoading}
+        locationSections={rootView.locationSections}
+        selectedLocationId={rootView.selectedLocationId}
+        onSelectLocation={(location) => {
+          if (location.kind === "directory") {
+            onDirectoryExpanded?.(location.path);
+          }
+          void session.selectLocation(location.id);
+        }}
+      />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <WorkspaceFileManagerToolbarContainer
           i18n={i18n}
@@ -374,10 +391,45 @@ function WorkspaceFileManagerToolbarContainer({
   session: WorkspaceFileManagerSession;
 }): ReactElement {
   const { view } = useWorkspaceFileManagerToolbarView(session, i18n);
+  const [searchQuery, setSearchQuery] = useState(view.searchQuery);
+  const submittedSearchQueryRef = useRef(view.searchQuery);
+  const submitSearchQuery = useCallback(
+    (query: string): void => {
+      submittedSearchQueryRef.current = query;
+      void session.search(query);
+    },
+    [session]
+  );
+
+  useEffect(() => {
+    if (view.searchQuery === submittedSearchQueryRef.current) {
+      return;
+    }
+    submittedSearchQueryRef.current = view.searchQuery;
+    setSearchQuery(view.searchQuery);
+  }, [view.searchQuery]);
+
+  useEffect(() => {
+    if (!view.canSearch || searchQuery === submittedSearchQueryRef.current) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      submitSearchQuery(searchQuery);
+    }, workspaceFileManagerSearchDebounceMs);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [searchQuery, submitSearchQuery, view.canSearch]);
+
+  const handleSearchClear = useCallback((): void => {
+    setSearchQuery("");
+    submitSearchQuery("");
+  }, [submitSearchQuery]);
 
   return (
     <WorkspaceFileManagerToolbar
       breadcrumbs={view.breadcrumbs}
+      canSearch={view.canSearch}
       canGoBack={view.canGoBack}
       canGoForward={view.canGoForward}
       copy={i18n}
@@ -385,8 +437,10 @@ function WorkspaceFileManagerToolbarContainer({
       isBusy={view.isBusy}
       isLoading={view.isLoading}
       isMutating={view.isMutating}
+      isSearching={view.isSearching}
       arrangeMode={arrangeMode}
       layoutMode={layoutMode}
+      searchQuery={searchQuery}
       onArrangeModeChange={onArrangeModeChange}
       onGoBack={() => {
         void session.goBack();
@@ -409,6 +463,8 @@ function WorkspaceFileManagerToolbarContainer({
       onRefresh={() => {
         void session.refresh();
       }}
+      onSearchClear={handleSearchClear}
+      onSearchQueryChange={setSearchQuery}
     />
   );
 }
@@ -449,6 +505,17 @@ function WorkspaceFileManagerPanelsContainer({
     () => sortWorkspaceFileEntriesForArrangeMode(state.entries, arrangeMode),
     [arrangeMode, state.entries]
   );
+  const searchEntries = useMemo(
+    () => view.searchEntries.map(workspaceFileSearchEntryToEntry),
+    [view.searchEntries]
+  );
+  const searchEntryContextByPath = useMemo(() => {
+    const contextByPath = new Map<string, string>();
+    for (const entry of view.searchEntries) {
+      contextByPath.set(entry.path, entry.directoryPath);
+    }
+    return contextByPath;
+  }, [view.searchEntries]);
   const treeRows = useMemo(
     () =>
       buildWorkspaceFileManagerVisibleTreeRows({
@@ -464,16 +531,30 @@ function WorkspaceFileManagerPanelsContainer({
       state.expandedDirectoryPaths
     ]
   );
+  const searchTreeRows = useMemo<WorkspaceFileManagerVisibleTreeRow[]>(
+    () =>
+      searchEntries.map((entry) => ({
+        depth: 0,
+        entry,
+        expanded: false,
+        expandable: false,
+        kind: "entry",
+        loadingChildren: false
+      })),
+    [searchEntries]
+  );
+  const displayedEntries = view.isSearchMode ? searchEntries : arrangedEntries;
+  const displayedTreeRows = view.isSearchMode ? searchTreeRows : treeRows;
   const visibleTreeEntries = useMemo(
-    () => collectWorkspaceFileManagerVisibleTreeEntries(treeRows),
-    [treeRows]
+    () => collectWorkspaceFileManagerVisibleTreeEntries(displayedTreeRows),
+    [displayedTreeRows]
   );
   const {
     iconUrlByCacheKey,
     reportEntryIconViewportEnter,
     reportEntryIconViewportLeave
   } = useWorkspaceFileEntryIconUrls({
-    entries: layoutMode === "list" ? visibleTreeEntries : arrangedEntries,
+    entries: layoutMode === "list" ? visibleTreeEntries : displayedEntries,
     includeImageThumbnails: true,
     resolveEntryIconUrl
   });
@@ -481,7 +562,7 @@ function WorkspaceFileManagerPanelsContainer({
   return (
     <WorkspaceFileManagerPanels
       arrangeMode={arrangeMode}
-      canMove={view.canMove}
+      canMove={view.isSearchMode ? false : view.canMove}
       contextMenuEntryPath={view.contextMenuEntryPath}
       copy={i18n}
       dateLocale={dateLocale}
@@ -493,16 +574,18 @@ function WorkspaceFileManagerPanelsContainer({
       layoutMode={layoutMode}
       pendingDirectoryPath={view.pendingDirectoryPath}
       previewState={view.previewState}
-      treeRows={treeRows}
+      entryContextByPath={view.isSearchMode ? searchEntryContextByPath : null}
+      treeRows={displayedTreeRows}
       onEntryIconViewportEnter={reportEntryIconViewportEnter}
       onEntryIconViewportLeave={reportEntryIconViewportLeave}
       selectedEntry={view.selectedEntry}
       selectedPath={view.selectedPath}
       showDropOverlay={view.showDropOverlay}
       state={{
-        entries: arrangedEntries,
-        error: state.error,
-        isLoading: state.isLoading
+        entries: displayedEntries,
+        error: view.isSearchMode ? view.searchError : state.error,
+        isLoading: view.isSearchMode ? view.isSearching : state.isLoading,
+        isSearchMode: view.isSearchMode
       }}
       onBlankContextMenu={(event) => {
         onOpenContextMenu(event, null);

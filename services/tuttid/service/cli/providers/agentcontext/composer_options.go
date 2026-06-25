@@ -111,6 +111,7 @@ func composerOptionsValue(options agentservice.ComposerOptions) map[string]any {
 		"modelConfig":       composerConfigOptionValue(options.ModelConfig),
 		"permissionConfig":  permissionConfigValue(options.PermissionConfig),
 		"reasoningConfig":   composerConfigOptionValue(options.ReasoningConfig),
+		"speedConfig":       composerConfigOptionValue(options.SpeedConfig),
 	}
 }
 
