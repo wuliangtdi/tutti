@@ -13,7 +13,8 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import { ChevronRight, ExternalLink, Info, X } from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Wrench, X } from "lucide-react";
+import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import type {
   NodeRef,
   ReferenceLocateTarget,
@@ -257,6 +258,7 @@ export interface AgentGUIViewLabels {
   emptyProvider?: string;
   conversations: string;
   newConversation: string;
+  agentEnvSetup: string;
   noConversations: string;
   emptyProjectConversations: string;
   startConversation: string;
@@ -1303,6 +1305,9 @@ export function AgentGUINodeView({
       ? "0 minmax(var(--agent-gui-detail-min-width), 1fr)"
       : "var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
+  const openAgentEnvSetup = useCallback(() => {
+    openAgentEnvPanel({ provider: viewModel.data.provider, focus: null });
+  }, [viewModel.data.provider]);
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
@@ -1322,6 +1327,7 @@ export function AgentGUINodeView({
         openclawGateway,
         isCollapsed: conversationRailCollapsed,
         onCreateConversation: requestCreateConversation,
+        onOpenAgentEnvSetup: openAgentEnvSetup,
         onRetryOpenclawGateway: retryOpenclawGateway,
         onSelectConversation: selectConversation,
         onToggleConversationPinned: toggleConversationPinned,
@@ -1340,6 +1346,7 @@ export function AgentGUINodeView({
         conversationRailCollapsed,
         createConversationDisabled,
         labels,
+        openAgentEnvSetup,
         openConversationWindow,
         openProjectFiles,
         openclawGateway,
@@ -3006,6 +3013,7 @@ interface AgentGUIConversationRailPaneProps {
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
   onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onOpenAgentEnvSetup: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
@@ -3086,6 +3094,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.openclawGateway === next.openclawGateway &&
     current.isCollapsed === next.isCollapsed &&
     current.onCreateConversation === next.onCreateConversation &&
+    current.onOpenAgentEnvSetup === next.onOpenAgentEnvSetup &&
     current.onRetryOpenclawGateway === next.onRetryOpenclawGateway &&
     current.onSelectConversation === next.onSelectConversation &&
     current.onToggleConversationPinned === next.onToggleConversationPinned &&
@@ -3291,6 +3300,7 @@ const AgentGUIConversationRailPane = memo(
     openclawGateway,
     isCollapsed,
     onCreateConversation,
+    onOpenAgentEnvSetup,
     onRetryOpenclawGateway,
     onSelectConversation,
     onToggleConversationPinned,
@@ -3542,6 +3552,19 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
+        <div className="shrink-0 border-t border-[var(--border-1)] px-2 py-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            title={labels.agentEnvSetup}
+            disabled={previewMode}
+            onClick={() => onOpenAgentEnvSetup()}
+          >
+            <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{labels.agentEnvSetup}</span>
+          </Button>
+        </div>
         <ConfirmationDialog
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}

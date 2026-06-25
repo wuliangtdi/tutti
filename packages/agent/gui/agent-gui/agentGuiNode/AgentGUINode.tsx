@@ -852,6 +852,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       emptyProvider: displayProviderLabel,
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
+      agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(
         "agentHost.agentGui.emptyProjectConversations"

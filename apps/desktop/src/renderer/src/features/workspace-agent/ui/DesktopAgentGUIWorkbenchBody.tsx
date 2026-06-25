@@ -74,6 +74,7 @@ import {
   withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
+import { AgentEnvPanel } from "./AgentEnvPanel.tsx";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -915,73 +916,84 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
 
   return (
-    <AgentGUI
-      agentActivityRuntime={agentActivityRuntime}
-      agentHostApi={agentHostApi}
-      i18n={i18n}
-      locale={locale}
-      agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
-      capabilityMenuState={capabilityMenuState}
-      currentUserId="local"
-      desktopSize={desktopSize}
-      embedded
-      height={frame.height}
-      isMaximized={context.displayMode === "fullscreen"}
-      isActive={context.isFocused}
-      composerFocusRequestSequence={composerFocusRequestSequence}
-      newConversationRequestSequence={newConversationRequestSequence}
-      openSessionRequest={openSessionRequest}
-      prefillPromptRequest={prefillPromptRequest}
-      managedAgentsState={managedAgentsState}
-      nodeId={context.node.id}
-      workspaceAgentProbes={workspaceAgentProbes}
-      onAgentProbeDemandChange={
-        previewMode ? undefined : handleAgentProbeDemandChange
-      }
-      onAgentProviderLogin={
-        !previewMode && agentProviderStatusService
-          ? handleAgentProviderLogin
-          : undefined
-      }
-      onCapabilitySettingsRequest={
-        previewMode ? undefined : onCapabilitySettingsRequest
-      }
-      onClose={DESKTOP_AGENT_GUI_NOOP}
-      onLinkAction={previewMode ? undefined : onLinkAction}
-      onResize={DESKTOP_AGENT_GUI_NOOP}
-      onShowMessage={DESKTOP_AGENT_GUI_NOOP}
-      onUpdateNode={handleUpdateNode}
-      onOpenConversationWindow={
-        previewMode || !onOpenAgentConversationWindow
-          ? undefined
-          : handleOpenConversationWindow
-      }
-      onWorkspaceFileReferencesAdded={
-        previewMode ? undefined : trackWorkspaceFileReferences
-      }
-      position={DESKTOP_AGENT_GUI_POSITION}
-      previewMode={previewMode}
-      contextMentionProviders={
-        previewMode ? [] : effectiveContextMentionProviders
-      }
-      state={nodeState}
-      title={context.node.title}
-      width={frame.width}
-      workspaceFileReferenceAdapter={
-        previewMode ? null : workspaceFileReferenceAdapter
-      }
-      onRequestGitBranches={previewMode ? null : onRequestGitBranches}
-      referenceSourceAggregator={previewMode ? null : referenceSourceAggregator}
-      resolveMentionReferenceTarget={
-        previewMode ? undefined : resolveMentionReferenceTarget
-      }
-      resolveWorkspaceReferenceInitialTarget={
-        previewMode ? undefined : resolveWorkspaceReferenceInitialTarget
-      }
-      workspaceAppIcons={workspaceAppIcons}
-      workspaceId={workspaceId}
-      workspacePath="/"
-    />
+    <>
+      <AgentGUI
+        agentActivityRuntime={agentActivityRuntime}
+        agentHostApi={agentHostApi}
+        i18n={i18n}
+        locale={locale}
+        agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
+        capabilityMenuState={capabilityMenuState}
+        currentUserId="local"
+        desktopSize={desktopSize}
+        embedded
+        height={frame.height}
+        isMaximized={context.displayMode === "fullscreen"}
+        isActive={context.isFocused}
+        composerFocusRequestSequence={composerFocusRequestSequence}
+        newConversationRequestSequence={newConversationRequestSequence}
+        openSessionRequest={openSessionRequest}
+        prefillPromptRequest={prefillPromptRequest}
+        managedAgentsState={managedAgentsState}
+        nodeId={context.node.id}
+        workspaceAgentProbes={workspaceAgentProbes}
+        onAgentProbeDemandChange={
+          previewMode ? undefined : handleAgentProbeDemandChange
+        }
+        onAgentProviderLogin={
+          !previewMode && agentProviderStatusService
+            ? handleAgentProviderLogin
+            : undefined
+        }
+        onCapabilitySettingsRequest={
+          previewMode ? undefined : onCapabilitySettingsRequest
+        }
+        onClose={DESKTOP_AGENT_GUI_NOOP}
+        onLinkAction={previewMode ? undefined : onLinkAction}
+        onResize={DESKTOP_AGENT_GUI_NOOP}
+        onShowMessage={DESKTOP_AGENT_GUI_NOOP}
+        onUpdateNode={handleUpdateNode}
+        onOpenConversationWindow={
+          previewMode || !onOpenAgentConversationWindow
+            ? undefined
+            : handleOpenConversationWindow
+        }
+        onWorkspaceFileReferencesAdded={
+          previewMode ? undefined : trackWorkspaceFileReferences
+        }
+        position={DESKTOP_AGENT_GUI_POSITION}
+        previewMode={previewMode}
+        contextMentionProviders={
+          previewMode ? [] : effectiveContextMentionProviders
+        }
+        state={nodeState}
+        title={context.node.title}
+        width={frame.width}
+        workspaceFileReferenceAdapter={
+          previewMode ? null : workspaceFileReferenceAdapter
+        }
+        onRequestGitBranches={previewMode ? null : onRequestGitBranches}
+        referenceSourceAggregator={
+          previewMode ? null : referenceSourceAggregator
+        }
+        resolveMentionReferenceTarget={
+          previewMode ? undefined : resolveMentionReferenceTarget
+        }
+        resolveWorkspaceReferenceInitialTarget={
+          previewMode ? undefined : resolveWorkspaceReferenceInitialTarget
+        }
+        workspaceAppIcons={workspaceAppIcons}
+        workspaceId={workspaceId}
+        workspacePath="/"
+      />
+      {!previewMode && agentProviderStatusService && context.isFocused ? (
+        <AgentEnvPanel
+          agentProviderStatusService={agentProviderStatusService}
+          workspaceId={workspaceId}
+          workbenchHost={context.host}
+        />
+      ) : null}
+    </>
   );
 }
 

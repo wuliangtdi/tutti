@@ -23,6 +23,8 @@ import {
 import { AgentRichTextReadonly } from "../../AgentRichTextReadonly";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
+import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
+import { resolveCodexErrorPresentation } from "../../agentEnv/codexErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
@@ -562,9 +564,53 @@ function AgentVisibleErrorMessage({
 }): JSX.Element {
   "use memo";
   const error = message.visibleError;
+  const detail = error?.detail?.trim() ?? "";
+
+  // Domain-coded path (CODEX_*). A recognised structured code collapses the
+  // card down to exactly one human sentence, one primary remediation button
+  // (deep-linking into the env setup panel), and the raw payload tucked into a
+  // single CollapsibleReveal — instead of repeating the raw message three times.
+  const presentation = resolveCodexErrorPresentation(error?.code);
+  if (presentation) {
+    const provider = error?.provider ?? "codex";
+    return (
+      <section
+        role="alert"
+        className="box-border w-full min-w-0 rounded-[8px] border border-[var(--on-danger-hover)] bg-[var(--on-danger)] p-3 text-[13px] leading-5 text-[var(--state-danger)]"
+      >
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-[var(--text-primary)]">
+              {translate(presentation.messageKey)}
+            </div>
+            {detail ? (
+              <AgentMessageDetailsDisclosure
+                detail={detail}
+                className="mt-1"
+                label={translate("agentHost.agentGui.visibleErrorRawDetails")}
+              />
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-0.5 shrink-0"
+            onClick={() =>
+              openAgentEnvPanel({ provider, focus: presentation.focus })
+            }
+          >
+            {translate(presentation.actionKey)}
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  // Legacy path: lowercase transport codes (auth_required, request_timed_out,
+  // …) that have not yet been migrated to structured domain codes (片4).
   const title = visibleErrorTitle(message);
   const hint = visibleErrorHint(message);
-  const detail = error?.detail?.trim() ?? "";
   const showAuthLogin = error?.code === "auth_required" && onAuthLogin;
   return (
     <section
@@ -601,10 +647,12 @@ function AgentVisibleErrorMessage({
 
 function AgentMessageDetailsDisclosure({
   detail,
-  className = ""
+  className = "",
+  label
 }: {
   detail: string;
   className?: string;
+  label?: string;
 }): JSX.Element {
   "use memo";
   const [expanded, setExpanded] = useState(false);
@@ -616,7 +664,7 @@ function AgentMessageDetailsDisclosure({
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        {translate("agentHost.agentGui.visibleErrorDetails")}
+        {label ?? translate("agentHost.agentGui.visibleErrorDetails")}
         <ChevronRight
           size={12}
           strokeWidth={2.2}
