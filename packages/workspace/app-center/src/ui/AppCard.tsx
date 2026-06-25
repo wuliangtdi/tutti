@@ -273,7 +273,9 @@ export const AppCard = memo(function AppCard({
                 executePrimaryAction();
               }}
             >
-              {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              <span className="block min-w-0 max-w-full truncate">
+                {canExecutePrimaryAction ? primaryActionLabel : busyStatusLabel}
+              </span>
             </Button>
             {showInstallProgressRing ? (
               <AppInstallProgressRing
