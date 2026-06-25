@@ -359,9 +359,14 @@ func (r *AppRunner) StopWorkspace(ctx context.Context, workspaceID string) {
 			keys = append(keys, key)
 		}
 	}
+	for key := range r.states {
+		if appRuntimeWorkspaceIDFromKey(key) == workspaceID {
+			keys = append(keys, key)
+		}
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		appID := appRuntimeAppIDFromKey(key)
 		_, _ = r.Stop(ctx, workspaceID, appID)
 	}
@@ -387,9 +392,14 @@ func (r *AppRunner) StopApp(ctx context.Context, appID string) {
 			keys = append(keys, key)
 		}
 	}
+	for key := range r.states {
+		if appRuntimeAppIDFromKey(key) == appID {
+			keys = append(keys, key)
+		}
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		_, _ = r.Stop(ctx, appRuntimeWorkspaceIDFromKey(key), appID)
 	}
 }
@@ -405,9 +415,12 @@ func (r *AppRunner) StopAll(ctx context.Context) {
 	for key := range r.starts {
 		keys = append(keys, key)
 	}
+	for key := range r.states {
+		keys = append(keys, key)
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		_, _ = r.Stop(ctx, appRuntimeWorkspaceIDFromKey(key), appRuntimeAppIDFromKey(key))
 	}
 }
@@ -726,6 +739,22 @@ func (r *AppRunner) ensure() {
 	if r.queue == nil {
 		r.queue = make(chan struct{}, 2)
 	}
+}
+
+func uniqueRuntimeKeys(keys []string) []string {
+	if len(keys) < 2 {
+		return keys
+	}
+	seen := make(map[string]struct{}, len(keys))
+	result := keys[:0]
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, key)
+	}
+	return result
 }
 
 func allocateLoopbackPort() (int, error) {

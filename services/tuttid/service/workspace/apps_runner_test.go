@@ -405,6 +405,57 @@ func TestAppRunnerStopProcessWaitsForProcessDoneWhenContextIsCanceled(t *testing
 	}
 }
 
+func TestAppRunnerStopAllClearsStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+
+	runner.StopAll(context.Background())
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+}
+
+func TestAppRunnerStopWorkspaceClearsMatchingStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+	runner.setState(appRuntimeKey("ws-other", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43211"),
+		Port:      intPtr(43211),
+	})
+
+	runner.StopWorkspace(context.Background(), "ws-runner")
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+	assertRunnerStatus(t, runner, "ws-other", "orphaned", workspacebiz.AppRuntimeStatusRunning)
+}
+
+func TestAppRunnerStopAppClearsMatchingStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+	runner.setState(appRuntimeKey("ws-runner", "other"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43211"),
+		Port:      intPtr(43211),
+	})
+
+	runner.StopApp(context.Background(), "orphaned")
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+	assertRunnerStatus(t, runner, "ws-runner", "other", workspacebiz.AppRuntimeStatusRunning)
+}
+
 func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
 	root := t.TempDir()
 	packageDir := filepath.Join(root, "package")
@@ -887,6 +938,15 @@ func waitForRunnerStatus(t *testing.T, runner *AppRunner, workspaceID string, ap
 	return waitForRunnerState(t, runner, workspaceID, appID, func(state workspacebiz.AppRuntimeState) bool {
 		return state.Status == want
 	})
+}
+
+func assertRunnerStatus(t *testing.T, runner *AppRunner, workspaceID string, appID string, want workspacebiz.AppRuntimeStatus) {
+	t.Helper()
+
+	state := runner.State(workspaceID, appID)
+	if state.Status != want {
+		t.Fatalf("State(%q, %q) status = %q, want %q", workspaceID, appID, state.Status, want)
+	}
 }
 
 func waitForRunnerState(t *testing.T, runner *AppRunner, workspaceID string, appID string, matches func(workspacebiz.AppRuntimeState) bool) workspacebiz.AppRuntimeState {
