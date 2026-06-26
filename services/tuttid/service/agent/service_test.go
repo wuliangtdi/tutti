@@ -583,6 +583,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 }
 
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	planMode := true
@@ -741,6 +742,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 }
 
 func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
@@ -904,6 +906,7 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 }
 
 func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	visible := false
@@ -954,6 +957,7 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 }
 
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	visible := false
@@ -1520,6 +1524,7 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 }
 
 func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
