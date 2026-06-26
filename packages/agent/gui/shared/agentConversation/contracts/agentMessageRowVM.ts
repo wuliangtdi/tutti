@@ -21,6 +21,7 @@ export interface AgentMessageContentVM {
   systemNotice?: {
     noticeKind: string | null;
     severity: string | null;
+    source?: string | null;
     title: string | null;
     detail: string | null;
     retryable: boolean | null;

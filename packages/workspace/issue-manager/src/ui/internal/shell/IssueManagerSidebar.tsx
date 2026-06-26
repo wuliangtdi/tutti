@@ -115,7 +115,9 @@ export function IssueManagerSidebar({
                   ? presentation.retryLabel
                   : undefined
               }
-              title={presentation.title}
+              title={
+                presentation.kind === "error" ? presentation.title : undefined
+              }
               onRetry={() => controller.refreshAll()}
             />
           </div>

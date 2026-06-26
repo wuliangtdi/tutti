@@ -140,6 +140,166 @@ func TestServiceExternalImportValidProjectPaths(t *testing.T) {
 	}
 }
 
+func TestServiceExternalImportValidProjectPathsOrdersByLatestSession(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	olderProject := filepath.Join(root, "older-project")
+	newerProject := filepath.Join(root, "newer-project")
+	for _, dir := range []string{olderProject, newerProject} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create dir error = %v", err)
+		}
+	}
+	if canonical, ok := canonicalExistingDir(olderProject); ok {
+		olderProject = canonical
+	}
+	if canonical, ok := canonicalExistingDir(newerProject); ok {
+		newerProject = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	olderTimestamp := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339Nano)
+	newerTimestamp := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "older.jsonl"),
+		map[string]any{
+			"timestamp": olderTimestamp,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "older", "cwd": olderProject},
+		},
+		map[string]any{"timestamp": olderTimestamp, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "older-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Older prompt"}},
+		}},
+	)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "newer.jsonl"),
+		map[string]any{
+			"timestamp": newerTimestamp,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "newer", "cwd": newerProject},
+		},
+		map[string]any{"timestamp": newerTimestamp, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "newer-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Newer prompt"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	paths, err := service.ExternalImportValidProjectPaths(ctx, ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: olderProject}, {Path: newerProject}},
+	})
+	if err != nil {
+		t.Fatalf("ExternalImportValidProjectPaths error = %v", err)
+	}
+	if len(paths) != 2 || paths[0] != newerProject || paths[1] != olderProject {
+		t.Fatalf("valid paths = %#v, want newer then older", paths)
+	}
+}
+
+func TestMatchingExternalImportProjectPrefersExactSelection(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "project")
+	child := filepath.Join(parent, "packages", "app")
+	if err := os.MkdirAll(child, 0o755); err != nil {
+		t.Fatalf("create child project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(parent); ok {
+		parent = canonical
+	}
+	if canonical, ok := canonicalExistingDir(child); ok {
+		child = canonical
+	}
+
+	got, ok := matchingExternalImportProject(
+		externalImportedSession{
+			Provider: "codex",
+			Cwd:      child,
+		},
+		[]ExternalImportProjectSelection{
+			{Path: parent, Providers: []string{"codex"}},
+			{Path: child, Providers: []string{"codex"}},
+		},
+	)
+	if !ok || got != child {
+		t.Fatalf("matchingExternalImportProject() = %q, %v; want exact child path %q", got, ok, child)
+	}
+}
+
+func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	older := time.Date(2026, 6, 20, 10, 0, 0, 0, time.UTC)
+	newer := time.Date(2026, 6, 21, 10, 0, 0, 0, time.UTC)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "a-newer.jsonl"),
+		map[string]any{
+			"timestamp": newer.Format(time.RFC3339Nano),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "newer", "cwd": project},
+		},
+		map[string]any{"timestamp": newer.Format(time.RFC3339Nano), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "newer-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Newer imported title"}},
+		}},
+	)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "z-older.jsonl"),
+		map[string]any{
+			"timestamp": older.Format(time.RFC3339Nano),
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "older", "cwd": project},
+		},
+		map[string]any{"timestamp": older.Format(time.RFC3339Nano), "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "older-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Older imported title"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 2 {
+		t.Fatalf("imported sessions = %d, want 2", result.ImportedSessions)
+	}
+	sessions, err := service.List(ctx, "ws-1")
+	if err != nil {
+		t.Fatalf("List error = %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("len(sessions) = %d, want 2", len(sessions))
+	}
+	if value(sessions[0].Title) != "Newer imported title" {
+		t.Fatalf("sessions = %#v, want newer title first", sessions)
+	}
+	if sessions[0].UpdatedAt == nil || sessions[0].UpdatedAt.UnixMilli() != newer.UnixMilli() {
+		t.Fatalf("first imported session updatedAt = %#v, want %d", sessions[0].UpdatedAt, newer.UnixMilli())
+	}
+	if sessions[0].CreatedAt.UnixMilli() != newer.UnixMilli() {
+		t.Fatalf("first imported session createdAt = %d, want %d", sessions[0].CreatedAt.UnixMilli(), newer.UnixMilli())
+	}
+}
+
 func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -583,6 +743,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 }
 
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	planMode := true
@@ -741,6 +902,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 }
 
 func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
@@ -770,6 +932,35 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	}
 	if len(runtime.startCalls) != 1 {
 		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+}
+
+func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	checker := &fakeProviderAvailabilityChecker{
+		result: []ProviderAvailability{{
+			Provider: "codex",
+			Status:   ProviderAvailabilityAvailable,
+		}},
+	}
+	service.AvailabilityChecker = checker
+
+	for _, sessionID := range []string{"session-1", "session-2"} {
+		_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+			AgentSessionID: sessionID,
+			InitialContent: TextPromptContent("hello"),
+			Provider:       "codex",
+		})
+		if err != nil {
+			t.Fatalf("Create(%s) error = %v, want nil", sessionID, err)
+		}
+	}
+	if checker.callCount != 1 {
+		t.Fatalf("availability checker calls = %d, want 1", checker.callCount)
+	}
+	if len(runtime.startCalls) != 2 {
+		t.Fatalf("start calls = %d, want 2", len(runtime.startCalls))
 	}
 }
 
@@ -846,6 +1037,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
+		Metadata: map[string]any{
+			"":                        "drop",
+			"clientSubmitId":          "submit-create-1",
+			"clientSubmittedAtUnixMs": int64(12345),
+			" spacedDiagnosticKey ":   "trimmed",
+		},
 	})
 	if err != nil {
 		t.Fatalf("Create error = %v", err)
@@ -860,9 +1057,16 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	if call.DisplayPrompt != "Run Automation" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
 	}
+	if call.Metadata["clientSubmitId"] != "submit-create-1" || call.Metadata["spacedDiagnosticKey"] != "trimmed" {
+		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata[""]; ok {
+		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
+	}
 }
 
 func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	visible := false
@@ -913,6 +1117,7 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 }
 
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	visible := false
@@ -955,6 +1160,12 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
 		Content:       TextPromptContent("real repair prompt"),
 		DisplayPrompt: "Fix the app",
+		Metadata: map[string]any{
+			"clientSubmitId":             "submit-1",
+			"clientSubmittedAtUnixMs":    int64(1234),
+			" ignoredBlankKeyIsRemoved ": true,
+			"":                           "drop",
+		},
 	})
 	if err != nil {
 		t.Fatalf("SendInput error = %v", err)
@@ -968,6 +1179,14 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if call.DisplayPrompt != "Fix the app" {
 		t.Fatalf("runtime display prompt = %q", call.DisplayPrompt)
+	}
+	if call.Metadata["clientSubmitId"] != "submit-1" ||
+		call.Metadata["clientSubmittedAtUnixMs"] != int64(1234) ||
+		call.Metadata["ignoredBlankKeyIsRemoved"] != true {
+		t.Fatalf("runtime metadata = %#v", call.Metadata)
+	}
+	if _, ok := call.Metadata[""]; ok {
+		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
 	}
 }
 
@@ -1042,6 +1261,60 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	}
 	if prepareInput.ExtraSkills[0].Files["references/contract.md"] != "contract" {
 		t.Fatalf("prepare extra skill files = %#v", prepareInput.ExtraSkills[0].Files)
+	}
+}
+
+func TestServiceGetSkillBundleUsesRuntimeRenderer(t *testing.T) {
+	runtime := newFakeRuntime()
+	var renderInput agentsidecarservice.PrepareInput
+	service := NewService(runtime)
+	service.RuntimePreparer = fakeSkillBundleRenderer{
+		input: &renderInput,
+		bundle: agentsidecarservice.SkillBundle{
+			SchemaVersion:  1,
+			Provider:       "codex",
+			AgentSessionID: "run-1",
+			CLICommand:     "tutti-dev",
+			Skills: []agentsidecarservice.SkillMaterializationRecord{
+				{SkillID: "tutti/tutti-cli", Slug: "tutti-cli", DeliveryMode: "materialized-files"},
+			},
+		},
+	}
+
+	bundle, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{
+		AgentSessionID: "run-1",
+		BrowserUse:     true,
+		Provider:       " codex ",
+	})
+	if err != nil {
+		t.Fatalf("GetSkillBundle returned error: %v", err)
+	}
+	if renderInput.WorkspaceID != "ws-1" ||
+		renderInput.AgentSessionID != "run-1" ||
+		renderInput.Provider != "codex" ||
+		!renderInput.BrowserUse ||
+		renderInput.ComputerUse {
+		t.Fatalf("render input = %#v", renderInput)
+	}
+	if bundle.CLICommand != "tutti-dev" || len(bundle.Skills) != 1 || bundle.Skills[0].SkillID != "tutti/tutti-cli" {
+		t.Fatalf("bundle = %#v", bundle)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %d, want 0", len(runtime.startCalls))
+	}
+}
+
+func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.RuntimePreparer = fakeRuntimePreparer{}
+
+	_, err := service.GetSkillBundle(context.Background(), "ws-1", SkillBundleInput{Provider: "codex"})
+	if !errors.Is(err, ErrSkillBundleUnavailable) {
+		t.Fatalf("GetSkillBundle error = %v, want ErrSkillBundleUnavailable", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %d, want 0", len(runtime.startCalls))
 	}
 }
 
@@ -1465,6 +1738,7 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 }
 
 func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
@@ -2468,10 +2742,11 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 		},
 	}
 
-	session, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
+	result, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
 	if err != nil {
 		t.Fatalf("SendInput returned error: %v", err)
 	}
+	session := result.Session
 	if session.ID != "session-1" {
 		t.Fatalf("session id = %q", session.ID)
 	}
@@ -2501,10 +2776,11 @@ func TestServiceSendInputReturnsRuntimeExecStatusOverStalePersistedStatus(t *tes
 		},
 	}
 
-	session, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
+	result, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{Content: TextPromptContent("hello")})
 	if err != nil {
 		t.Fatalf("SendInput returned error: %v", err)
 	}
+	session := result.Session
 	if session.Status != "running" {
 		t.Fatalf("session status = %q, want running", session.Status)
 	}
@@ -2963,6 +3239,20 @@ func (f fakeRuntimePreparer) Cleanup(_ context.Context, input agentsidecarservic
 		*f.cleanupCalls = append(*f.cleanupCalls, input)
 	}
 	return nil
+}
+
+type fakeSkillBundleRenderer struct {
+	fakeRuntimePreparer
+	bundle agentsidecarservice.SkillBundle
+	err    error
+	input  *agentsidecarservice.PrepareInput
+}
+
+func (f fakeSkillBundleRenderer) RenderSkillBundle(_ context.Context, input agentsidecarservice.PrepareInput) (agentsidecarservice.SkillBundle, error) {
+	if f.input != nil {
+		*f.input = input
+	}
+	return f.bundle, f.err
 }
 
 type fakeModelCatalog struct {

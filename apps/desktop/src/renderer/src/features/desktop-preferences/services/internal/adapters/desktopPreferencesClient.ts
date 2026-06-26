@@ -4,7 +4,11 @@ import type {
   TuttidClient,
   PutDesktopPreferencesRequest
 } from "@tutti-os/client-tuttid-ts";
-import { defaultDesktopMinimizeAnimation } from "../../../../../../../shared/preferences/index.ts";
+import {
+  defaultDesktopMinimizeAnimation,
+  desktopWorkbenchWindowSnappingEqual,
+  normalizeDesktopWorkbenchWindowSnapping
+} from "../../../../../../../shared/preferences/index.ts";
 
 export interface DesktopPreferencesClient {
   connect(): Promise<void>;
@@ -219,6 +223,9 @@ export function createDesktopPreferencesClient(
 function createPreferencesKey(
   preferences: PutDesktopPreferencesRequest["preferences"]
 ): string {
+  const workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
+    preferences.workbenchWindowSnapping
+  );
   return [
     stableAgentComposerDefaultsKey(preferences.agentComposerDefaultsByProvider),
     stableAgentGuiConversationRailCollapsedByProviderKey(
@@ -237,7 +244,9 @@ function createPreferencesKey(
     preferences.sleepPreventionMode,
     preferences.themeSource,
     preferences.updateChannel,
-    preferences.updatePolicy
+    preferences.updatePolicy,
+    workbenchWindowSnapping.enabled ? "snapping:on" : "snapping:off",
+    workbenchWindowSnapping.shortcutPreset
   ].join("::");
 }
 
@@ -272,7 +281,11 @@ function preferencesEqual(
     left.sleepPreventionMode === right.sleepPreventionMode &&
     left.themeSource === right.themeSource &&
     left.updateChannel === right.updateChannel &&
-    left.updatePolicy === right.updatePolicy
+    left.updatePolicy === right.updatePolicy &&
+    desktopWorkbenchWindowSnappingEqual(
+      left.workbenchWindowSnapping,
+      right.workbenchWindowSnapping
+    )
   );
 }
 

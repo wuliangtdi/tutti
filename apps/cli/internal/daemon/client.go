@@ -44,9 +44,15 @@ type Capability struct {
 	Path        []string         `json:"path"`
 	Summary     string           `json:"summary"`
 	Description string           `json:"description,omitempty"`
+	Visibility  string           `json:"visibility,omitempty"`
 	InputSchema map[string]any   `json:"inputSchema,omitempty"`
 	Output      CapabilityOutput `json:"output"`
 	Source      CapabilitySource `json:"source"`
+}
+
+type CapabilityListOptions struct {
+	IncludeHidden      bool
+	IncludeIntegration bool
 }
 
 type CapabilitySource struct {
@@ -125,11 +131,27 @@ func (client *Client) ListCapabilities(ctx context.Context) (CapabilityList, err
 }
 
 func (client *Client) ListCapabilitiesForWorkspace(ctx context.Context, workspaceID string) (CapabilityList, error) {
+	return client.ListCapabilitiesForWorkspaceWithHidden(ctx, workspaceID, false)
+}
+
+func (client *Client) ListCapabilitiesForWorkspaceWithHidden(ctx context.Context, workspaceID string, includeHidden bool) (CapabilityList, error) {
+	return client.ListCapabilitiesForWorkspaceWithOptions(ctx, workspaceID, CapabilityListOptions{IncludeHidden: includeHidden})
+}
+
+func (client *Client) ListCapabilitiesForWorkspaceWithOptions(ctx context.Context, workspaceID string, options CapabilityListOptions) (CapabilityList, error) {
 	var result CapabilityList
 	path := cliCapabilitiesPath
+	query := url.Values{}
 	if strings.TrimSpace(workspaceID) != "" {
-		query := url.Values{}
 		query.Set("workspaceID", strings.TrimSpace(workspaceID))
+	}
+	if options.IncludeHidden {
+		query.Set("includeHidden", "true")
+	}
+	if options.IncludeIntegration {
+		query.Set("includeIntegration", "true")
+	}
+	if len(query) > 0 {
 		path += "?" + query.Encode()
 	}
 	if err := client.DoJSON(ctx, http.MethodGet, path, nil, &result); err != nil {

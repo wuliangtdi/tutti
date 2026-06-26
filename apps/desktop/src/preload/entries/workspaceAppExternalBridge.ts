@@ -24,6 +24,7 @@ import type {
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
   TuttiExternalUserProjectRememberDefaultSelectionInput,
+  TuttiExternalWorkspaceOpenRouteIntent,
   TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 import {
@@ -54,6 +55,9 @@ export interface WorkspaceAppExternalBridgeDependencies {
   subscribeToUserProjects?(
     listener: (snapshot: WorkspaceUserProjectServiceSnapshot) => void
   ): () => void;
+  subscribeToWorkspaceLaunchIntents?(
+    listener: (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
+  ): () => void;
 }
 
 export interface WorkspaceAppUploadXMLHttpRequest {
@@ -78,6 +82,7 @@ export interface WorkspaceAppUploadXMLHttpRequest {
 
 export const workspaceAppExternalChannels = {
   atQuery: "workspace-app-at:query",
+  browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
   filesUploadCancel: "workspace-app-files:upload-cancel",
@@ -103,9 +108,12 @@ export const workspaceAppExternalChannels = {
   workspaceFeatureOpen: "workspace-app-feature:open"
 } as const;
 
+const noop = () => {};
+
 export function createWorkspaceAppExternalBridge(
   dependencies: WorkspaceAppExternalBridgeDependencies
 ): TuttiExternalBridge {
+  let initialLaunchIntentConsumed = false;
   return {
     app: {
       getContext() {
@@ -113,6 +121,16 @@ export function createWorkspaceAppExternalBridge(
       },
       subscribe(listener) {
         return dependencies.appContext.subscribe(listener);
+      }
+    },
+    browser: {
+      openUrl(input) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "browser.openUrl"
+        );
+        dependencies.send(workspaceAppExternalChannels.browserOpenUrl, input);
+        return Promise.resolve();
       }
     },
     at: {
@@ -294,6 +312,28 @@ export function createWorkspaceAppExternalBridge(
       }
     },
     workspace: {
+      onLaunchIntent(listener) {
+        let active = true;
+        const unsubscribe =
+          dependencies.subscribeToWorkspaceLaunchIntents?.(listener) ?? noop;
+        void dependencies.appContext
+          .get()
+          .then((context) => {
+            if (
+              active &&
+              context.launchIntent &&
+              !initialLaunchIntentConsumed
+            ) {
+              initialLaunchIntentConsumed = true;
+              listener(context.launchIntent);
+            }
+          })
+          .catch(() => {});
+        return () => {
+          active = false;
+          unsubscribe();
+        };
+      },
       openFeature(input: TuttiExternalWorkspaceOpenFeatureInput) {
         requireUserActivation(
           dependencies.isUserActivationActive(),

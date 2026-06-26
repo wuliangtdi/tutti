@@ -281,25 +281,25 @@
         },
         {
           "label": "--state-danger",
-          "dark": "rgb(239, 68, 68)",
+          "dark": "rgb(244, 91, 91)",
           "light": "rgb(220, 38, 38)",
           "usage": "错误、危险、删除"
         },
         {
           "label": "--state-danger-hover",
-          "dark": "color-mix(in srgb, rgb(239, 68, 68) 90%, transparent)",
+          "dark": "color-mix(in srgb, rgb(244, 91, 91) 90%, transparent)",
           "light": "color-mix(in srgb, rgb(220, 38, 38) 90%, transparent)",
           "usage": "Destructive 按钮 hover 底色"
         },
         {
           "label": "--on-danger",
-          "dark": "rgba(239, 68, 68, 0.08)",
+          "dark": "rgba(248, 113, 113, 0.10)",
           "light": "rgb(255, 238, 242)",
           "usage": "Destructive 实心按钮文字"
         },
         {
           "label": "--on-danger-hover",
-          "dark": "color-mix(in srgb, rgba(239, 68, 68, 0.08) 82%, rgb(239, 68, 68))",
+          "dark": "color-mix(in srgb, rgba(248, 113, 113, 0.10) 82%, rgb(244, 91, 91))",
           "light": "color-mix(in srgb, rgb(255, 238, 242) 92%, rgb(220, 38, 38))",
           "usage": "二级警示按钮 hover 底色"
         },

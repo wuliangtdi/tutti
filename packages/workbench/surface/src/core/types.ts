@@ -18,8 +18,26 @@ export interface WorkbenchSafeArea {
 }
 
 export type WorkbenchDisplayMode = WorkbenchSnapshotDisplayModeV1;
-export type WorkbenchSnapTarget = "left" | "right" | "top" | null;
-export type WorkbenchQuickLayoutTarget = "left" | "right" | "top" | "bottom";
+export type WorkbenchSnapTarget =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | null;
+export type WorkbenchQuickLayoutTarget =
+  | "left"
+  | "right"
+  | "top"
+  | "bottom"
+  | "center"
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right";
 export type WorkbenchLayoutPreset =
   | { kind: "balanced" }
   | { kind: "row" }

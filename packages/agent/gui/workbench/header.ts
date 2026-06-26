@@ -1,6 +1,11 @@
 import { createElement, type HTMLAttributes, type ReactNode } from "react";
 import { Button, PanelIcon, cn } from "@tutti-os/ui-system";
-import { EditIcon } from "@tutti-os/ui-system/icons";
+import { CreateChatIcon } from "@tutti-os/ui-system/icons";
+
+const headerChromeIconButtonClassName =
+  "cursor-pointer rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
+
+const headerChromeIconClassName = "size-3.5";
 
 export interface AgentGuiWorkbenchHeaderCopy {
   collapseConversationRail: string;
@@ -62,13 +67,13 @@ export function AgentGuiWorkbenchHeader({
         Button as never,
         {
           "aria-label": toggleLabel,
-          className: "cursor-pointer rounded-md",
+          className: headerChromeIconButtonClassName,
           "data-agent-gui-conversation-rail-auto-collapsed":
             isConversationRailAutoCollapsed ? "true" : undefined,
           "data-agent-gui-conversation-rail-collapsed":
             isConversationRailCollapsed ? "true" : undefined,
           "data-testid": "agent-gui-toggle-conversation-rail",
-          size: "icon-xs",
+          size: "icon-sm",
           title: toggleLabel,
           type: "button",
           variant: "ghost",
@@ -79,15 +84,15 @@ export function AgentGuiWorkbenchHeader({
           onDoubleClick: (event) => event.stopPropagation(),
           onPointerDown: (event) => event.stopPropagation()
         },
-        createElement(PanelIcon, { className: "size-[18px]" })
+        createElement(PanelIcon, { className: headerChromeIconClassName })
       ),
       isConversationRailCollapsed && onCreateConversation
         ? createElement(
             Button as never,
             {
               "aria-label": copy.newConversation,
-              className: "cursor-pointer rounded-md",
-              size: "icon-xs",
+              className: headerChromeIconButtonClassName,
+              size: "icon-sm",
               title: copy.newConversation,
               type: "button",
               variant: "ghost",
@@ -98,9 +103,9 @@ export function AgentGuiWorkbenchHeader({
               onDoubleClick: (event) => event.stopPropagation(),
               onPointerDown: (event) => event.stopPropagation()
             },
-            createElement(EditIcon, {
+            createElement(CreateChatIcon, {
               "aria-hidden": true,
-              className: "size-[16px]"
+              className: headerChromeIconClassName
             })
           )
         : null,

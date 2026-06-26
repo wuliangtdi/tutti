@@ -11,6 +11,13 @@ const (
 	OutputModeMarkdown OutputMode = "markdown"
 )
 
+type CapabilityVisibility string
+
+const (
+	CapabilityVisibilityPublic      CapabilityVisibility = "public"
+	CapabilityVisibilityIntegration CapabilityVisibility = "integration"
+)
+
 type TableColumn struct {
 	Key   string
 	Label string
@@ -49,17 +56,19 @@ type Capability struct {
 	Path        []string
 	Summary     string
 	Description string
+	Visibility  CapabilityVisibility
 	InputSchema map[string]any
 	Output      CapabilityOutput
 	Source      CapabilitySource
 }
 
 type InvokeContext struct {
-	Source                string
-	WorkspaceID           string
-	ParentCommandID       string
-	AgentSessionID        string
-	SkipCapabilityFilters bool
+	Source                         string
+	WorkspaceID                    string
+	ParentCommandID                string
+	AgentSessionID                 string
+	SkipCapabilityFilters          bool
+	IncludeIntegrationCapabilities bool
 }
 
 type InvokeRequest struct {

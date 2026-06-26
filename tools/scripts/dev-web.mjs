@@ -34,6 +34,7 @@ let shutdownStarted = false;
 let exitCode = 0;
 
 installDevCli();
+generateBuiltinApps();
 
 const daemon = spawn(resolveCommand("go"), ["run", "."], {
   cwd: tuttidDir,
@@ -161,6 +162,22 @@ function installDevCli() {
   if (result.status !== 0) {
     throw new Error(
       `install tutti-dev failed with exit code ${result.status ?? "unknown"}`
+    );
+  }
+}
+
+function generateBuiltinApps() {
+  const result = spawnSync(resolveCommand("pnpm"), ["generate:builtin-apps"], {
+    cwd: workspaceRoot,
+    env: {
+      ...process.env,
+      TUTTI_ENV: "development"
+    },
+    stdio: "inherit"
+  });
+  if (result.status !== 0) {
+    throw new Error(
+      `generate builtin apps failed with exit code ${result.status ?? "unknown"}`
     );
   }
 }

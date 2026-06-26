@@ -2336,6 +2336,77 @@ func TestClaudeCodeAdapterApplySessionSettingsSendsChangedLiveACPConfig(t *testi
 	}
 }
 
+func TestClaudeCodeAdapterApplySessionSettingsSkipsUnsupportedLiveSpeedConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-live-speed-unsupported")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	session.Settings = &SessionSettings{Speed: "fast"}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Speed: stringPtr("fast"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("config option calls = %#v, want unsupported live speed no-op", calls)
+	}
+}
+
+func TestClaudeCodeAdapterApplySessionSettingsSendsAdvertisedLiveSpeedConfig(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Claude Agent", "claude-session-live-speed-supported")
+	adapter := NewClaudeCodeAdapter(transport)
+	session := standardTestSession(ProviderClaudeCode)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	adapter.applyACPUpdate(session.AgentSessionID, json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "config_option_update",
+			"key": "fast",
+			"value": "standard",
+			"configOptions": [
+				{
+					"id": "fast",
+					"currentValue": "standard",
+					"options": [
+						{"value": "standard", "name": "Standard"},
+						{"value": "fast", "name": "Fast"}
+					]
+				}
+			]
+		}
+	}`))
+
+	session.Settings = &SessionSettings{Speed: "fast"}
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Speed: stringPtr("fast"),
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want advertised live speed update", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "fast" {
+		t.Fatalf("config id = %q, want fast", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "fast" {
+		t.Fatalf("config value = %q, want fast", got)
+	}
+}
+
 func TestClaudeCodeAdapterStartSkipsCustomModelConfigOption(t *testing.T) {
 	t.Parallel()
 

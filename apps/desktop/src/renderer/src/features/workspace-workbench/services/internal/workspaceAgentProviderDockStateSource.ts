@@ -44,6 +44,8 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       }
       const snapshot = input.agentProviderStatusService.getSnapshot();
       const status = input.agentProviderStatusService.getStatus(provider);
+      const isInitialProviderStatusLoad =
+        !status && !snapshot.capturedAt && !snapshot.error;
       const state = resolveAgentProviderDockStatusProps({
         copy: {
           checking: input.i18n.t(
@@ -74,7 +76,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
             workspaceWorkbenchDesktopI18nKeys.agentProviders.unknown
           )
         },
-        isLoading: snapshot.isLoading,
+        isLoading: snapshot.isLoading || isInitialProviderStatusLoad,
         pendingActionIds: new Set(
           snapshot.pendingActions
             .filter((action) => action.provider === provider)
@@ -100,6 +102,7 @@ export function createWorkspaceAgentProviderDockStateSource(input: {
       };
     },
     subscribe(listener) {
+      void input.agentProviderStatusService.ensureLoaded().catch(() => {});
       const unsubscribeProviderStatus =
         input.agentProviderStatusService.subscribe(listener);
       const unsubscribeAgentActivity =

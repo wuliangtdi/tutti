@@ -99,6 +99,36 @@ func TestResolverPrefersExistingPathOverScannedNVMFallback(t *testing.T) {
 	}
 }
 
+func TestResolverFindsTuttiBinFallback(t *testing.T) {
+	home := t.TempDir()
+	tuttiBinDir := filepath.Join(home, ".tutti", "bin")
+	if err := os.MkdirAll(tuttiBinDir, 0o755); err != nil {
+		t.Fatalf("mkdir tutti bin dir: %v", err)
+	}
+	tuttiPath := filepath.Join(tuttiBinDir, "tutti")
+	writeExecutable(t, tuttiPath)
+
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return home, nil
+		},
+		LookPath: func(string) (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env(nil)
+	if got := resolver.Resolve("tutti", env); got != tuttiPath {
+		t.Fatalf("Resolve() = %q, want %q", got, tuttiPath)
+	}
+	if got := resolver.ResolveBinary([]string{"tutti"}, nil); got != tuttiPath {
+		t.Fatalf("ResolveBinary() = %q, want %q", got, tuttiPath)
+	}
+}
+
 func TestResolverFindsFnmNodeBin(t *testing.T) {
 	home := t.TempDir()
 	fnmDir := filepath.Join(home, "custom-fnm")
@@ -190,6 +220,42 @@ func TestResolverReplacesPathEnv(t *testing.T) {
 	}
 	if !strings.HasPrefix(pathValue, "/override") {
 		t.Fatalf("PATH = %q, want override prefix", pathValue)
+	}
+}
+
+func TestResolverMergesMultiplePathOverrides(t *testing.T) {
+	resolver := Resolver{
+		Environ: func() []string {
+			return []string{"PATH=/usr/bin:/bin"}
+		},
+		HomeDir: func() (string, error) {
+			return "", os.ErrNotExist
+		},
+	}
+
+	env := resolver.Env([]string{
+		"PATH=/state/bin:/usr/bin:/bin",
+		"PATH=/managed/node/bin:/usr/bin:/bin",
+	})
+	pathCount := 0
+	pathValue := ""
+	for _, item := range env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok && key == "PATH" {
+			pathCount++
+			pathValue = value
+		}
+	}
+	if pathCount != 1 {
+		t.Fatalf("PATH entry count = %d, want 1 in %#v", pathCount, env)
+	}
+	pathDirs := filepath.SplitList(pathValue)
+	if len(pathDirs) < 4 ||
+		pathDirs[0] != "/managed/node/bin" ||
+		pathDirs[1] != "/state/bin" ||
+		pathDirs[2] != "/usr/bin" ||
+		pathDirs[3] != "/bin" {
+		t.Fatalf("PATH = %q, want override prefixes before inherited base path", pathValue)
 	}
 }
 

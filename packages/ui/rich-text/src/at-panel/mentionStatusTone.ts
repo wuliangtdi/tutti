@@ -15,24 +15,23 @@ export type MentionRowStatusTone =
 export type MentionRowStatusVariant = "activity" | "issue";
 
 /**
- * Background/text classes for the agent activity status badge. Ported verbatim
- * from the agent's `mentionStatusBadgeClassName` so the rendered DOM is
- * unchanged.
+ * Text classes for agent activity status signals. Activity rows already include
+ * a status dot, so they render as plain signal text instead of a filled badge.
  */
 export function activityMentionStatusBadgeClassName(
   tone: MentionRowStatusTone
 ): string {
   switch (tone) {
     case "blue":
-      return "bg-sky-500/10 text-sky-700";
+      return "bg-transparent px-0 text-[var(--status-running)]";
     case "amber":
-      return "bg-[color:color-mix(in_srgb,var(--color-amber-500)_12%,transparent)] text-[var(--color-amber-500)]";
+      return "bg-transparent px-0 text-[var(--state-warning)]";
     case "green":
-      return "bg-[var(--tsh-ui-pill-success-bg)] text-[var(--tsh-ui-pill-success-fg)]";
+      return "bg-transparent px-0 text-[var(--state-success)]";
     case "red":
-      return "bg-[var(--on-danger)] text-[var(--state-danger)]";
+      return "bg-transparent px-0 text-[var(--state-danger)]";
     default:
-      return "bg-[var(--transparency-block)] text-[var(--text-secondary)]";
+      return "bg-transparent px-0 text-[var(--text-secondary)]";
   }
 }
 

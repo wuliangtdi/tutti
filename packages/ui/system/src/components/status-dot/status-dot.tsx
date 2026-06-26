@@ -5,11 +5,11 @@ import { cn } from "#lib/utils";
 const statusDotVariants = cva("inline-flex shrink-0 rounded-full", {
   variants: {
     tone: {
-      neutral: "bg-muted-foreground/70",
-      green: "bg-emerald-500",
-      blue: "bg-sky-500",
-      amber: "bg-amber-500",
-      red: "bg-destructive"
+      neutral: "bg-[var(--text-tertiary)]",
+      green: "bg-[var(--state-success)]",
+      blue: "bg-[var(--status-running)]",
+      amber: "bg-[var(--state-warning)]",
+      red: "bg-[var(--state-danger)]"
     },
     size: {
       xs: "size-1.5",

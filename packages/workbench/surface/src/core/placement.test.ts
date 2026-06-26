@@ -9,7 +9,8 @@ import {
   getWorkbenchFullscreenRect,
   getWorkbenchQuickLayoutRect,
   getWorkbenchSnapRect,
-  inferWorkbenchSnapTarget
+  inferWorkbenchSnapTarget,
+  WORKBENCH_EDGE_SNAP_THRESHOLD_PX
 } from "./geometry.ts";
 import {
   createWorkbenchInitialRect,
@@ -46,11 +47,29 @@ test("computes fullscreen and snap rects", () => {
     width: 1000,
     height: 560
   });
+  assert.deepEqual(getWorkbenchSnapRect("bottom", size), {
+    x: 0,
+    y: 332,
+    width: 1000,
+    height: 280
+  });
+  assert.deepEqual(getWorkbenchSnapRect("top-left", size), {
+    x: 0,
+    y: 52,
+    width: 500,
+    height: 280
+  });
   assert.deepEqual(getWorkbenchQuickLayoutRect("top", size), {
     x: 0,
     y: 52,
     width: 1000,
     height: 280
+  });
+  assert.deepEqual(getWorkbenchQuickLayoutRect("center", size), {
+    x: 140,
+    y: 131,
+    width: 720,
+    height: 403
   });
   assert.deepEqual(
     getWorkbenchLayoutPresetFrames(3, { kind: "balanced" }, size),
@@ -113,6 +132,15 @@ test("respects safe areas for layout, fullscreen, snap, and clamping", () => {
     width: 1000,
     height: 292
   });
+  assert.deepEqual(
+    getWorkbenchQuickLayoutRect("bottom-right", size, constraints),
+    {
+      x: 500,
+      y: 344,
+      width: 500,
+      height: 292
+    }
+  );
   assert.deepEqual(
     clampWorkbenchRect(
       { x: -100, y: -100, width: 400, height: 260 },
@@ -185,7 +213,7 @@ test("balances nine layout preset windows into a fitting grid", () => {
   ]);
 });
 
-test("infers drag snap only after the pointer crosses into the top safe area", () => {
+test("infers drag snap after the pointer crosses layout edges", () => {
   const constraints = {
     minWidth: 220,
     minHeight: 160,
@@ -195,24 +223,41 @@ test("infers drag snap only after the pointer crosses into the top safe area", (
   const size = { width: 1000, height: 700 };
 
   assert.equal(
-    inferWorkbenchSnapTarget({ y: 84 }, size, undefined, constraints),
+    inferWorkbenchSnapTarget({ x: 500, y: 84 }, size, undefined, constraints),
     null
   );
   assert.equal(
-    inferWorkbenchSnapTarget({ y: 52 }, size, undefined, constraints),
+    inferWorkbenchSnapTarget({ x: 500, y: 52 }, size, undefined, constraints),
     null
   );
   assert.equal(
-    inferWorkbenchSnapTarget({ y: 51 }, size, undefined, constraints),
+    inferWorkbenchSnapTarget({ x: 500, y: 51 }, size, undefined, constraints),
     "top"
   );
   assert.equal(
-    inferWorkbenchSnapTarget({ y: 400 }, size, undefined, constraints),
+    inferWorkbenchSnapTarget({ x: 500, y: 400 }, size, undefined, constraints),
     null
   );
   assert.equal(
-    inferWorkbenchSnapTarget({ y: 400 }, size, undefined, constraints),
-    null
+    inferWorkbenchSnapTarget({ x: -1, y: 51 }, size, undefined, constraints),
+    "top-left"
+  );
+  assert.equal(
+    inferWorkbenchSnapTarget({ x: 1001, y: 637 }, size, undefined, constraints),
+    "bottom-right"
+  );
+  assert.equal(
+    inferWorkbenchSnapTarget({ x: 0, y: 400 }, size, undefined, constraints),
+    "left"
+  );
+  assert.equal(
+    inferWorkbenchSnapTarget(
+      { x: 981, y: 400 },
+      size,
+      WORKBENCH_EDGE_SNAP_THRESHOLD_PX,
+      constraints
+    ),
+    "right"
   );
 });
 

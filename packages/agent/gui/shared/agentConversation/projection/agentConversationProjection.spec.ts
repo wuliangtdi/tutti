@@ -186,6 +186,232 @@ describe("projectAgentConversationVM", () => {
     expect(processing).not.toHaveProperty("noticeKind");
   });
 
+  it("merges only adjacent Codex transport retry notice rows", () => {
+    const retryNotice = (id: string, detail: string, sourceId: number) => ({
+      id,
+      body: "Codex connection interrupted. Reconnecting...",
+      occurredAtUnixMs: sourceId,
+      sourceTimelineItems: [
+        {
+          id: sourceId,
+          agentSessionId: "session-1",
+          eventId: `event-${sourceId}`,
+          actorType: "agent",
+          actorId: "codex",
+          itemType: "message",
+          role: "assistant",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "transport_retry"
+          }
+        }
+      ],
+      systemNotice: {
+        noticeKind: "transport_retry",
+        severity: "warning",
+        title: "Codex connection interrupted. Reconnecting...",
+        detail,
+        retryable: true
+      }
+    });
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "completed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Ship it" },
+            userMessages: [{ id: "user-1", body: "Ship it" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-1",
+                  "Handled error during turn: Reconnecting... 1/5",
+                  11
+                )
+              },
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-2",
+                  "Handled error during turn: Reconnecting... 2/5",
+                  12
+                )
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "Still working" }
+              },
+              {
+                kind: "message",
+                message: retryNotice(
+                  "assistant-retry-3",
+                  "Handled error during turn: Reconnecting... 3/5",
+                  13
+                )
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(3);
+    expect(assistantRows.map((row) => row.messages[0]?.id)).toEqual([
+      "assistant-retry-1",
+      "assistant-1",
+      "assistant-retry-3"
+    ]);
+    expect(
+      assistantRows[0]?.messages[0]?.sourceTimelineItems?.map((item) => item.id)
+    ).toEqual([11, 12]);
+    expect(assistantRows[0]?.messages[0]?.systemNotice?.detail).toBe(
+      "Handled error during turn: Reconnecting... 2/5"
+    );
+    expect(assistantRows[2]?.messages[0]?.sourceTimelineItems?.[0]?.id).toBe(
+      13
+    );
+  });
+
+  it("drops redundant Codex error warning notices when a visible error is present", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          status: "failed"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Ship it" },
+            userMessages: [{ id: "user-1", body: "Ship it" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: "Codex reported an error.",
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    title: "Codex reported an error.",
+                    detail: "stream disconnected",
+                    retryable: false
+                  }
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-visible-error-1",
+                  body: "Codex request failed.",
+                  visibleError: {
+                    code: "request_failed",
+                    phase: "turn",
+                    provider: "codex",
+                    detail: "stream disconnected",
+                    retryable: false
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages[0]?.visibleError?.provider).toBe("codex");
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
+  });
+
+  it("drops Codex skills context budget runtime warning notices", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Start" },
+            userMessages: [{ id: "user-1", body: "Start" }],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-warning-1",
+                  body: "Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+                  systemNotice: {
+                    noticeKind: "warning",
+                    severity: "warning",
+                    source: "runtime",
+                    title:
+                      "Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+                    detail:
+                      "Skill descriptions were shortened to fit the 2% skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+                    retryable: null
+                  }
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "I will inspect the logs."
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages[0]?.id).toBe("assistant-1");
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toBeNull();
+  });
+
   it("groups bridge thinking inside completed tool disclosures", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

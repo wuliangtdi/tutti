@@ -360,6 +360,15 @@ export const zhCN = {
           scale: "缩放"
         },
         minimizeAnimationSaveFailed: "暂时无法更新最小化动画。",
+        workbenchWindowSnappingDescription:
+          "开启边缘、四角吸附以及键盘窗口整理",
+        workbenchWindowSnappingLabel: "窗口吸附",
+        workbenchWindowSnappingSaveFailed: "暂时无法更新窗口吸附设置。",
+        workbenchWindowSnappingShortcutLabel: "窗口吸附快捷键",
+        workbenchWindowSnappingShortcutOptions: {
+          commandArrows: "Command + 方向键",
+          commandShiftArrows: "Command + Shift + 方向键"
+        },
         themeDescription: "控制窗口外观以及信息的颜色模式",
         themeLabel: "外观",
         themeOptions: {
@@ -629,13 +638,41 @@ export const zhCN = {
         checking: "正在检测本地 CLI 状态...",
         comingSoon: "敬请期待",
         install: "连接",
-        installFailed: "安装失败",
+        installFailed: "连接失败",
+        installFailedDescription: "暂时无法连接本地 Agent，请稍后重试",
+        installFailedMissingRuntime:
+          "找不到本地 Agent 可执行文件，请检查是否已正确安装",
+        installFailedTimedOut: "连接超时，请稍后重试",
         installUnavailableInRegion: "该地区不支持 Claude 服务。",
         installRequired: "需要先连接本地 Agent 才能继续",
         installing: "安装中...",
         login: "登录",
         loginFailed: "登录失败",
         loginRequired: "需要先登录本地 CLI 才能使用这个 Agent",
+        manageActionConnect: "连接",
+        manageActionLogin: "登录",
+        manageActionOpeningLogin: "打开中...",
+        manageActionUnavailableTooltip: "当前没有可用的智能体配置操作。",
+        manageColumnAction: "操作",
+        manageColumnAgent: "智能体",
+        manageColumnConfig: "配置",
+        manageColumnConnection: "连接状态",
+        manageConfigDetected: "检测到本机配置",
+        manageConfigMissing: "未检测到本机配置",
+        manageProviderClaudeCode: "Claude Code",
+        manageProviderCodex: "Codex",
+        manageProviderGemini: "Gemini CLI",
+        manageProviderHermes: "Hermes",
+        manageProviderOpenClaw: "OpenClaw",
+        manageProviderTutti: "Tutti",
+        manageStatusAuthRequired: "需要登录",
+        manageStatusAvailable: "可连接",
+        manageStatusChecking: "检测中",
+        manageStatusConnected: "已连接",
+        manageStatusUnknown: "状态不可用",
+        manageStatusUnsupported: "后台更新中",
+        manageTitle: "管理智能体",
+        manageUnsupportedTooltip: "本地支持正在更新中，这个智能体暂时不可用。",
         refresh: "重新检测",
         unknown: "暂时无法确认本地 CLI 状态，请刷新重新检测"
       },
@@ -707,6 +744,10 @@ export const zhCN = {
       "发布应用前检查失败，请先修复 App Center 里的生成草稿。",
     workspace_file_not_found: "找不到这个工作区里的文件或文件夹。",
     workspace_not_found: "找不到这个工作区。",
-    workspace_operation_failed: "暂时无法完成这个工作区操作。"
+    workspace_operation_failed: {
+      default: "暂时无法完成这个工作区操作。",
+      acp_adapter_version_mismatch:
+        "Claude Code 本地适配器不可用或版本不匹配。请先在 Dock 中重新连接 Claude Code，然后重试。"
+    }
   }
 } as const satisfies TranslationDictionary;

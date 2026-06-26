@@ -1,7 +1,6 @@
 package agentruntime
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
 )
@@ -95,32 +94,6 @@ func TestAppServerUserInputIncludesSkillAndMentionItems(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("appServerUserInput = %#v, want %#v", got, want)
-	}
-}
-
-func TestCodexAppServerErrorClassifiesVersionTooOld(t *testing.T) {
-	t.Parallel()
-
-	adapter, _, session := startedAppServerAdapter(t)
-	params, err := json.Marshal(map[string]any{
-		"error": map[string]any{
-			"code":    "invalid_request_error",
-			"message": "This request requires a newer version of Codex.",
-		},
-	})
-	if err != nil {
-		t.Fatalf("marshal params: %v", err)
-	}
-
-	events := adapter.appServerNotificationEvents(nil, session, "turn-1", acpMessage{
-		Method: appServerNotifyError,
-		Params: params,
-	}, nil, nil)
-	if len(events) != 1 {
-		t.Fatalf("events = %#v, want one visible error notice", events)
-	}
-	if got := events[0].Payload.Metadata["code"]; got != "CODEX_VERSION_TOO_OLD" {
-		t.Fatalf("metadata code = %#v, want CODEX_VERSION_TOO_OLD", got)
 	}
 }
 

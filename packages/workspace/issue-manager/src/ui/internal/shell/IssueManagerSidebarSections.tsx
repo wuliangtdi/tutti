@@ -4,12 +4,12 @@ import {
   Badge,
   Button,
   CloseIcon,
-  FileCreateIcon,
   Input,
   ScrollArea,
   UnderlineTabs,
   cn
 } from "@tutti-os/ui-system";
+import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 import type {
   IssueManagerIssueSummary,
   IssueManagerNodeState
@@ -27,6 +27,13 @@ import {
 } from "./IssueManagerShellState.ts";
 import { issueManagerStatusBadgeVariant } from "../status/IssueManagerStatusBadge.ts";
 
+const issueManagerSidebarHeaderClassName =
+  "grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-2.5 [--agent-gui-rail-control-radius:6px]";
+const issueManagerSidebarSearchFieldClassName = "room-issue-node__search-field";
+const issueManagerSidebarSearchInputClassName = "room-issue-node__search-input";
+const issueManagerSidebarCreateButtonClassName =
+  "agent-gui-node__new-conversation-icon-button";
+
 export function IssueManagerSidebarHeader({
   copy,
   issueSearchQuery,
@@ -42,7 +49,7 @@ export function IssueManagerSidebarHeader({
 }): JSX.Element {
   return (
     <div className="px-4 py-4">
-      <div className="flex items-center gap-2.5">
+      <div className={issueManagerSidebarHeaderClassName}>
         <IssueManagerSearchField
           clearLabel={copy.t("actions.clearSearch")}
           placeholder={copy.t("labels.searchIssues")}
@@ -51,14 +58,14 @@ export function IssueManagerSidebarHeader({
           onSearchUsage={onIssueSearchUsage}
         />
         <Button
-          className="gap-2 px-3"
+          className={issueManagerSidebarCreateButtonClassName}
           size="dialog"
           type="button"
           variant="secondary"
           onClick={onCreateIssue}
         >
-          <FileCreateIcon size={16} />
-          {copy.t("actions.createIssue")}
+          <CreateChatIcon aria-hidden="true" />
+          <span>{copy.t("actions.createIssue")}</span>
         </Button>
       </div>
     </div>
@@ -142,7 +149,6 @@ export function IssueManagerSidebarBody({
           <IssueManagerSidebarEmptyState
             body={sidebarViewState.body}
             isNarrowLayout={isNarrowLayout}
-            title={sidebarViewState.title}
           />
         ) : (
           <IssueManagerSidebarIssueList
@@ -171,7 +177,7 @@ export function IssueManagerSidebarStandalonePane({
   isNarrowLayout: boolean;
   kind: "empty" | "error";
   retryLabel?: string;
-  title: string;
+  title?: string;
   onRetry: () => void;
 }): JSX.Element {
   if (kind === "error" && retryLabel) {
@@ -179,7 +185,7 @@ export function IssueManagerSidebarStandalonePane({
       <IssueManagerSidebarErrorState
         isNarrowLayout={isNarrowLayout}
         retryLabel={retryLabel}
-        title={title}
+        title={title ?? ""}
         onRetry={onRetry}
       />
     );
@@ -189,7 +195,6 @@ export function IssueManagerSidebarStandalonePane({
     <IssueManagerSidebarEmptyState
       body={body ?? ""}
       isNarrowLayout={isNarrowLayout}
-      title={title}
     />
   );
 }
@@ -211,15 +216,14 @@ function IssueManagerSearchField({
 
   return (
     <div
-      className="relative min-w-0 flex-1"
+      className={issueManagerSidebarSearchFieldClassName}
       data-has-value={searchInput.value ? "true" : "false"}
     >
       <Input
         aria-label={placeholder}
         className={cn(
-          "box-border h-8 min-h-8 rounded-md border-0 bg-[var(--transparency-block)] px-3 text-[13px] font-normal leading-normal text-[var(--text-primary)] shadow-none outline-none ring-0 transition-colors placeholder:text-[var(--text-placeholder)] hover:bg-[var(--transparency-hover)] focus:border-0 focus:bg-[var(--transparency-hover)] focus-visible:border-0 focus-visible:bg-[var(--transparency-hover)] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-[var(--transparency-block)] disabled:text-[var(--text-disabled)] disabled:opacity-100",
-          "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none",
-          searchInput.value ? "pr-9" : "pr-3"
+          issueManagerSidebarSearchInputClassName,
+          "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none"
         )}
         placeholder={placeholder}
         type="search"
@@ -235,12 +239,12 @@ function IssueManagerSearchField({
       {searchInput.value ? (
         <button
           aria-label={clearLabel}
-          className="absolute top-1/2 right-1 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-md border-0 bg-transparent p-0 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)] focus-visible:bg-[var(--transparency-hover)] focus-visible:text-[var(--text-secondary)] focus-visible:outline-none"
+          className="room-issue-node__search-clear-button"
           type="button"
           onClick={searchInput.clearValue}
           onMouseDown={(event) => event.preventDefault()}
         >
-          <CloseIcon className="size-3.5" />
+          <CloseIcon aria-hidden="true" />
         </button>
       ) : null}
     </div>
@@ -401,13 +405,12 @@ function IssueManagerSidebarLoadingState({
 }
 
 function IssueManagerSidebarEmptyState({
+  body,
   isNarrowLayout,
-  title,
   tone = "default"
 }: {
   body: string;
   isNarrowLayout: boolean;
-  title: string;
   tone?: "default" | "destructive";
 }): JSX.Element {
   return (
@@ -427,7 +430,7 @@ function IssueManagerSidebarEmptyState({
             : "text-[var(--text-secondary)]"
         )}
       >
-        {title}
+        {body}
       </p>
     </div>
   );

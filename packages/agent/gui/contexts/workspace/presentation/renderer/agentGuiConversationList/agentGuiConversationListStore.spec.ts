@@ -5,7 +5,10 @@ import {
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests
 } from "../../../../../agentActivityRuntime";
-import { setAgentHostApiForTests } from "../../../../../agentActivityHost";
+import {
+  resetAgentHostApiForTests,
+  setAgentHostApiForTests
+} from "../../../../../agentActivityHost";
 import type {
   WorkspaceAgentActivityMessage,
   WorkspaceAgentActivitySnapshot
@@ -31,6 +34,7 @@ describe("agentGuiConversationListStore", () => {
     resetAgentGUIConversationListStoreForTests();
     resetAgentSessionViewStoreForTests();
     resetAgentActivityRuntimeForTests();
+    resetAgentHostApiForTests();
   });
 
   it("projects workspace agent runtime updates without reloading sessions", async () => {
@@ -275,6 +279,104 @@ describe("agentGuiConversationListStore", () => {
           id: "session-1",
           status: "completed",
           hasUnreadCompletion: true
+        })
+      );
+    });
+  });
+
+  it("does not mark a completed projection unread when its completion key was already read", async () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [
+        runtimeSession("session-1", 2_000, {
+          status: "completed"
+        })
+      ]
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+    setAgentHostApiForTests({
+      clipboard: {},
+      filesystem: {},
+      workspace: {},
+      persistence: {
+        readWorkspaceAgentReadState: vi.fn(async () => ({
+          completed: {
+            readIds: ["session:session-1:completed"],
+            unreadIds: []
+          },
+          failed: { readIds: [], unreadIds: [] }
+        })),
+        writeWorkspaceAgentReadState: vi.fn()
+      }
+    } as any);
+
+    ensureAgentGUIConversationListQuery(query);
+    scheduleAgentGUIConversationListProjection(query, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+      ).toEqual(
+        expect.objectContaining({
+          id: "session-1",
+          status: "completed",
+          hasUnreadCompletion: false,
+          unreadCompletionKey: "session:session-1:completed"
+        })
+      );
+    });
+  });
+
+  it("marks a completed assistant message unread during projection", async () => {
+    const query: AgentGUIConversationListQuery = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex",
+      sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
+    };
+    const snapshot: WorkspaceAgentActivitySnapshot = {
+      ...emptySnapshot(),
+      sessions: [runtimeSession("session-1", 2_000)],
+      sessionMessagesById: {
+        "session-1": [
+          message("session-1", {
+            messageId: "assistant-message-1",
+            turnId: "turn-1",
+            role: "assistant",
+            kind: "text",
+            status: "completed"
+          })
+        ]
+      }
+    };
+    setAgentActivityRuntimeForTests({
+      getSnapshot: () => snapshot,
+      load: async () => snapshot,
+      subscribe: () => () => {}
+    } as Partial<AgentActivityRuntime> as AgentActivityRuntime);
+
+    ensureAgentGUIConversationListQuery(query);
+    scheduleAgentGUIConversationListProjection(query, "projection-sync");
+
+    await waitFor(() => {
+      expect(
+        getAgentGUIConversationListQuerySnapshot(query)?.conversations[0]
+      ).toEqual(
+        expect.objectContaining({
+          id: "session-1",
+          status: "ready",
+          hasUnreadCompletion: true,
+          unreadCompletionKey: "turn:session-1:turn-1:completed"
         })
       );
     });

@@ -64,7 +64,7 @@ export interface WorkbenchWindowActionContext<TData = unknown> {
 
 export type WorkbenchWindowChromeMode = "system" | "custom-header";
 
-export type WorkbenchFullscreenHeaderMode = "persistent" | "reveal";
+export type WorkbenchFullscreenHeaderMode = "persistent";
 
 export interface WorkbenchResolveWindowChromeModeContext<TData = unknown> {
   node: WorkbenchNode<TData>;

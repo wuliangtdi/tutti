@@ -11,3 +11,8 @@ test("dev-web passes the analytics debug flag to tuttid", () => {
   assert.match(source, /TUTTI_ANALYTICS_DEBUG:/);
   assert.match(source, /VITE_TUTTI_ANALYTICS_DEBUG/);
 });
+
+test("dev-web generates builtin apps before starting tuttid", () => {
+  assert.match(source, /installDevCli\(\);\s*generateBuiltinApps\(\);/);
+  assert.match(source, /pnpm"\), \["generate:builtin-apps"\]/);
+});

@@ -31,6 +31,7 @@ def run_tutti(args, timeout=15):
 ## Discovery
 
 The CLI command set is dynamic. It includes daemon-owned commands plus commands exposed by installed workspace apps through `tutti.cli.json`.
+When `TUTTI_CLI` runs inside a workspace app runtime, command discovery includes commands marked integration-only, including app commands with `visibility: "integration"`. Ordinary user CLI help and Agent command guides do not include those integration-only commands. App-runtime help labels integration-only commands and tells models not to expose or forward them as user or Agent actions.
 
 Generated apps that integrate with another app should probe commands before depending on them:
 

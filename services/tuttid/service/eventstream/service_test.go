@@ -217,6 +217,41 @@ func TestPreferencesIntentHandlerUsesAuthoritativeMutationPath(t *testing.T) {
 	if !mutator.inputs[0].AgentGUIConversationRailCollapsedByProvider["codex"] {
 		t.Fatalf("mutator rail preference = %#v, want codex true", mutator.inputs[0].AgentGUIConversationRailCollapsedByProvider)
 	}
+	if mutator.inputs[0].WindowSnapping != nil {
+		t.Fatalf("mutator window snapping = %#v, want nil", mutator.inputs[0].WindowSnapping)
+	}
+}
+
+func TestPreferencesIntentHandlerPassesWindowSnappingWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(DefaultCatalog(), nil)
+	mutator := &preferencesMutatorStub{}
+
+	service.RegisterIntentHandler(
+		TopicPreferencesDesktopUpdateRequested,
+		NewPreferencesDesktopUpdateRequestedHandler(mutator),
+	)
+
+	if err := service.PublishFromClient(context.Background(), ClientEvent{
+		Topic:   TopicPreferencesDesktopUpdateRequested,
+		Payload: []byte(`{"preferences":{"agentComposerDefaultsByProvider":{},"agentGuiConversationRailCollapsedByProvider":{"codex":true},"appCatalogChannel":"staging","defaultAgentProvider":"codex","dockIconStyle":"flat","dockPlacement":"left","locale":"zh-CN","minimizeAnimation":"scale","sleepPreventionMode":"never","themeSource":"dark","updateChannel":"rc","updatePolicy":"auto","workbenchWindowSnapping":{"enabled":false,"shortcutPreset":"commandArrows"}}}`),
+	}); err != nil {
+		t.Fatalf("PublishFromClient() error = %v", err)
+	}
+
+	if len(mutator.inputs) != 1 {
+		t.Fatalf("mutator inputs = %d, want 1", len(mutator.inputs))
+	}
+	if mutator.inputs[0].WindowSnapping == nil {
+		t.Fatal("mutator window snapping = nil, want value")
+	}
+	if mutator.inputs[0].WindowSnapping.Enabled {
+		t.Fatal("mutator window snapping enabled = true, want false")
+	}
+	if mutator.inputs[0].WindowSnapping.ShortcutPreset != "commandArrows" {
+		t.Fatalf("mutator window snapping shortcut = %q, want commandArrows", mutator.inputs[0].WindowSnapping.ShortcutPreset)
+	}
 }
 
 func TestDesktopPreferencesPublisherIncludesDockIconStyle(t *testing.T) {
@@ -461,6 +496,27 @@ func TestWorkspaceAppUpdatedValidationRequiresReferencesState(t *testing.T) {
 				t.Fatalf("ValidatePublish() code = %q, want %q", validationErr.Code, ValidationCodeInvalidPayload)
 			}
 		})
+	}
+}
+
+func TestWorkspaceAppUpdatedValidationAcceptsInstalledPendingRestart(t *testing.T) {
+	t.Parallel()
+
+	err := DefaultCatalog().ValidatePublish(
+		TopicWorkspaceAppUpdated,
+		DirectionServerToClient,
+		[]byte(`{"app":{
+			"appId":"docs",
+			"displayName":"Docs",
+			"version":"1.0.0",
+			"status":"installed_pending_restart",
+			"stateRevision":1,
+			"minimizeBehavior":"keep-mounted",
+			"references":{"listSupported":false}
+		}}`),
+	)
+	if err != nil {
+		t.Fatalf("ValidatePublish() error = %v, want nil", err)
 	}
 }
 

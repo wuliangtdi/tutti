@@ -183,7 +183,7 @@ export function agentComposerDraftToPromptContent(input: {
         type: "file" as const,
         ...(file.mimeType ? { mimeType: file.mimeType } : {}),
         ...(file.path ? { path: file.path } : {}),
-        ...(file.hostPath ? { hostPath: file.hostPath } : {}),
+        ...(!file.path && file.hostPath ? { hostPath: file.hostPath } : {}),
         ...(file.assetId ? { assetId: file.assetId } : {}),
         ...(file.sizeBytes ? { sizeBytes: file.sizeBytes } : {}),
         name: file.name,

@@ -59,6 +59,9 @@ test("promoted advanced primitive sources preserve their core interaction contra
   assert.doesNotMatch(underlineTabsSource, /--accent/);
   assert.match(underlineTabsSource, /gap-\[14px\]/);
   assert.match(underlineTabsSource, /text-\[13px\]/);
+  assert.match(underlineTabsSource, /text-\[13px\] font-medium/);
+  assert.match(underlineTabsSource, /text-\[11px\] font-medium/);
+  assert.doesNotMatch(underlineTabsSource, /font-semibold/);
   assert.match(underlineTabsSource, /duration-\[220ms\]/);
   assert.match(underlineTabsSource, /duration-\[160ms\]/);
   assert.match(underlineTabsSource, /data-visible=/);
@@ -71,6 +74,14 @@ test("promoted advanced primitive sources preserve their core interaction contra
   const statusDotSource = readComponentSource("status-dot.tsx");
   assert.match(statusDotSource, /data-tone=/);
   assert.match(statusDotSource, /data-size=/);
+  assert.match(statusDotSource, /bg-\[var\(--status-running\)\]/);
+  assert.match(statusDotSource, /bg-\[var\(--state-warning\)\]/);
+  assert.match(statusDotSource, /bg-\[var\(--state-danger\)\]/);
+  assert.match(statusDotSource, /bg-\[var\(--state-success\)\]/);
+  assert.doesNotMatch(statusDotSource, /bg-blue-/);
+  assert.doesNotMatch(statusDotSource, /bg-amber-/);
+  assert.doesNotMatch(statusDotSource, /bg-destructive/);
+  assert.doesNotMatch(statusDotSource, /bg-emerald-500/);
 
   const viewportMenuSurfaceSource = readComponentSource(
     "viewport-menu-surface.tsx"

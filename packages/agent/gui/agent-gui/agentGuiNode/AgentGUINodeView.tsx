@@ -16,7 +16,6 @@ import { proxy } from "valtio/vanilla";
 import { ChevronRight, ExternalLink, Info, Wrench, X } from "lucide-react";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import type {
-  NodeRef,
   ReferenceLocateTarget,
   ReferenceNode,
   WorkspaceFileReference,
@@ -36,6 +35,7 @@ import {
   TooltipTrigger,
   NewWorkspaceLinedIcon,
   ConfirmationDialog,
+  toastVariants,
   cn
 } from "@tutti-os/ui-system";
 import { WorkspaceUserProjectSelect } from "@tutti-os/workspace-user-project/ui";
@@ -43,7 +43,7 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import { BareIconButton, ScrollArea } from "@tutti-os/ui-system/components";
 import { Button } from "../../app/renderer/components/ui/button";
 import {
-  EditIcon,
+  CreateChatIcon,
   FolderIcon,
   MoreHorizontalIcon
 } from "@tutti-os/ui-system/icons";
@@ -574,6 +574,16 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
+function isAppServerStartupLoading(
+  rawState: AgentGUISessionChrome["rawState"],
+  key: "models" | "rateLimits"
+): boolean {
+  return (
+    objectRecord(rawState?.runtimeContext?.appServerStartup)?.[key] ===
+    "loading"
+  );
+}
+
 function resolveSlashStatus({
   rawState,
   limits,
@@ -608,7 +618,8 @@ function resolveSlashStatus({
     agentSessionId: rawState?.agentSessionId ?? null,
     baseUrl: stringValue(providerConfig?.baseUrl) || null,
     limits,
-    limitsLoading,
+    limitsLoading:
+      limitsLoading || isAppServerStartupLoading(rawState, "rateLimits"),
     contextWindow: contextWindow
       ? {
           usedTokens:
@@ -803,7 +814,6 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
-  const agentHostApi = useAgentHostApi();
   const layoutElementRef = useRef<HTMLDivElement | null>(null);
   const railResizeInteractionRef = useRef<{
     lastWidthPx: number;
@@ -831,110 +841,15 @@ export function AgentGUINodeView({
     ((result: WorkspaceReferencePickResult) => void) | null
   >(null);
   const emptyReferencePickResult: WorkspaceReferencePickResult = useMemo(
-    () => ({ files: [], mentionItems: [], hostAttachments: [] }),
+    () => ({ files: [], mentionItems: [] }),
     []
   );
-  const hostLocalFileLabel =
-    uiLanguage === "zh-CN" ? "本地文件(宿主机)" : "Local files (Host)";
-  const hostLocalFileSelectLabel =
-    uiLanguage === "zh-CN" ? "从电脑选择…" : "Choose from computer…";
-  const hostLocalFileActionPath = "host-local-file://select";
-  const referenceSourceAggregatorWithHostLocalFile = useMemo(() => {
-    if (!referenceSourceAggregator) {
-      return null;
-    }
-    const sourceId = "host-local-file";
-    const actionNode: ReferenceNode = {
-      ref: { sourceId, nodeId: "select-files" },
-      kind: "file",
-      displayName: hostLocalFileSelectLabel
-    };
-    const rootNode: ReferenceNode = {
-      ref: { sourceId, nodeId: "\u0000source-root" },
-      kind: "folder",
-      displayName: hostLocalFileLabel,
-      hasChildren: true
-    };
-    return {
-      ...referenceSourceAggregator,
-      async listSources(scope) {
-        const sources = await referenceSourceAggregator.listSources(scope);
-        return [
-          ...sources,
-          {
-            sourceId,
-            label: hostLocalFileLabel,
-            icon: "file",
-            capabilities: {
-              searchable: false,
-              previewable: false,
-              paginated: false,
-              navigable: false,
-              filterable: false
-            }
-          }
-        ];
-      },
-      async listRoot(scope) {
-        const root = await referenceSourceAggregator.listRoot(scope);
-        return [...root, rootNode];
-      },
-      async listChildren(scope, node: NodeRef, input) {
-        if (node.sourceId === sourceId) {
-          return { entries: [actionNode], nextCursor: null };
-        }
-        return await referenceSourceAggregator.listChildren(scope, node, input);
-      },
-      async search(scope, currentSourceId, input) {
-        if (currentSourceId === sourceId) {
-          return { entries: [], nextCursor: null };
-        }
-        return await referenceSourceAggregator.search(
-          scope,
-          currentSourceId,
-          input
-        );
-      },
-      async open(scope, node) {
-        if (node.ref.sourceId === sourceId) {
-          return;
-        }
-        await referenceSourceAggregator.open(scope, node);
-      },
-      async readPreview(scope, node) {
-        if (node.ref.sourceId === sourceId) {
-          return null;
-        }
-        return await referenceSourceAggregator.readPreview(scope, node);
-      },
-      resolveSelection(node) {
-        if (node.ref.sourceId === sourceId) {
-          return {
-            path: hostLocalFileActionPath,
-            kind: "file",
-            displayName: actionNode.displayName
-          };
-        }
-        return referenceSourceAggregator.resolveSelection(node);
-      },
-      async locateTarget(scope, currentSourceId, params) {
-        if (currentSourceId === sourceId) {
-          return null;
-        }
-        return await referenceSourceAggregator.locateTarget(
-          scope,
-          currentSourceId,
-          params
-        );
-      },
-      getLoadedSource(currentSourceId) {
-        if (currentSourceId === sourceId) {
-          return undefined;
-        }
-        return referenceSourceAggregator.getLoadedSource(currentSourceId);
-      }
-    } satisfies ReferenceSourceAggregator;
-  }, [hostLocalFileLabel, hostLocalFileSelectLabel, referenceSourceAggregator]);
+  const hostLocalFileSourceId = "host-local-file";
+  const isWorkspaceReferencePickerNodeSelectable = useCallback(
+    (node: ReferenceNode) =>
+      node.ref.sourceId !== hostLocalFileSourceId || node.kind === "file",
+    [hostLocalFileSourceId]
+  );
   const requestWorkspaceReferences = useCallback(
     async (
       entity?: AgentContextMentionItem | null
@@ -942,18 +857,14 @@ export function AgentGUINodeView({
       if (previewMode) {
         return emptyReferencePickResult;
       }
-      if (
-        (!workspaceFileReferenceAdapter &&
-          !referenceSourceAggregatorWithHostLocalFile) ||
-        !workspaceFileReferenceCopy
-      ) {
+      if (!workspaceFileReferenceAdapter && !referenceSourceAggregator) {
         return emptyReferencePickResult;
       }
       // 仅多源 picker(referenceSourceAggregator)支持定位;本地 picker 不支持。
       const target =
-        entity && referenceSourceAggregatorWithHostLocalFile
+        entity && referenceSourceAggregator
           ? (resolveMentionReferenceTarget?.(entity) ?? null)
-          : referenceSourceAggregatorWithHostLocalFile
+          : referenceSourceAggregator
             ? (resolveWorkspaceReferenceInitialTarget?.({
                 activeConversation: viewModel.activeConversation,
                 composerSelectedProjectPath:
@@ -970,7 +881,7 @@ export function AgentGUINodeView({
     [
       emptyReferencePickResult,
       previewMode,
-      referenceSourceAggregatorWithHostLocalFile,
+      referenceSourceAggregator,
       resolveMentionReferenceTarget,
       resolveWorkspaceReferenceInitialTarget,
       viewModel.activeConversation,
@@ -1002,38 +913,19 @@ export function AgentGUINodeView({
     [onWorkspaceFileReferencesAdded]
   );
   const confirmWorkspaceReferencePicker = useCallback(
-    async (refs: WorkspaceFileReference[]) => {
-      const wantsHostFiles = refs.some(
-        (ref) => ref.path === hostLocalFileActionPath
-      );
-      if (!wantsHostFiles) {
-        settleReferencePicker(
-          { files: refs, mentionItems: [], hostAttachments: [] },
-          refs
-        );
-        return;
-      }
-      const workspaceRefs = refs.filter(
-        (ref) => ref.path !== hostLocalFileActionPath
-      );
-      const selected = await agentHostApi.workspace.selectFiles();
-      const hostAttachments = selected.map((file) => ({
-        hostPath: file.path,
-        name: file.name || file.path.split("/").pop() || file.path,
-        mimeType: null
-      }));
-      settleReferencePicker(
-        { files: workspaceRefs, mentionItems: [], hostAttachments },
-        workspaceRefs
-      );
+    (refs: WorkspaceFileReference[]) => {
+      settleReferencePicker({ files: refs, mentionItems: [] }, refs);
     },
-    [agentHostApi.workspace, settleReferencePicker]
+    [settleReferencePicker]
   );
   // 「文件夹=一个 reference 节点」确认:navigable 源文件夹折叠成 workspace-reference
   // mention item(只携带可解析句柄 source+id+groupId,不展开文件);松散文件仍按 file
   // mention 插入。agent 收到 `mention://workspace-reference/...` 后经 skill+CLI 按需解析。
   const confirmWorkspaceReferenceBundles = useCallback(
     (result: ReferenceGroupedSelection) => {
+      const workspaceRefs = result.files.filter(
+        (ref) => ref.sourceId !== hostLocalFileSourceId
+      );
       const mentionItems: AgentMentionWorkspaceReferenceItem[] = result.bundles
         .filter((bundle) => bundle.handle != null)
         .map((bundle) => {
@@ -1051,7 +943,6 @@ export function AgentGUINodeView({
                 ...(handle.groupId?.trim()
                   ? { groupId: handle.groupId.trim() }
                   : {}),
-                ...(bundleIconUrl ? { icon: bundleIconUrl } : {}),
                 ...(bundle.fileCount > 0
                   ? { count: String(bundle.fileCount) }
                   : {})
@@ -1068,11 +959,11 @@ export function AgentGUINodeView({
         });
       // bundle 不再展开文件,仅松散文件计入「最近引用」跟踪。
       settleReferencePicker(
-        { files: result.files, mentionItems, hostAttachments: [] },
-        result.files
+        { files: result.files, mentionItems },
+        workspaceRefs
       );
     },
-    [settleReferencePicker, viewModel.workspaceId]
+    [hostLocalFileSourceId, settleReferencePicker]
   );
   const openclawGateway = useMemo(
     () =>
@@ -1463,13 +1354,14 @@ export function AgentGUINodeView({
           />
         </section>
       </div>
-      {referenceSourceAggregatorWithHostLocalFile ? (
+      {referenceSourceAggregator ? (
         <ReferenceSourcePicker
-          aggregator={referenceSourceAggregatorWithHostLocalFile}
+          aggregator={referenceSourceAggregator}
           copy={
             workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
           }
           initialTarget={workspaceReferencePickerTarget}
+          isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
           open={workspaceReferencePickerOpen}
           workspaceId={viewModel.workspaceId}
           onClose={closeWorkspaceReferencePicker}
@@ -2440,18 +2332,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       />
       {showProviderSetupNotice ? (
         <div
-          className={styles.providerSetupNotice}
+          className={cn(
+            toastVariants({ variant: "default" }),
+            styles.providerSetupNotice
+          )}
+          data-slot="toast"
           data-testid="agent-gui-provider-setup-notice"
           role="status"
         >
-          <Info
-            aria-hidden="true"
-            className={styles.providerSetupNoticeIcon}
-            size={15}
-            strokeWidth={2}
-          />
-          <span className={styles.providerSetupNoticeText}>
-            {labels.installRequiredPlaceholder}
+          <span className="inline-flex max-w-full items-center justify-center gap-[6px] text-center text-[13px] font-normal leading-normal">
+            <span className="min-w-0 break-words">
+              {labels.installRequiredPlaceholder}
+            </span>
           </span>
           <button
             type="button"
@@ -3252,6 +3144,7 @@ function conversationSummariesRenderEqual(
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
     left.hasUnreadCompletion === right.hasUnreadCompletion &&
+    left.unreadCompletionKey === right.unreadCompletionKey &&
     conversationProjectsRenderEqual(left.project, right.project) &&
     conversationSyncStatesRenderEqual(left.syncState, right.syncState)
   );
@@ -3453,12 +3346,13 @@ const AgentGUIConversationRailPane = memo(
           <Button
             type="button"
             variant="secondary"
+            size="dialog"
             className={styles.newConversationIconButton}
             title={labels.newConversation}
             disabled={createConversationDisabled}
             onClick={() => onCreateConversation()}
           >
-            <EditIcon aria-hidden="true" />
+            <CreateChatIcon aria-hidden="true" />
             <span>{labels.newConversation}</span>
           </Button>
         </div>
@@ -3765,44 +3659,88 @@ const AgentGUIConversationRailSection = memo(
           )}
           {canCreateConversationFromSection ? (
             <div className={styles.conversationSectionActions}>
-              <span className={styles.conversationSectionActionTooltipWrap}>
-                <BareIconButton
-                  className={styles.conversationSectionMoreButton}
-                  aria-label={createConversationLabel}
-                  size="sm"
-                  disabled={createConversationDisabled}
-                  onClick={handleCreateConversation}
-                >
-                  <EditIcon aria-hidden="true" />
-                </BareIconButton>
-                <span
-                  aria-hidden="true"
-                  className={styles.conversationSectionActionTooltip}
-                >
-                  {createConversationLabel}
+              {previewMode ? (
+                <span className={styles.conversationSectionActionTooltipWrap}>
+                  <BareIconButton
+                    className={styles.conversationSectionMoreButton}
+                    aria-label={createConversationLabel}
+                    size="sm"
+                    disabled={createConversationDisabled}
+                    onClick={handleCreateConversation}
+                  >
+                    <CreateChatIcon aria-hidden="true" />
+                  </BareIconButton>
                 </span>
-              </span>
-              {projectPath ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <span
                       className={styles.conversationSectionActionTooltipWrap}
                     >
                       <BareIconButton
                         className={styles.conversationSectionMoreButton}
-                        aria-label={labels.projectSectionMoreActions}
+                        aria-label={createConversationLabel}
                         size="sm"
+                        disabled={createConversationDisabled}
+                        onClick={handleCreateConversation}
                       >
-                        <MoreHorizontalIcon aria-hidden="true" />
+                        <CreateChatIcon aria-hidden="true" />
                       </BareIconButton>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    sideOffset={6}
+                    className={styles.conversationSectionActionTooltip}
+                  >
+                    {createConversationLabel}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {projectPath ? (
+                <DropdownMenu>
+                  {previewMode ? (
+                    <DropdownMenuTrigger asChild>
                       <span
-                        aria-hidden="true"
+                        className={styles.conversationSectionActionTooltipWrap}
+                      >
+                        <BareIconButton
+                          className={styles.conversationSectionMoreButton}
+                          aria-label={labels.projectSectionMoreActions}
+                          size="sm"
+                        >
+                          <MoreHorizontalIcon aria-hidden="true" />
+                        </BareIconButton>
+                      </span>
+                    </DropdownMenuTrigger>
+                  ) : (
+                    <Tooltip>
+                      <DropdownMenuTrigger asChild>
+                        <TooltipTrigger asChild>
+                          <span
+                            className={
+                              styles.conversationSectionActionTooltipWrap
+                            }
+                          >
+                            <BareIconButton
+                              className={styles.conversationSectionMoreButton}
+                              aria-label={labels.projectSectionMoreActions}
+                              size="sm"
+                            >
+                              <MoreHorizontalIcon aria-hidden="true" />
+                            </BareIconButton>
+                          </span>
+                        </TooltipTrigger>
+                      </DropdownMenuTrigger>
+                      <TooltipContent
+                        side="right"
+                        sideOffset={6}
                         className={styles.conversationSectionActionTooltip}
                       >
                         {labels.projectSectionMoreActions}
-                      </span>
-                    </span>
-                  </DropdownMenuTrigger>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                   <DropdownMenuContent
                     align="end"
                     className={`${styles.composerMenuContent} nodrag [-webkit-app-region:no-drag]`}

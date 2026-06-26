@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDefaultsFromEnv,
+  resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
 
@@ -122,6 +123,42 @@ test("initializeDesktopEnvironment preserves shared app version override", () =>
     });
 
     assert.equal(process.env.TUTTI_APP_VERSION, "9.9.9");
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopUserDataPath isolates development Electron storage", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+
+    assert.equal(
+      resolveDesktopUserDataPath({
+        appDataDir: "/tmp/app-data",
+        appName: "Tutti"
+      }),
+      "/tmp/app-data/Tutti-dev"
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopUserDataPath keeps production on Electron defaults", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "production";
+
+    assert.equal(
+      resolveDesktopUserDataPath({
+        appDataDir: "/tmp/app-data",
+        appName: "Tutti"
+      }),
+      null
+    );
   } finally {
     restoreEnv(previousEnv);
   }

@@ -20,7 +20,10 @@ import type {
   WorkbenchController,
   WorkbenchDebugDiagnostics
 } from "../store/types.ts";
-import type { WorkbenchSurfaceWallpaper } from "../react/WorkbenchSurface.tsx";
+import type {
+  WorkbenchSurfaceWallpaper,
+  WorkbenchWindowManagementConfig
+} from "../react/WorkbenchSurface.tsx";
 import type {
   WorkbenchDockPlacement,
   WorkbenchMinimizeAnimation,
@@ -296,7 +299,7 @@ export interface WorkbenchHostDockEntryStateSource {
 export interface WorkbenchHostNodeWindowCapabilities {
   closable?: boolean;
   defaultOpen?: boolean;
-  fullscreenHeaderMode?: "persistent" | "reveal";
+  fullscreenHeaderMode?: "persistent";
   fullscreenable?: boolean;
   keepMountedWhenMinimized?:
     | boolean
@@ -618,5 +621,6 @@ export interface WorkbenchHostProps {
   snapshotRepository: WorkbenchHostSnapshotRepository;
   shortcutsEnabled?: boolean;
   wallpaper?: WorkbenchSurfaceWallpaper;
+  windowManagement?: WorkbenchWindowManagementConfig;
   workspaceId: string;
 }

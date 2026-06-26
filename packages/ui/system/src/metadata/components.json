@@ -1634,6 +1634,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "recent-lined-icon",
+      "layer": "base",
+      "name": "RecentLinedIcon",
+      "export": "RecentLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for recent locations and recently used items.",
+      "useCases": ["Recent locations", "Recently used items"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "folder-lined-icon",
       "layer": "base",
       "name": "FolderIcon",

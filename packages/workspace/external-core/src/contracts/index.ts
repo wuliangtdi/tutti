@@ -149,12 +149,17 @@ export interface TuttiExternalSettingsOpenInput {
   tab?: "models";
 }
 
+export interface TuttiExternalBrowserOpenUrlInput {
+  url: string;
+}
+
 export type TuttiExternalWorkspaceFeature =
   | "app-center"
   | "issue-manager"
   | "message-center"
   | "agent-connect"
-  | "agent-chat";
+  | "agent-chat"
+  | "agent-manage";
 
 export const tuttiExternalWorkspaceAgentProviders = [
   "claude-code",
@@ -173,6 +178,16 @@ export interface TuttiExternalWorkspaceOpenFeatureInput {
   draftPrompt?: string;
   feature: TuttiExternalWorkspaceFeature;
   provider?: TuttiExternalWorkspaceAgentProvider;
+}
+
+export interface TuttiExternalWorkspaceOpenRouteIntent {
+  kind: "open-route";
+  params?: Record<string, string>;
+  /**
+   * Origin-root path for the app launch origin. It must start with "/".
+   */
+  route: string;
+  state?: Record<string, unknown>;
 }
 
 export interface TuttiExternalReferenceOpenInput {
@@ -240,6 +255,9 @@ export interface TuttiExternalBridge {
     getContext(): Promise<unknown>;
     subscribe(listener: (context: unknown) => void): () => void;
   };
+  browser: {
+    openUrl(input: TuttiExternalBrowserOpenUrlInput): Promise<void>;
+  };
   at: {
     query(
       input: TuttiExternalAtQueryInput
@@ -264,6 +282,9 @@ export interface TuttiExternalBridge {
     open(input?: TuttiExternalSettingsOpenInput): Promise<void>;
   };
   workspace: {
+    onLaunchIntent(
+      listener: (intent: TuttiExternalWorkspaceOpenRouteIntent) => void
+    ): () => void;
     openFeature(input: TuttiExternalWorkspaceOpenFeatureInput): Promise<void>;
   };
   references: {

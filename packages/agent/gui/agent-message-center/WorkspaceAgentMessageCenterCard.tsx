@@ -94,6 +94,7 @@ export const WorkspaceAgentMessageCenterCard = memo(
     const displayTitle = normalizeAgentTitleText(item.title);
     const summary = messageCenterVisibleSummary(item);
     const displayStatus = statusClass(item);
+    const statusTone = messageCenterStatusTone(item);
     const statusLabel = workspaceAgentActivityStatusLabel(displayStatus, t);
 
     return (
@@ -130,12 +131,15 @@ export const WorkspaceAgentMessageCenterCard = memo(
             {item.cwd ? <ProjectPathInfo path={item.cwd} /> : null}
           </div>
           <span
-            className="workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4 text-[var(--text-secondary)]"
+            className={cn(
+              "workspace-agent-message-center__status inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold leading-4",
+              messageCenterStatusToneClass(statusTone)
+            )}
             data-status={displayStatus}
             title={statusLabel}
           >
             <StatusDot
-              tone={messageCenterStatusTone(item)}
+              tone={statusTone}
               pulse={
                 isWaitingMessageCenterItem(item) || item.status === "working"
               }
@@ -1122,9 +1126,16 @@ function statusClass(item: WorkspaceAgentMessageCenterItem): string {
   return item.status;
 }
 
+export type MessageCenterStatusTone =
+  | "amber"
+  | "blue"
+  | "green"
+  | "neutral"
+  | "red";
+
 function messageCenterStatusTone(
   item: WorkspaceAgentMessageCenterItem
-): "amber" | "blue" | "green" | "neutral" | "red" {
+): MessageCenterStatusTone {
   if (isWaitingMessageCenterItem(item)) {
     return "amber";
   }
@@ -1141,4 +1152,21 @@ function messageCenterStatusTone(
     return "blue";
   }
   return "neutral";
+}
+
+export function messageCenterStatusToneClass(
+  tone: MessageCenterStatusTone
+): string {
+  switch (tone) {
+    case "amber":
+      return "text-[var(--state-warning)]";
+    case "blue":
+      return "text-[var(--status-running)]";
+    case "green":
+      return "text-[var(--state-success)]";
+    case "red":
+      return "text-[var(--state-danger)]";
+    case "neutral":
+      return "text-[var(--text-secondary)]";
+  }
 }

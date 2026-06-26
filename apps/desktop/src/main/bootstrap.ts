@@ -1,7 +1,10 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow } from "electron";
-import { initializeDesktopEnvironment } from "./defaults";
+import {
+  initializeDesktopEnvironment,
+  resolveDesktopUserDataPath
+} from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
 import { createDesktopAppServices } from "./desktopAppServices";
 import { startDesktopAppUpdateAnalytics } from "./appUpdateAnalytics.ts";
@@ -21,6 +24,7 @@ import {
 } from "./desktopTheme";
 import { registerIpcHandlers } from "./ipc/register";
 import { flushDesktopLogger, setupDesktopLogger } from "./logging";
+import { ensureSingleInstance } from "./singleInstance";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
 import { openPerfMonitorDevToolsWindow } from "./windows/perfMonitorDevToolsWindow.ts";
@@ -52,6 +56,20 @@ function applyElectronDiagnosticSwitches(): void {
   }
 }
 
+function focusPrimaryDesktopWindow(): void {
+  const target = BrowserWindow.getAllWindows().find(
+    (window) => !window.isDestroyed()
+  );
+  if (!target) {
+    return;
+  }
+  if (target.isMinimized()) {
+    target.restore();
+  }
+  target.show();
+  target.focus();
+}
+
 export async function bootstrapDesktopApp(): Promise<void> {
   applyElectronDiagnosticSwitches();
   registerTuttiAssetProtocolScheme();
@@ -60,7 +78,34 @@ export async function bootstrapDesktopApp(): Promise<void> {
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
   });
+  const userDataPath = resolveDesktopUserDataPath({
+    appDataDir: app.getPath("appData"),
+    appName: app.getName()
+  });
+  if (userDataPath) {
+    app.setPath("userData", userDataPath);
+  }
   const logger = await setupDesktopLogger();
+
+  // A single live desktop instance per environment. The managed tuttid daemon is
+  // a global singleton (one pid/listener file per env root); a second instance
+  // would otherwise reap the first instance's live daemon as a "stale" orphan,
+  // breaking the first instance until it is restarted manually.
+  const isPrimaryInstance = ensureSingleInstance({
+    requestSingleInstanceLock: () => app.requestSingleInstanceLock(),
+    quit: () => app.quit(),
+    onSecondInstance: (handler) => {
+      app.on("second-instance", handler);
+    },
+    focusPrimaryWindow: focusPrimaryDesktopWindow
+  });
+  if (!isPrimaryInstance) {
+    logger.info(
+      "secondary tutti instance detected; focusing existing window and quitting"
+    );
+    return;
+  }
+
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const preloadPath = join(currentDir, "../preload/index.cjs");
   const browserNodeGuestPreloadPath = join(

@@ -192,6 +192,20 @@ export const preferencesDesktopPreferencesSchema = {
     updatePolicy: {
       type: "string",
       enum: ["off", "prompt", "auto"]
+    },
+    workbenchWindowSnapping: {
+      type: "object",
+      additionalProperties: false,
+      required: ["enabled", "shortcutPreset"],
+      properties: {
+        enabled: {
+          type: "boolean"
+        },
+        shortcutPreset: {
+          type: "string",
+          enum: ["commandArrows", "commandShiftArrows"]
+        }
+      }
     }
   },
   $defs: {
@@ -849,38 +863,6 @@ export const agentActivityUpdatedPayloadSchema = {
   }
 } as const;
 
-export const agentGuiLaunchRequestedPayloadSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["workspaceId", "agentSessionId", "provider", "source"],
-  properties: {
-    workspaceId: {
-      type: "string",
-      minLength: 1
-    },
-    agentSessionId: {
-      type: "string",
-      minLength: 1
-    },
-    provider: {
-      type: "string",
-      minLength: 1
-    },
-    source: {
-      type: "string",
-      minLength: 1
-    },
-    reason: {
-      type: "string",
-      minLength: 1
-    },
-    requestId: {
-      type: "string",
-      minLength: 1
-    }
-  }
-} as const;
-
 export const analyticsDebugReportedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -1117,6 +1099,20 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         updatePolicy: {
           type: "string",
           enum: ["off", "prompt", "auto"]
+        },
+        workbenchWindowSnapping: {
+          type: "object",
+          additionalProperties: false,
+          required: ["enabled", "shortcutPreset"],
+          properties: {
+            enabled: {
+              type: "boolean"
+            },
+            shortcutPreset: {
+              type: "string",
+              enum: ["commandArrows", "commandShiftArrows"]
+            }
+          }
         }
       },
       $defs: {
@@ -1347,6 +1343,20 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         updatePolicy: {
           type: "string",
           enum: ["off", "prompt", "auto"]
+        },
+        workbenchWindowSnapping: {
+          type: "object",
+          additionalProperties: false,
+          required: ["enabled", "shortcutPreset"],
+          properties: {
+            enabled: {
+              type: "boolean"
+            },
+            shortcutPreset: {
+              type: "string",
+              enum: ["commandArrows", "commandShiftArrows"]
+            }
+          }
         }
       },
       $defs: {
@@ -1712,6 +1722,39 @@ export const workspaceIssueUpdatedPayloadSchema = {
   }
 } as const;
 
+export const workspaceWorkbenchNodeLaunchRequestedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workspaceId", "typeId", "source"],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    typeId: {
+      type: "string",
+      minLength: 1
+    },
+    source: {
+      type: "string",
+      minLength: 1
+    },
+    launchSource: {
+      type: "string",
+      minLength: 1
+    },
+    dockEntryId: {
+      type: "string",
+      minLength: 1
+    },
+    requestId: {
+      type: "string",
+      minLength: 1
+    },
+    payload: true
+  }
+} as const;
+
 export const businessEventEnvelopeSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   $id: "https://tutti.dev/schemas/events/event-envelope.schema.json",
@@ -2038,7 +2081,6 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
-  "agent.gui.launch.requested": agentGuiLaunchRequestedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,
@@ -2046,5 +2088,7 @@ export const businessEventPayloadSchemas = {
   "workspace.app.updated": workspaceAppUpdatedPayloadSchema,
   "workspace.appfactory.job.updated":
     workspaceAppfactoryJobUpdatedPayloadSchema,
-  "workspace.issue.updated": workspaceIssueUpdatedPayloadSchema
+  "workspace.issue.updated": workspaceIssueUpdatedPayloadSchema,
+  "workspace.workbench.node.launch.requested":
+    workspaceWorkbenchNodeLaunchRequestedPayloadSchema
 } as const;

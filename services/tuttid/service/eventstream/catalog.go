@@ -14,14 +14,14 @@ import (
 )
 
 const (
-	TopicAnalyticsDebugReported            = "analytics.debug.reported"
-	TopicAgentActivityUpdated              = "agent.activity.updated"
-	TopicAgentGUILaunchRequested           = "agent.gui.launch.requested"
-	TopicPreferencesDesktopUpdateRequested = "preferences.desktop.update.requested"
-	TopicPreferencesDesktopUpdated         = "preferences.desktop.updated"
-	TopicWorkspaceIssueUpdated             = "workspace.issue.updated"
-	TopicWorkspaceAppFactoryJobUpdated     = "workspace.appfactory.job.updated"
-	TopicWorkspaceAppUpdated               = "workspace.app.updated"
+	TopicAnalyticsDebugReported                = "analytics.debug.reported"
+	TopicAgentActivityUpdated                  = "agent.activity.updated"
+	TopicPreferencesDesktopUpdateRequested     = "preferences.desktop.update.requested"
+	TopicPreferencesDesktopUpdated             = "preferences.desktop.updated"
+	TopicWorkspaceIssueUpdated                 = "workspace.issue.updated"
+	TopicWorkspaceAppFactoryJobUpdated         = "workspace.appfactory.job.updated"
+	TopicWorkspaceAppUpdated                   = "workspace.app.updated"
+	TopicWorkspaceWorkbenchNodeLaunchRequested = "workspace.workbench.node.launch.requested"
 )
 
 type Direction string
@@ -116,16 +116,6 @@ func DefaultCatalog() StaticCatalog {
 			},
 		},
 		{
-			Name:               TopicAgentGUILaunchRequested,
-			ClientCanPublish:   false,
-			ClientCanSubscribe: true,
-			Version:            1,
-			directions:         []Direction{DirectionServerToClient},
-			validators: map[Direction]PayloadValidator{
-				DirectionServerToClient: validateAgentGUILaunchRequestedPayload,
-			},
-		},
-		{
 			Name:               TopicPreferencesDesktopUpdateRequested,
 			ClientCanPublish:   true,
 			ClientCanSubscribe: false,
@@ -173,6 +163,16 @@ func DefaultCatalog() StaticCatalog {
 			directions:         []Direction{DirectionServerToClient},
 			validators: map[Direction]PayloadValidator{
 				DirectionServerToClient: validateWorkspaceAppFactoryJobUpdatedPayload,
+			},
+		},
+		{
+			Name:               TopicWorkspaceWorkbenchNodeLaunchRequested,
+			ClientCanPublish:   false,
+			ClientCanSubscribe: true,
+			Version:            1,
+			directions:         []Direction{DirectionServerToClient},
+			validators: map[Direction]PayloadValidator{
+				DirectionServerToClient: validateWorkspaceWorkbenchNodeLaunchRequestedPayload,
 			},
 		},
 	})
@@ -254,25 +254,6 @@ func (e *ValidationError) Error() string {
 		return ""
 	}
 	return e.Message
-}
-
-type desktopPreferencesMutationPayload struct {
-	Preferences struct {
-		AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
-		AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
-		AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
-		BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
-		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
-		DockIconStyle                               string                                                    `json:"dockIconStyle"`
-		DockPlacement                               string                                                    `json:"dockPlacement"`
-		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
-		Locale                                      string                                                    `json:"locale"`
-		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
-		SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
-		ThemeSource                                 string                                                    `json:"themeSource"`
-		UpdateChannel                               string                                                    `json:"updateChannel"`
-		UpdatePolicy                                string                                                    `json:"updatePolicy"`
-	} `json:"preferences"`
 }
 
 type analyticsDebugReportedPayload struct {
@@ -358,18 +339,14 @@ type agentActivityStateTurnData struct {
 	CompletedAtUnixMS *int64 `json:"completedAtUnixMs,omitempty"`
 }
 
-type agentGUILaunchRequestedPayload struct {
-	WorkspaceID    string `json:"workspaceId"`
-	AgentSessionID string `json:"agentSessionId"`
-	Provider       string `json:"provider"`
-	Source         string `json:"source"`
-	Reason         string `json:"reason,omitempty"`
-	RequestID      string `json:"requestId,omitempty"`
-}
-
-type desktopPreferencesUpdatedPayload struct {
-	Initialized bool                              `json:"initialized"`
-	Preferences desktopPreferencesSettingsPayload `json:"preferences"`
+type workbenchNodeLaunchRequestedPayload struct {
+	WorkspaceID  string          `json:"workspaceId"`
+	TypeID       string          `json:"typeId"`
+	Source       string          `json:"source"`
+	LaunchSource string          `json:"launchSource,omitempty"`
+	DockEntryID  string          `json:"dockEntryId,omitempty"`
+	RequestID    string          `json:"requestId,omitempty"`
+	Payload      json.RawMessage `json:"payload,omitempty"`
 }
 
 type workspaceIssueUpdatedPayload struct {
@@ -378,35 +355,6 @@ type workspaceIssueUpdatedPayload struct {
 	TaskID      string `json:"taskId,omitempty"`
 	RunID       string `json:"runId,omitempty"`
 	ChangeKind  string `json:"changeKind"`
-}
-
-type desktopPreferencesSettingsPayload struct {
-	AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
-	AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
-	AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
-	BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
-	DockIconStyle                               string                                                    `json:"dockIconStyle"`
-	DockPlacement                               string                                                    `json:"dockPlacement"`
-	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
-	Locale                                      string                                                    `json:"locale"`
-	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
-	SleepPreventionMode                         string                                                    `json:"sleepPreventionMode"`
-	ThemeSource                                 string                                                    `json:"themeSource"`
-	UpdateChannel                               string                                                    `json:"updateChannel"`
-	UpdatePolicy                                string                                                    `json:"updatePolicy"`
-}
-
-type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload
-
-type desktopAgentGUIConversationRailCollapsedByProviderPayload map[string]bool
-
-type desktopFileDefaultOpenersByExtensionPayload map[string]string
-
-type desktopAgentComposerDefaultsPayload struct {
-	Model            string `json:"model,omitempty"`
-	PermissionModeID string `json:"permissionModeId,omitempty"`
-	ReasoningEffort  string `json:"reasoningEffort,omitempty"`
 }
 
 func validateAnalyticsDebugReportedPayload(payload []byte) error {
@@ -711,25 +659,25 @@ func validateAgentActivityUpdatedData(decoded agentActivityUpdatedPayload) error
 	return nil
 }
 
-func validateAgentGUILaunchRequestedPayload(payload []byte) error {
-	var decoded agentGUILaunchRequestedPayload
+func validateWorkspaceWorkbenchNodeLaunchRequestedPayload(payload []byte) error {
+	var decoded workbenchNodeLaunchRequestedPayload
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		return fmt.Errorf("decode payload: %w", err)
 	}
 	if strings.TrimSpace(decoded.WorkspaceID) == "" {
 		return fmt.Errorf("workspaceId is required")
 	}
-	if strings.TrimSpace(decoded.AgentSessionID) == "" {
-		return fmt.Errorf("agentSessionId is required")
-	}
-	if strings.TrimSpace(decoded.Provider) == "" {
-		return fmt.Errorf("provider is required")
+	if strings.TrimSpace(decoded.TypeID) == "" {
+		return fmt.Errorf("typeId is required")
 	}
 	if strings.TrimSpace(decoded.Source) == "" {
 		return fmt.Errorf("source is required")
 	}
-	if decoded.Reason != "" && strings.TrimSpace(decoded.Reason) == "" {
-		return fmt.Errorf("reason must not be blank")
+	if decoded.LaunchSource != "" && strings.TrimSpace(decoded.LaunchSource) == "" {
+		return fmt.Errorf("launchSource must not be blank")
+	}
+	if decoded.DockEntryID != "" && strings.TrimSpace(decoded.DockEntryID) == "" {
+		return fmt.Errorf("dockEntryId must not be blank")
 	}
 	if decoded.RequestID != "" && strings.TrimSpace(decoded.RequestID) == "" {
 		return fmt.Errorf("requestId must not be blank")
@@ -810,7 +758,7 @@ func validateWorkspaceAppUpdatedPayload(payload []byte) error {
 		return fmt.Errorf("app.stateRevision must not be negative")
 	}
 	switch app.Status {
-	case "idle", "preparing", "starting", "running", "failed", "stopping":
+	case "idle", "preparing", "starting", "running", "installed_pending_restart", "failed", "stopping":
 	default:
 		return fmt.Errorf("app.status is unsupported")
 	}

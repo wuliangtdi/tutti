@@ -712,6 +712,12 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       ? normalizeWorkspaceFilePath(path, this.store.root)
       : null;
     if (this.store.selectedPath === nextSelectedPath) {
+      if (
+        nextSelectedPath !== null &&
+        !isPreviewStateForPath(this.store.previewState, nextSelectedPath)
+      ) {
+        void this.previewController.syncPreviewState();
+      }
       return;
     }
     this.store.selectedPath = nextSelectedPath;
@@ -1022,16 +1028,13 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     return listing.entries
       .filter((entry) => {
         const name = entry.name.toLowerCase();
-        const path = entry.path.toLowerCase();
-        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+        return name.includes(normalizedQuery);
       })
       .map((entry, index) => ({
         directoryPath: workspaceFileDirectory(entry.path, listing.root),
         kind: entry.kind,
         matchIndices: [],
-        matchTarget: entry.name.toLowerCase().includes(normalizedQuery)
-          ? "basename"
-          : "path",
+        matchTarget: "basename",
         name: entry.name,
         path: entry.path,
         score: listing.entries.length - index
@@ -1161,6 +1164,13 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
     return this.copy.t("unknownErrorMessage");
   }
+}
+
+function isPreviewStateForPath(
+  previewState: WorkspaceFileManagerState["previewState"],
+  path: string
+): boolean {
+  return "entry" in previewState && previewState.entry.path === path;
 }
 
 function serializePersistedState(

@@ -3,7 +3,7 @@
 ## recvmdFQRJNXCm
 
 - Link: https://ccn53rwonxso.feishu.cn/record/JvzqrNEm0egshlc8n9qcaiPLnQh
-- Bug: 筛选已推进的任务筛选不出
+- Bug: 筛选执行中的任务筛选不出
 - Cause: The backend status count projection exposed `inProgress`, but the generated API mapping and renderer domain mapping always converted it to `0`.
 - Fix: Added `inProgress` to the OpenAPI/generated contracts and mapped backend counts through to the issue-manager shell.
 - Verification:

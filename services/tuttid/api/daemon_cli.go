@@ -23,10 +23,12 @@ func (api DaemonAPI) ListCliCapabilities(ctx context.Context, request tuttigener
 		workspaceID = *request.Params.WorkspaceID
 	}
 	includeHidden := request.Params.IncludeHidden != nil && *request.Params.IncludeHidden
+	includeIntegration := request.Params.IncludeIntegration != nil && *request.Params.IncludeIntegration
 	capabilities := api.CLIRegistry.Capabilities(ctx, cliservice.InvokeContext{
-		Source:                "cli",
-		WorkspaceID:           workspaceID,
-		SkipCapabilityFilters: includeHidden,
+		Source:                         "cli",
+		WorkspaceID:                    workspaceID,
+		SkipCapabilityFilters:          includeHidden,
+		IncludeIntegrationCapabilities: includeHidden || includeIntegration,
 	})
 	return tuttigenerated.ListCliCapabilities200JSONResponse{
 		Commands: generatedCliCapabilities(capabilities),
@@ -139,10 +141,19 @@ func generatedCliCapability(capability cliservice.Capability) tuttigenerated.Cli
 		Path:        capability.Path,
 		Summary:     capability.Summary,
 		Description: description,
+		Visibility:  generatedCliCapabilityVisibility(capability.Visibility),
 		InputSchema: inputSchema,
 		Output:      generatedCliCapabilityOutput(capability.Output),
 		Source:      generatedCliCapabilitySource(capability.Source),
 	}
+}
+
+func generatedCliCapabilityVisibility(visibility cliservice.CapabilityVisibility) *tuttigenerated.CliCapabilityVisibility {
+	result := tuttigenerated.Public
+	if cliservice.NormalizeCapabilityVisibility(visibility) == cliservice.CapabilityVisibilityIntegration {
+		result = tuttigenerated.Integration
+	}
+	return &result
 }
 
 func generatedCliCapabilitySource(source cliservice.CapabilitySource) tuttigenerated.CliCapabilitySource {

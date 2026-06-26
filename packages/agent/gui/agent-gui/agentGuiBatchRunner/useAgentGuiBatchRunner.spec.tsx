@@ -261,12 +261,23 @@ function installAgentActivityRuntime(
     listSessionMessages,
     load: async (workspaceId) => getSnapshot(workspaceId),
     retainSessionEvents: vi.fn(() => () => {}),
-    sendInput: vi.fn(async (input) => ({
-      ...upsertSession(input.workspaceId, input.agentSessionId, {
-        status: "working"
-      }),
-      turnId: `turn-${input.agentSessionId}`
-    })),
+    sendInput: vi.fn(async (input) => {
+      const turnId = `turn-${input.agentSessionId}`;
+      return {
+        session: upsertSession(input.workspaceId, input.agentSessionId, {
+          status: "working"
+        }),
+        turnId,
+        turnLifecycle: {
+          activeTurnId: turnId,
+          phase: "submitted"
+        },
+        submitAvailability: {
+          reason: "active_turn",
+          state: "blocked"
+        }
+      };
+    }),
     setSessionPinned: async (input) => ({
       workspaceId: input.workspaceId,
       agentSessionId: input.agentSessionId,
@@ -353,6 +364,9 @@ describe("useAgentGuiBatchRunner", () => {
     );
     await act(async () => {
       await result.current.selectPromptFile();
+    });
+    expect(agentHostApi.workspace.selectFiles).toHaveBeenCalledWith({
+      allowDirectories: false
     });
     expect(result.current.cases).toHaveLength(2);
 

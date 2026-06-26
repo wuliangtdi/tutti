@@ -228,7 +228,9 @@ interface DesktopAgentHostApiUnderTest {
       path: string;
     }): Promise<{ content: string; path: string }>;
     selectDirectory(): Promise<{ path: string } | null>;
-    selectFiles(): Promise<Array<{ path: string }>>;
+    selectFiles(input?: {
+      allowDirectories?: boolean;
+    }): Promise<Array<{ path: string }>>;
     writeFileText(input: { content: string; path: string }): Promise<void>;
   };
 }
@@ -297,7 +299,9 @@ test("desktop agent host api routes session commands through injected tuttid cli
           args: [requestWorkspaceId, agentSessionId, request],
           method: "input"
         });
-        return createSession({ id: agentSessionId, status: "running" });
+        return createSendInputResponse(
+          createSession({ id: agentSessionId, status: "running" })
+        );
       }
     })
   });
@@ -2196,11 +2200,13 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
           args: [requestWorkspaceId, agentSessionId, request],
           method: "input"
         });
-        return createSession({
-          id: agentSessionId,
-          resumable: true,
-          status: "running"
-        });
+        return createSendInputResponse(
+          createSession({
+            id: agentSessionId,
+            resumable: true,
+            status: "running"
+          })
+        );
       }
     })
   });
@@ -2453,6 +2459,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     path: string;
     workspaceId: string;
   }> = [];
+  const selectedUploadFileInputs: unknown[] = [];
   const api = createAgentHostApi({
     hostFilesApi: createHostFilesApi({
       async createUserDocumentsProjectDirectory(input) {
@@ -2475,7 +2482,8 @@ test("desktop agent host api reuses desktop host file operations", async () => {
       async selectDirectory() {
         return "/workspace";
       },
-      async selectUploadFiles() {
+      async selectUploadFiles(input) {
+        selectedUploadFileInputs.push(input);
         return ["/tmp/a.txt", "/tmp/b.txt"];
       }
     }),
@@ -2546,10 +2554,11 @@ test("desktop agent host api reuses desktop host file operations", async () => {
   assert.deepEqual(usedProjectPaths, [
     "/Users/local/Documents/tutti/Demo project"
   ]);
-  assert.deepEqual(await api.workspace.selectFiles(), [
-    { path: "/tmp/a.txt" },
-    { path: "/tmp/b.txt" }
-  ]);
+  assert.deepEqual(
+    await api.workspace.selectFiles({ allowDirectories: false }),
+    [{ path: "/tmp/a.txt" }, { path: "/tmp/b.txt" }]
+  );
+  assert.deepEqual(selectedUploadFileInputs, [{ allowDirectories: false }]);
   const readFileResult = await api.workspace.readFile({
     path: "/workspace/file.txt"
   });
@@ -2581,6 +2590,79 @@ test("desktop agent host api reuses desktop host file operations", async () => {
       workspaceId
     }
   ]);
+});
+
+test("workspace agent read-state write recovers from corrupt localStorage", async () => {
+  const storage = new Map<string, string>();
+  const localStorageMock: Storage = {
+    get length() {
+      return storage.size;
+    },
+    clear() {
+      storage.clear();
+    },
+    getItem(key) {
+      return storage.get(key) ?? null;
+    },
+    key(index) {
+      return Array.from(storage.keys())[index] ?? null;
+    },
+    removeItem(key) {
+      storage.delete(key);
+    },
+    setItem(key, value) {
+      storage.set(key, value);
+    }
+  };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: localStorageMock
+  });
+  try {
+    const api = createAgentHostApi() as ReturnType<
+      typeof createAgentHostApi
+    > & {
+      persistence: {
+        readWorkspaceAgentReadState(input: {
+          roomId: string;
+          userId: string;
+        }): Promise<unknown>;
+        writeWorkspaceAgentReadState(input: {
+          kind: "completed" | "failed";
+          readIds: string[];
+          roomId: string;
+          unreadIds: string[];
+          userId: string;
+        }): Promise<{ ok: boolean; reason?: string }>;
+      };
+    };
+    const input = { roomId: workspaceId, userId: "user-1" };
+    storage.set(
+      "tutti.workspace-agent-read-state:workspace-1:user-1",
+      "{broken"
+    );
+
+    const result = await api.persistence.writeWorkspaceAgentReadState({
+      ...input,
+      kind: "completed",
+      readIds: ["done-1"],
+      unreadIds: ["done-2"]
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, undefined);
+    assert.deepEqual(await api.persistence.readWorkspaceAgentReadState(input), {
+      completed: { readIds: ["done-1"], unreadIds: ["done-2"] },
+      failed: { readIds: [], unreadIds: [] }
+    });
+  } finally {
+    if (previous) {
+      Object.defineProperty(globalThis, "localStorage", previous);
+    } else {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  }
 });
 
 type CreateAgentHostApiTestOverrides = Partial<
@@ -2631,6 +2713,21 @@ function createSession(
     updatedAt: "2026-05-31T00:00:01Z",
     visible: true,
     ...overrides
+  };
+}
+
+function createSendInputResponse(session: WorkspaceAgentSession) {
+  return {
+    session,
+    turnId: "turn-1",
+    turnLifecycle: {
+      activeTurnId: "turn-1",
+      phase: "submitted"
+    },
+    submitAvailability: {
+      reason: "active_turn",
+      state: "blocked"
+    }
   };
 }
 
@@ -2882,7 +2979,9 @@ function createTuttidClient(
       _workspaceId: string,
       agentSessionId: string
     ) {
-      return createSession({ id: agentSessionId, status: "running" });
+      return createSendInputResponse(
+        createSession({ id: agentSessionId, status: "running" })
+      );
     },
     async updateWorkspaceAgentSessionSettings(
       _workspaceId: string,

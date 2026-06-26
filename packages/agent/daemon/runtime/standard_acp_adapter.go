@@ -820,7 +820,7 @@ func (a *standardACPAdapter) Exec(
 		session.Title = fallbackTitle
 	}
 	startEvents = append(startEvents,
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, nil)),
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, nil))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
 	)
 	if event, ok := a.mirrorClaudeGoalSlashPrompt(session, visibleText); ok {
@@ -1524,6 +1524,9 @@ func (a *standardACPAdapter) ApplySessionSettings(
 	if patch.Speed != nil {
 		speed := strings.TrimSpace(*patch.Speed)
 		if speed != "" {
+			if !a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "fast", speed) {
+				return nil
+			}
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "fast", speed) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "fast", speed); err != nil {
 					return fmt.Errorf("agent session ACP fast configuration failed: %w", err)

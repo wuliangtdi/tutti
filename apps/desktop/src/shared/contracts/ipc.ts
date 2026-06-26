@@ -44,6 +44,7 @@ import type {
   TuttiExternalUserProjectCreateInput,
   TuttiExternalUserProjectPathInput,
   TuttiExternalUserProjectRememberDefaultSelectionInput,
+  TuttiExternalWorkspaceOpenRouteIntent,
   TuttiExternalWorkspaceOpenFeatureInput
 } from "@tutti-os/workspace-external-core/contracts";
 import type {
@@ -348,6 +349,10 @@ export interface DesktopSelectAppArchiveExportPathInput {
   defaultPath: string;
 }
 
+export interface DesktopSelectUploadFilesInput {
+  allowDirectories?: boolean;
+}
+
 export interface DesktopHostPreferencesSyncPayload {
   agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
   agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
@@ -365,6 +370,7 @@ export interface DesktopWorkspaceAppContext {
   contextToken?: string;
   installationId?: string;
   issuer?: string;
+  launchIntent?: TuttiExternalWorkspaceOpenRouteIntent;
   locale: DesktopLocale;
   workspaceId?: string;
 }
@@ -526,11 +532,18 @@ export interface DesktopWorkspaceAppExternalRendererResponse {
   result: DesktopIpcResult<DesktopWorkspaceAppExternalRendererResult>;
 }
 
-export type DesktopWorkspaceAppExternalRendererEvent = {
-  snapshot: WorkspaceUserProjectServiceSnapshot;
-  type: "userProjects.changed";
-  workspaceId: string;
-};
+export type DesktopWorkspaceAppExternalRendererEvent =
+  | {
+      snapshot: WorkspaceUserProjectServiceSnapshot;
+      type: "userProjects.changed";
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      intent: TuttiExternalWorkspaceOpenRouteIntent;
+      type: "workspace.launchIntent";
+      workspaceId: string;
+    };
 
 export type DesktopWorkspaceAppExternalRendererRequest =
   TuttiExternalRendererRequest;
@@ -745,7 +758,9 @@ export interface DesktopInvokePayloadByChannel {
     .selectAppArchiveExportPath]: DesktopSelectAppArchiveExportPathInput;
   [desktopIpcChannels.host.files.selectAppIconImage]: undefined;
   [desktopIpcChannels.host.files.selectDirectory]: undefined;
-  [desktopIpcChannels.host.files.selectUploadFiles]: undefined;
+  [desktopIpcChannels.host.files.selectUploadFiles]:
+    | DesktopSelectUploadFilesInput
+    | undefined;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: string[];
   [desktopIpcChannels.host.window.approveClose]: undefined;
   [desktopIpcChannels.host.window

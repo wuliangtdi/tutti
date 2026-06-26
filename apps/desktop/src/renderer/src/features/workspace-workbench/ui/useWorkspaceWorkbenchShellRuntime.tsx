@@ -37,6 +37,7 @@ import { createWorkspaceFilePreviewLaunchRequest } from "../services/workspaceFi
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
 import { classifyWorkspaceFilePreviewKind } from "@tutti-os/workspace-file-preview";
 import type { WorkbenchSurfaceWallpaperFit } from "@tutti-os/workbench-surface";
+import type { DesktopWorkbenchWindowSnapping } from "@shared/preferences";
 import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
@@ -99,6 +100,7 @@ export interface WorkspaceWorkbenchShellRuntime {
     fit: WorkbenchSurfaceWallpaperFit;
     url: string;
   };
+  workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
   workbenchHostService: ReturnType<typeof useWorkspaceWorkbenchHostService>;
 }
 
@@ -366,10 +368,15 @@ export function useWorkspaceWorkbenchShellRuntime({
       );
       appCenterService.setWorkspaceAppLauncher(
         host
-          ? async ({ appId, prepared, prevStatus }) => {
+          ? async ({ appId, intent, prepared, prevStatus }) => {
               return (
                 (await host.launchNode({
-                  payload: { appId, prepared, prevStatus },
+                  payload: {
+                    appId,
+                    ...(intent ? { intent } : {}),
+                    prepared,
+                    prevStatus
+                  },
                   reason: "host",
                   typeId: workspaceAppWebviewTypeID,
                   // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
@@ -434,6 +441,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       fit: shellRuntimeSnapshot.wallpaperSelection.wallpaper.fit,
       url: shellRuntimeSnapshot.wallpaperSelection.wallpaper.url
     },
+    workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };
 }

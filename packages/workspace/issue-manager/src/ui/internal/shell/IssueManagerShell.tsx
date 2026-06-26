@@ -342,9 +342,9 @@ function IssueManagerShellEmptyState({
     <div className="flex h-full min-h-[320px] items-center justify-center px-10 py-10">
       <div className="grid max-w-[420px] justify-items-center gap-2 text-center">
         {emptyIllustration ? (
-          <div className="mb-4">{emptyIllustration}</div>
+          <div className="mb-2">{emptyIllustration}</div>
         ) : null}
-        <h2 className="text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+        <h2 className="text-[15px] font-semibold leading-5 text-[var(--text-primary)]">
           {controller.copy.t("messages.noIssues")}
         </h2>
         <p className="max-w-[420px] text-[13px] leading-5 text-[var(--text-secondary)]">

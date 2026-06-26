@@ -69,22 +69,24 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 		session.RuntimeContext,
 	)
 	return Session{
-		ID:                strings.TrimSpace(session.ID),
-		Provider:          normalizedProvider,
-		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-		Cwd:               strings.TrimSpace(session.Cwd),
-		Resumable:         resumable,
-		Status:            serviceStatus(session.Status),
-		Visible:           session.Visible,
-		Settings:          cloneComposerSettingsPointer(&normalizedSettings),
-		PermissionConfig:  composerPermissionConfig(normalizedProvider, permissionModeIDFromSettings(&normalizedSettings), preferencesbiz.DefaultDesktopLocale),
-		RuntimeContext:    runtimeContext,
-		Title:             title,
-		PinnedAtUnixMS:    session.PinnedAtUnixMS,
-		CreatedAt:         createdAt,
-		UpdatedAt:         updatedAt,
-		EndedAt:           endedAt,
-		LastError:         stringPointer(strings.TrimSpace(session.LastError)),
+		ID:                 strings.TrimSpace(session.ID),
+		Provider:           normalizedProvider,
+		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
+		Cwd:                strings.TrimSpace(session.Cwd),
+		Resumable:          resumable,
+		Status:             serviceStatus(session.Status),
+		TurnLifecycle:      cloneTurnLifecycle(session.TurnLifecycle),
+		SubmitAvailability: cloneSubmitAvailability(session.SubmitAvailability),
+		Visible:            session.Visible,
+		Settings:           cloneComposerSettingsPointer(&normalizedSettings),
+		PermissionConfig:   composerPermissionConfig(normalizedProvider, permissionModeIDFromSettings(&normalizedSettings), preferencesbiz.DefaultDesktopLocale),
+		RuntimeContext:     runtimeContext,
+		Title:              title,
+		PinnedAtUnixMS:     session.PinnedAtUnixMS,
+		CreatedAt:          createdAt,
+		UpdatedAt:          updatedAt,
+		EndedAt:            endedAt,
+		LastError:          stringPointer(strings.TrimSpace(session.LastError)),
 	}
 }
 
@@ -102,6 +104,12 @@ func serviceSessionWithComposerSkillOptions(
 }
 
 func sessionFromPersisted(session PersistedSession, resumable bool) Session {
+	createdAtUnixMS := session.CreatedAtUnixMS
+	updatedAtUnixMS := session.UpdatedAtUnixMS
+	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported {
+		createdAtUnixMS = firstNonZeroInt64(session.StartedAtUnixMS, session.CreatedAtUnixMS)
+		updatedAtUnixMS = importedSessionDisplayUpdatedAtUnixMS(session)
+	}
 	return serviceSession(RuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
@@ -114,10 +122,23 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		Title:             strings.TrimSpace(session.Title),
 		LastError:         strings.TrimSpace(session.LastError),
 		PinnedAtUnixMS:    session.PinnedAtUnixMS,
-		CreatedAtUnixMS:   session.CreatedAtUnixMS,
-		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
+		CreatedAtUnixMS:   createdAtUnixMS,
+		UpdatedAtUnixMS:   updatedAtUnixMS,
 		Visible:           session.Visible,
 	}, resumable)
+}
+
+func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
+	if session.EndedAtUnixMS > 0 {
+		return session.EndedAtUnixMS
+	}
+	if session.LastEventUnixMS > 0 && session.LastEventUnixMS != session.UpdatedAtUnixMS {
+		return session.LastEventUnixMS
+	}
+	if session.StartedAtUnixMS > 0 {
+		return session.StartedAtUnixMS
+	}
+	return firstNonZeroInt64(session.LastEventUnixMS, session.UpdatedAtUnixMS)
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {

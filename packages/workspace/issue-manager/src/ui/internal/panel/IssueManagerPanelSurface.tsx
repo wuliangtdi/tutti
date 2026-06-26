@@ -1,5 +1,8 @@
 import { type JSX, type ReactNode } from "react";
-import { Button, FileCreateIcon } from "@tutti-os/ui-system";
+import { Button, FileCreateIcon, cn } from "@tutti-os/ui-system";
+
+const issueManagerLoadingBoneClassName =
+  "h-4 rounded-[4px] bg-[var(--transparency-block)]";
 
 export function IssueManagerEmptyIllustration({
   src
@@ -34,7 +37,7 @@ export function IssueManagerTaskEmptyState({
   return (
     <div className="flex min-h-[320px] items-center justify-center px-6 py-10 text-center">
       <div className="grid max-w-[420px] justify-items-center gap-2">
-        {illustration ?? null}
+        {illustration ? <div className="mb-2">{illustration}</div> : null}
         <p className="text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)]">
           {title}
         </p>
@@ -59,20 +62,20 @@ export function IssueManagerPaneLoadingState(): JSX.Element {
   return (
     <div
       aria-hidden="true"
-      className="mx-auto flex w-full max-w-4xl flex-col gap-6"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-9"
     >
-      <div className="h-6 w-28 rounded-full bg-muted" />
-      <div className="h-12 w-2/3 rounded-full bg-muted" />
-      <div className="rounded-[28px] border border-border/70 bg-transparent px-5 py-5">
-        <div className="h-4 w-24 rounded-full bg-muted" />
-        <div className="mt-5 h-4 w-full rounded-full bg-muted" />
-        <div className="mt-3 h-4 w-11/12 rounded-full bg-muted" />
-        <div className="mt-3 h-4 w-10/12 rounded-full bg-muted" />
+      <div className={cn(issueManagerLoadingBoneClassName, "w-28")} />
+      <div className={cn(issueManagerLoadingBoneClassName, "w-2/3")} />
+      <div className="grid gap-3">
+        <div className={cn(issueManagerLoadingBoneClassName, "w-24")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-full")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-11/12")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-10/12")} />
       </div>
-      <div className="rounded-[24px] border border-border/70 bg-transparent px-5 py-5">
-        <div className="h-4 w-32 rounded-full bg-muted" />
-        <div className="mt-5 h-4 w-full rounded-full bg-muted" />
-        <div className="mt-3 h-4 w-9/12 rounded-full bg-muted" />
+      <div className="grid gap-3">
+        <div className={cn(issueManagerLoadingBoneClassName, "w-32")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-full")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-9/12")} />
       </div>
     </div>
   );
@@ -80,21 +83,20 @@ export function IssueManagerPaneLoadingState(): JSX.Element {
 
 export function IssueManagerTaskListLoadingState(): JSX.Element {
   return (
-    <div
-      aria-hidden="true"
-      className="overflow-hidden rounded-lg border border-border/70 bg-transparent"
-    >
+    <div aria-hidden="true" className="overflow-hidden bg-transparent">
       {Array.from({ length: 3 }, (_, index) => (
         <div
           className="border-b border-border/70 px-3.5 py-3.5 last:border-b-0"
           key={index}
         >
           <div className="flex items-center justify-between gap-3">
-            <div className="h-4 w-2/5 rounded-full bg-muted" />
-            <div className="h-3.5 w-20 rounded-full bg-muted" />
+            <div className={cn(issueManagerLoadingBoneClassName, "w-2/5")} />
+            <div className={cn(issueManagerLoadingBoneClassName, "w-20")} />
           </div>
-          <div className="mt-3 h-3.5 w-full rounded-full bg-muted" />
-          <div className="mt-2 h-3.5 w-4/5 rounded-full bg-muted" />
+          <div
+            className={cn(issueManagerLoadingBoneClassName, "mt-3 w-full")}
+          />
+          <div className={cn(issueManagerLoadingBoneClassName, "mt-2 w-4/5")} />
         </div>
       ))}
     </div>
@@ -104,16 +106,16 @@ export function IssueManagerTaskListLoadingState(): JSX.Element {
 export function IssueManagerTaskDrawerLoadingState(): JSX.Element {
   return (
     <div aria-hidden="true" className="grid gap-5">
-      <div className="h-12 w-full rounded-2xl bg-muted" />
+      <div className={cn(issueManagerLoadingBoneClassName, "w-full")} />
       <div className="grid grid-cols-2 gap-3">
-        <div className="h-10 rounded-xl bg-muted" />
-        <div className="h-10 rounded-xl bg-muted" />
+        <div className={issueManagerLoadingBoneClassName} />
+        <div className={issueManagerLoadingBoneClassName} />
       </div>
-      <div className="rounded-[24px] border border-border/70 bg-transparent px-4 py-4">
-        <div className="h-4 w-24 rounded-full bg-muted" />
-        <div className="mt-4 h-4 w-full rounded-full bg-muted" />
-        <div className="mt-3 h-4 w-11/12 rounded-full bg-muted" />
-        <div className="mt-3 h-4 w-9/12 rounded-full bg-muted" />
+      <div className="grid gap-3">
+        <div className={cn(issueManagerLoadingBoneClassName, "w-24")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-full")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-11/12")} />
+        <div className={cn(issueManagerLoadingBoneClassName, "w-9/12")} />
       </div>
     </div>
   );

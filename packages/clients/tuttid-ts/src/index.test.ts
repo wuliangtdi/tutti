@@ -13,6 +13,7 @@ import {
   type ApiErrorResponse,
   type AgentProviderComposerOptionsResponse,
   type AppReferenceListResponse,
+  type CliCapabilitiesResponse,
   type IssueManagerReferenceSearchResponse,
   type ListWorkspacesResponse,
   type WorkspaceFilePreviewResponse
@@ -135,6 +136,64 @@ test("shared tuttid client forwards bearer auth tokens", async () => {
 
   await client.getHealth();
   assert.equal(authorizationHeader, "Bearer desktop-session-token");
+});
+
+test("shared tuttid client lists CLI capabilities with discovery options", async () => {
+  let requestPath = "";
+  let requestQueryEntries: Record<string, string> = {};
+
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      const url = new URL(request.url);
+      requestPath = url.pathname;
+      requestQueryEntries = Object.fromEntries(url.searchParams.entries());
+
+      return new Response(
+        JSON.stringify({
+          commands: [
+            {
+              id: "workspace-apps.app.open",
+              path: ["app", "open"],
+              summary: "Open app",
+              visibility: "integration",
+              output: { defaultMode: "json", json: true },
+              source: { kind: "builtin" }
+            }
+          ]
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      );
+    }
+  });
+
+  const response = await client.listCliCapabilities("ws-1", {
+    includeHidden: true,
+    includeIntegration: true
+  });
+
+  assert.equal(requestPath, "/v1/cli/capabilities");
+  assert.deepEqual(requestQueryEntries, {
+    includeHidden: "true",
+    includeIntegration: "true",
+    workspaceID: "ws-1"
+  });
+  assert.deepEqual(response, {
+    commands: [
+      {
+        id: "workspace-apps.app.open",
+        path: ["app", "open"],
+        summary: "Open app",
+        visibility: "integration",
+        output: { defaultMode: "json", json: true },
+        source: { kind: "builtin" }
+      }
+    ]
+  } satisfies CliCapabilitiesResponse);
 });
 
 test("shared tuttid client creates workspace agent sessions with bearer auth", async () => {

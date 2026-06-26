@@ -2610,7 +2610,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps the hero draft visible while activation is pending, then clears it after switching to the new session", async () => {
+  it("switches to the optimistic new session while activation is pending", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
       | undefined;
@@ -2656,11 +2656,16 @@ describe("useAgentGUINodeController", () => {
       );
     });
 
-    expect(result.current.viewModel.activeConversationId).toBeNull();
-    expect(result.current.viewModel.isCreatingConversation).toBe(true);
-    expect(result.current.viewModel.draftPrompt).toBe("first prompt");
-
     const createdId = activate.mock.calls[0]![0].agentSessionId;
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe(createdId);
+    });
+    expect(result.current.viewModel.isCreatingConversation).toBe(true);
+    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "first prompt" })]);
+
     act(() => {
       resolveActivation?.({
         session: agentSession(createdId),
@@ -2846,7 +2851,16 @@ describe("useAgentGUINodeController", () => {
       })
     );
     expect(result.current.viewModel.conversations).toEqual([]);
-    expect(result.current.viewModel.activeConversation).toBeNull();
+    expect(result.current.viewModel.activeConversation).toEqual(
+      expect.objectContaining({
+        provider: "hermes",
+        status: "working",
+        title: "hello from hero"
+      })
+    );
+    expect(
+      result.current.viewModel.conversationDetail?.turns[0]?.userMessages
+    ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
   });
 
   it("blocks OpenClaw conversation creation until the gateway is ready", async () => {
@@ -2932,7 +2946,16 @@ describe("useAgentGUINodeController", () => {
       };
     });
     const exec = vi.fn(async () => ({ turnId: "turn-1" }));
-    const list = vi.fn(async () => ({ presences: [], sessions: [] }));
+    const list = vi.fn(async () => ({
+      presences: [],
+      sessions: createdSessionId
+        ? [
+            workspaceAgentSession(createdSessionId, {
+              effectiveStatus: "working"
+            })
+          ]
+        : []
+    }));
     const listSessionTimeline = vi.fn(async () => ({
       timelineItems: createdSessionId
         ? [
@@ -5029,7 +5052,12 @@ describe("useAgentGUINodeController", () => {
 
     expect(result.current.viewModel.conversations).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "session-2", status: "ready" })
+        expect.objectContaining({
+          id: "session-2",
+          status: "ready",
+          hasUnreadCompletion: true,
+          unreadCompletionKey: "turn:session-2:turn-2:completed"
+        })
       ])
     );
 
@@ -5045,6 +5073,78 @@ describe("useAgentGUINodeController", () => {
     ).toEqual(expect.objectContaining({ isLive: true, watcherCount: 1 }));
     expect(releaseEventStream).not.toHaveBeenCalledWith({
       leaseId: "lease:session-2"
+    });
+  });
+
+  it("marks a background conversation unread when an assistant message completes", async () => {
+    installAgentHostApi({
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", {
+            effectiveStatus: "ready",
+            turnPhase: "idle"
+          }),
+          workspaceAgentSession("session-2", {
+            effectiveStatus: "working",
+            turnPhase: "working"
+          })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+      expect(
+        result.current.viewModel.conversations.some(
+          (conversation) => conversation.id === "session-2"
+        )
+      ).toBe(true);
+    });
+
+    act(() => {
+      emitRuntimeSessionEventForTests?.({
+        eventType: "message_update",
+        data: {
+          workspaceId: "room-1",
+          agentSessionId: "session-2",
+          messageId: "message-2",
+          seq: 20,
+          turnId: "turn-2",
+          role: "assistant",
+          kind: "message",
+          status: "completed",
+          payload: { text: "Done" },
+          occurredAtUnixMs: 20,
+          completedAtUnixMs: 20
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "session-2",
+            status: "working",
+            hasUnreadCompletion: true,
+            unreadCompletionKey: "turn:session-2:turn-2:completed"
+          })
+        ])
+      );
     });
   });
 
@@ -11435,6 +11535,97 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.draftPrompt).toBe("keep this draft");
   });
 
+  it("clears submitted image draft content when prompt submission settles", async () => {
+    const imagePromptContent: AgentPromptContentBlock[] = [
+      { type: "text", text: "describe this" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "aW1hZ2U=",
+        name: "panel.png"
+      }
+    ];
+    let resolveExec:
+      | ((result: {
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{
+          accepted: boolean;
+          agentSessionId: string;
+          turnId: string;
+          sessionStatus: string;
+        }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      exec
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.updateDraftContent({
+        prompt: "describe this",
+        images: [
+          {
+            id: "draft-image-1",
+            name: "panel.png",
+            mimeType: "image/png",
+            data: "aW1hZ2U=",
+            previewUrl: "data:image/png;base64,aW1hZ2U="
+          }
+        ]
+      });
+      result.current.actions.submitPrompt(imagePromptContent);
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: imagePromptContent
+      });
+    });
+
+    act(() => {
+      resolveExec?.({
+        accepted: true,
+        agentSessionId: "session-1",
+        turnId: "turn-1",
+        sessionStatus: "working"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isSubmitting).toBe(false);
+    });
+    expect(result.current.viewModel.draftPrompt).toBe("");
+    expect(result.current.viewModel.draftContent.images).toEqual([]);
+  });
+
   it("edits a local queued prompt back into the draft", async () => {
     installAgentHostApi({
       list: vi.fn(async () => snapshotWithWaitingSession("session-1")),
@@ -12720,10 +12911,14 @@ function installAgentActivityRuntimeForHostMocks({
         agentSessionId: input.agentSessionId,
         status
       });
+      const turnId =
+        typeof result?.turnId === "string" ? result.turnId : "turn-1";
       return {
-        ...session,
-        ...(typeof result?.turnId === "string" ? { turnId: result.turnId } : {})
-      } as AgentActivitySession;
+        session,
+        turnId,
+        turnLifecycle: { activeTurnId: turnId, phase: "submitted" },
+        submitAvailability: { state: "blocked", reason: "active_turn" }
+      };
     },
     async setSessionPinned(input) {
       await setSessionPinned({
@@ -12903,12 +13098,19 @@ function installNoopAgentActivityRuntimeForTests(): void {
       load: async (workspaceId) => getSnapshot(workspaceId),
       ensureSessionSynchronized: () => () => {},
       retainSessionEvents: () => () => {},
-      sendInput: async (input) =>
-        upsertRuntimeSession(
+      sendInput: async (input) => {
+        const session = upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),
           input.workspaceId,
           { agentSessionId: input.agentSessionId, status: "working" }
-        ),
+        );
+        return {
+          session,
+          turnId: "turn-1",
+          turnLifecycle: { activeTurnId: "turn-1", phase: "submitted" },
+          submitAvailability: { state: "blocked", reason: "active_turn" }
+        };
+      },
       setSessionPinned: async (input) =>
         upsertRuntimeSession(
           (workspaceId, updater) => updater(getSnapshot(workspaceId)),

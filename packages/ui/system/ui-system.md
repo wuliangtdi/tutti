@@ -406,6 +406,21 @@ values, ad hoc spacing scales, local radius conventions, duplicate button or
 field treatments, or component-specific CSS that should be expressed through
 existing tokens or primitives.
 
+Current shared control contracts:
+
+- routine `Button` and `Input` surfaces use `32px` height, the shared `6px`
+  `--radius-md`, token-backed text and surface colors, and no decorative
+  shadows
+- chrome icon buttons stay compact, transparent by default, and use the shared
+  chrome text/hover states rather than app-local canvas colors
+- text fields use `--transparency-block` for the default surface and
+  `--transparency-hover` for hover/focus surfaces
+- destructive controls use semantic danger tokens such as `--state-danger` and
+  `--state-danger-hover`
+- `UnderlineTabs` labels and counts use `font-medium`, so English contexts
+  render at `font-weight: 500`; CJK contexts remain aligned through the global
+  CJK emphasis rule
+
 After a component is promoted, start an independent design-foundation review
 subagent before reporting completion. Give the subagent the promoted component
 files, source usage, selected states, storyboard entry, metadata entry, and this

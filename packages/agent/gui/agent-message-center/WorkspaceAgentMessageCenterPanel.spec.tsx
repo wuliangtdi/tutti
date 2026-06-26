@@ -674,6 +674,9 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     expect(screen.getByText("Completed").parentElement).toHaveClass(
       "workspace-agent-message-center__status"
     );
+    expect(screen.getByText("Completed").parentElement).toHaveClass(
+      "text-[var(--state-success)]"
+    );
     expect(screen.getByRole("button", { name: "Open session" })).toHaveClass(
       "workspace-agent-message-center__open-chat-button"
     );
@@ -899,6 +902,9 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     expect(errorHeading).toHaveClass("font-normal");
     expect(runningHeading).toHaveClass("font-normal");
     expect(completedHeading).toHaveClass("font-normal");
+    expect(errorHeading).toHaveClass("text-[var(--state-danger)]");
+    expect(runningHeading).toHaveClass("text-[var(--status-running)]");
+    expect(completedHeading).toHaveClass("text-[var(--state-success)]");
     expect(
       errorHeading.querySelector('[data-slot="status-dot"]')
     ).toHaveAttribute("data-tone", "red");

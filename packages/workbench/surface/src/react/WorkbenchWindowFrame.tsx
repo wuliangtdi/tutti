@@ -29,6 +29,7 @@ import { resolveWorkbenchWindowHeader } from "./windowHeader.ts";
 export interface WorkbenchWindowFrameProps<TData = unknown> {
   children: ReactNode;
   genie: WorkbenchGenieController;
+  edgeSnapEnabled?: boolean;
   hiddenMounted?: boolean;
   interactive?: boolean;
   node: WorkbenchNode<TData>;
@@ -85,7 +86,7 @@ function resolveWorkbenchNodeTypeId(data: unknown): string | undefined {
 
 export function WorkbenchWindowFrame<TData>({
   children,
-  fullscreenHeaderMode,
+  edgeSnapEnabled = false,
   genie,
   hiddenMounted = false,
   interactive = true,
@@ -109,7 +110,7 @@ export function WorkbenchWindowFrame<TData>({
   const isResizing = useWorkbenchSelector(
     (state) => state.activeResizeNodeId === node.id
   );
-  const onDragStart = useWorkbenchDrag(node);
+  const onDragStart = useWorkbenchDrag(node, { edgeSnapEnabled });
   const onHeaderDoubleClick = () => {
     if (!interactive) {
       return;
@@ -158,7 +159,8 @@ export function WorkbenchWindowFrame<TData>({
   });
   const shouldRenderCustomHeader =
     resolvedHeader.windowChromeMode === "custom-header";
-  const resolvedFullscreenHeaderMode = fullscreenHeaderMode ?? "reveal";
+  const resolvedFullscreenHeaderMode: WorkbenchFullscreenHeaderMode =
+    "persistent";
   const presentationMode = presentation?.mode ?? null;
   const presentationFrame = presentation?.frameByNodeId.get(node.id) ?? null;
   const isPresentationHidden =
@@ -247,10 +249,6 @@ export function WorkbenchWindowFrame<TData>({
           data-window-drag-state={isDragging ? "dragging" : "idle"}
           data-window-resize-state={isResizing ? "resizing" : "idle"}
         >
-          {node.displayMode === "fullscreen" &&
-          resolvedFullscreenHeaderMode === "reveal" ? (
-            <div className="workbench-window__header-reveal-zone" aria-hidden />
-          ) : null}
           <div
             className={[
               "workbench-window__header",
@@ -308,7 +306,7 @@ export function WorkbenchWindowFrame<TData>({
         >
           {presentationInteraction.mode === "layout" &&
           isMissionControlSelected ? (
-            <div className="pointer-events-none absolute inset-0 rounded-lg border-2 border-[var(--accent)] transition-[border-color,transform] duration-150 ease-out" />
+            <div className="pointer-events-none absolute inset-0 rounded-lg border-2 border-[var(--tutti-purple)] transition-[border-color,transform] duration-150 ease-out" />
           ) : null}
         </button>
       ) : null}
@@ -317,7 +315,7 @@ export function WorkbenchWindowFrame<TData>({
         <Checkbox
           aria-hidden="true"
           checked
-          className="pointer-events-none absolute right-3 bottom-3 z-20 size-6 rounded-md text-[var(--white-stationary)] shadow-[0_2px_8px_rgb(0_0_0_/_0.18)] data-[state=checked]:border-[var(--accent)] data-[state=checked]:bg-[var(--accent)] [&_[data-slot=checkbox-indicator]>svg]:size-4"
+          className="pointer-events-none absolute right-3 bottom-3 z-20 size-6 rounded-md text-[var(--white-stationary)] shadow-[0_2px_8px_rgb(0_0_0_/_0.18)] data-[state=checked]:border-[var(--tutti-purple)] data-[state=checked]:bg-[var(--tutti-purple)] [&_[data-slot=checkbox-indicator]>svg]:size-4"
           tabIndex={-1}
         />
       ) : null}

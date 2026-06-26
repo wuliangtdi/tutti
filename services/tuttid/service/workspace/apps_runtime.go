@@ -84,20 +84,25 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 	slog.Info("workspace app start enabled started", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs))
 	if len(enabledAppIDs) > 0 {
 		refreshStartedAt := time.Now()
-		if err := s.refreshBuiltinCatalogForStartEnabled(ctx, workspaceID); err != nil {
-			return nil, err
+		var err error
+		builtins, err = s.refreshBuiltinCatalogForStartEnabled(ctx, workspaceID)
+		if err != nil {
+			slog.Warn(
+				"workspace app start enabled remote catalog refresh failed; continuing with cached builtin catalog",
+				"workspaceId", workspaceID,
+				"error", err,
+			)
+			builtins, err = s.builtinCatalog(ctx)
+			if err != nil {
+				return nil, err
+			}
 		}
 		slog.Info("workspace app start enabled remote catalog refresh completed", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs), "durationMs", time.Since(refreshStartedAt).Milliseconds())
-		builtins, err = s.builtinCatalog(ctx)
-		if err != nil {
-			slog.Warn("workspace app start remote builtin sync skipped; builtin catalog unavailable", "workspaceId", workspaceID, "error", err)
-		}
 	} else {
 		slog.Info("workspace app start enabled remote catalog refresh skipped", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs), "reason", "no-enabled-apps")
 	}
 	remoteBuiltins := remoteBuiltinByAppID(builtins)
 
-	remoteBuiltinInstallStarted := false
 	for _, installation := range installations {
 		if !installation.Enabled {
 			continue
@@ -112,13 +117,11 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 				return nil, err
 			}
 			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
-			remoteBuiltinInstallStarted = true
 			slog.Warn("workspace app start enabled deferred app; package unavailable locally", "workspaceId", workspaceID, "appId", installation.AppID)
 			continue
 		}
 		if remoteBuiltin, ok := remoteBuiltins[installation.AppID]; ok && shouldMaterializeRemoteBuiltin(appPackage, remoteBuiltin) {
 			s.startRemoteBuiltinInstallJob(workspaceID, remoteBuiltin)
-			remoteBuiltinInstallStarted = true
 			slog.Info(
 				"workspace app start enabled deferred app; remote builtin update available",
 				"workspaceId", workspaceID,
@@ -155,24 +158,20 @@ func (s *AppCenterService) StartEnabled(ctx context.Context, workspaceID string)
 		}
 	}
 	slog.Info("workspace app start enabled completed", "workspaceId", workspaceID, "enabledAppCount", len(enabledAppIDs), "duration", time.Since(startedAt), "durationMs", time.Since(startedAt).Milliseconds())
-	if !remoteBuiltinInstallStarted {
-		s.startRuntimePreload()
-	}
 
-	apps, err := s.List(ctx, workspaceID)
-	if err != nil {
-		return nil, err
+	if len(enabledAppIDs) > 0 {
+		return s.listWithBuiltins(ctx, workspaceID, builtins)
 	}
-	return apps, nil
+	return s.List(ctx, workspaceID)
 }
 
-func (s *AppCenterService) refreshBuiltinCatalogForStartEnabled(ctx context.Context, workspaceID string) error {
+func (s *AppCenterService) refreshBuiltinCatalogForStartEnabled(ctx context.Context, workspaceID string) ([]builtinapps.App, error) {
 	if s.BuiltinCatalog != nil {
-		return nil
+		return s.BuiltinCatalog()
 	}
-	snapshot, err := builtinapps.RefreshRemoteCatalogAndWait(ctx)
+	snapshot, err := s.refreshBuiltinCatalogAndWait(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if snapshot.RemoteCatalog.Status == builtinapps.RemoteCatalogLoadStatusFailed {
 		slog.Warn(
@@ -181,7 +180,7 @@ func (s *AppCenterService) refreshBuiltinCatalogForStartEnabled(ctx context.Cont
 			"error", snapshot.RemoteCatalog.LastError,
 		)
 	}
-	return nil
+	return snapshot.Apps, nil
 }
 
 func (s *AppCenterService) StopAll(ctx context.Context, workspaceID string) ([]workspacebiz.WorkspaceApp, error) {
@@ -198,7 +197,7 @@ func (s *AppCenterService) publishInstalledAppRuntime(ctx context.Context, works
 	app := workspacebiz.WorkspaceApp{
 		Package:      appPackage,
 		Installation: &installation,
-		Runtime:      runtimeState,
+		Runtime:      runtimeStateForActivePackage(runtimeState, appPackage),
 	}
 	app.CLI = s.appCLIState(workspaceID, app)
 	return s.publishAppIfChanged(ctx, workspaceID, appPackage.AppID, app)

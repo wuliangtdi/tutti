@@ -473,6 +473,10 @@ test("dock entry clicks within the bounce window are throttled like a single cli
 test("dock chrome samples wallpaper luminance for contrast", () => {
   assert.match(source, /useDockWallpaperTones/);
   assert.match(source, /data-wallpaper-tone=\{wallpaperTones\.get/);
+  assert.match(
+    source,
+    /desktop-dock__slot desktop-dock__slot--minimized[\s\S]*?data-wallpaper-tone=\{wallpaperTones\.get\(slot\.anchorKey\)\}/
+  );
   assert.match(source, /wallpaperToneElementRefs\.current\.set/);
   assert.ok(source.includes('querySelector(".workbench-surface__wallpaper")'));
   assert.match(source, /getImageData/);

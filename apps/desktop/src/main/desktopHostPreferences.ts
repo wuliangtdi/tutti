@@ -24,6 +24,8 @@ import {
   defaultDesktopUpdatePolicy,
   desktopFileDefaultOpenersByExtensionEqual,
   isDesktopMinimizeAnimation,
+  normalizeDesktopWorkbenchWindowSnapping,
+  desktopWorkbenchWindowSnappingEqual,
   type DesktopAgentProvider,
   type DesktopAppCatalogChannel,
   type DesktopBrowserUseConnectionMode,
@@ -33,7 +35,8 @@ import {
   type DesktopMinimizeAnimation,
   type DesktopSleepPreventionMode,
   type DesktopUpdateChannel,
-  type DesktopUpdatePolicy
+  type DesktopUpdatePolicy,
+  type DesktopWorkbenchWindowSnapping
 } from "../shared/preferences/index.ts";
 import {
   defaultDesktopThemeSource,
@@ -60,6 +63,7 @@ export interface DesktopHostPreferencesState {
   getThemeSource(): DesktopThemeSource;
   getUpdateChannel(): DesktopUpdateChannel;
   getUpdatePolicy(): DesktopUpdatePolicy;
+  getWorkbenchWindowSnapping(): DesktopWorkbenchWindowSnapping;
   subscribe(listener: () => void): () => void;
   sync(input: {
     agentComposerDefaultsByProvider?: DesktopAgentComposerDefaultsByProvider;
@@ -76,6 +80,7 @@ export interface DesktopHostPreferencesState {
     themeSource?: DesktopThemeSource;
     updateChannel?: DesktopUpdateChannel;
     updatePolicy?: DesktopUpdatePolicy;
+    workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
   }): void;
 }
 
@@ -124,6 +129,9 @@ export async function createDesktopHostPreferencesState(
   let themeSource = initialPreferences.themeSource;
   let updateChannel = initialPreferences.updateChannel;
   let updatePolicy = initialPreferences.updatePolicy;
+  let workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
+    initialPreferences.workbenchWindowSnapping
+  );
   const listeners = new Set<() => void>();
 
   return {
@@ -169,6 +177,9 @@ export async function createDesktopHostPreferencesState(
     getUpdatePolicy() {
       return updatePolicy;
     },
+    getWorkbenchWindowSnapping() {
+      return workbenchWindowSnapping;
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -193,6 +204,7 @@ export async function createDesktopHostPreferencesState(
       const previousThemeSource = themeSource;
       const previousUpdateChannel = updateChannel;
       const previousUpdatePolicy = updatePolicy;
+      const previousWorkbenchWindowSnapping = workbenchWindowSnapping;
       if (input.agentComposerDefaultsByProvider) {
         const nextAgentComposerDefaultsByProvider =
           normalizeDesktopAgentComposerDefaultsByProvider(
@@ -267,6 +279,20 @@ export async function createDesktopHostPreferencesState(
       if (input.updatePolicy) {
         updatePolicy = input.updatePolicy;
       }
+      if (input.workbenchWindowSnapping) {
+        const nextWorkbenchWindowSnapping =
+          normalizeDesktopWorkbenchWindowSnapping(
+            input.workbenchWindowSnapping
+          );
+        if (
+          !desktopWorkbenchWindowSnappingEqual(
+            workbenchWindowSnapping,
+            nextWorkbenchWindowSnapping
+          )
+        ) {
+          workbenchWindowSnapping = nextWorkbenchWindowSnapping;
+        }
+      }
       if (
         agentComposerDefaultsByProvider !==
           previousAgentComposerDefaultsByProvider ||
@@ -284,7 +310,11 @@ export async function createDesktopHostPreferencesState(
         sleepPreventionMode !== previousSleepPreventionMode ||
         themeSource !== previousThemeSource ||
         updateChannel !== previousUpdateChannel ||
-        updatePolicy !== previousUpdatePolicy
+        updatePolicy !== previousUpdatePolicy ||
+        !desktopWorkbenchWindowSnappingEqual(
+          workbenchWindowSnapping,
+          previousWorkbenchWindowSnapping
+        )
       ) {
         for (const listener of listeners) {
           listener();

@@ -23,6 +23,7 @@ export interface WorkbenchCommands<TData = unknown> {
   exitFullscreen(nodeID: string): void;
   applyQuickLayout(nodeID: string, target: WorkbenchQuickLayoutTarget): void;
   applyLayoutPreset(nodeIDs: string[], preset: WorkbenchLayoutPreset): void;
+  applyVisibleLayoutPreset(preset: WorkbenchLayoutPreset): void;
   applyActiveSnapTarget(nodeID: string): void;
   applySnapTarget(nodeID: string, snapTarget: WorkbenchSnapTarget): void;
   dragNode(nodeID: string, frame: WorkbenchFrame): void;
@@ -75,6 +76,9 @@ export function createWorkbenchCommands<TData>(
     },
     applyLayoutPreset(nodeIDs, preset) {
       store.dispatch({ type: "applyLayoutPreset", nodeIDs, preset });
+    },
+    applyVisibleLayoutPreset(preset) {
+      store.dispatch({ type: "applyVisibleLayoutPreset", preset });
     },
     applyActiveSnapTarget(nodeID) {
       store.dispatch({ type: "applyActiveSnapTarget", nodeID });

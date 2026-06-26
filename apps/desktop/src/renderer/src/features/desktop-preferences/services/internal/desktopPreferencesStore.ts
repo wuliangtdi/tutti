@@ -11,7 +11,8 @@ import type {
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
-  DesktopUpdatePolicy
+  DesktopUpdatePolicy,
+  DesktopWorkbenchWindowSnapping
 } from "@shared/preferences";
 import type { DesktopThemeState } from "@shared/theme";
 import { proxy } from "valtio";
@@ -32,6 +33,7 @@ export function createDesktopPreferencesStore(input: {
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
 }): DesktopPreferencesStoreState {
   return proxy({
     changingDefaultAgentProvider: null,
@@ -45,6 +47,7 @@ export function createDesktopPreferencesStore(input: {
     changingThemeSource: null,
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
+    changingWorkbenchWindowSnapping: null,
     agentComposerDefaultsByProvider:
       input.agentComposerDefaultsByProvider ?? {},
     agentGuiConversationRailCollapsedByProvider:
@@ -60,6 +63,7 @@ export function createDesktopPreferencesStore(input: {
     sleepPreventionMode: input.sleepPreventionMode,
     theme: input.theme,
     updateChannel: input.updateChannel,
-    updatePolicy: input.updatePolicy
+    updatePolicy: input.updatePolicy,
+    workbenchWindowSnapping: input.workbenchWindowSnapping
   });
 }

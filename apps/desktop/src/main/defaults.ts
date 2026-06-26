@@ -43,6 +43,18 @@ export function initializeDesktopEnvironment(options?: {
   }
 }
 
+export function resolveDesktopUserDataPath(options: {
+  appDataDir: string;
+  appName: string;
+}): string | null {
+  if (resolveTuttiEnv() !== "development") {
+    return null;
+  }
+
+  const appName = options.appName.trim() || "Tutti";
+  return join(options.appDataDir, `${appName}-dev`);
+}
+
 export function resolveDesktopDefaultsFromEnv(): DesktopResolvedDefaults {
   const env = resolveTuttiEnv();
   const stateRootDir = resolveStateRootDir(env);

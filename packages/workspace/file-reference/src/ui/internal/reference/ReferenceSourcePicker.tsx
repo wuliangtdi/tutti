@@ -58,13 +58,18 @@ import {
   type ReferenceNodePreviewState,
   type ReferenceGroupedSelection
 } from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
-import { formatReferencePreviewDateTime } from "./referenceSourcePickerPresentation.ts";
+import {
+  formatReferenceNodePathText,
+  formatReferencePreviewDateTime,
+  resolveReferencePreviewSizeBytes
+} from "./referenceSourcePickerPresentation.ts";
 
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
   copy: WorkspaceFileReferenceCopy;
   /** 可选:打开时直达某事项/应用分组(展开并聚焦)。 */
   initialTarget?: ReferenceLocateTarget | null;
+  isNodeSelectable?: (node: ReferenceNode) => boolean;
   onClose: () => void;
   onConfirm: (refs: WorkspaceFileReference[]) => void;
   /**
@@ -129,6 +134,7 @@ export function ReferenceSourcePicker({
   aggregator,
   copy,
   initialTarget,
+  isNodeSelectable,
   onClose,
   onConfirm,
   onConfirmBundles,
@@ -142,6 +148,7 @@ export function ReferenceSourcePicker({
     open,
     workspaceRootGroupLabel: copy.t("referencePicker.workspaceRootGroup"),
     initialTarget,
+    isNodeSelectable,
     onClose,
     onConfirm,
     onConfirmBundles
@@ -327,6 +334,7 @@ export function ReferenceSourcePicker({
                               node={node}
                               selected={view.isSelected(node)}
                               onFocus={view.setFocusedNode}
+                              selectable={view.isSelectable(node)}
                               onSingleSelect={
                                 view.toggleSingleSelectionAndExpand
                               }
@@ -334,13 +342,13 @@ export function ReferenceSourcePicker({
                             />
                           ))
                         )
-                      ) : !hasSelectedGroup ? (
-                        <Feedback>
-                          {copy.t("referencePicker.selectGroupHint")}
-                        </Feedback>
                       ) : view.currentEntries.length === 0 ? (
                         <Feedback>
-                          {copy.t("referencePicker.emptyDirectory")}
+                          {copy.t(
+                            hasSelectedGroup
+                              ? "referencePicker.emptyDirectory"
+                              : "referencePicker.selectGroupHint"
+                          )}
                         </Feedback>
                       ) : (
                         // 浏览:就地递归展开树(复刻 agent 引用面板文件树交互)
@@ -387,6 +395,7 @@ export function ReferenceSourcePicker({
               >
                 <PreviewInfoPane
                   copy={copy}
+                  hierarchy={view.breadcrumb}
                   node={view.focusedNode}
                   previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
@@ -588,6 +597,7 @@ function SearchResultRow({
   node,
   focused,
   selected,
+  selectable,
   onFocus,
   onSingleSelect,
   onToggle
@@ -595,17 +605,19 @@ function SearchResultRow({
   node: ReferenceNode;
   focused: boolean;
   selected: boolean;
+  selectable: boolean;
   onFocus: (node: ReferenceNode) => void;
   onSingleSelect: (node: ReferenceNode) => void;
   onToggle: (node: ReferenceNode) => void;
 }): JSX.Element {
   const isFolder = node.kind === "folder";
   const contextLabel = node.contextLabel ?? node.ref.nodeId;
+  const active = selected || (focused && selectable);
   return (
     <div
       className={cn(
         "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[6px] border py-2.5 pr-1 pl-3 transition-colors",
-        focused || selected
+        active
           ? "border-border bg-transparency-block"
           : "border-transparent bg-transparent hover:border-border/70 hover:bg-transparency-block"
       )}
@@ -635,24 +647,26 @@ function SearchResultRow({
           </FullTextTooltip>
         </span>
       </div>
-      <Button
-        aria-label={node.displayName}
-        aria-pressed={selected}
-        size="icon-sm"
-        type="button"
-        variant="ghost"
-        onClick={(event) => {
-          event.stopPropagation();
-          onFocus(node);
-          onToggle(node);
-        }}
-      >
-        {selected ? (
-          <CheckIcon size={14} />
-        ) : (
-          <AddLinedIcon className="text-[var(--text-secondary)]" size={16} />
-        )}
-      </Button>
+      {selectable ? (
+        <Button
+          aria-label={node.displayName}
+          aria-pressed={selected}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+          onClick={(event) => {
+            event.stopPropagation();
+            onFocus(node);
+            onToggle(node);
+          }}
+        >
+          {selected ? (
+            <CheckIcon size={14} />
+          ) : (
+            <AddLinedIcon className="text-[var(--text-secondary)]" size={16} />
+          )}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -775,15 +789,20 @@ function FullTextTooltip({
 
 function PreviewInfoPane({
   copy,
+  hierarchy,
   node,
   previewState,
   sourceLabel
 }: {
   copy: WorkspaceFileReferenceCopy;
+  hierarchy: readonly ReferenceNode[];
   node: ReferenceNode | null;
   previewState: ReferenceNodePreviewState;
   sourceLabel: string;
 }): JSX.Element {
+  const sizeBytes = node
+    ? resolveReferencePreviewSizeBytes(node, previewState)
+    : null;
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
@@ -815,7 +834,7 @@ function PreviewInfoPane({
             <p className="truncate text-[15px] font-semibold">
               {node.displayName}
             </p>
-            <ReferencePathText node={node} />
+            <ReferencePathText hierarchy={hierarchy} node={node} />
           </div>
           <dl className="space-y-2 text-[13px]">
             <InfoRow label={copy.t("referencePicker.previewSource")}>
@@ -831,9 +850,9 @@ function PreviewInfoPane({
                 {formatReferencePreviewDateTime(node.mtimeMs)}
               </InfoRow>
             ) : null}
-            {node.sizeBytes != null ? (
+            {sizeBytes != null ? (
               <InfoRow label={copy.t("referencePicker.previewSize")}>
-                {formatBytes(node.sizeBytes)}
+                {formatBytes(sizeBytes)}
               </InfoRow>
             ) : null}
           </dl>
@@ -845,8 +864,14 @@ function PreviewInfoPane({
   );
 }
 
-function ReferencePathText({ node }: { node: ReferenceNode }): JSX.Element {
-  const pathText = getReferenceNodePathText(node);
+function ReferencePathText({
+  hierarchy,
+  node
+}: {
+  hierarchy: readonly ReferenceNode[];
+  node: ReferenceNode;
+}): JSX.Element {
+  const pathText = getReferenceNodePathText(node, hierarchy);
   const lastSlashIndex = pathText.lastIndexOf("/");
   if (lastSlashIndex <= 0 || lastSlashIndex === pathText.length - 1) {
     return (
@@ -874,30 +899,11 @@ function ReferencePathText({ node }: { node: ReferenceNode }): JSX.Element {
   );
 }
 
-function getReferenceNodePathText(node: ReferenceNode): string {
-  const decodedPath = decodeReferenceListFileNodeId(node.ref.nodeId);
-  if (decodedPath) {
-    return decodedPath;
-  }
-  return node.contextLabel?.trim() || node.ref.nodeId;
-}
-
-function decodeReferenceListFileNodeId(nodeId: string): string | null {
-  if (!nodeId.startsWith("f:")) {
-    return null;
-  }
-  try {
-    const normalized = nodeId.slice(2).replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "="
-    );
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  } catch {
-    return null;
-  }
+function getReferenceNodePathText(
+  node: ReferenceNode,
+  hierarchy: readonly ReferenceNode[]
+): string {
+  return formatReferenceNodePathText(node, hierarchy);
 }
 
 function InfoRow({
@@ -1183,8 +1189,8 @@ function isFocused(
 
 /**
  * 递归文件树节点,交互复刻 main 分支 `WorkspaceFileReferencePickerTreeEntry`:
- * 24px 缩进、folder 箭头旋转、点名称展开/收起、grid-rows 展开动画、add/check 勾选
- * (文件夹与文件都可作为引用选中)。
+ * 24px 缩进、folder 箭头旋转、点名称展开/收起、grid-rows 展开动画、add/check 勾选。
+ * 可选性由业务侧按 source/kind 注入,例如 host 本地目录可浏览但不可引用。
  */
 function TreeNodeRow({
   node,
@@ -1203,10 +1209,19 @@ function TreeNodeRow({
   const childState = view.childrenByKey[key];
   const childEntries = view.sortNodes(childState?.entries ?? []);
   const selected = view.isSelected(node);
+  const selectable = view.isSelectable(node);
   const focused = isFocused(view.focusedNode, node);
+  const active = selected || (focused && selectable);
+  const focusedRowRef = useRef<HTMLDivElement | null>(null);
 
   const [shouldRenderChildContent, setShouldRenderChildContent] =
     useState(expanded);
+
+  useEffect(() => {
+    if (focused) {
+      focusedRowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [focused]);
 
   useEffect(() => {
     if (expanded) {
@@ -1256,11 +1271,10 @@ function TreeNodeRow({
       {/* 整行可点:点击监听挂在父级行 div 上,使可点热区与 hover 高亮区一致;
           内层箭头/选中按钮 stopPropagation 各管各的,避免冒泡到行点击。 */}
       <div
+        ref={focused ? focusedRowRef : undefined}
         className={cn(
           "flex cursor-pointer items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
-          focused || selected
-            ? "bg-transparency-block"
-            : "hover:bg-transparency-block"
+          active ? "bg-transparency-block" : "hover:bg-transparency-block"
         )}
         style={{ paddingLeft: `${depth * TREE_INDENT + 8}px` }}
         onClick={() => {
@@ -1300,25 +1314,30 @@ function TreeNodeRow({
             {node.displayName}
           </span>
         </FullTextTooltip>
-        <Button
-          aria-label={node.displayName}
-          aria-pressed={selected}
-          className="shrink-0"
-          size="icon-sm"
-          type="button"
-          variant="ghost"
-          onClick={(event) => {
-            event.stopPropagation();
-            view.setFocusedNode(node);
-            view.toggleSelection(node);
-          }}
-        >
-          {selected ? (
-            <CheckIcon size={14} />
-          ) : (
-            <AddLinedIcon className="text-[var(--text-secondary)]" size={16} />
-          )}
-        </Button>
+        {selectable ? (
+          <Button
+            aria-label={node.displayName}
+            aria-pressed={selected}
+            className="shrink-0"
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+            onClick={(event) => {
+              event.stopPropagation();
+              view.setFocusedNode(node);
+              view.toggleSelection(node);
+            }}
+          >
+            {selected ? (
+              <CheckIcon size={14} />
+            ) : (
+              <AddLinedIcon
+                className="text-[var(--text-secondary)]"
+                size={16}
+              />
+            )}
+          </Button>
+        ) : null}
       </div>
       {isFolder ? (
         <div

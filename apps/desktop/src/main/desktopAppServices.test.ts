@@ -97,6 +97,12 @@ function createHostServices(): DesktopHostServices {
       getUpdatePolicy() {
         return "prompt";
       },
+      getWorkbenchWindowSnapping() {
+        return {
+          enabled: false,
+          shortcutPreset: "commandArrows"
+        };
+      },
       subscribe() {
         return () => undefined;
       },

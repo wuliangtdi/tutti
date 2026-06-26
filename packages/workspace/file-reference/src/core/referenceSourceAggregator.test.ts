@@ -85,9 +85,17 @@ test("selectedReferenceToWorkspaceFileReference 形状兼容", () => {
     selectedReferenceToWorkspaceFileReference({
       path: "/a",
       kind: "folder",
-      displayName: "A"
+      displayName: "A",
+      hostPath: "/Users/test/A",
+      sourceId: "host-local-file"
     }),
-    { path: "/a", kind: "folder", displayName: "A" }
+    {
+      path: "/a",
+      kind: "folder",
+      displayName: "A",
+      hostPath: "/Users/test/A",
+      sourceId: "host-local-file"
+    }
   );
 });
 
@@ -171,5 +179,9 @@ test("aggregator 委派 resolveSelection 到对应源", async () => {
   const agg = createReferenceSourceAggregator(registry);
   await agg.listRoot(scope);
   const selected = agg.resolveSelection(fileNode("workspace-file", "a.md"));
-  assert.deepEqual(selected, { path: "/workspace/a.md", kind: "file" });
+  assert.deepEqual(selected, {
+    path: "/workspace/a.md",
+    kind: "file",
+    sourceId: "workspace-file"
+  });
 });

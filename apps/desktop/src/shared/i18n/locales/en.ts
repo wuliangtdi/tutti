@@ -373,6 +373,16 @@ export const en = {
         },
         minimizeAnimationSaveFailed:
           "We couldn't update the minimize animation right now.",
+        workbenchWindowSnappingDescription:
+          "Enables edge and corner snapping plus keyboard window layouts",
+        workbenchWindowSnappingLabel: "Window snapping",
+        workbenchWindowSnappingSaveFailed:
+          "We couldn't update window snapping right now.",
+        workbenchWindowSnappingShortcutLabel: "Window snapping shortcut",
+        workbenchWindowSnappingShortcutOptions: {
+          commandArrows: "Command + Arrow keys",
+          commandShiftArrows: "Command + Shift + Arrow keys"
+        },
         themeDescription:
           "Controls window appearance and the color mode for information",
         themeLabel: "Appearance",
@@ -656,13 +666,44 @@ export const en = {
         checking: "Checking local CLI status...",
         comingSoon: "Coming soon",
         install: "Connect",
-        installFailed: "Installation failed",
+        installFailed: "Connection failed",
+        installFailedDescription:
+          "Unable to connect the local agent right now. Try again in a moment.",
+        installFailedMissingRuntime:
+          "The local agent executable could not be found. Check that it is installed correctly.",
+        installFailedTimedOut: "Connection timed out. Try again in a moment.",
         installUnavailableInRegion: "Claude isn't available in this region.",
         installRequired: "Connect the local agent to continue",
         installing: "Installing...",
         login: "Sign in",
         loginFailed: "Sign-in failed",
         loginRequired: "Sign in to the local CLI to use this agent",
+        manageActionConnect: "Connect",
+        manageActionLogin: "Sign in",
+        manageActionOpeningLogin: "Opening...",
+        manageActionUnavailableTooltip:
+          "No setup action is available for this agent right now.",
+        manageColumnAction: "Action",
+        manageColumnAgent: "Agent",
+        manageColumnConfig: "Configuration",
+        manageColumnConnection: "Connection status",
+        manageConfigDetected: "Local configuration detected",
+        manageConfigMissing: "No local configuration detected",
+        manageProviderClaudeCode: "Claude Code",
+        manageProviderCodex: "Codex",
+        manageProviderGemini: "Gemini CLI",
+        manageProviderHermes: "Hermes",
+        manageProviderOpenClaw: "OpenClaw",
+        manageProviderTutti: "Tutti",
+        manageStatusAuthRequired: "Sign-in required",
+        manageStatusAvailable: "Available to connect",
+        manageStatusChecking: "Checking",
+        manageStatusConnected: "Connected",
+        manageStatusUnknown: "Status unavailable",
+        manageStatusUnsupported: "Updating in background",
+        manageTitle: "Manage Agents",
+        manageUnsupportedTooltip:
+          "This agent is temporarily unavailable while local support updates.",
         refresh: "Re-check",
         unknown: "Unable to confirm local CLI status — refresh to re-check"
       },
@@ -743,7 +784,10 @@ export const en = {
     workspace_file_not_found:
       "That file or folder could not be found in the workspace.",
     workspace_not_found: "That workspace could not be found.",
-    workspace_operation_failed:
-      "We couldn't finish that workspace action right now."
+    workspace_operation_failed: {
+      default: "We couldn't finish that workspace action right now.",
+      acp_adapter_version_mismatch:
+        "Claude Code's local adapter is unavailable or version-mismatched. Reconnect Claude Code from the dock, then try again."
+    }
   }
 } as const;

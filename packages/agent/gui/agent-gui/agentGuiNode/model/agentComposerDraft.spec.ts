@@ -229,7 +229,6 @@ describe("agentComposerDraft", () => {
         type: "file",
         mimeType: "application/pdf",
         path: "/var/cache/tsh/local-assets/workspace-1/user-1/report.pdf",
-        hostPath: "/Users/me/report.pdf",
         assetId: "asset-1",
         sizeBytes: 42,
         name: "report.pdf",

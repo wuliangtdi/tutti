@@ -57,7 +57,8 @@ export function connectDesktopHostPreferencesEventStream(
         sleepPreventionMode: nextPreferences.sleepPreventionMode,
         themeSource: nextPreferences.themeSource,
         updateChannel: nextPreferences.updateChannel,
-        updatePolicy: nextPreferences.updatePolicy
+        updatePolicy: nextPreferences.updatePolicy,
+        workbenchWindowSnapping: nextPreferences.workbenchWindowSnapping
       });
 
       void deps.updateService

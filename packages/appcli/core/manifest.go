@@ -18,6 +18,11 @@ const (
 	MaxTimeoutMs          = 600000
 )
 
+const (
+	CommandVisibilityPublic      CommandVisibility = "public"
+	CommandVisibilityIntegration CommandVisibility = "integration"
+)
+
 var segmentPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`)
 
 type Manifest struct {
@@ -36,6 +41,7 @@ type ManifestCommand struct {
 	Path        []string               `json:"path"`
 	Summary     string                 `json:"summary"`
 	Description string                 `json:"description,omitempty"`
+	Visibility  CommandVisibility      `json:"visibility,omitempty"`
 	InputSchema map[string]any         `json:"inputSchema,omitempty"`
 	Output      ManifestCommandOutput  `json:"output"`
 	Handler     ManifestCommandHandler `json:"handler"`
@@ -125,6 +131,9 @@ func ValidateManifest(manifest Manifest) error {
 		if strings.TrimSpace(command.Summary) == "" {
 			return fmt.Errorf("cli manifest %s.summary is required", location)
 		}
+		if err := validateVisibility(command.Visibility, location+".visibility"); err != nil {
+			return err
+		}
 		if err := validateInputSchema(command.InputSchema, location+".inputSchema"); err != nil {
 			return err
 		}
@@ -136,6 +145,26 @@ func ValidateManifest(manifest Manifest) error {
 		}
 	}
 	return nil
+}
+
+func NormalizeVisibility(visibility CommandVisibility) CommandVisibility {
+	switch CommandVisibility(strings.TrimSpace(string(visibility))) {
+	case "", CommandVisibilityPublic:
+		return CommandVisibilityPublic
+	case CommandVisibilityIntegration:
+		return CommandVisibilityIntegration
+	default:
+		return visibility
+	}
+}
+
+func validateVisibility(visibility CommandVisibility, location string) error {
+	switch NormalizeVisibility(visibility) {
+	case CommandVisibilityPublic, CommandVisibilityIntegration:
+		return nil
+	default:
+		return fmt.Errorf("cli manifest %s must be public or integration", location)
+	}
 }
 
 func isSupportedManifestSchemaVersion(schemaVersion string) bool {

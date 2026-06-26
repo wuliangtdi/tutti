@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtimecmd"
@@ -42,7 +45,9 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	processCtx, cancel := context.WithCancel(context.Background())
 	resolver := runtimecmd.Resolver{}
 	env := resolver.Env(spec.Env)
-	cmd := exec.CommandContext(processCtx, resolver.Resolve(spec.Command[0], env), spec.Command[1:]...)
+	resolvedCommand := resolver.Resolve(spec.Command[0], env)
+	logProcessStartEnvDiagnostics(spec, env, resolvedCommand)
+	cmd := exec.CommandContext(processCtx, resolvedCommand, spec.Command[1:]...)
 	cmd.Env = env
 
 	stdin, err := cmd.StdinPipe()
@@ -81,6 +86,111 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 	go conn.readPipe(&readers, stderr, false)
 	go conn.wait(&readers)
 	return conn, nil
+}
+
+func logProcessStartEnvDiagnostics(spec ProcessSpec, env []string, resolvedCommand string) {
+	diag := processStartEnvDiagnostics(spec, env)
+	slog.Info("agent session process start env diagnostics",
+		"event", "agent_session.process_start.env_diagnostics",
+		"provider", spec.Provider,
+		"room_id", spec.RoomID,
+		"agent_session_id", spec.AgentSessionID,
+		"cwd", spec.CWD,
+		"command", commandNameForLog(spec.Command),
+		"resolved_command", resolvedCommand,
+		"path_override_count", diag["path_override_count"],
+		"path_entry_count", diag["path_entry_count"],
+		"path_head", diag["path_head"],
+		"path_contains_tutti_bin", diag["path_contains_tutti_bin"],
+		"path_contains_app_node_bin", diag["path_contains_app_node_bin"],
+		"path_contains_app_npm_bin", diag["path_contains_app_npm_bin"],
+		"workspace_env_present", diag["workspace_env_present"],
+		"agent_session_env_present", diag["agent_session_env_present"],
+	)
+}
+
+func processStartEnvDiagnostics(spec ProcessSpec, env []string) map[string]any {
+	pathValue := envValueFromList(env, "PATH")
+	pathDirs := filepath.SplitList(pathValue)
+	appNodeBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NODE"))
+	appNPMBin := filepath.Dir(envValueFromList(env, "TUTTI_APP_NPM"))
+	return map[string]any{
+		"path_override_count":        envKeyCount(spec.Env, "PATH"),
+		"path_entry_count":           len(pathDirs),
+		"path_head":                  pathHeadForLog(pathDirs, 6),
+		"path_contains_tutti_bin":    pathContainsTuttiBin(pathDirs),
+		"path_contains_app_node_bin": appNodeBin != "." && pathContainsDir(pathDirs, appNodeBin),
+		"path_contains_app_npm_bin":  appNPMBin != "." && pathContainsDir(pathDirs, appNPMBin),
+		"workspace_env_present":      envHasKey(env, "TUTTI_WORKSPACE_ID"),
+		"agent_session_env_present":  envHasKey(env, "TUTTI_AGENT_SESSION_ID"),
+	}
+}
+
+func commandNameForLog(command []string) string {
+	if len(command) == 0 {
+		return ""
+	}
+	return command[0]
+}
+
+func pathHeadForLog(dirs []string, limit int) []string {
+	if limit <= 0 || len(dirs) == 0 {
+		return nil
+	}
+	if len(dirs) < limit {
+		limit = len(dirs)
+	}
+	head := make([]string, 0, limit)
+	for _, dir := range dirs[:limit] {
+		if dir = filepath.Clean(dir); dir != "." {
+			head = append(head, dir)
+		}
+	}
+	return head
+}
+
+func pathContainsTuttiBin(dirs []string) bool {
+	for _, dir := range dirs {
+		if filepath.Base(filepath.Clean(dir)) == "bin" && filepath.Base(filepath.Dir(filepath.Clean(dir))) == ".tutti" {
+			return true
+		}
+	}
+	return false
+}
+
+func pathContainsDir(dirs []string, want string) bool {
+	want = filepath.Clean(want)
+	for _, dir := range dirs {
+		if filepath.Clean(dir) == want {
+			return true
+		}
+	}
+	return false
+}
+
+func envHasKey(env []string, key string) bool {
+	return envValueFromList(env, key) != ""
+}
+
+func envKeyCount(env []string, key string) int {
+	count := 0
+	for _, item := range env {
+		candidateKey, _, ok := strings.Cut(item, "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			count++
+		}
+	}
+	return count
+}
+
+func envValueFromList(env []string, key string) string {
+	for i := len(env) - 1; i >= 0; i-- {
+		candidateKey, value, ok := strings.Cut(env[i], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c *localProcessConnection) Send(data []byte) error {

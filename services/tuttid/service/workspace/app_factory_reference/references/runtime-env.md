@@ -7,10 +7,12 @@ Use these environment variables:
 - `TUTTI_APP_HOST`: host to bind, normally `127.0.0.1`.
 - `TUTTI_APP_PORT`: port to bind.
 - `TUTTI_APP_BASE_URL`: local base URL.
+- `TUTTI_APP_ID`: current workspace app id from `tutti.app.json`.
 - `TUTTI_APP_PACKAGE_DIR`: package files, read-only at runtime.
 - `TUTTI_APP_RUNTIME_DIR`: scratch/runtime files.
 - `TUTTI_APP_DATA_DIR`: durable app data.
 - `TUTTI_APP_LOG_DIR`: app logs.
+- `TUTTI_APP_TOOLCHAIN_ROOT`: shared daemon-owned toolchain cache for app-managed binaries that are safe to reuse across workspace app installations.
 - `TUTTI_APP_PYTHON`: managed Python interpreter path for generated apps.
 - `TUTTI_APP_NODE`: managed Node.js executable path for generated apps.
 - `TUTTI_APP_NPM`: managed npm executable path for generated apps.
@@ -23,7 +25,7 @@ For local Tutti capabilities, use `TUTTI_CLI`.
 
 Tutti keeps the managed runtime baseline outside app packages under daemon-owned state. Operators can override the cache with `TUTTI_APP_RUNTIME_CACHE_ROOT`, point at an exact prepared runtime with `TUTTI_APP_RUNTIME_ROOT`, or override first-use runtime downloads with `TUTTI_APP_RUNTIME_CATALOG`. App packages must not set these variables themselves.
 
-Opening App Center may silently preload the managed runtime when uninstalled apps are visible. If the runtime is still missing when an installed app starts, Tutti reports the app as `preparing` while it resolves or downloads the runtime, then moves to `starting` only when `bootstrap.sh` is about to launch.
+tuttid may preload the managed runtime during daemon startup or an explicit runtime-preparation workflow, but listing App Center apps does not preload runtimes as a side effect. If the runtime is still missing when an installed app starts, Tutti reports the app as `preparing` while it resolves or downloads the runtime, then moves to `starting` only when `bootstrap.sh` is about to launch.
 
 Prefer a small local server with Python standard library or Node built-ins. Avoid startup-time dependency installation. If build or install steps are necessary, put them in executable `prepare.sh`, not `bootstrap.sh`. `prepare.sh` may use the managed runtime variables for dependency installation and build commands. `bootstrap.sh` should only launch the already prepared app server.
 

@@ -35,9 +35,11 @@ import { MessageCenterViewMenu } from "./WorkspaceAgentMessageCenterViewControls
 import {
   MessageCenterIdentityAvatarMark,
   MessageCenterIdentityLabel,
+  messageCenterStatusToneClass,
   resolveMessageCenterNotificationAction,
   WorkspaceAgentMessageCenterStack,
   WorkspaceAgentMessageCenterCard,
+  type MessageCenterStatusTone,
   type WorkspaceAgentMessageCenterCardProps
 } from "./WorkspaceAgentMessageCenterCard";
 import {
@@ -723,7 +725,12 @@ function MessageCenterGroupHeading({
 
   return (
     <h3
-      className="flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4 text-[var(--text-tertiary)]"
+      className={cn(
+        "flex min-w-0 items-center gap-1.5 text-[11px] font-normal leading-4",
+        statusSignal
+          ? messageCenterStatusToneClass(statusSignal.tone)
+          : "text-[var(--text-tertiary)]"
+      )}
       title={`${group.label} · ${group.items.length}`}
     >
       {statusSignal ? (
@@ -741,9 +748,10 @@ function MessageCenterGroupHeading({
   );
 }
 
-function messageCenterGroupStatusSignal(
-  groupId: string
-): { pulse: boolean; tone: "amber" | "blue" | "green" | "red" } | null {
+function messageCenterGroupStatusSignal(groupId: string): {
+  pulse: boolean;
+  tone: Exclude<MessageCenterStatusTone, "neutral">;
+} | null {
   switch (groupId) {
     case "needs-attention":
     case "waiting":

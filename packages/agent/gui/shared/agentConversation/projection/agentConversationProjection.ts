@@ -29,6 +29,8 @@ export interface AgentConversationProjectionOptions {
 }
 
 const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
+const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT =
+  "skill descriptions were shortened to fit the 2% skills context budget";
 
 export function projectAgentConversationVM(
   detail: WorkspaceAgentSessionDetailViewModel,
@@ -71,7 +73,13 @@ export function projectAgentConversationVM(
   }
 
   const normalizedRows = projectMessageCopyText(
-    mergeAdjacentAssistantMessageRows(rows),
+    dropCodexRuntimeDiagnosticNotices(
+      dropRedundantErrorWarningNotices(
+        mergeAdjacentAssistantMessageRows(
+          mergeAdjacentTransportRetryNoticeRows(rows)
+        )
+      )
+    ),
     {
       assistantCopyEligibleTurnIds: buildAssistantCopyEligibleTurnIds(detail)
     }
@@ -246,6 +254,169 @@ function mergeAdjacentAssistantMessageRows(
     merged.push(row);
   }
   return merged;
+}
+
+function dropCodexRuntimeDiagnosticNotices(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const filteredRows: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      filteredRows.push(row);
+      continue;
+    }
+    const messages = row.messages.filter(
+      (message) => !isCodexSkillsContextBudgetNotice(message)
+    );
+    if (messages.length === 0 && row.thinking.length === 0) {
+      continue;
+    }
+    if (messages.length === row.messages.length) {
+      filteredRows.push(row);
+      continue;
+    }
+    filteredRows.push({ ...row, messages });
+  }
+  return filteredRows;
+}
+
+function isCodexSkillsContextBudgetNotice(
+  message: AgentMessageContentVM
+): boolean {
+  const notice = message.systemNotice;
+  if (!notice || notice.noticeKind !== "warning") {
+    return false;
+  }
+  if (notice.source !== "runtime") {
+    return false;
+  }
+  const text = [notice.title, notice.detail, message.body]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return text.includes(CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT);
+}
+
+function dropRedundantErrorWarningNotices(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const turnsWithVisibleError = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      continue;
+    }
+    for (const message of row.messages) {
+      if (message.visibleError) {
+        turnsWithVisibleError.add(row.turnId);
+      }
+    }
+  }
+  if (turnsWithVisibleError.size === 0) {
+    return [...rows];
+  }
+
+  const filteredRows: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      filteredRows.push(row);
+      continue;
+    }
+    if (!turnsWithVisibleError.has(row.turnId)) {
+      filteredRows.push(row);
+      continue;
+    }
+    const messages = row.messages.filter(
+      (message) => !isRedundantErrorWarningNotice(message)
+    );
+    if (messages.length === 0) {
+      continue;
+    }
+    if (messages.length === row.messages.length) {
+      filteredRows.push(row);
+      continue;
+    }
+    filteredRows.push({ ...row, messages });
+  }
+  return filteredRows;
+}
+
+function isRedundantErrorWarningNotice(
+  message: AgentMessageContentVM
+): boolean {
+  const notice = message.systemNotice;
+  if (!notice || notice.noticeKind !== "warning") {
+    return false;
+  }
+  const title = notice.title?.trim() ?? "";
+  return title === "Codex reported an error.";
+}
+
+function mergeAdjacentTransportRetryNoticeRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const merged: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    const previous = merged.at(-1);
+    if (
+      isSingleTransportRetryNoticeRow(previous) &&
+      isSingleTransportRetryNoticeRow(row) &&
+      previous.turnId === row.turnId
+    ) {
+      const previousMessage = previous.messages[0];
+      const nextMessage = row.messages[0];
+      if (!previousMessage || !nextMessage) {
+        merged.push(row);
+        continue;
+      }
+      const sourceTimelineItems = mergeSourceTimelineItems(
+        previousMessage.sourceTimelineItems,
+        nextMessage.sourceTimelineItems
+      );
+      previous.messages[0] = {
+        ...previousMessage,
+        body: nextMessage.body || previousMessage.body,
+        systemNotice: nextMessage.systemNotice ?? previousMessage.systemNotice,
+        statusKind:
+          nextMessage.statusKind ?? previousMessage.statusKind ?? null,
+        occurredAtUnixMs:
+          nextMessage.occurredAtUnixMs ?? previousMessage.occurredAtUnixMs,
+        ...(sourceTimelineItems ? { sourceTimelineItems } : {})
+      };
+      previous.occurredAtUnixMs =
+        row.occurredAtUnixMs ?? previous.occurredAtUnixMs;
+      continue;
+    }
+    merged.push(row);
+  }
+  return merged;
+}
+
+function isSingleTransportRetryNoticeRow(
+  row: AgentTranscriptRowVM | undefined
+): row is AgentMessageRowVM {
+  if (
+    !row ||
+    row.kind !== "message" ||
+    row.speaker !== "assistant" ||
+    row.thinking.length > 0 ||
+    row.messages.length !== 1
+  ) {
+    return false;
+  }
+  return row.messages[0]?.systemNotice?.noticeKind === "transport_retry";
+}
+
+function mergeSourceTimelineItems(
+  previous: AgentMessageContentVM["sourceTimelineItems"],
+  next: AgentMessageContentVM["sourceTimelineItems"]
+): AgentMessageContentVM["sourceTimelineItems"] {
+  if (!previous || previous.length === 0) {
+    return next;
+  }
+  if (!next || next.length === 0) {
+    return previous;
+  }
+  return [...previous, ...next];
 }
 
 function projectMessageCopyText(

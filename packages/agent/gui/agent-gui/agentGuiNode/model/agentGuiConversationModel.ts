@@ -69,6 +69,7 @@ export interface AgentGUIConversationSummary {
   sortTimeUnixMs?: number;
   updatedAtUnixMs: number;
   hasUnreadCompletion?: boolean;
+  unreadCompletionKey?: string | null;
   syncState?: WorkspaceAgentActivitySyncState;
 }
 

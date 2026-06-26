@@ -111,11 +111,11 @@ const storyboardDarkThemeVars = {
   "--transparency-block": "rgba(255, 255, 255, 0.1)",
   "--transparency-hover": "rgba(255, 255, 255, 0.14)",
   "--transparency-active": "rgba(255, 255, 255, 0.16)",
-  "--state-danger": "rgb(239, 68, 68)",
+  "--state-danger": "rgb(244, 91, 91)",
   "--state-danger-hover":
     "color-mix(in srgb, var(--state-danger) 90%, transparent)",
   "--state-success": "rgb(74, 222, 128)",
-  "--on-danger": "rgba(239, 68, 68, 0.08)",
+  "--on-danger": "rgba(248, 113, 113, 0.10)",
   "--on-danger-hover":
     "color-mix(in srgb, var(--on-danger) 82%, var(--state-danger))",
   "--backdrop": "rgba(0, 0, 0, 0.60)",

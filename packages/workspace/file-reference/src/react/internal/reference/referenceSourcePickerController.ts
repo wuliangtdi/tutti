@@ -99,7 +99,7 @@ export interface ReferenceSourcePickerController {
   open(): void;
   close(): void;
   reset(): void;
-  setActiveSource(sourceId: string): void;
+  setActiveSource(sourceId: string, scopeNodeId?: string | null): void;
   /**
    * 把「定位目标」解析为从源根到目标的真实 ReferenceNode 路径(root → leaf)。
    * 纯数据解析:逐层 listChildren 找到真实节点(带 displayName 等),不改动任何 UI/导航态。
@@ -108,6 +108,8 @@ export interface ReferenceSourcePickerController {
   locatePath(target: ReferenceLocateTarget): Promise<ReferenceNode[]>;
   /** 确保某节点(null=当前源根)的子节点已加载(抽屉式导航进入用,不切换展开态)。 */
   ensureChildren(node: ReferenceNode | null): void;
+  /** 重新拉取某节点(null=当前源根)的子节点第一页,用于应用/议题等动态源刷新已加载分组。 */
+  refreshChildren(node: ReferenceNode | null): void;
   /** 确保指定源的根层级已加载(左栏可同时展开多源时,为非 active 源预载分组)。 */
   ensureSourceRoot(sourceId: string): void;
   /** 幂等展开某 folder 并确保其子节点已加载(定位目标默认展开用)。 */
@@ -147,12 +149,14 @@ export interface ReferenceSourcePickerController {
    *    故递归 listChildren 枚举,展开成多条文件引用。
    * 含异步枚举,故返回 Promise;结果按 path 去重、保序。
    */
-  confirm(): Promise<SelectedReference[]>;
+  confirm(selection?: readonly ReferenceNode[]): Promise<SelectedReference[]>;
   /**
    * 与 confirm 同源,但保留分组:navigable 源的每个选中文件夹折叠成一个 bundle
    * (文件已递归展开在内),其余作为单条文件。供「文件夹 = 一个节点」的插入形态用。
    */
-  confirmGrouped(): Promise<ReferenceConfirmGroupedResult>;
+  confirmGrouped(
+    selection?: readonly ReferenceNode[]
+  ): Promise<ReferenceConfirmGroupedResult>;
 }
 
 export interface CreateReferenceSourcePickerControllerInput {
@@ -588,7 +592,7 @@ export function createReferenceSourcePickerController(
         selection: []
       });
     },
-    setActiveSource(sourceId) {
+    setActiveSource(sourceId, scopeNodeId) {
       if (!snapshot.tabs.some((tab) => tab.sourceId === sourceId)) {
         return;
       }
@@ -601,6 +605,10 @@ export function createReferenceSourcePickerController(
       const carriedQuery = prevTab?.searchQuery ?? "";
       const carriedFilters = prevTab?.searchFilters ?? [];
       const trimmed = carriedQuery.trim();
+      const nextScopeNodeId =
+        scopeNodeId !== undefined
+          ? scopeNodeId
+          : (snapshot.bySource[sourceId]?.searchScopeNodeId ?? null);
       cancelSearch();
       setSnapshot({ activeSourceId: sourceId });
       if (trimmed === "" && carriedFilters.length === 0) {
@@ -615,6 +623,7 @@ export function createReferenceSourcePickerController(
                 mode: "browse",
                 searchQuery: "",
                 searchFilters: [],
+                searchScopeNodeId: nextScopeNodeId,
                 searchEntries: [],
                 searchHasMore: false,
                 isSearchLoading: false,
@@ -627,8 +636,6 @@ export function createReferenceSourcePickerController(
       }
       // 范围用目标源自身已选分组(尚未进过分组则 null=跨整源);随后左栏自动/手动
       // 进入分组会经 setSearchScope 再以新范围重搜(去抖窗口内合并,不重复请求)。
-      const nextScopeNodeId =
-        snapshot.bySource[sourceId]?.searchScopeNodeId ?? null;
       updateTab(sourceId, (tab) => ({
         ...tab,
         searchQuery: carriedQuery,
@@ -663,6 +670,11 @@ export function createReferenceSourcePickerController(
       };
       for (const ref of refs) {
         const targetKey = nodeRefKey(ref);
+        const parentKey =
+          parent.nodeId === SOURCE_ROOT_NODE_ID
+            ? ROOT_CHILDREN_KEY
+            : nodeRefKey(parent);
+        let locatedEntries: ReferenceNode[] = [];
         let cursor: string | null = null;
         let node: ReferenceNode | undefined;
         do {
@@ -671,9 +683,22 @@ export function createReferenceSourcePickerController(
             parent,
             { cursor }
           );
+          locatedEntries = appendReferencePage(locatedEntries, entries);
           node = entries.find((entry) => nodeRefKey(entry.ref) === targetKey);
           cursor = nextCursor ?? null;
         } while (!node && cursor);
+        if (locatedEntries.length > 0) {
+          const current =
+            snapshot.bySource[parent.sourceId]?.childrenByKey[parentKey]
+              ?.entries ?? [];
+          setChildrenState(parent.sourceId, parentKey, {
+            entries: appendReferencePage(current, locatedEntries),
+            nextCursor: cursor,
+            loaded: true,
+            loading: false,
+            error: null
+          });
+        }
         if (!node) {
           break;
         }
@@ -692,6 +717,13 @@ export function createReferenceSourcePickerController(
       if (!childState?.loaded && !childState?.loading) {
         void loadChildren(sourceId, node, { append: false });
       }
+    },
+    refreshChildren(node) {
+      const sourceId = node ? node.ref.sourceId : snapshot.activeSourceId;
+      if (!sourceId) {
+        return;
+      }
+      void loadChildren(sourceId, node, { append: false });
     },
     ensureSourceRoot(sourceId) {
       if (
@@ -911,7 +943,7 @@ export function createReferenceSourcePickerController(
     clearSelection() {
       setSnapshot({ selection: [] });
     },
-    async confirm() {
+    async confirm(selection = snapshot.selection) {
       const resolved: SelectedReference[] = [];
       const seenPaths = new Set<string>();
       const push = (ref: SelectedReference) => {
@@ -921,7 +953,7 @@ export function createReferenceSourcePickerController(
         seenPaths.add(ref.path);
         resolved.push(ref);
       };
-      for (const node of snapshot.selection) {
+      for (const node of selection) {
         if (node.kind !== "folder") {
           push(aggregator.resolveSelection(node));
           continue;
@@ -942,7 +974,7 @@ export function createReferenceSourcePickerController(
       }
       return resolved;
     },
-    async confirmGrouped() {
+    async confirmGrouped(selection = snapshot.selection) {
       const files: SelectedReference[] = [];
       const bundles: ReferenceConfirmBundle[] = [];
       const seenPaths = new Set<string>();
@@ -953,7 +985,7 @@ export function createReferenceSourcePickerController(
         seenPaths.add(ref.path);
         files.push(ref);
       };
-      for (const node of snapshot.selection) {
+      for (const node of selection) {
         const source = aggregator.getLoadedSource(node.ref.sourceId);
         const navigable =
           node.kind === "folder" && (source?.capabilities.navigable ?? false);

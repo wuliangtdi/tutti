@@ -14,6 +14,7 @@ func BuildCommands(manifest Manifest, options CommandBuildOptions) []Command {
 				Path:        append([]string{manifest.Scope}, command.Path...),
 				Summary:     strings.TrimSpace(command.Summary),
 				Description: strings.TrimSpace(command.Description),
+				Visibility:  NormalizeVisibility(command.Visibility),
 				InputSchema: CloneSchema(command.InputSchema),
 				Output: CapabilityOutput{
 					DefaultMode: command.Output.DefaultMode,

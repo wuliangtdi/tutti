@@ -39,8 +39,8 @@ func (r Resolver) Env(overrides []string) []string {
 	env := append(baseEnv, overrides...)
 	pathKey := pathEnvKey(env)
 	pathGroups := [][]string{}
-	if overridePath, ok := envValueFrom(overrides, pathKey); ok {
-		pathGroups = append(pathGroups, filepath.SplitList(overridePath))
+	if overridePathGroups := pathGroupsFromEnv(overrides, pathKey, envValue(baseEnv, pathKey)); len(overridePathGroups) > 0 {
+		pathGroups = append(pathGroups, overridePathGroups...)
 		pathGroups = append(pathGroups, r.preferredExecutableDirs(env))
 		pathGroups = append(pathGroups, r.fallbackExecutableDirs(env))
 	} else {
@@ -142,6 +142,7 @@ func (r Resolver) fallbackExecutableDirs(env []string) []string {
 	home, err := r.homeDir()
 	if err == nil && strings.TrimSpace(home) != "" {
 		homeDirs = []string{
+			filepath.Join(home, ".tutti", "bin"),
 			filepath.Join(home, ".local", "bin"),
 			filepath.Join(home, "bin"),
 			filepath.Join(home, ".npm-global", "bin"),
@@ -259,10 +260,7 @@ func mergePathDirs(groups ...[]string) []string {
 			if normalized == "" {
 				continue
 			}
-			key := filepath.Clean(normalized)
-			if runtime.GOOS == "windows" {
-				key = strings.ToLower(key)
-			}
+			key := pathDirKey(normalized)
 			if seen[key] {
 				continue
 			}
@@ -271,6 +269,14 @@ func mergePathDirs(groups ...[]string) []string {
 		}
 	}
 	return result
+}
+
+func pathDirKey(dir string) string {
+	key := filepath.Clean(strings.TrimSpace(dir))
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	return key
 }
 
 func pathEnvKey(env []string) string {
@@ -296,6 +302,54 @@ func envValueFrom(env []string, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func pathGroupsFromEnv(env []string, key string, basePath string) [][]string {
+	groups := [][]string{}
+	baseDirs := filepath.SplitList(basePath)
+	inheritedBaseDirs := []string{}
+	for i := len(env) - 1; i >= 0; i-- {
+		candidateKey, value, ok := strings.Cut(env[i], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			dirs := filepath.SplitList(value)
+			if prefix, inherited, ok := splitInheritedPath(dirs, baseDirs); ok {
+				groups = append(groups, prefix)
+				if len(inheritedBaseDirs) == 0 {
+					inheritedBaseDirs = inherited
+				}
+				continue
+			}
+			groups = append(groups, dirs)
+		}
+	}
+	if len(inheritedBaseDirs) > 0 {
+		groups = append(groups, inheritedBaseDirs)
+	}
+	return groups
+}
+
+func splitInheritedPath(dirs []string, baseDirs []string) ([]string, []string, bool) {
+	if len(baseDirs) == 0 || len(dirs) < len(baseDirs) {
+		return nil, nil, false
+	}
+	for i := 0; i+len(baseDirs) <= len(dirs); i++ {
+		if pathDirSlicesEqual(dirs[i:i+len(baseDirs)], baseDirs) {
+			return dirs[:i], dirs[i:], true
+		}
+	}
+	return nil, nil, false
+}
+
+func pathDirSlicesEqual(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if pathDirKey(a[i]) != pathDirKey(b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func stripEnvKeys(env []string, keys []string) []string {

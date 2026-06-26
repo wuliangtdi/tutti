@@ -67,6 +67,36 @@ export function resolveDesktopErrorMessage(
   return unexpectedServiceError();
 }
 
+export function wrapLocalizedTuttidErrorIfSpecific(
+  error: unknown,
+  locale: DesktopLocale = defaultDesktopLocale
+): unknown {
+  const protocolError = normalizeTuttidError(error);
+  if (!protocolError?.reason) {
+    return error;
+  }
+
+  const copy = createDesktopErrorI18nRuntime(locale);
+  const reasonKey = `errors.${protocolError.code}.${protocolError.reason}`;
+  if (!copy.has(reasonKey)) {
+    return error;
+  }
+
+  const message = resolveDesktopErrorMessage(error, locale);
+  const wrapped = new Error(message);
+  wrapped.name = error instanceof Error ? error.name : "TuttidProtocolError";
+  Object.assign(wrapped, {
+    code: protocolError.code,
+    correlationId: protocolError.correlationId,
+    developerMessage: protocolError.developerMessage,
+    params: protocolError.params,
+    reason: protocolError.reason,
+    retryable: protocolError.retryable,
+    statusCode: protocolError.statusCode
+  });
+  return wrapped;
+}
+
 export function getDesktopErrorCode(error: unknown): string | null {
   const protocolError = normalizeTuttidError(error);
   if (protocolError) {

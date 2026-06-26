@@ -50,6 +50,8 @@
 
 .workspace-terminal__status-tag {
   flex: none;
+  padding-inline: 0;
+  background: transparent;
 }
 
 .workspace-terminal__actions {

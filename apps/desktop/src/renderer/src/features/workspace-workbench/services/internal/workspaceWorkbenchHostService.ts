@@ -85,7 +85,7 @@ import { runWorkspaceAgentProviderDockAction } from "./workspaceAgentProviderDoc
 import { createWindowCloseDialogRequest } from "./workspaceCloseDialogRequests.ts";
 import { assignWorkspaceTaskDockSection } from "./workspaceDockSections.ts";
 import { createWorkspaceDynamicDockSignature } from "./workspaceDynamicDockSignature.ts";
-import { createWorkspaceLaunchpadDockEntry } from "./workspaceLaunchpadDockEntry.ts";
+import { createWorkbenchLaunchpadDockEntry } from "@tutti-os/workbench-launchpad";
 import { createDesktopWorkspaceDockPreviewCache } from "./desktopWorkspaceDockPreviewCache.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import type {
@@ -114,6 +114,7 @@ import type {
 import type { WorkspaceFileReferenceAdapter } from "@tutti-os/workspace-file-reference/contracts";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
 import { serializeWorkspaceAppExternalAtMatch } from "./workspaceAppExternalAtSerialization.ts";
+import { requestWorkspaceWorkbenchNodeLaunch } from "../workspaceWorkbenchNodeLaunchCoordinator.ts";
 
 const workspaceDockNativePreviewMaxWidthPx = 260;
 const workspaceDockNativePreviewMaxHeightPx = 170;
@@ -244,6 +245,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies.repository.subscribe(() => {
       this.notifyWallpaperListeners();
     });
+    this.subscribeWorkbenchNodeLaunchRequests();
     void this.loadCustomWallpaper();
   }
 
@@ -610,6 +612,43 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies.hostWorkspaceApi.broadcastAgentStatus(payload);
   }
 
+  private subscribeWorkbenchNodeLaunchRequests(): void {
+    const eventStreamClient = this.dependencies.eventStreamClient;
+    if (!eventStreamClient) {
+      return;
+    }
+    eventStreamClient.subscribe(
+      "workspace.workbench.node.launch.requested",
+      (event) => {
+        const payload = event.payload;
+        void requestWorkspaceWorkbenchNodeLaunch({
+          ...(payload.dockEntryId ? { dockEntryId: payload.dockEntryId } : {}),
+          ...(payload.launchSource
+            ? { launchSource: payload.launchSource }
+            : {}),
+          payload: payload.payload,
+          typeId: payload.typeId,
+          workspaceId: payload.workspaceId
+        }).catch((error: unknown) => {
+          void this.dependencies.runtimeApi.logTerminalDiagnostic({
+            details: { error: formatDiagnosticError(error) },
+            event: "workbench.node.launch.request_failed",
+            level: "warn",
+            workspaceId: payload.workspaceId
+          });
+        });
+      }
+    );
+    void eventStreamClient.connect().catch((error: unknown) => {
+      void this.dependencies.runtimeApi.logTerminalDiagnostic({
+        details: { error: formatDiagnosticError(error) },
+        event: "workbench.node.launch.event_stream_connect_failed",
+        level: "warn",
+        workspaceId: null
+      });
+    });
+  }
+
   private async persistPendingWallpaperSettings(
     workspaceId: string
   ): Promise<void> {
@@ -820,7 +859,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       snapshotRepository: this.dependencies.repository,
       workspaceId: input.workspaceId
     };
-    this.cachedHostInputs.set(input.workspaceId, {
+    const cachedHostInput: CachedWorkspaceWorkbenchHostInput = {
       appI18n: input.appI18n,
       baseHostInput,
       capabilitySettingsRequestRef,
@@ -831,10 +870,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
       i18n: input.i18n,
       renderFilesNodeBodyRef,
       themeAppearance: input.themeAppearance
-    });
-    const nextCached = this.cachedHostInputs.get(input.workspaceId);
+    };
+    this.cachedHostInputs.set(input.workspaceId, cachedHostInput);
     return this.createHostInputWithDynamicDockEntries(
-      nextCached,
+      cachedHostInput,
       baseHostInput,
       {
         appI18n: input.appI18n,
@@ -844,7 +883,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
   }
 
   private createHostInputWithDynamicDockEntries(
-    cached: CachedWorkspaceWorkbenchHostInput | undefined,
+    cached: CachedWorkspaceWorkbenchHostInput,
     baseHostInput: WorkspaceWorkbenchHostInput,
     input: {
       appI18n: I18nRuntime<string>;
@@ -878,25 +917,23 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
             i18n: input.appI18n
           })
         ),
-        createWorkspaceLaunchpadDockEntry({
-          agentStatuses:
-            this.dependencies.agentProviderStatusService.getSnapshot().statuses,
-          apps: this.dependencies.appCenterService.store.apps,
-          fallbackIconUrl: cached?.dockIcons.applications ?? "",
+        createWorkbenchLaunchpadDockEntry({
           label: input.desktopI18n.t(
             workspaceWorkbenchDesktopI18nKeys.launchpad.dockLabel
           ),
-          tileIconUrls: cached?.dockIcons.launchpadTiles
+          tileIconUrls: cached.dockIcons.launchpadTiles
         })
       ]
     );
-    if (cached) {
-      cached.dynamicAppI18n = input.appI18n;
-      cached.dynamicDockSignature = dockSignature;
-      cached.dynamicHostInput = dynamicHostInput;
-    }
+    cached.dynamicAppI18n = input.appI18n;
+    cached.dynamicDockSignature = dockSignature;
+    cached.dynamicHostInput = dynamicHostInput;
     return dynamicHostInput;
   }
+}
+
+function formatDiagnosticError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function createDesktopWorkspaceNodePreviewCapture(

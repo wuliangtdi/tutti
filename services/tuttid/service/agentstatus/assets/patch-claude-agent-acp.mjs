@@ -15,7 +15,7 @@
 // Why a codemod and not a unified diff: the bridge ships only a bundled
 // `dist/acp-agent.js` and is provisioned from the ACP external agent registry,
 // so there is no source tree to patch. The string anchors below are stable
-// across 0.42.x–0.46.x. The
+// across 0.42.x–0.51.x. The
 // script is idempotent (skips if a `fast` option is already present).
 //
 // Applied automatically after the bridge installs (InstallerPostStep in
@@ -58,17 +58,28 @@ function resolveDistPath() {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
 
-const FAST_MODE_EDITS = [
+const FAST_MODE_EDIT_GROUPS = [
   {
     name: "buildConfigOptions signature",
-    find: "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel) {",
-    replace:
-      "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, currentFastMode) {"
+    variants: [
+      {
+        find: "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel) {",
+        replace:
+          "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, currentFastMode) {"
+      },
+      {
+        find: "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, agents = [], currentAgent = DEFAULT_AGENT_ID) {",
+        replace:
+          "function buildConfigOptions(modes, models, modelInfos, currentEffortLevel, currentFastMode, agents = [], currentAgent = DEFAULT_AGENT_ID) {"
+      }
+    ]
   },
   {
     name: "advertise fast config option",
-    find: "    return options;\n}\n// Claude Code CLI persists display strings",
-    replace: `    // tutti patch: orthogonal fast/speed dimension backed by SDK fastMode.
+    variants: [
+      {
+        find: "    return options;\n}\n// Claude Code CLI persists display strings",
+        replace: `    // tutti patch: orthogonal fast/speed dimension backed by SDK fastMode.
     options.push({
         id: "fast",
         name: "Fast",
@@ -84,37 +95,63 @@ const FAST_MODE_EDITS = [
     return options;
 }
 // Claude Code CLI persists display strings`
+      }
+    ]
   },
   {
     name: "seed fast at session creation",
-    find: "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel);",
-    replace:
-      "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, settingsManager.getSettings().fastMode === true);"
+    variants: [
+      {
+        find: "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel);",
+        replace:
+          "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, settingsManager.getSettings().fastMode === true);"
+      },
+      {
+        find: "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, agents, currentAgent);",
+        replace:
+          "const configOptions = buildConfigOptions(modes, models, allowedModels, settingsManager.getSettings().effortLevel, settingsManager.getSettings().fastMode === true, agents, currentAgent);"
+      }
+    ]
   },
   {
     name: "apply initial fast mode to the SDK",
-    find: "        this.sessions[sessionId] = {",
-    replace: `        // tutti patch: apply the initial fast mode so the SDK matches the UI.
+    variants: [
+      {
+        find: "        this.sessions[sessionId] = {",
+        replace: `        // tutti patch: apply the initial fast mode so the SDK matches the UI.
         const initialFast = configOptions.find((o) => o.id === "fast");
         if (initialFast && initialFast.currentValue === "fast") {
             await q.applyFlagSettings({ fastMode: true });
         }
         this.sessions[sessionId] = {`
+      }
+    ]
   },
   {
     name: "preserve fast across model switch rebuild",
-    find: "session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort);",
-    replace:
-      'session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.configOptions.find((o) => o.id === "fast")?.currentValue === "fast");'
+    variants: [
+      {
+        find: "session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort);",
+        replace:
+          'session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.configOptions.find((o) => o.id === "fast")?.currentValue === "fast");'
+      },
+      {
+        find: "session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.agents, session.currentAgent);",
+        replace:
+          'session.configOptions = buildConfigOptions(session.modes, session.models, session.modelInfos, currentEffort, session.configOptions.find((o) => o.id === "fast")?.currentValue === "fast", session.agents, session.currentAgent);'
+      }
+    ]
   },
   {
     name: "route fast config option to applyFlagSettings",
-    find: `            if (configId === "effort") {
+    variants: [
+      {
+        find: `            if (configId === "effort") {
                 await session.query.applyFlagSettings({
                     effortLevel: toSdkEffortLevel(value),
                 });
             }`,
-    replace: `            if (configId === "effort") {
+        replace: `            if (configId === "effort") {
                 await session.query.applyFlagSettings({
                     effortLevel: toSdkEffortLevel(value),
                 });
@@ -122,6 +159,8 @@ const FAST_MODE_EDITS = [
             else if (configId === "fast") {
                 await session.query.applyFlagSettings({ fastMode: value === "fast" });
             }`
+      }
+    ]
   }
 ];
 
@@ -460,6 +499,35 @@ function applyEdits(source, edits) {
   return nextSource;
 }
 
+function applyEditGroups(source, groups) {
+  let nextSource = source;
+  for (const group of groups) {
+    const matches = group.variants
+      .map((variant) => ({
+        variant,
+        occurrences: nextSource.split(variant.find).length - 1
+      }))
+      .filter((match) => match.occurrences > 0);
+    const totalOccurrences = matches.reduce(
+      (sum, match) => sum + match.occurrences,
+      0
+    );
+    if (totalOccurrences !== 1) {
+      throw new Error(
+        `Anchor not uniquely found (${totalOccurrences}x) for "${group.name}".`
+      );
+    }
+    const match = matches[0];
+    if (match.occurrences !== 1) {
+      throw new Error(
+        `Anchor not uniquely found (${match.occurrences}x) for "${group.name}".`
+      );
+    }
+    nextSource = nextSource.replace(match.variant.find, match.variant.replace);
+  }
+  return nextSource;
+}
+
 function hasLifecycleCommandUpdates(source) {
   return (
     source.includes("this.sendAvailableCommandsUpdate(response.sessionId)") &&
@@ -507,12 +575,13 @@ if (/id:\s*"fast"/.test(source)) {
   console.log(`Already patched (fast config option present): ${distPath}`);
 } else {
   try {
-    source = applyEdits(source, FAST_MODE_EDITS);
+    source = applyEditGroups(source, FAST_MODE_EDIT_GROUPS);
     changed = true;
   } catch (error) {
     console.error(
-      `claude-agent-acp fast-mode patch skipped: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
+      `claude-agent-acp fast-mode patch failed: ${error.message} Bridge layout changed; update services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs.`
     );
+    process.exit(1);
   }
 }
 

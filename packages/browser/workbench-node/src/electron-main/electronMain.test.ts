@@ -43,6 +43,7 @@ test("enforces Browser Node webview security policy", () => {
   assert.equal(params.src, "https://example.com/");
   assert.equal(webPreferences.contextIsolation, true);
   assert.equal(webPreferences.nodeIntegration, false);
+  assert.equal(webPreferences.nodeIntegrationInSubFrames, false);
   assert.equal(webPreferences.preload, undefined);
   assert.equal(webPreferences.sandbox, true);
   assert.equal(webPreferences.webSecurity, true);
@@ -108,6 +109,7 @@ test("applies host-controlled Browser Node guest preload after validation", () =
   );
 
   assert.equal(resolvedSrc, "https://example.com/");
+  assert.equal(webPreferences.nodeIntegrationInSubFrames, true);
   assert.equal(webPreferences.preload, "/tmp/host-browser-guest-preload.js");
 
   let invalidResolverCalls = 0;
@@ -1093,6 +1095,36 @@ test("keeps Browser Node navigation failures as the final emitted event", async 
   assert.equal(
     events.some((event) => event.type === "state"),
     true
+  );
+});
+
+test("uses registerGuest URL before loading a newly attached guest", async () => {
+  const contents = new MockBrowserGuestWebContents(21);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.prepareSession({
+    nodeId: "browser-stale-desired",
+    profileId: null,
+    sessionMode: "shared",
+    url: "http://127.0.0.1:50158/"
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-stale-desired",
+    profileId: null,
+    sessionMode: "shared",
+    url: "http://127.0.0.1:51103/",
+    webContentsId: 21
+  });
+
+  assert.deepEqual(contents.loadedUrls, ["http://127.0.0.1:51103/"]);
+  assert.equal(
+    manager.debugDump({ nodeId: "browser-stale-desired" })?.desiredUrl,
+    "http://127.0.0.1:51103/"
   );
 });
 

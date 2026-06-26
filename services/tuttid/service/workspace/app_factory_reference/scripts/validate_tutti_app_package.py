@@ -155,6 +155,9 @@ def validate_cli_manifest(root: Path, manifest: dict[str, Any], errors: list[str
         if not isinstance(command, dict):
             errors.append(f"CLI command {index} must be an object")
             continue
+        visibility = command.get("visibility")
+        if visibility is not None and visibility not in {"public", "integration"}:
+            errors.append(f"CLI command {command.get('name', index)} visibility must be public or integration")
         handler = command.get("handler")
         if not isinstance(handler, dict):
             errors.append(f"CLI command {command.get('name', index)} requires a handler")

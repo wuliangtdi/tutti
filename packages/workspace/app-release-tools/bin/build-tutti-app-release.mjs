@@ -254,9 +254,19 @@ function validateCLICommand(command, label, scope, seenPaths) {
   }
   seenPaths.add(pathKey);
   requireNonEmpty(command.summary, `${label}.summary`);
+  validateCLIVisibility(command.visibility, `${label}.visibility`);
   validateCLIInputSchema(command.inputSchema, `${label}.inputSchema`);
   validateCLIOutput(command.output, `${label}.output`);
   validateCLIHandler(command.handler, `${label}.handler`);
+}
+
+function validateCLIVisibility(visibility, label) {
+  if (visibility === undefined) {
+    return;
+  }
+  if (!["public", "integration"].includes(visibility)) {
+    throw new Error(`${label} must be public or integration`);
+  }
 }
 
 function validateCLIInputSchema(schema, label) {

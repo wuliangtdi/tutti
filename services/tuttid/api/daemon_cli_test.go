@@ -38,8 +38,43 @@ func TestListCliCapabilitiesCanIncludeHiddenCapabilities(t *testing.T) {
 	}
 
 	commands := response.(tuttigenerated.ListCliCapabilities200JSONResponse).Commands
-	if got, want := generatedCommandIDs(commands), []string{"diagnostics.hidden", "diagnostics.visible"}; !equalStringSlices(got, want) {
+	if got, want := generatedCommandIDs(commands), []string{"diagnostics.hidden", "diagnostics.visible", "diagnostics.internal"}; !equalStringSlices(got, want) {
 		t.Fatalf("command ids = %#v, want %#v", got, want)
+	}
+}
+
+func TestListCliCapabilitiesCanIncludeIntegrationCapabilities(t *testing.T) {
+	includeIntegration := true
+	api := DaemonAPI{CLIRegistry: newTestFilteredCLIRegistry(t)}
+
+	response, err := api.ListCliCapabilities(context.Background(), tuttigenerated.ListCliCapabilitiesRequestObject{
+		Params: tuttigenerated.ListCliCapabilitiesParams{},
+	})
+	if err != nil {
+		t.Fatalf("ListCliCapabilities: %v", err)
+	}
+	commands := response.(tuttigenerated.ListCliCapabilities200JSONResponse).Commands
+	if got, want := generatedCommandIDs(commands), []string{"diagnostics.visible"}; !equalStringSlices(got, want) {
+		t.Fatalf("command ids = %#v, want %#v", got, want)
+	}
+	if commands[0].Visibility == nil || *commands[0].Visibility != tuttigenerated.Public {
+		t.Fatalf("visibility = %#v, want public", commands[0].Visibility)
+	}
+
+	response, err = api.ListCliCapabilities(context.Background(), tuttigenerated.ListCliCapabilitiesRequestObject{
+		Params: tuttigenerated.ListCliCapabilitiesParams{
+			IncludeIntegration: &includeIntegration,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ListCliCapabilities include integration: %v", err)
+	}
+	commands = response.(tuttigenerated.ListCliCapabilities200JSONResponse).Commands
+	if got, want := generatedCommandIDs(commands), []string{"diagnostics.visible", "diagnostics.internal"}; !equalStringSlices(got, want) {
+		t.Fatalf("command ids with integration = %#v, want %#v", got, want)
+	}
+	if commands[1].Visibility == nil || *commands[1].Visibility != tuttigenerated.Integration {
+		t.Fatalf("integration visibility = %#v", commands[1].Visibility)
 	}
 }
 
@@ -50,16 +85,19 @@ func (testFilteringCLIProvider) AppID() string {
 }
 
 func (testFilteringCLIProvider) Commands() []cliservice.Command {
+	internal := testCLICommand("diagnostics.internal", []string{"internal"})
+	internal.Capability.Visibility = cliservice.CapabilityVisibilityIntegration
 	return []cliservice.Command{
 		testCLICommand("diagnostics.hidden", []string{"hidden"}),
 		testCLICommand("diagnostics.visible", []string{"visible"}),
+		internal,
 	}
 }
 
 func (testFilteringCLIProvider) FilterCapabilities(_ context.Context, _ cliservice.InvokeContext, capabilities []cliservice.Capability) []cliservice.Capability {
 	result := make([]cliservice.Capability, 0, len(capabilities))
 	for _, capability := range capabilities {
-		if capability.ID == "diagnostics.visible" {
+		if capability.ID != "diagnostics.hidden" {
 			result = append(result, capability)
 		}
 	}

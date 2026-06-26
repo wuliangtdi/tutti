@@ -581,6 +581,19 @@ func (siw *ServerInterfaceWrapper) ListCliCapabilities(w http.ResponseWriter, r 
 		return
 	}
 
+	// ------------- Optional query parameter "includeIntegration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeIntegration", r.URL.Query(), &params.IncludeIntegration, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeIntegration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeIntegration", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCliCapabilities(w, r, params)
 	}))
@@ -9045,7 +9058,7 @@ type SendWorkspaceAgentSessionInputResponseObject interface {
 	VisitSendWorkspaceAgentSessionInputResponse(w http.ResponseWriter) error
 }
 
-type SendWorkspaceAgentSessionInput200JSONResponse WorkspaceAgentSessionResponse
+type SendWorkspaceAgentSessionInput200JSONResponse SendWorkspaceAgentSessionInputResponse
 
 func (response SendWorkspaceAgentSessionInput200JSONResponse) VisitSendWorkspaceAgentSessionInputResponse(w http.ResponseWriter) error {
 

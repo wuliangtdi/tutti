@@ -3,6 +3,11 @@
 AgentGUI renders workspace agent sessions, timelines, approvals, and composer
 UI. It is a UI package, not a host transport or business-core package.
 
+Before changing AgentGUI, AgentGuiNode, or the agent conversation module, read
+[AgentGuiNode Architecture and Troubleshooting](../../../docs/architecture/agent-gui-node.md).
+It records the source-of-truth rules, common chains, debugging playbooks, and
+the self-evolution loop for durable lessons.
+
 ## Data Source
 
 `AgentActivityRuntime` is the AgentGUI source for agent activity data.

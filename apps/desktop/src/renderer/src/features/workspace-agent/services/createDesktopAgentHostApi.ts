@@ -1,7 +1,12 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentHostInputApi,
-  AgentProviderProbeListInput
+  AgentHostSelectFilesInput,
+  AgentProviderProbeListInput,
+  PersistWriteResult,
+  ReadWorkspaceAgentReadStateInput,
+  WorkspaceAgentReadStateSnapshot,
+  WriteWorkspaceAgentReadStateInput
 } from "@tutti-os/agent-gui";
 import type {
   DesktopHostFilesApi,
@@ -193,6 +198,10 @@ export function createDesktopAgentHostApi({
     },
     agentSessions,
     onHostEvent: () => () => {},
+    persistence: {
+      readWorkspaceAgentReadState: readDesktopWorkspaceAgentReadState,
+      writeWorkspaceAgentReadState: writeDesktopWorkspaceAgentReadState
+    },
     workspaceAgents,
     runtime: {
       getBaseUrl: async () => (await runtimeApi.getBackendConfig()).baseUrl
@@ -224,8 +233,10 @@ export function createDesktopAgentHostApi({
         const path = await hostFilesApi.selectDirectory();
         return path ? { path } : null;
       },
-      selectFiles: async () =>
-        (await hostFilesApi.selectUploadFiles()).map((path) => ({ path })),
+      selectFiles: async (input?: AgentHostSelectFilesInput) =>
+        (await hostFilesApi.selectUploadFiles(input)).map((path) => ({
+          path
+        })),
       writeFile: async (payload: { content?: string; path: string }) => {
         await tuttidClient.writeWorkspaceFileText(workspaceId, {
           content: payload.content ?? "",
@@ -246,4 +257,123 @@ function toAgentHostUserProject(
 ): AgentHostUserProjectCompat {
   const { lastUsedAtUnixMs, ...rest } = project;
   return lastUsedAtUnixMs == null ? rest : { ...rest, lastUsedAtUnixMs };
+}
+
+function readDesktopWorkspaceAgentReadState(
+  input: ReadWorkspaceAgentReadStateInput
+): Promise<WorkspaceAgentReadStateSnapshot> {
+  const storage = resolveLocalStorage();
+  if (!storage) {
+    return Promise.resolve(emptyWorkspaceAgentReadState());
+  }
+  const raw = storage.getItem(workspaceAgentReadStateStorageKey(input));
+  if (!raw) {
+    return Promise.resolve(emptyWorkspaceAgentReadState());
+  }
+  try {
+    return Promise.resolve(normalizeWorkspaceAgentReadState(JSON.parse(raw)));
+  } catch {
+    return Promise.resolve(emptyWorkspaceAgentReadState());
+  }
+}
+
+function writeDesktopWorkspaceAgentReadState(
+  input: WriteWorkspaceAgentReadStateInput
+): Promise<PersistWriteResult> {
+  const storage = resolveLocalStorage();
+  if (!storage) {
+    return Promise.resolve({
+      ok: false,
+      reason: "unavailable",
+      error: { code: "persistence.unavailable" }
+    });
+  }
+  try {
+    let current = emptyWorkspaceAgentReadState();
+    try {
+      current = normalizeWorkspaceAgentReadState(
+        JSON.parse(
+          storage.getItem(workspaceAgentReadStateStorageKey(input)) ?? "null"
+        )
+      );
+    } catch {
+      current = emptyWorkspaceAgentReadState();
+    }
+    const next: WorkspaceAgentReadStateSnapshot = {
+      ...current,
+      [input.kind]: {
+        readIds: normalizeIdList(input.readIds),
+        unreadIds: normalizeIdList(input.unreadIds)
+      }
+    };
+    const raw = JSON.stringify(next);
+    storage.setItem(workspaceAgentReadStateStorageKey(input), raw);
+    return Promise.resolve({
+      ok: true,
+      level: "settings_only",
+      bytes: new TextEncoder().encode(raw).byteLength
+    });
+  } catch (error) {
+    return Promise.resolve({
+      ok: false,
+      reason: "io",
+      error: {
+        code: "persistence.io_failed",
+        debugMessage: error instanceof Error ? error.message : String(error)
+      }
+    });
+  }
+}
+
+function workspaceAgentReadStateStorageKey(input: {
+  roomId: string;
+  userId: string;
+}): string {
+  return [
+    "tutti.workspace-agent-read-state",
+    encodeURIComponent(input.roomId.trim()),
+    encodeURIComponent(input.userId.trim())
+  ].join(":");
+}
+
+function resolveLocalStorage(): Storage | null {
+  return typeof globalThis.localStorage === "undefined"
+    ? null
+    : globalThis.localStorage;
+}
+
+function emptyWorkspaceAgentReadState(): WorkspaceAgentReadStateSnapshot {
+  return {
+    completed: { readIds: [], unreadIds: [] },
+    failed: { readIds: [], unreadIds: [] }
+  };
+}
+
+function normalizeWorkspaceAgentReadState(
+  value: unknown
+): WorkspaceAgentReadStateSnapshot {
+  const record = value && typeof value === "object" ? value : {};
+  const completed = (record as { completed?: unknown }).completed;
+  const failed = (record as { failed?: unknown }).failed;
+  return {
+    completed: normalizeWorkspaceAgentReadStateBucket(completed),
+    failed: normalizeWorkspaceAgentReadStateBucket(failed)
+  };
+}
+
+function normalizeWorkspaceAgentReadStateBucket(value: unknown): {
+  readIds: string[];
+  unreadIds: string[];
+} {
+  const record = value && typeof value === "object" ? value : {};
+  return {
+    readIds: normalizeIdList((record as { readIds?: unknown }).readIds),
+    unreadIds: normalizeIdList((record as { unreadIds?: unknown }).unreadIds)
+  };
+}
+
+function normalizeIdList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.map((item) => `${item}`.trim()).filter(Boolean))]
+    : [];
 }

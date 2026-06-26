@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
+import { TuttidProtocolError } from "@tutti-os/client-tuttid-ts";
 import { WorkspaceAgentActivityService } from "./workspaceAgentActivityService.ts";
 
 function createService(): WorkspaceAgentActivityService {
@@ -17,7 +18,7 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       listWorkspaceAgentSessions: async () => ({ sessions: [readySession] }),
-      sendWorkspaceAgentSessionInput: async () => readySession
+      sendWorkspaceAgentSessionInput: async () => ({ session: readySession })
     } as unknown as TuttidClient,
     runtimeApi: {
       logTerminalDiagnostic: async () => {}
@@ -35,8 +36,8 @@ test("WorkspaceAgentActivityService.sendInput keeps activity snapshot working wh
     .getSnapshot("ws-1")
     .sessions.find((session) => session.agentSessionId === "session-1");
 
-  assert.equal(result.status, "working");
-  assert.equal(result.currentPhase, "working");
+  assert.equal(result.session.status, "working");
+  assert.equal(result.session.currentPhase, "working");
   assert.equal(snapshotSession?.status, "working");
   assert.equal(snapshotSession?.currentPhase, "working");
 });
@@ -128,6 +129,53 @@ test("WorkspaceAgentActivityService.listAgentGeneratedFiles delegates to tuttid 
   ]);
   assert.deepEqual(result.entries, [
     { label: "report.md", path: "/workspace/report.md" }
+  ]);
+});
+
+test("WorkspaceAgentActivityService treats missing reconcile sessions as tombstones", async () => {
+  const diagnostics: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => {
+        throw new TuttidProtocolError({
+          code: "workspace_not_found",
+          developerMessage: "workspace agent session not found",
+          reason: "workspace_agent_session_not_found",
+          statusCode: 404
+        });
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async (payload) => {
+        diagnostics.push(payload);
+      }
+    }
+  });
+
+  await (
+    service as unknown as {
+      reconcileAgentActivityUpdate(input: {
+        agentSessionId: string;
+        eventType: string;
+        workspaceId: string;
+      }): Promise<void>;
+    }
+  ).reconcileAgentActivityUpdate({
+    agentSessionId: "ghost-session",
+    eventType: "session_update",
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(diagnostics, [
+    {
+      details: {
+        agentSessionId: "ghost-session",
+        error: "workspace agent session not found"
+      },
+      event: "agent.activity.reconcile_session_missing",
+      level: "info",
+      workspaceId: "ws-1"
+    }
   ]);
 });
 

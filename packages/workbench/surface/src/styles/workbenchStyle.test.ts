@@ -50,6 +50,31 @@ test("dock retained entry removal animates width and icon exit", () => {
   assert.match(css, /@keyframes desktop-dock-separator-collapse-left/);
 });
 
+test("dock badge chrome uses inverted outlines and 11px count text", () => {
+  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
+
+  assert.match(
+    css,
+    /\.desktop-dock__icon-shell,\s*\.desktop-dock__minimized-stack-icon\s*{[^}]*--desktop-dock-loading-badge-offset:\s*-3\.6px;[^}]*--desktop-dock-loading-badge-size:\s*16\.2px;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__icon-shell\[data-entry-state="loading"\]::before,\s*\.desktop-dock__count-badge\s*{[^}]*border:\s*1px solid var\(--text-inverted\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__count-badge\s*{[^}]*color:\s*var\(--text-inverted\);[^}]*font-size:\s*11px;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__status-badge\s*{[^}]*border:\s*1\.8px solid var\(--text-inverted\);/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__slot--minimized\s+\.desktop-dock__count-badge\s*{[^}]*right:\s*-12px;[^}]*bottom:\s*var\(--desktop-dock-loading-badge-offset\);/s
+  );
+});
+
 test("left dock placement owns vertical frame and popup placement styles", () => {
   const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
 
@@ -104,7 +129,7 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   );
   assert.match(
     css,
-    /\.desktop-dock__slot\[data-node-state="open"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*var\(--text-tertiary\);[^}]*bottom:\s*calc\(var\(--desktop-dock-indicator-offset\) - 2px\);[^}]*width:\s*5px;[^}]*height:\s*5px;[^}]*background:\s*var\(--desktop-dock-indicator-color\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(0 0 0 \/ 12%\);/s
+    /\.desktop-dock__slot\[data-node-state="open"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*rgb\(0 0 0 \/ 46%\);[^}]*bottom:\s*calc\(var\(--desktop-dock-indicator-offset\) - 2px\);[^}]*width:\s*5px;[^}]*height:\s*5px;[^}]*background:\s*var\(--desktop-dock-indicator-color\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(0 0 0 \/ 12%\);/s
   );
   assert.match(
     css,
@@ -113,6 +138,10 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   assert.match(
     css,
     /\.desktop-dock__slot\[data-node-state="open"\]\[data-wallpaper-tone="light"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]\[data-wallpaper-tone="light"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*rgb\(0 0 0 \/ 46%\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(255 255 255 \/ 58%\);/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*opacity:/s
   );
 });
 
@@ -267,18 +296,6 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   );
   assert.match(
     css,
-    /\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*var\(--transparency-block\);[^}]*--workspace-launchpad-dock-icon-border:\s*var\(--line-1\);[^}]*background:\s*var\(--workspace-launchpad-dock-icon-bg\);/s
-  );
-  assert.match(
-    css,
-    /\.desktop-dock__slot\[data-wallpaper-tone="dark"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(255 255 255 \/ 18%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(255 255 255 \/ 15%\);/s
-  );
-  assert.match(
-    css,
-    /\.desktop-dock__slot\[data-wallpaper-tone="light"\]\s+\.workspace-launchpad-dock-icon\s*{[^}]*--workspace-launchpad-dock-icon-bg:\s*rgb\(0 0 0 \/ 10%\);[^}]*--workspace-launchpad-dock-icon-border:\s*rgb\(0 0 0 \/ 10%\);/s
-  );
-  assert.match(
-    css,
     /\.desktop-dock\[data-scroll-overflow="true"\]:hover\s+\.desktop-dock__scroll-button:not\(:disabled\)/s
   );
   assert.match(
@@ -405,42 +422,5 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   assert.match(
     css,
     /\.desktop-dock\[data-dock-placement="left"\]\[data-scroll-forward="true"\]\s+\.desktop-dock__items\s*{[^}]*mask-image:\s*linear-gradient\(\s*to bottom,/s
-  );
-});
-
-test("launchpad top bar remains draggable without stealing controls", () => {
-  const css = readFileSync(resolve("src/styles/workbench.css"), "utf8");
-
-  assert.match(
-    css,
-    /\.workspace-launchpad-overlay__content\s*{[^}]*-webkit-app-region:\s*drag;/s
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-overlay__topbar\s*{[^}]*-webkit-app-region:\s*drag;/s
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-search\s*{[^}]*-webkit-app-region:\s*no-drag;/s
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-grid-viewport\s*{[^}]*-webkit-app-region:\s*no-drag;/s
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-grid-viewport\s*{[^}]*overflow:\s*visible;/s
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-dock-hover-panel\s*{[^}]*--workspace-launchpad-hover-panel-shift:\s*0px;[^}]*left:\s*50%;[^}]*right:\s*auto;[^}]*max-width:\s*min\(240px, calc\(100vw - 32px\)\);[^}]*transform:\s*translateX\(\s*calc\(-50% \+ var\(--workspace-launchpad-hover-panel-shift\)\)\s*\)/s
-  );
-  assert.doesNotMatch(
-    css,
-    /workspace-launchpad-dock-hover-panel\[data-hover-panel-align=/
-  );
-  assert.match(
-    css,
-    /\.workspace-launchpad-pages\s*{[^}]*-webkit-app-region:\s*no-drag;/s
   );
 });

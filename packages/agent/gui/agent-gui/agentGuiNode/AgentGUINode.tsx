@@ -1188,10 +1188,13 @@ export const AgentGUINode = memo(function AgentGUINode({
     if (!managedAgent) {
       return true;
     }
+    if (!managedAgentsState) {
+      return true;
+    }
     return (
       resolveAgentHostManagedToolchainAgentAction(
         managedAgent,
-        managedAgentsState ?? null
+        managedAgentsState
       ) === "installed"
     );
   }, [activeProbeProvider, managedAgentsState]);

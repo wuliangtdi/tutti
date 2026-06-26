@@ -95,6 +95,7 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 		"runtimeDir":    runtimeDir,
 		"dataDir":       dataDir,
 		"logDir":        logDir,
+		"toolchainRoot": filepath.Join(stateRoot, "app-toolchains"),
 		"workspaceRoot": root,
 	} {
 		if probeValues[key] != want {
@@ -292,6 +293,167 @@ exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
 	if got := strings.Count(string(logData), "tutti workspace app startup"); got != 2 {
 		t.Fatalf("startup diagnostics = %d, want 2; runtime.log=%q", got, string(logData))
 	}
+}
+
+func TestAppRunnerStopProcessDoesNotOverwriteReplacementRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "hello")
+	oldURL := "http://127.0.0.1:41001"
+	newURL := "http://127.0.0.1:41002"
+	oldPort := 41001
+	newPort := 41002
+	oldProcess := &appProcess{done: make(chan error, 1)}
+	newProcess := &appProcess{done: make(chan error, 1)}
+
+	runner.mu.Lock()
+	runner.processes[key] = oldProcess
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &oldURL,
+		Port:      &oldPort,
+	}
+	runner.mu.Unlock()
+
+	type stopResult struct {
+		state workspacebiz.AppRuntimeState
+		err   error
+	}
+	stopped := make(chan stopResult, 1)
+	go func() {
+		state, err := runner.stopProcess(context.Background(), key, oldProcess)
+		stopped <- stopResult{state: state, err: err}
+	}()
+
+	waitForRunnerStatus(t, runner, "ws-runner", "hello", workspacebiz.AppRuntimeStatusStopping)
+
+	runner.mu.Lock()
+	runner.processes[key] = newProcess
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: &newURL,
+		Port:      &newPort,
+	}
+	runner.mu.Unlock()
+
+	oldProcess.done <- nil
+
+	select {
+	case result := <-stopped:
+		if result.err != nil {
+			t.Fatalf("stopProcess() error = %v", result.err)
+		}
+		if result.state.Status != workspacebiz.AppRuntimeStatusRunning {
+			t.Fatalf("stopProcess() status = %q, want running", result.state.Status)
+		}
+		if result.state.LaunchURL == nil || *result.state.LaunchURL != newURL {
+			t.Fatalf("stopProcess() launchURL = %v, want %q", result.state.LaunchURL, newURL)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stopProcess")
+	}
+
+	state := runner.State("ws-runner", "hello")
+	if state.Status != workspacebiz.AppRuntimeStatusRunning {
+		t.Fatalf("runner state = %q, want running", state.Status)
+	}
+	if state.LaunchURL == nil || *state.LaunchURL != newURL {
+		t.Fatalf("runner launchURL = %v, want %q", state.LaunchURL, newURL)
+	}
+}
+
+func TestAppRunnerStopProcessWaitsForProcessDoneWhenContextIsCanceled(t *testing.T) {
+	runner := &AppRunner{}
+	runner.ensure()
+	key := appRuntimeKey("ws-runner", "hello")
+	process := &appProcess{done: make(chan error)}
+	runner.mu.Lock()
+	runner.processes[key] = process
+	runner.states[key] = workspacebiz.AppRuntimeState{
+		Status: workspacebiz.AppRuntimeStatusRunning,
+	}
+	runner.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	type stopResult struct {
+		state workspacebiz.AppRuntimeState
+		err   error
+	}
+	stopped := make(chan stopResult, 1)
+	go func() {
+		state, err := runner.stopProcess(ctx, key, process)
+		stopped <- stopResult{state: state, err: err}
+	}()
+
+	select {
+	case result := <-stopped:
+		t.Fatalf("stopProcess() returned before process done: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	process.done <- nil
+	select {
+	case result := <-stopped:
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("stopProcess() error = %v, want context.Canceled", result.err)
+		}
+		if result.state.Status != workspacebiz.AppRuntimeStatusFailed {
+			t.Fatalf("stopProcess() status = %q, want failed", result.state.Status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stopProcess")
+	}
+}
+
+func TestAppRunnerStopAllClearsStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+
+	runner.StopAll(context.Background())
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+}
+
+func TestAppRunnerStopWorkspaceClearsMatchingStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+	runner.setState(appRuntimeKey("ws-other", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43211"),
+		Port:      intPtr(43211),
+	})
+
+	runner.StopWorkspace(context.Background(), "ws-runner")
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+	assertRunnerStatus(t, runner, "ws-other", "orphaned", workspacebiz.AppRuntimeStatusRunning)
+}
+
+func TestAppRunnerStopAppClearsMatchingStateOnlyRuntime(t *testing.T) {
+	runner := &AppRunner{}
+	runner.setState(appRuntimeKey("ws-runner", "orphaned"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43210"),
+		Port:      intPtr(43210),
+	})
+	runner.setState(appRuntimeKey("ws-runner", "other"), workspacebiz.AppRuntimeState{
+		Status:    workspacebiz.AppRuntimeStatusRunning,
+		LaunchURL: stringPtr("http://127.0.0.1:43211"),
+		Port:      intPtr(43211),
+	})
+
+	runner.StopApp(context.Background(), "orphaned")
+
+	assertRunnerStatus(t, runner, "ws-runner", "orphaned", workspacebiz.AppRuntimeStatusIdle)
+	assertRunnerStatus(t, runner, "ws-runner", "other", workspacebiz.AppRuntimeStatusRunning)
 }
 
 func TestAppRunnerStartWithoutRestartReusesQueuedStart(t *testing.T) {
@@ -730,6 +892,7 @@ func pythonAppReadyServerScript(healthcheckPath string, writeProbe bool) string 
                 "runtimeDir": os.environ["TUTTI_APP_RUNTIME_DIR"],
                 "dataDir": os.environ["TUTTI_APP_DATA_DIR"],
                 "logDir": os.environ["TUTTI_APP_LOG_DIR"],
+                "toolchainRoot": os.environ["TUTTI_APP_TOOLCHAIN_ROOT"],
                 "tuttiCli": os.environ["TUTTI_CLI"],
                 "path": os.environ["PATH"],
             }, f)
@@ -775,6 +938,15 @@ func waitForRunnerStatus(t *testing.T, runner *AppRunner, workspaceID string, ap
 	return waitForRunnerState(t, runner, workspaceID, appID, func(state workspacebiz.AppRuntimeState) bool {
 		return state.Status == want
 	})
+}
+
+func assertRunnerStatus(t *testing.T, runner *AppRunner, workspaceID string, appID string, want workspacebiz.AppRuntimeStatus) {
+	t.Helper()
+
+	state := runner.State(workspaceID, appID)
+	if state.Status != want {
+		t.Fatalf("State(%q, %q) status = %q, want %q", workspaceID, appID, state.Status, want)
+	}
 }
 
 func waitForRunnerState(t *testing.T, runner *AppRunner, workspaceID string, appID string, matches func(workspacebiz.AppRuntimeState) bool) workspacebiz.AppRuntimeState {

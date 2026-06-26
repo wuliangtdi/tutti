@@ -9,6 +9,7 @@ import type { IWorkspaceUserProjectService } from "../../workspace-user-project/
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import { IAgentProviderStatusService } from "./agentProviderStatusService.interface";
 import type { AgentProviderTerminalCommandRunner } from "./agentProviderStatusService.interface";
+import { bindDesktopManagedAgentProviderVisibilityRefresh } from "./internal/desktopAgentProviderVisibilityRefresh.ts";
 import { DesktopAgentProviderStatusService } from "./internal/desktopAgentProviderStatusService";
 import { WorkspaceAgentActivityService } from "./internal/workspaceAgentActivityService";
 import { WorkspaceAgentPromptSessionService } from "./internal/workspaceAgentPromptSessionService";
@@ -37,22 +38,6 @@ export function registerWorkspaceAgentServices(
   registry: ServiceRegistry,
   input: WorkspaceAgentServiceRegistrationInput
 ): WorkspaceAgentServiceRegistrationResult {
-  const workspaceAgentActivityService = new WorkspaceAgentActivityService(
-    input
-  );
-  registry.registerInstance(
-    IWorkspaceAgentActivityService,
-    workspaceAgentActivityService
-  );
-  registry.registerInstance(
-    IWorkspaceAgentPromptSessionService,
-    new WorkspaceAgentPromptSessionService({
-      reporterService: input.reporterService,
-      workspaceAgentActivityService,
-      workspaceUserProjectService: input.workspaceUserProjectService
-    })
-  );
-
   const agentProviderStatusService = new DesktopAgentProviderStatusService(
     {
       tuttidClient: input.tuttidClient,
@@ -64,6 +49,23 @@ export function registerWorkspaceAgentServices(
   registry.registerInstance(
     IAgentProviderStatusService,
     agentProviderStatusService
+  );
+  bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
+  const workspaceAgentActivityService = new WorkspaceAgentActivityService({
+    ...input,
+    agentProviderStatusService
+  });
+  registry.registerInstance(
+    IWorkspaceAgentActivityService,
+    workspaceAgentActivityService
+  );
+  registry.registerInstance(
+    IWorkspaceAgentPromptSessionService,
+    new WorkspaceAgentPromptSessionService({
+      reporterService: input.reporterService,
+      workspaceAgentActivityService,
+      workspaceUserProjectService: input.workspaceUserProjectService
+    })
   );
   return { agentProviderStatusService };
 }

@@ -129,9 +129,9 @@ func (s *factoryAgentSessionServiceStub) Create(_ context.Context, workspaceID s
 	return agentservice.Session{ID: input.AgentSessionID, Provider: input.Provider}, nil
 }
 
-func (s *factoryAgentSessionServiceStub) SendInput(_ context.Context, _ string, _ string, input agentservice.SendInput) (agentservice.Session, error) {
+func (s *factoryAgentSessionServiceStub) SendInput(_ context.Context, _ string, _ string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
 	s.sendInput = input
-	return agentservice.Session{}, nil
+	return agentservice.SendInputResult{}, nil
 }
 
 func (s *factoryAgentSessionServiceStub) Cancel(_ context.Context, _ string, sessionID string) (agentservice.CancelSessionResult, error) {
@@ -516,6 +516,49 @@ func TestAppFactoryServiceReconcileInterruptedJobsMarksActiveJobsFailed(t *testi
 	}
 	if !reportedSessions["agent-generating"] {
 		t.Fatalf("reported sessions = %#v", reportedSessions)
+	}
+}
+
+func TestPrepareAppFactoryJobInjectsToolchainRoot(t *testing.T) {
+	ctx := context.Background()
+	stateDir := t.TempDir()
+	draftDir := filepath.Join(stateDir, "apps", "factory", "jobs", "job-1", "draft")
+	packageDir := filepath.Join(draftDir, appFactoryPackageRootRelativePath)
+	runtimeDir := filepath.Join(stateDir, "apps", "factory", "jobs", "job-1", "runtime")
+	dataDir := filepath.Join(stateDir, "apps", "factory", "jobs", "job-1", "data")
+	logDir := filepath.Join(stateDir, "apps", "factory", "jobs", "job-1", "logs")
+	for _, dir := range []string{packageDir, runtimeDir, dataDir, logDir} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("create %s: %v", dir, err)
+		}
+	}
+	t.Setenv("TUTTI_STATE_DIR", stateDir)
+	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, stateDir))
+
+	preparePath := filepath.Join(packageDir, "prepare.sh")
+	if err := os.WriteFile(preparePath, []byte(`#!/bin/sh
+printf '%s\n' "$TUTTI_APP_TOOLCHAIN_ROOT" > "$TUTTI_APP_DATA_DIR/toolchain-root.txt"
+`), 0o755); err != nil {
+		t.Fatalf("write prepare.sh: %v", err)
+	}
+
+	err := prepareAppFactoryJob(ctx, workspacebiz.AppFactoryJob{
+		AppID:      "app_1",
+		DraftDir:   draftDir,
+		RuntimeDir: runtimeDir,
+		DataDir:    dataDir,
+		LogDir:     logDir,
+	})
+	if err != nil {
+		t.Fatalf("prepareAppFactoryJob() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dataDir, "toolchain-root.txt"))
+	if err != nil {
+		t.Fatalf("read toolchain root probe: %v", err)
+	}
+	want := filepath.Join(stateDir, "app-toolchains") + "\n"
+	if string(data) != want {
+		t.Fatalf("toolchain root = %q, want %q", data, want)
 	}
 }
 

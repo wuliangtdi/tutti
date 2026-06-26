@@ -45,3 +45,13 @@ test("WorkspaceWorkbench uses temporary dock retention to control app visibility
   );
   assert.match(source, /visibility:\s*retained \? "always" : "when-open"/);
 });
+
+test("WorkspaceWorkbench opens manage agents dialog from agent-manage feature request", () => {
+  assert.match(source, /DesktopAgentProviderManageDialog/);
+  assert.match(source, /request\.feature === "agent-manage"/);
+  assert.match(source, /setAgentProviderManageDialogOpen\(true\)/);
+  assert.match(
+    source,
+    /setAgentProviderManageFocusedProvider\(\s*isDesktopAgentGUIProvider\(request\.provider\) \? request\.provider : null\s*\)/s
+  );
+});

@@ -198,6 +198,90 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	}
 }
 
+func TestServicePutPreservesWindowSnappingWhenOmitted(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{
+		getResult: preferencesbiz.DesktopPreferences{
+			WindowSnappingEnabled:        true,
+			WindowSnappingShortcutPreset: "commandShiftArrows",
+		},
+	}
+	service := Service{Store: store}
+
+	preferences, err := service.Put(context.Background(), PutInput{
+		DefaultAgentProvider: "codex",
+
+		DockIconStyle:       "default",
+		DockPlacement:       "left",
+		Locale:              "zh-CN",
+		MinimizeAnimation:   "scale",
+		SleepPreventionMode: "whileAgentRunning",
+		ThemeSource:         "dark",
+		UpdateChannel:       "stable",
+		UpdatePolicy:        "prompt",
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if !preferences.WindowSnappingEnabled {
+		t.Fatal("Put() window snapping enabled = false, want true")
+	}
+	if preferences.WindowSnappingShortcutPreset != "commandShiftArrows" {
+		t.Fatalf("Put() window snapping shortcut = %q, want commandShiftArrows", preferences.WindowSnappingShortcutPreset)
+	}
+	if !store.putInput.WindowSnappingEnabled {
+		t.Fatal("stored window snapping enabled = false, want true")
+	}
+	if store.putInput.WindowSnappingShortcutPreset != "commandShiftArrows" {
+		t.Fatalf("stored window snapping shortcut = %q, want commandShiftArrows", store.putInput.WindowSnappingShortcutPreset)
+	}
+}
+
+func TestServicePutAppliesWindowSnappingWhenProvided(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{
+		getResult: preferencesbiz.DesktopPreferences{
+			WindowSnappingEnabled:        true,
+			WindowSnappingShortcutPreset: "commandShiftArrows",
+		},
+	}
+	service := Service{Store: store}
+
+	preferences, err := service.Put(context.Background(), PutInput{
+		DefaultAgentProvider: "codex",
+
+		DockIconStyle:       "default",
+		DockPlacement:       "left",
+		Locale:              "zh-CN",
+		MinimizeAnimation:   "scale",
+		SleepPreventionMode: "whileAgentRunning",
+		ThemeSource:         "dark",
+		UpdateChannel:       "stable",
+		UpdatePolicy:        "prompt",
+		WindowSnapping: &DesktopWindowSnappingInput{
+			Enabled:        false,
+			ShortcutPreset: " commandArrows ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if preferences.WindowSnappingEnabled {
+		t.Fatal("Put() window snapping enabled = true, want false")
+	}
+	if preferences.WindowSnappingShortcutPreset != "commandArrows" {
+		t.Fatalf("Put() window snapping shortcut = %q, want commandArrows", preferences.WindowSnappingShortcutPreset)
+	}
+	if store.putInput.WindowSnappingEnabled {
+		t.Fatal("stored window snapping enabled = true, want false")
+	}
+	if store.putInput.WindowSnappingShortcutPreset != "commandArrows" {
+		t.Fatalf("stored window snapping shortcut = %q, want commandArrows", store.putInput.WindowSnappingShortcutPreset)
+	}
+}
+
 func TestServicePutReturnsStoredPreferencesWhenPublishFails(t *testing.T) {
 	t.Parallel()
 

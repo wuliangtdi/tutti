@@ -895,9 +895,11 @@ function systemNoticeFromPayload(
   if (stringRecordValue(payload, "kind") !== "agent_system_notice") {
     return null;
   }
+  const source = stringRecordValue(payload, "source");
   return {
     noticeKind: stringRecordValue(payload, "noticeKind"),
     severity: stringRecordValue(payload, "severity"),
+    ...(source ? { source } : {}),
     title: stringRecordValue(payload, "title"),
     detail: stringRecordValue(payload, "detail"),
     retryable: booleanRecordValue(payload, "retryable")

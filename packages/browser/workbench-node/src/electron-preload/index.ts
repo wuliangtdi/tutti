@@ -5,6 +5,11 @@ import {
   type BrowserNodeBridgeResult
 } from "../bridge/index.ts";
 export { installBrowserNodeLinkInterception } from "./linkInterception.ts";
+export {
+  installBrowserNodeGuestInteractionForwarding,
+  type BrowserNodeGuestInteractionPayload,
+  type BrowserNodeGuestInteractionType
+} from "./interactionForwarding.ts";
 
 export interface InstallBrowserNodeGuestBridgeInput {
   call: (

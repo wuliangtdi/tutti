@@ -1540,7 +1540,7 @@ function PreviewSurface({
     >
       directoryMessage={copy.t("previewDirectoryLabel")}
       emptyMessage={copy.t("previewEmptyLabel")}
-      frameClassName="flex h-60 min-h-60 max-h-60 items-center justify-center overflow-hidden rounded-lg border border-[var(--border-1)] bg-[var(--transparency-block)]"
+      frameClassName="flex h-60 min-h-60 max-h-60 items-center justify-center overflow-hidden rounded-lg bg-[var(--transparency-block)]"
       imageAlt={(entry) => entry.name}
       imageFrameClassName="p-4"
       loadingIndicator={

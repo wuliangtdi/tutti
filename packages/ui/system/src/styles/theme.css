@@ -262,7 +262,7 @@
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.672 0.172 25);
   --destructive-foreground: oklch(0.19 0.01 25);
-  --state-danger: rgb(239 68 68);
+  --state-danger: rgb(244 91 91);
   --state-danger-hover: color-mix(
     in srgb,
     var(--state-danger) 90%,
@@ -270,7 +270,7 @@
   );
   --state-success: rgb(74 222 128);
   --state-warning: rgb(251 146 60);
-  --on-danger: rgb(239 68 68 / 8%);
+  --on-danger: rgb(248 113 113 / 10%);
   --on-danger-hover: color-mix(
     in srgb,
     var(--on-danger) 82%,

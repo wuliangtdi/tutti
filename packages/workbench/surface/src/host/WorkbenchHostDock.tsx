@@ -1906,6 +1906,7 @@ export function WorkbenchHostDock({
                     data-stack-dispatching={
                       stackDispatching ? "true" : undefined
                     }
+                    data-wallpaper-tone={wallpaperTones.get(slot.anchorKey)}
                     onBlur={(event) => {
                       if (!event.currentTarget.contains(event.relatedTarget)) {
                         closeLabelTooltipImmediate(labelTooltipTarget.key);
@@ -2061,6 +2062,7 @@ export function WorkbenchHostDock({
                     promotedNodeId === node.id ? "true" : undefined
                   }
                   data-section-id="minimized"
+                  data-wallpaper-tone={wallpaperTones.get(slot.anchorKey)}
                   onBlur={(event) => {
                     if (!event.currentTarget.contains(event.relatedTarget)) {
                       closeLabelTooltipImmediate(labelTooltipTarget.key);

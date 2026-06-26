@@ -3,17 +3,71 @@ import { ipcRenderer } from "electron";
 // Keep this webview guest preload self-contained. Sandboxed webview preloads
 // cannot reliably require Rollup shared chunks before page scripts run.
 const browserGuestDiagnosticChannel = "browser:guestDiagnostic";
+const browserGuestInteractionHostChannel = "browser-node:guest-interaction";
 const browserGuestOpenUrlChannel = "browser:guestOpenUrl";
 
-installBrowserNodeGuestLinkInterception({
-  reportDiagnostic(diagnostic) {
-    ipcRenderer.send(browserGuestDiagnosticChannel, diagnostic);
-  },
+installBrowserNodeGuestInteractionForwarding({
   scope: globalThis.window,
-  sendOpenUrl(url) {
-    ipcRenderer.send(browserGuestOpenUrlChannel, { url });
+  sendToHost(channel, payload) {
+    ipcRenderer.sendToHost(channel, payload);
   }
 });
+
+// Subframes only need passive interaction pings; keep click behavior changes in
+// the main frame so embedded app frames own their own link handling.
+if (process.isMainFrame) {
+  installBrowserNodeGuestLinkInterception({
+    reportDiagnostic(diagnostic) {
+      ipcRenderer.send(browserGuestDiagnosticChannel, diagnostic);
+    },
+    scope: globalThis.window,
+    sendOpenUrl(url) {
+      ipcRenderer.send(browserGuestOpenUrlChannel, { url });
+    }
+  });
+}
+
+type BrowserNodeGuestInteractionType = "focusin" | "keydown" | "pointerdown";
+
+interface BrowserNodeGuestInteractionPayload {
+  type: BrowserNodeGuestInteractionType;
+}
+
+function installBrowserNodeGuestInteractionForwarding({
+  scope,
+  sendToHost
+}: {
+  scope: Window;
+  sendToHost: (
+    channel: string,
+    payload: BrowserNodeGuestInteractionPayload
+  ) => void;
+}): () => void {
+  const document = scope.document;
+  const records: Array<{
+    listener: EventListener;
+    type: BrowserNodeGuestInteractionType;
+  }> = [];
+
+  for (const type of ["pointerdown", "focusin", "keydown"] as const) {
+    const listener: EventListener = () => {
+      sendToHost(browserGuestInteractionHostChannel, { type });
+    };
+    records.push({ listener, type });
+    document.addEventListener(type, listener, {
+      capture: true,
+      passive: true
+    });
+  }
+
+  return () => {
+    for (const record of records) {
+      document.removeEventListener(record.type, record.listener, {
+        capture: true
+      });
+    }
+  };
+}
 
 function installBrowserNodeGuestLinkInterception({
   reportDiagnostic,

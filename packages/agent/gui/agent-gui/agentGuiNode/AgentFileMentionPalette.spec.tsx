@@ -20,20 +20,19 @@ vi.mock("../../i18n/index", async () => {
     "agentHost.agentGui.mentionEmptyIssues": "暂无任务",
     "agentHost.agentGui.mentionFilterIssue": "任务",
     "agentHost.agentGui.fileMentionSwitchCategory": "切换分类",
+    "agentHost.agentGui.fileMentionNavigateHierarchy": "进入/返回文件夹",
     "agentHost.agentGui.fileMentionSwitchSelection": "切换选中",
     "agentHost.agentGui.contextPickerBrowseFileHint":
       "暂无已打开或 Agent 生成的文件，继续输入文件名可搜索本机文件",
     "agentHost.agentGui.contextPickerBrowseSessionHint":
       "输入内容以搜索我发起的 Agent 会话",
-    "agentHost.agentGui.mentionFileSearchMoreHint":
-      "继续输入文件名可搜索更多本机文件",
     "agentHost.agentGui.mentionGroupOpenedFiles": "我打开的文件",
     "agentHost.agentGui.mentionGroupAgentGeneratedFiles": "Agent 生成的文件",
     "agentHost.agentGui.mentionAgentGeneratedFolderBack": "返回",
     "agentHost.agentGui.mentionNoMatchingFiles": "没有匹配到文件",
     "agentHost.roomIssueNode.issueStatusNotStarted": "未启动",
     "agentHost.roomIssueNode.issueStatusRunning": "执行中",
-    "agentHost.roomIssueNode.issueStatusInProgress": "已推进",
+    "agentHost.roomIssueNode.issueStatusInProgress": "执行中",
     "agentHost.roomIssueNode.issueStatusPendingAcceptance": "待验收",
     "agentHost.roomIssueNode.issueStatusCompleted": "已完成",
     "agentHost.roomIssueNode.issueStatusFailed": "失败",
@@ -168,8 +167,7 @@ describe("AgentFileMentionPalette", () => {
     );
 
     expect(screen.getByText("未启动")).toBeVisible();
-    expect(screen.getByText("执行中")).toBeVisible();
-    expect(screen.getByText("已推进")).toBeVisible();
+    expect(screen.getAllByText("执行中")).toHaveLength(2);
     expect(screen.getByText("待验收")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
     expect(screen.getAllByText("失败")).toHaveLength(1);
@@ -368,17 +366,24 @@ describe("AgentFileMentionPalette", () => {
       "green",
       "red"
     ]);
-    expect(statusTags[0]).toHaveClass("bg-sky-500/10", "text-sky-700");
+    expect(statusTags[0]).toHaveClass(
+      "bg-transparent",
+      "px-0",
+      "text-[var(--status-running)]"
+    );
     expect(statusTags[1]).toHaveClass(
-      "bg-[color:color-mix(in_srgb,var(--color-amber-500)_12%,transparent)]",
-      "text-[var(--color-amber-500)]"
+      "bg-transparent",
+      "px-0",
+      "text-[var(--state-warning)]"
     );
     expect(statusTags[2]).toHaveClass(
-      "bg-[var(--tsh-ui-pill-success-bg)]",
-      "text-[var(--tsh-ui-pill-success-fg)]"
+      "bg-transparent",
+      "px-0",
+      "text-[var(--state-success)]"
     );
     expect(statusTags[8]).toHaveClass(
-      "bg-[var(--on-danger)]",
+      "bg-transparent",
+      "px-0",
       "text-[var(--state-danger)]"
     );
     const selectedOption = screen.getByRole("option", { selected: true });
@@ -398,30 +403,25 @@ describe("AgentFileMentionPalette", () => {
       '[data-agent-mention-user-avatar="true"] img'
     );
     const avatarStack = selectedOption.querySelector(
-      '[data-agent-mention-user-avatar="true"]'
-    )?.parentElement;
-    const userAvatar = selectedOption.querySelector(
-      '[data-agent-mention-user-avatar="true"]'
+      ".rich-text-at-mention-avatar-stack"
     );
     const agentAvatar = selectedOption.querySelector(
       '[data-agent-mention-agent-avatar="true"]'
     );
-    expect(avatarStack).toHaveClass("rich-text-at-mention-avatar-stack");
-    expect(userAvatar).toHaveClass(
-      "rich-text-at-mention-avatar",
-      "rich-text-at-mention-avatar--user"
+    expect(avatarStack).toHaveClass(
+      "rich-text-at-mention-avatar-stack",
+      "rich-text-at-mention-avatar-stack--agent-only"
     );
+    expect(
+      selectedOption.querySelector('[data-agent-mention-user-avatar="true"]')
+    ).toBeNull();
     expect(agentAvatar).toHaveClass(
       "rich-text-at-mention-avatar",
       "rich-text-at-mention-avatar--agent"
     );
-    expect(userAvatarImage).toHaveAttribute(
-      "src",
-      expect.stringContaining("user-avatar-placeholder")
-    );
-    expect(userAvatarImage).toHaveClass(
-      "workspace-agents-status-panel__avatar-img--user-placeholder"
-    );
+    expect(userAvatarImage).toBeNull();
+    expect(selectedOption).toHaveTextContent("Codex");
+    expect(selectedOption).not.toHaveTextContent("Alice & Codex");
   });
 
   it("uses the session provider to resolve agent mention avatars", () => {
@@ -742,72 +742,6 @@ describe("AgentFileMentionPalette", () => {
     expect(screen.queryByText("暂无 Agent 生成的文件")).toBeNull();
   });
 
-  it("shows a search-more hint when the file tab already has visible files", () => {
-    const state: AgentMentionSearchState = {
-      status: "ready",
-      query: "",
-      mode: "browse",
-      filter: "file",
-      categories: [
-        { id: "file", label: "Files" },
-        { id: "app", label: "Apps" },
-        { id: "session", label: "Sessions" },
-        { id: "issue", label: "Issues" }
-      ],
-      groups: [
-        {
-          id: "opened_files",
-          items: [
-            {
-              kind: "file",
-              href: "/workspace/README.md",
-              path: "/workspace/README.md",
-              name: "README.md",
-              entryKind: "unknown",
-              directoryPath: "/workspace"
-            }
-          ],
-          totalCount: 1,
-          visibleCount: 1,
-          hasMore: false
-        },
-        {
-          id: "agent_generated_files",
-          items: [],
-          totalCount: 0,
-          visibleCount: 0,
-          hasMore: false,
-          emptyLabel: "暂无 Agent 生成的文件"
-        }
-      ],
-      error: null
-    };
-
-    render(
-      <AgentFileMentionPalette
-        state={state}
-        highlightedKey={null}
-        label="mention palette"
-        loadingLabel="loading"
-        emptyLabel="empty"
-        errorLabel="error"
-        tabHintLabel="hint"
-        maxHeightPx={320}
-        onHighlightChange={vi.fn()}
-        onSelectItem={vi.fn()}
-        onSelectCategory={vi.fn()}
-        onSelectFilter={vi.fn()}
-        onExpandGroup={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText("README.md")).toBeVisible();
-    expect(screen.getByText("继续输入文件名可搜索更多本机文件")).toBeVisible();
-    expect(
-      screen.queryByTestId("agent-gui-mention-palette-empty-state")
-    ).toBeNull();
-  });
-
   it("hides file subgroup titles while searching on the file tab", () => {
     const state: AgentMentionSearchState = {
       status: "ready",
@@ -1100,9 +1034,11 @@ describe("AgentFileMentionPalette", () => {
       "agent-generated-folder-back"
     );
     expect(backRow).toHaveAttribute("data-agent-file-visual-kind", "back");
-    expect(
-      backRow?.querySelector(".agent-gui-node__mention-file-icon")
-    ).not.toBeNull();
+    const backIcon = backRow?.querySelector(
+      ".agent-gui-node__mention-file-icon.rich-text-at-mention-file-icon--glyph"
+    );
+    expect(backIcon).not.toBeNull();
+    expect(backIcon?.querySelector("svg")).not.toBeNull();
   });
 
   it("renders image mention rows with thumbnails instead of default file icons", () => {
@@ -1325,7 +1261,6 @@ describe("AgentFileMentionPalette", () => {
     expect(source).not.toContain("text-foreground");
     expect(source).not.toContain("text-muted-foreground");
     expect(source).toContain("text-[var(--text-secondary)]");
-    expect(source).toContain("text-[var(--text-tertiary)]");
     expect(rowSource).not.toContain("text-foreground");
     expect(rowSource).not.toContain("text-muted-foreground");
     expect(rowSource).toContain("--rich-text-at-mention-text-primary");
@@ -1822,10 +1757,13 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__bottom-dock\s*{[^}]*align-self:\s*stretch[^}]*width:\s*min\(\s*100%,\s*calc\(\s*var\(--agent-gui-detail-flow-max-width\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\+\s*var\(--agent-gui-detail-padding-x\)\s*\)\s*\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*16px[^}]*margin-left:\s*16px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*8px[^}]*margin-left:\s*8px/s
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*{[^}]*margin-right:\s*36px[^}]*margin-left:\s*36px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome:has\(\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*\)\s*\+\s*\.agent-gui-node__composer\s+\.agent-gui-node__composer-input-group\s*>\s*\.agent-gui-chrome__session-chrome\s*{[^}]*margin-right:\s*24px[^}]*margin-left:\s*24px/s
     );
   });
 
@@ -1840,17 +1778,17 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
-  it("uses package-owned status tokens for agent gui chrome", () => {
+  it("uses shared semantic status tokens for agent gui chrome", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
-      /\.agent-gui-node__shell\s*{[^}]*--agent-gui-package-success:\s*rgb\(34 197 94\)[^}]*--agent-gui-package-warning:\s*rgb\(234 121 8\)[^}]*--agent-gui-package-danger:\s*rgb\(220 38 38\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
+      /\.agent-gui-node__shell\s*{[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-package-warning:\s*var\(--state-warning\)[^}]*--agent-gui-package-danger:\s*var\(--state-danger\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
     );
     expect(css).toMatch(
-      /\[data-testid="workspace-agent-message-center"\]\s*{[^}]*--agent-gui-package-success:\s*rgb\(34 197 94\)[^}]*--agent-gui-package-warning:\s*rgb\(234 121 8\)[^}]*--agent-gui-package-danger:\s*rgb\(220 38 38\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
+      /\[data-testid="workspace-agent-message-center"\]\s*{[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-package-warning:\s*var\(--state-warning\)[^}]*--agent-gui-package-danger:\s*var\(--state-danger\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)[^}]*--agent-gui-warning:\s*var\(--agent-gui-package-warning\)[^}]*--agent-gui-danger:\s*var\(--agent-gui-package-danger\)/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__composer-menu-content\s*{[^}]*--agent-gui-surface-raised:\s*var\(--background-fronted\)[^}]*--agent-gui-border-subtle:\s*var\(--line-2\)[^}]*--agent-gui-package-success:\s*rgb\(34 197 94\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)/s
+      /\.agent-gui-node__composer-menu-content\s*{[^}]*--agent-gui-surface-raised:\s*var\(--background-fronted\)[^}]*--agent-gui-border-subtle:\s*var\(--line-2\)[^}]*--agent-gui-package-success:\s*var\(--state-success\)[^}]*--agent-gui-success:\s*var\(--agent-gui-package-success\)/s
     );
   });
 
@@ -1915,7 +1853,10 @@ describe("AgentFileMentionPalette", () => {
       /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-size="md"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-size="md"\]\s*{[^}]*width:\s*10px[^}]*height:\s*10px/s
     );
     expect(css).toMatch(
-      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-tone="green"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-tone="green"\]\s*{[^}]*--agent-gui-status-dot-color:\s*var\(--agent-gui-success,\s*var\(--state-success\)\)/s
+      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-tone="green"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-tone="green"\]\s*{[^}]*--agent-gui-status-dot-color:\s*var\(--state-success\)/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-tone="red"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-tone="red"\]\s*{[^}]*--agent-gui-status-dot-color:\s*var\(--state-danger\)/s
     );
     expect(css).toMatch(
       /\.agent-gui-node__layout\s+\[data-slot="status-dot"\]\[data-pulse="true"\],\s*\[data-testid="workspace-agent-message-center"\]\s+\[data-slot="status-dot"\]\[data-pulse="true"\]\s*{[^}]*animation:\s*agent-gui-status-dot-pulse\s+1\.8s\s+ease-in-out\s+infinite/s
@@ -2115,7 +2056,7 @@ describe("AgentFileMentionPalette", () => {
       css.match(/\.agent-gui-node__mention-file-icon\s*{[^}]*}/s)?.[0] ?? "";
     const backNavigationIconRule =
       css.match(
-        /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\[data-agent-file-visual-kind="back"\]\s+\.agent-gui-node__mention-file-icon\s*{[^}]*}/s
+        /\[data-agent-file-mention="true"\]\[data-agent-mention-kind="file"\]\[data-agent-file-visual-kind="back"\]\s+\.agent-gui-node__mention-file-icon\.rich-text-at-mention-file-icon--glyph\s*{[^}]*}/s
       )?.[0] ?? "";
 
     expect(shellRule).toMatch(/--agent-mention-file-icon-size:\s*16px/);
@@ -2129,10 +2070,11 @@ describe("AgentFileMentionPalette", () => {
     expect(fileTokenRule).not.toMatch(/height:\s*24px/);
     expect(fileTokenRule).not.toMatch(/min-height:\s*24px/);
     expect(paletteFileIconRule).toMatch(/background-color:\s*var\(--folder\)/);
-    expect(backNavigationIconRule).toMatch(/arrow-left-filled\.svg/);
     expect(backNavigationIconRule).toMatch(
-      /background-color:\s*var\(--text-secondary\)/
+      /\.rich-text-at-mention-file-icon--glyph/
     );
+    expect(backNavigationIconRule).toMatch(/color:\s*currentColor/);
+    expect(backNavigationIconRule).not.toMatch(/arrow-left-filled\.svg/);
     expect(fileIconRule).toMatch(
       /width:\s*var\(--agent-mention-file-icon-size,\s*16px\)/
     );

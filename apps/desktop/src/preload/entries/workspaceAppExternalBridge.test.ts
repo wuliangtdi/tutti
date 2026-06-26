@@ -67,6 +67,53 @@ test("workspace app external bridge subscribes to app context", () => {
   assert.deepEqual(contexts, [context]);
 });
 
+test("workspace app external bridge replays initial launch intent from app context", async () => {
+  const intent = {
+    kind: "open-route" as const,
+    params: { mode: "preview" },
+    route: "/files",
+    state: { selectedPath: "/tmp/a.md" }
+  };
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return {
+          appId: "docs",
+          launchIntent: intent,
+          locale: "en",
+          workspaceId: "workspace-1"
+        };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send: unexpectedSend,
+    subscribeToWorkspaceLaunchIntents() {
+      return () => undefined;
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+  const intents: unknown[] = [];
+
+  const unsubscribe = bridge.workspace.onLaunchIntent((nextIntent) => {
+    intents.push(nextIntent);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  unsubscribe();
+  const unsubscribeAgain = bridge.workspace.onLaunchIntent((nextIntent) => {
+    intents.push(nextIntent);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  unsubscribeAgain();
+  assert.deepEqual(intents, [intent]);
+});
+
 test("workspace app external bridge invokes at query without user activation", async () => {
   const calls: Array<{ channel: string; payload?: unknown }> = [];
   const bridge = createWorkspaceAppExternalBridge({
@@ -136,14 +183,70 @@ test("workspace app external bridge invokes workspace feature open", async () =>
     }
   });
 
-  await bridge.workspace.openFeature({ feature: "message-center" });
+  await bridge.workspace.openFeature({
+    feature: "agent-manage",
+    provider: "codex"
+  });
 
   assert.deepEqual(calls, [
     {
       channel: workspaceAppExternalChannels.workspaceFeatureOpen,
-      payload: { feature: "message-center" }
+      payload: { feature: "agent-manage", provider: "codex" }
     }
   ]);
+});
+
+test("workspace app external bridge sends browser open URL requests", async () => {
+  const calls: Array<{ channel: string; payload?: unknown }> = [];
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => true,
+    send(channel: string, payload?: unknown) {
+      calls.push({ channel, payload });
+    },
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  await bridge.browser.openUrl({ url: "https://example.com/design" });
+
+  assert.deepEqual(calls, [
+    {
+      channel: workspaceAppExternalChannels.browserOpenUrl,
+      payload: { url: "https://example.com/design" }
+    }
+  ]);
+});
+
+test("workspace app external bridge requires activation for browser open URL", () => {
+  const bridge = createWorkspaceAppExternalBridge({
+    appContext: {
+      async get() {
+        return { locale: "en" };
+      },
+      subscribe() {
+        throw new Error("unexpected subscribe");
+      }
+    },
+    isUserActivationActive: () => false,
+    send: unexpectedSend,
+    async invoke() {
+      throw new Error("unexpected invoke");
+    }
+  });
+
+  assert.throws(
+    () => bridge.browser.openUrl({ url: "https://example.com/design" }),
+    /browser\.openUrl requires a user action/
+  );
 });
 
 test("workspace app external bridge requires activation for workspace feature open", () => {

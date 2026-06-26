@@ -4,7 +4,9 @@ import { test } from "node:test";
 import type { ReferenceNode } from "../../../contracts/referenceSource.ts";
 import {
   formatHierarchyTitle,
-  formatReferencePreviewDateTime
+  formatReferenceNodePathText,
+  formatReferencePreviewDateTime,
+  resolveReferencePreviewSizeBytes
 } from "./referenceSourcePickerPresentation.ts";
 
 function folder(nodeId: string, displayName: string): ReferenceNode {
@@ -30,6 +32,26 @@ test("formatHierarchyTitle omits empty hierarchy paths", () => {
   assert.equal(formatHierarchyTitle([]), null);
 });
 
+test("formatReferenceNodePathText renders navigable groups as readable hierarchy labels", () => {
+  const topic = folder("g:topic-id", "213");
+  const group = folder("g:group-id", "2323");
+
+  const pathText = formatReferenceNodePathText(group, [topic]);
+
+  assert.equal(pathText, "213 / 2323");
+  assert.doesNotMatch(pathText, /^g:/);
+});
+
+test("formatReferenceNodePathText does not duplicate the focused group when hierarchy already includes it", () => {
+  const topic = folder("g:topic-id", "213");
+  const group = folder("g:group-id", "2323");
+
+  assert.equal(
+    formatReferenceNodePathText(group, [topic, group]),
+    "213 / 2323"
+  );
+});
+
 test("formatReferencePreviewDateTime formats timestamps in the requested user time zone", () => {
   const timestamp = Date.UTC(2026, 5, 12, 3, 24);
 
@@ -46,5 +68,22 @@ test("formatReferencePreviewDateTime formats timestamps in the requested user ti
       timeZone: "Asia/Shanghai"
     }),
     "2026-06-12 11:24"
+  );
+});
+
+test("resolveReferencePreviewSizeBytes prefers loaded preview bytes over zero metadata", () => {
+  const node = {
+    displayName: "result.css",
+    kind: "file",
+    ref: { sourceId: "issue-file", nodeId: "f:result.css" },
+    sizeBytes: 0
+  } satisfies ReferenceNode;
+
+  assert.equal(
+    resolveReferencePreviewSizeBytes(node, {
+      node,
+      previewSizeBytes: 42
+    }),
+    42
   );
 });

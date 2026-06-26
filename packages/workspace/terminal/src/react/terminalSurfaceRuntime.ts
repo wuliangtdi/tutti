@@ -16,6 +16,7 @@ import type { TerminalNodeFeature } from "../core/feature.ts";
 import { createTerminalScreenStateCache } from "../core/index.ts";
 import type { TerminalSurfaceDiagnostics } from "../core/sessionDiagnostics.ts";
 import { createTerminalFileLinkProvider } from "./terminalFileLinkProvider.ts";
+import { createTerminalImeInputGuard } from "./terminalImeInputGuard.ts";
 import { resolveTerminalSurfaceOutputPlan } from "./terminalSurfaceOutputPlan.ts";
 import { resolveTerminalSurfaceResizePlan } from "./terminalSurfaceResizePlan.ts";
 import { resolveTerminalSurfaceScreenCachePlan } from "./terminalSurfaceScreenCachePlan.ts";
@@ -113,6 +114,12 @@ export function createTerminalSurfaceRuntime(input: {
     })
   );
   terminal.open(input.container);
+  const imeInputGuard = createTerminalImeInputGuard({
+    textarea: terminal.textarea
+  });
+  terminal.attachCustomKeyEventHandler((event) =>
+    imeInputGuard.shouldProcessKeyEvent(event)
+  );
 
   const dataSubscription = terminal.onData((data) => {
     input.onUserInput(data);
@@ -188,6 +195,7 @@ export function createTerminalSurfaceRuntime(input: {
       binarySubscription.dispose();
       writeParsedSubscription.dispose();
       fileLinkDisposable.dispose();
+      imeInputGuard.dispose();
       clearInitialLayoutSync();
       clearPendingReveal();
       const hasPendingWrites =

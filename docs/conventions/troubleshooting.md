@@ -43,6 +43,65 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Desktop dev GUI exits before opening
+
+- Symptom:
+  `make dev-gui` exits during startup before the desktop window is usable. The
+  early form reports `pnpm <version> installation did not succeed`; the later
+  form reaches `start electron app...` and then `make` exits while desktop logs
+  say `secondary tutti instance detected`.
+- Quick checks:
+  Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
+  Electron startup. If full startup exits after `start electron app...`, inspect
+  `~/.tutti-dev/logs/tutti-desktop.log` and check whether `/Applications/Tutti.app`
+  or another Tutti instance is already running.
+- Root cause:
+  Shells launched by tools can put another `pnpm` earlier on `PATH` than
+  corepack's shim, so `corepack prepare` succeeds but the script still validates
+  the wrong `pnpm`. Electron's single-instance lock also follows Electron
+  userData; if development and production share userData, a running production
+  app makes the dev app quit as a secondary instance.
+- Fix:
+  Prefer the corepack shim directory before checking or running `pnpm`, and set
+  development Electron userData to an environment-specific path before
+  requesting the single-instance lock.
+- Validation:
+  Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
+  the packaged app is open and confirm the renderer dev server and development
+  `tuttid` start. Also run `pnpm --filter @tutti-os/desktop test`,
+  `pnpm --filter @tutti-os/desktop typecheck`, and
+  `pnpm check:electron-runtime-boundaries`.
+- References:
+  [dev-gui.sh](../../tools/scripts/dev-gui.sh)
+  [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
+  [defaults.ts](../../apps/desktop/src/main/defaults.ts)
+
+### App Center list requests repeatedly log runtime preload
+
+- Symptom:
+  `tuttid` logs repeated `workspace app runtime preload started` and
+  `workspace app runtime preload completed` lines while App Center is merely
+  open or refreshing, even when the user is not installing an app.
+- Quick checks:
+  Trace the call path from `ListWorkspaceApps` to
+  `AppCenterService.List`. A list or catalog refresh request should not call
+  `AppRunner.PreloadRuntimeForProfile` or the managed runtime resolver.
+- Root cause:
+  Treating App Center list/read requests as an opportunity to prepare runtimes
+  gives a pure read operation hidden background side effects. Frequent renderer
+  refreshes then turn a fast idempotent runtime check into noisy repeated logs.
+- Fix:
+  Keep passive runtime preloading in daemon startup or another explicit
+  runtime-preparation workflow. Install, launch, retry, and enabled-app start
+  paths may still resolve runtimes because they actually need executable app
+  runtimes.
+- Validation:
+  Add or run service coverage that `AppCenterService.List` returns visible
+  uninstalled apps without invoking the runtime resolver.
+- References:
+  [apps.go](../../services/tuttid/service/workspace/apps.go)
+  [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:
@@ -841,3 +900,34 @@ information is not available yet`, but `ps` or `lsof` still shows an older
 - References:
   [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
+
+### Browser Node focus pings miss iframe-hosted editors
+
+- Symptom:
+  Clicking or typing inside a workspace app selects text or edits content, but
+  the owning Browser Node does not become the active node. This commonly shows
+  up in rich document editors that render the editable surface inside a
+  same-origin `iframe` or `srcdoc` frame.
+- Quick checks:
+  Inspect whether the app portals or mounts its editor into an iframe document.
+  If the top-level workspace app preload listens on `window.document` only, the
+  host will not receive pointer, focus, or keyboard pings from that child frame.
+- Root cause:
+  DOM events do not bubble from iframe documents to the parent document. Electron
+  webview preloads also do not run in subframes unless the host enables
+  `nodeIntegrationInSubFrames`, so iframe-hosted editors can interact normally
+  while the Browser Node focus bridge stays silent.
+- Fix:
+  Enable subframe preload execution only for host-controlled Browser Node or
+  workspace app guest preloads. Keep privileged workspace app bridges, such as
+  `tuttiExternal`, and behavior-changing guest logic, such as `_blank` link
+  interception, main-frame-only via `process.isMainFrame`. Install only passive
+  interaction forwarding in subframes.
+- Validation:
+  Run Browser Node and desktop preload tests, desktop typecheck, and the desktop
+  build. For workspace app preloads, inspect the built preload output so the
+  guest files remain self-contained.
+- References:
+  [webviewSecurity.ts](../../packages/browser/workbench-node/src/electron-main/webviewSecurity.ts)
+  [workspaceApp.ts](../../apps/desktop/src/preload/entries/workspaceApp.ts)
+  [workspaceAppInteractionForwarding.ts](../../apps/desktop/src/preload/entries/workspaceAppInteractionForwarding.ts)

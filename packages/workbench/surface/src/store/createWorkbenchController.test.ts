@@ -55,6 +55,11 @@ test("commands match dispatch paths", () => {
     nodeIDs: ["b"],
     preset: { kind: "column" }
   });
+  viaCommand.commands.applyVisibleLayoutPreset({ kind: "balanced" });
+  viaDispatch.dispatch({
+    type: "applyVisibleLayoutPreset",
+    preset: { kind: "balanced" }
+  });
 
   viaCommand.commands.setActiveSnapTarget("top");
   viaDispatch.dispatch({

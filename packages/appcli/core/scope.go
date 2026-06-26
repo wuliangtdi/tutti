@@ -44,6 +44,10 @@ type RegisteredApp struct {
 	Commands []Command
 }
 
+type CapabilityListOptions struct {
+	IncludeIntegration bool
+}
+
 type CommandRef struct {
 	AppID     string
 	CommandID string
@@ -123,9 +127,13 @@ func (s *ScopeSet) Remove(appID string) {
 	s.recompute()
 }
 
-func (s *ScopeSet) Capabilities() []Capability {
+func (s *ScopeSet) Capabilities(options ...CapabilityListOptions) []Capability {
 	if s == nil || len(s.entries) == 0 {
 		return []Capability{}
+	}
+	includeIntegration := false
+	if len(options) > 0 {
+		includeIntegration = options[0].IncludeIntegration
 	}
 	appIDs := make([]string, 0, len(s.entries))
 	for appID := range s.entries {
@@ -139,6 +147,9 @@ func (s *ScopeSet) Capabilities() []Capability {
 			continue
 		}
 		for _, command := range entry.Commands {
+			if !includeIntegration && NormalizeVisibility(command.Capability.Visibility) == CommandVisibilityIntegration {
+				continue
+			}
 			result = append(result, command.Capability)
 		}
 	}

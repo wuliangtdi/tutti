@@ -574,11 +574,67 @@ describe("AgentMentionSearchController", () => {
     expect(queryWorkspaceApps).toHaveBeenCalledWith({
       workspaceId: "room-1",
       query: "",
-      limit: 10
+      limit: undefined
     });
     expect(queryFiles).not.toHaveBeenCalled();
     expect(queryIssues).not.toHaveBeenCalled();
     expect(querySessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders all workspace apps without mention pagination", async () => {
+    const apps = Array.from({ length: 12 }, (_, index) => ({
+      appId: `app-${index + 1}`,
+      name: `App ${index + 1}`,
+      description: `Workspace app ${index + 1}`,
+      workspaceId: "room-1"
+    }));
+    const queryWorkspaceApps = vi.fn().mockResolvedValue({ apps });
+    const controller = new AgentMentionSearchController({
+      queryWorkspaceApps,
+      queryFiles: vi.fn().mockResolvedValue({
+        workspaceId: "room-1",
+        root: "/workspace",
+        entries: []
+      }),
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] })
+    });
+    const states: any[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("app");
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "app",
+        groups: [
+          expect.objectContaining({
+            id: "apps",
+            totalCount: 12,
+            visibleCount: 12,
+            hasMore: false
+          })
+        ]
+      })
+    );
+    expect(states.at(-1).groups[0].items).toHaveLength(12);
+    expect(queryWorkspaceApps).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      query: "",
+      limit: undefined
+    });
   });
 
   it("reuses fresh browse results when the mention palette reopens", async () => {
@@ -2853,7 +2909,7 @@ describe("AgentMentionSearchController", () => {
     expect(queryWorkspaceApps).toHaveBeenCalledWith({
       workspaceId: "room-1",
       query: "design",
-      limit: 10
+      limit: undefined
     });
     expect(queryFiles).not.toHaveBeenCalled();
     expect(queryIssues).not.toHaveBeenCalled();

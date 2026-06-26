@@ -44,7 +44,7 @@ test("zh-CN task terminology and status labels use requested copy", () => {
   assert.equal(copy.t("labels.searchIssues"), "搜索任务");
   assert.equal(copy.t("labels.subtasks"), "子任务");
   assert.equal(copy.t("labels.taskAcceptance"), "任务待验收");
-  assert.equal(copy.t("labels.taskCount", { count: 7 }), "7子任务");
+  assert.equal(copy.t("labels.taskCount", { count: 7 }), "7 个子任务");
   assert.equal(copy.t("labels.taskDetails"), "任务详情");
   assert.equal(copy.t("labels.taskList"), "任务");
   assert.equal(copy.t("messages.noIssues"), "还没有任务");

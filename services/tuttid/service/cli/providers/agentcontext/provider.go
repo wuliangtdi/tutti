@@ -23,11 +23,12 @@ type AgentSessions interface {
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
 	GetComposerOptions(context.Context, agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error)
+	GetSkillBundle(context.Context, string, agentservice.SkillBundleInput) (agentservice.SkillBundle, error)
 	List(context.Context, string) ([]agentservice.Session, error)
 	ListActivePeers(context.Context, string) (agentservice.ActivePeers, error)
 	ListMessages(context.Context, string, string, agentservice.ListMessagesInput) (agentservice.SessionMessagesPage, error)
 	ListProviderAvailability(context.Context, agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error)
-	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.Session, error)
+	SendInput(context.Context, string, string, agentservice.SendInput) (agentservice.SendInputResult, error)
 }
 
 type AgentGUILaunchPublisher interface {
@@ -75,6 +76,7 @@ func (p Provider) Commands() []cliservice.Command {
 	return []cliservice.Command{
 		p.newProvidersCommand(),
 		p.newComposerOptionsCommand(),
+		p.newSkillBundleCommand(),
 		p.newProviderStartCommand(providerStartCommandSpec{
 			AppID:       codexAgentAppID,
 			AppName:     "Codex",

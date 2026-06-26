@@ -107,7 +107,9 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		return 1
 	}
 	invokeContext := cliInvokeContextFromEnv()
-	capabilities, err := client.ListCapabilitiesForWorkspace(ctx, invokeContext.WorkspaceID)
+	capabilities, err := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
+		IncludeIntegration: includeIntegrationCapabilitiesFromEnv(),
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %v\n", commandName, strings.Join(args, " "), err)
 		return 1
@@ -158,13 +160,20 @@ func runHelp(ctx context.Context, commandName string, stdout io.Writer) int {
 	client, err := discoverClient()
 	if err == nil {
 		invokeContext := cliInvokeContextFromEnv()
-		capabilities, listErr := client.ListCapabilitiesForWorkspace(ctx, invokeContext.WorkspaceID)
+		capabilities, listErr := client.ListCapabilitiesForWorkspaceWithOptions(ctx, invokeContext.WorkspaceID, daemon.CapabilityListOptions{
+			IncludeIntegration: includeIntegrationCapabilitiesFromEnv(),
+		})
 		if listErr == nil {
 			commands = capabilities.Commands
 		}
 	}
 	printHelp(stdout, commandName, commands)
 	return 0
+}
+
+func includeIntegrationCapabilitiesFromEnv() bool {
+	return strings.TrimSpace(os.Getenv("TUTTI_APP_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("TUTTI_CLI")) != ""
 }
 
 func cliInvokeContextFromEnv() daemon.InvokeContext {
@@ -242,6 +251,17 @@ func parseCommandInput(command daemon.Capability, args []string) (map[string]any
 		}
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("invalid flag %q", arg)
+		}
+		if existing, ok := input[name]; ok {
+			switch typed := existing.(type) {
+			case []string:
+				input[name] = append(typed, value)
+			case string:
+				input[name] = []string{typed, value}
+			default:
+				input[name] = value
+			}
+			continue
 		}
 		input[name] = value
 	}
@@ -385,6 +405,7 @@ func printHelp(stdout io.Writer, commandName string, commands []daemon.Capabilit
 	rows := []helpCommandRow{{Name: "status", Summary: "Show local tuttid status"}}
 	rows = append(rows, rootHelpRows(commands)...)
 	printHelpRows(stdout, rows)
+	printIntegrationOnlyNotice(stdout, commands)
 }
 
 func printCommandPrefixHelp(stdout io.Writer, commandName string, prefix []string, commands []daemon.Capability) bool {
@@ -396,6 +417,7 @@ func printCommandPrefixHelp(stdout io.Writer, commandName string, prefix []strin
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, "Commands:")
 	printHelpRows(stdout, prefixHelpRows(prefix, matches))
+	printIntegrationOnlyNotice(stdout, matches)
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(stdout, "Use \"%s %s <command> --help\" for command details.\n", commandName, strings.Join(prefix, " "))
 	printDocumentationHints(stdout, matches)
@@ -423,6 +445,7 @@ func printDynamicCommandHelp(stdout io.Writer, commandName string, command daemo
 		}
 		fmt.Fprintln(stdout, command.Description)
 	}
+	printIntegrationOnlyNotice(stdout, []daemon.Capability{command})
 	if len(flags) == 0 {
 		printDocumentationHints(stdout, []daemon.Capability{command})
 		return
@@ -450,15 +473,18 @@ func printDynamicCommandHelp(stdout io.Writer, commandName string, command daemo
 }
 
 type helpCommandRow struct {
-	Name    string
-	Summary string
+	Name                    string
+	Summary                 string
+	IntegrationOnly         bool
+	IncludesIntegrationOnly bool
 }
 
 func rootHelpRows(commands []daemon.Capability) []helpCommandRow {
 	type group struct {
-		count       int
-		summary     string
-		description string
+		count            int
+		integrationCount int
+		summary          string
+		description      string
 	}
 	groups := map[string]group{}
 	for _, command := range commands {
@@ -471,6 +497,9 @@ func rootHelpRows(commands []daemon.Capability) []helpCommandRow {
 		}
 		current := groups[name]
 		current.count++
+		if isIntegrationCapability(command) {
+			current.integrationCount++
+		}
 		if len(command.Path) == 1 && current.summary == "" {
 			current.summary = command.Summary
 		}
@@ -494,7 +523,12 @@ func rootHelpRows(commands []daemon.Capability) []helpCommandRow {
 		if item.description != "" && item.count > 0 {
 			summary = fmt.Sprintf("%s  %d commands", item.description, item.count)
 		}
-		rows = append(rows, helpCommandRow{Name: name, Summary: summary})
+		rows = append(rows, helpCommandRow{
+			Name:                    name,
+			Summary:                 summary,
+			IntegrationOnly:         item.count > 0 && item.integrationCount == item.count,
+			IncludesIntegrationOnly: item.integrationCount > 0 && item.integrationCount < item.count,
+		})
 	}
 	return rows
 }
@@ -532,8 +566,9 @@ func matchingPrefixCommands(commands []daemon.Capability, prefix []string) []dae
 
 func prefixHelpRows(prefix []string, commands []daemon.Capability) []helpCommandRow {
 	type group struct {
-		count   int
-		summary string
+		count            int
+		integrationCount int
+		summary          string
 	}
 	groups := map[string]group{}
 	for _, command := range commands {
@@ -544,6 +579,9 @@ func prefixHelpRows(prefix []string, commands []daemon.Capability) []helpCommand
 		name := remaining[0]
 		current := groups[name]
 		current.count++
+		if isIntegrationCapability(command) {
+			current.integrationCount++
+		}
 		if len(remaining) == 1 && current.summary == "" {
 			current.summary = command.Summary
 		}
@@ -561,7 +599,12 @@ func prefixHelpRows(prefix []string, commands []daemon.Capability) []helpCommand
 		if summary == "" {
 			summary = fmt.Sprintf("%d commands", item.count)
 		}
-		rows = append(rows, helpCommandRow{Name: name, Summary: summary})
+		rows = append(rows, helpCommandRow{
+			Name:                    name,
+			Summary:                 summary,
+			IntegrationOnly:         item.count > 0 && item.integrationCount == item.count,
+			IncludesIntegrationOnly: item.integrationCount > 0 && item.integrationCount < item.count,
+		})
 	}
 	return rows
 }
@@ -574,8 +617,36 @@ func printHelpRows(stdout io.Writer, rows []helpCommandRow) {
 		}
 	}
 	for _, row := range rows {
-		fmt.Fprintf(stdout, "  %-*s  %s\n", width, row.Name, row.Summary)
+		summary := row.Summary
+		switch {
+		case row.IntegrationOnly:
+			summary += " [integration-only]"
+		case row.IncludesIntegrationOnly:
+			summary += " [includes integration-only]"
+		}
+		fmt.Fprintf(stdout, "  %-*s  %s\n", width, row.Name, summary)
 	}
+}
+
+func printIntegrationOnlyNotice(stdout io.Writer, commands []daemon.Capability) {
+	if !hasIntegrationCapability(commands) {
+		return
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Integration-only commands are app-runtime plumbing. Do not expose or forward them as ordinary user or Agent actions; prefer public app commands.")
+}
+
+func hasIntegrationCapability(commands []daemon.Capability) bool {
+	for _, command := range commands {
+		if isIntegrationCapability(command) {
+			return true
+		}
+	}
+	return false
+}
+
+func isIntegrationCapability(command daemon.Capability) bool {
+	return strings.TrimSpace(command.Visibility) == "integration"
 }
 
 func printDocumentationHints(stdout io.Writer, commands []daemon.Capability) {

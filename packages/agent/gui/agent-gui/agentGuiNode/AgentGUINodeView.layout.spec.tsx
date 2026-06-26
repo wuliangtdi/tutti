@@ -258,13 +258,22 @@ describe("AgentGUINodeView layout persistence", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
+      /\.agent-gui-node__rail-panel\s*\{[^}]*border-right:\s*1px\s+solid\s+var\(--agent-gui-border-subtle,\s*var\(--line-2\)\);/s
+    );
+    expect(css).toMatch(
       /\.room-issue-node__search-field\s*{[^}]*position:\s*relative[^}]*min-width:\s*0/s
     );
     expect(css).toMatch(
-      /\.room-issue-node__search-input\s*{[^}]*width:\s*100%[^}]*padding-right:\s*36px/s
+      /\.agent-gui-node__rail-toolbar\s*\{[^}]*--agent-gui-rail-control-radius:\s*6px;/s
+    );
+    expect(css).toMatch(
+      /\.room-issue-node__search-input\s*{[^}]*width:\s*100%[^}]*height:\s*32px\s*!important;[^}]*min-height:\s*32px;[^}]*max-height:\s*32px;[^}]*border:\s*0\s*!important;[^}]*border-radius:\s*var\(--agent-gui-rail-control-radius\)\s*!important;[^}]*font-size:\s*13px\s*!important;[^}]*line-height:\s*18px;[^}]*appearance:\s*none;/s
     );
     expect(css).toMatch(
       /\.room-issue-node__search-clear-button\s*{[^}]*position:\s*absolute[^}]*right:\s*4px[^}]*width:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__new-conversation-icon-button\s*\{[^}]*height:\s*32px;[^}]*min-height:\s*32px;[^}]*max-height:\s*32px;[^}]*border:\s*0\s*!important;[^}]*border-radius:\s*var\(--agent-gui-rail-control-radius\)\s*!important;[^}]*font-size:\s*13px;/s
     );
   });
 
@@ -439,6 +448,10 @@ describe("AgentGUINodeView layout persistence", () => {
     if (!newConversationButton) {
       throw new Error("Expected toolbar new conversation button to render.");
     }
+    expect(newConversationButton).toHaveAttribute("data-size", "dialog");
+    expect(
+      newConversationButton.querySelector("path")?.getAttribute("d")
+    ).toContain("M20 2C20.7957 2");
 
     fireEvent.click(newConversationButton);
 
@@ -557,16 +570,26 @@ describe("AgentGUINodeView layout persistence", () => {
       throw new Error("Expected project section to render.");
     }
 
-    const tooltips = Array.from(
+    const tooltipTriggers = Array.from(
       projectSection.querySelectorAll(
-        ".agent-gui-node__conversation-section-action-tooltip"
+        ".agent-gui-node__conversation-section-action-tooltip-wrap"
       )
     );
 
-    expect(tooltips.map((tooltip) => tooltip.textContent)).toEqual([
-      "projectSectionEdit",
-      "projectSectionMoreActions"
-    ]);
+    expect(tooltipTriggers).toHaveLength(2);
+    expect(
+      projectSection.querySelector(
+        ".agent-gui-node__conversation-section-action-tooltip"
+      )
+    ).toBeNull();
+
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    expect(css).toMatch(
+      /\.agent-gui-node__rail-panel\s*\{[^}]*overflow:\s*visible;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__conversation-section-action-tooltip\s*\{[^}]*max-width:\s*180px;[^}]*white-space:\s*nowrap;/s
+    );
   });
 
   it("hides the project rail header when the project selector is disabled", () => {
@@ -1341,20 +1364,34 @@ describe("AgentGUINodeView provider setup notice", () => {
     const notice = screen.getByTestId("agent-gui-provider-setup-notice");
     expect(notice).toHaveTextContent("installRequiredPlaceholder");
     expect(notice).toHaveAttribute("role", "status");
+    expect(notice).toHaveAttribute("data-slot", "toast");
     expect(
       screen.getByTestId("agent-gui-provider-setup-notice-action")
     ).toHaveTextContent("installRequiredAction");
   });
 
-  it("keeps breathing room above the setup notice", () => {
+  it("floats the setup notice above the detail content without affecting layout", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
     const setupNoticeRule = css.match(
       /\.agent-gui-node__provider-setup-notice\s*{[^}]*}/s
     )?.[0];
 
+    expect(setupNoticeRule).toContain("position: absolute;");
+    expect(setupNoticeRule).toContain("top: 8px;");
     expect(setupNoticeRule).toContain(
-      "margin: 16px var(--agent-gui-detail-padding-x) 8px;"
+      "left: var(--agent-gui-detail-padding-x);"
     );
+    expect(setupNoticeRule).toContain("z-index: 2;");
+    expect(setupNoticeRule).toContain("width: max-content;");
+    expect(setupNoticeRule).toMatch(
+      /max-width:\s*min\(\s*calc\(100% - \(var\(--agent-gui-detail-padding-x\) \* 2\)\),\s*420px\s*\);/s
+    );
+    expect(setupNoticeRule).toContain("margin: 0;");
+    expect(setupNoticeRule).not.toContain("background:");
+    expect(css).toContain(
+      ".agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice"
+    );
+    expect(css).toContain("top: calc(64px + 4px);");
   });
 
   it("hides the setup notice when the provider is ready", () => {

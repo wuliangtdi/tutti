@@ -203,6 +203,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 	command.Stderr = logFile
 	tuttiCLIShim := tuttiCLIShimPath()
 	tuttiAPIBaseURL := tuttiAPIBaseURLFromEnv()
+	appToolchainRoot := tuttiAppToolchainRoot()
 	envOverrides := []string{
 		"TUTTI_APP_ID=" + input.AppID,
 		"TUTTI_WORKSPACE_ID=" + input.WorkspaceID,
@@ -213,6 +214,7 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		"TUTTI_APP_RUNTIME_DIR=" + input.RuntimeDir,
 		"TUTTI_APP_DATA_DIR=" + input.DataDir,
 		"TUTTI_APP_LOG_DIR=" + input.LogDir,
+		"TUTTI_APP_TOOLCHAIN_ROOT=" + appToolchainRoot,
 		"TUTTI_APP_PORT=" + strconv.Itoa(port),
 		"TUTTI_APP_BASE_URL=http://127.0.0.1:" + strconv.Itoa(port),
 		"TUTTI_API_BASE_URL=" + tuttiAPIBaseURL,
@@ -357,9 +359,14 @@ func (r *AppRunner) StopWorkspace(ctx context.Context, workspaceID string) {
 			keys = append(keys, key)
 		}
 	}
+	for key := range r.states {
+		if appRuntimeWorkspaceIDFromKey(key) == workspaceID {
+			keys = append(keys, key)
+		}
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		appID := appRuntimeAppIDFromKey(key)
 		_, _ = r.Stop(ctx, workspaceID, appID)
 	}
@@ -385,9 +392,14 @@ func (r *AppRunner) StopApp(ctx context.Context, appID string) {
 			keys = append(keys, key)
 		}
 	}
+	for key := range r.states {
+		if appRuntimeAppIDFromKey(key) == appID {
+			keys = append(keys, key)
+		}
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		_, _ = r.Stop(ctx, appRuntimeWorkspaceIDFromKey(key), appID)
 	}
 }
@@ -403,21 +415,33 @@ func (r *AppRunner) StopAll(ctx context.Context) {
 	for key := range r.starts {
 		keys = append(keys, key)
 	}
+	for key := range r.states {
+		keys = append(keys, key)
+	}
 	r.mu.Unlock()
 
-	for _, key := range keys {
+	for _, key := range uniqueRuntimeKeys(keys) {
 		_, _ = r.Stop(ctx, appRuntimeWorkspaceIDFromKey(key), appRuntimeAppIDFromKey(key))
 	}
 }
 
 func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appProcess) (workspacebiz.AppRuntimeState, error) {
 	r.mu.Lock()
+	currentProcess := r.processes[key]
+	current := r.states[key]
+	if currentProcess != nil && currentProcess != process {
+		r.mu.Unlock()
+		return currentRuntimeStateOrIdle(current), nil
+	}
+	if currentProcess == nil {
+		r.mu.Unlock()
+		return currentRuntimeStateOrIdle(current), nil
+	}
 	if process.stopRequested {
 		r.mu.Unlock()
-		return r.State(appRuntimeWorkspaceIDFromKey(key), appRuntimeAppIDFromKey(key)), nil
+		return currentRuntimeStateOrIdle(current), nil
 	}
 	process.stopRequested = true
-	current := r.states[key]
 	stoppingState := withRuntimeUpdated(workspacebiz.AppRuntimeState{
 		Status:          workspacebiz.AppRuntimeStatusStopping,
 		LaunchURL:       current.LaunchURL,
@@ -425,6 +449,7 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 		FailureReason:   current.FailureReason,
 		LastError:       current.LastError,
 		StartedAtUnixMs: current.StartedAtUnixMs,
+		PackageDir:      current.PackageDir,
 	})
 	r.states[key] = stoppingState
 	r.mu.Unlock()
@@ -437,22 +462,64 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 	select {
 	case <-process.done:
 	case <-ctx.Done():
-		return r.setFailed(key, "stop", ctx.Err()), ctx.Err()
+		_ = killAppProcess(process.command)
+		select {
+		case <-process.done:
+		case <-time.After(500 * time.Millisecond):
+		}
+		return r.setStoppedProcessFailed(key, process, "stop", ctx.Err()), ctx.Err()
 	case <-time.After(2 * time.Second):
 		_ = killAppProcess(process.command)
 		select {
 		case <-process.done:
-			return r.setState(key, workspacebiz.AppRuntimeState{
-				Status: workspacebiz.AppRuntimeStatusIdle,
-			}), nil
+			return r.setStoppedProcessIdle(key, process), nil
 		case <-time.After(500 * time.Millisecond):
 		}
-		return r.setFailed(key, "stop", errors.New("timed out stopping app process")), nil
+		return r.setStoppedProcessFailed(key, process, "stop", errors.New("timed out stopping app process")), nil
 	}
 
-	return r.setState(key, workspacebiz.AppRuntimeState{
+	return r.setStoppedProcessIdle(key, process), nil
+}
+
+func (r *AppRunner) setStoppedProcessIdle(key string, process *appProcess) workspacebiz.AppRuntimeState {
+	return r.setStoppedProcessTerminalState(key, process, workspacebiz.AppRuntimeState{
 		Status: workspacebiz.AppRuntimeStatusIdle,
-	}), nil
+	})
+}
+
+func (r *AppRunner) setStoppedProcessFailed(key string, process *appProcess, failureReason string, err error) workspacebiz.AppRuntimeState {
+	message := err.Error()
+	return r.setStoppedProcessTerminalState(key, process, workspacebiz.AppRuntimeState{
+		Status:        workspacebiz.AppRuntimeStatusFailed,
+		FailureReason: &failureReason,
+		LastError:     &message,
+	})
+}
+
+func (r *AppRunner) setStoppedProcessTerminalState(key string, process *appProcess, next workspacebiz.AppRuntimeState) workspacebiz.AppRuntimeState {
+	r.mu.Lock()
+	currentProcess := r.processes[key]
+	current := r.states[key]
+	if currentProcess != nil && currentProcess != process {
+		r.mu.Unlock()
+		return currentRuntimeStateOrIdle(current)
+	}
+	if currentProcess == nil && current.Status != workspacebiz.AppRuntimeStatusStopping {
+		r.mu.Unlock()
+		return currentRuntimeStateOrIdle(current)
+	}
+	state := withRuntimeUpdated(next)
+	r.states[key] = state
+	r.mu.Unlock()
+	r.notifyStateChanged(key, state)
+	return state
+}
+
+func currentRuntimeStateOrIdle(state workspacebiz.AppRuntimeState) workspacebiz.AppRuntimeState {
+	if state.Status == "" {
+		return workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusIdle}
+	}
+	return state
 }
 
 func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapPath string, port int, appRuntime ResolvedAppRuntime, env []string) {
@@ -473,6 +540,7 @@ func writeAppStartupDiagnostic(logFile *os.File, input AppStartInput, bootstrapP
 	_, _ = fmt.Fprintf(logFile, "  packageDir=%s\n", input.PackageDir)
 	_, _ = fmt.Fprintf(logFile, "  dataDir=%s\n", input.DataDir)
 	_, _ = fmt.Fprintf(logFile, "  logDir=%s\n", input.LogDir)
+	_, _ = fmt.Fprintf(logFile, "  toolchainRoot=%s\n", appRuntimeEnvValue(env, "TUTTI_APP_TOOLCHAIN_ROOT"))
 	_, _ = fmt.Fprintf(logFile, "  host=127.0.0.1\n")
 	_, _ = fmt.Fprintf(logFile, "  port=%d\n", port)
 	_, _ = fmt.Fprintf(logFile, "  path=%s\n", appRuntimeEnvValue(env, "PATH"))
@@ -673,6 +741,22 @@ func (r *AppRunner) ensure() {
 	}
 }
 
+func uniqueRuntimeKeys(keys []string) []string {
+	if len(keys) < 2 {
+		return keys
+	}
+	seen := make(map[string]struct{}, len(keys))
+	result := keys[:0]
+	for _, key := range keys {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, key)
+	}
+	return result
+}
+
 func allocateLoopbackPort() (int, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -689,6 +773,10 @@ func allocateLoopbackPort() (int, error) {
 
 func tuttiCLIShimPath() string {
 	return tuttiCLIShimPathForPlatform(runtime.GOOS)
+}
+
+func tuttiAppToolchainRoot() string {
+	return filepath.Join(tuttitypes.DefaultStateDir(), "app-toolchains")
 }
 
 func appRuntimePathWithCLIShim(appRuntime ResolvedAppRuntime, cliShimPath string) string {

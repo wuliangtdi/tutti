@@ -273,7 +273,7 @@ function conversationMetaKind(
   if (conversation.status === "failed") {
     return "failed";
   }
-  if (conversation.status === "completed" && conversation.hasUnreadCompletion) {
+  if (conversation.hasUnreadCompletion) {
     return "unread-complete";
   }
   return "time";

@@ -176,7 +176,7 @@ function UnderlineTabs<TValue extends string>({
                 }}
                 aria-selected={isActive}
                 className={cn(
-                  "relative inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap border-0 bg-transparent p-0 text-[13px] font-semibold leading-6 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none",
+                  "relative inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap border-0 bg-transparent p-0 text-[13px] font-medium leading-6 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] focus-visible:outline-none",
                   isActive && "text-[var(--tutti-purple)]"
                 )}
                 data-active={isActive ? "true" : "false"}
@@ -193,7 +193,7 @@ function UnderlineTabs<TValue extends string>({
               >
                 <span>{tab.label}</span>
                 {tab.count !== undefined ? (
-                  <span className="text-[11px] font-semibold leading-6 text-[inherit]">
+                  <span className="text-[11px] font-medium leading-6 text-[inherit]">
                     {tab.count}
                   </span>
                 ) : null}

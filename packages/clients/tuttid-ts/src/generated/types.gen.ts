@@ -72,6 +72,8 @@ export type CliCapabilitySource = {
   documentationPath?: string | null;
 };
 
+export type CliCapabilityVisibility = "public" | "integration";
+
 /**
  * Stable command metadata exposed by the local CLI capability protocol.
  */
@@ -92,6 +94,7 @@ export type CliCapability = {
    * Optional longer human-readable command description.
    */
   description?: string | null;
+  visibility?: CliCapabilityVisibility;
   /**
    * Optional JSON Schema fragment describing accepted command input.
    */
@@ -245,7 +248,17 @@ export type DesktopPreferences = {
   themeSource: DesktopThemeSource;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
+  workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
 };
+
+export type DesktopWorkbenchWindowSnapping = {
+  enabled: boolean;
+  shortcutPreset: DesktopWorkbenchWindowSnappingShortcutPreset;
+};
+
+export type DesktopWorkbenchWindowSnappingShortcutPreset =
+  | "commandArrows"
+  | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
   model?: string;
@@ -982,6 +995,8 @@ export type WorkspaceAgentSession = {
   providerSessionId?: string | null;
   cwd: string | null;
   status: WorkspaceAgentSessionStatus;
+  turnLifecycle?: AgentActivityTurnLifecycle;
+  submitAvailability?: AgentActivitySubmitAvailability;
   visible: boolean;
   settings?: AgentSessionComposerSettings;
   permissionConfig?: PermissionConfig;
@@ -1011,6 +1026,38 @@ export type WorkspaceAgentSessionCancelResult = {
   reason: "active_turn_canceled" | "no_active_turn" | "stale_turn_reconciled";
 };
 
+export type SendWorkspaceAgentSessionInputResponse = {
+  session: WorkspaceAgentSession;
+  turnId: string;
+  turnLifecycle: AgentActivityTurnLifecycle;
+  submitAvailability: AgentActivitySubmitAvailability;
+};
+
+export type AgentActivityTurnLifecycle = {
+  activeTurnId: string | null;
+  phase: string;
+  settling?: boolean;
+  outcome?: string | null;
+  completedCommand?: AgentActivityCompletedCommand;
+};
+
+export type AgentActivityCompletedCommand = {
+  kind: string;
+  status: string;
+};
+
+export type AgentActivitySubmitAvailability = {
+  state: string;
+  reason?: string;
+};
+
+export type AgentActivityMessageSemantics = {
+  userVisibleAssistantResponse?: boolean;
+  turnSettling?: boolean;
+  noticeCommand?: string;
+  noticeCommandStatus?: string;
+};
+
 export type WorkspaceAgentSessionMessage = {
   id: number;
   agentSessionId: string;
@@ -1019,6 +1066,7 @@ export type WorkspaceAgentSessionMessage = {
   role: string;
   kind: string;
   status?: string;
+  semantics?: AgentActivityMessageSemantics;
   payload?: {
     [key: string]: unknown;
   };
@@ -1145,6 +1193,12 @@ export type CreateWorkspaceAgentSessionRequest = {
    * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
    */
   initialDisplayPrompt?: string | null;
+  /**
+   * Optional client-provided diagnostic metadata for the first turn, such as submit trace ids. This metadata is not provider prompt content.
+   */
+  metadata?: {
+    [key: string]: unknown;
+  };
   title?: string | null;
   cwd?: string | null;
   permissionModeId?: string | null;
@@ -1162,6 +1216,12 @@ export type SendWorkspaceAgentSessionInputRequest = {
    * Optional display-only text shown in the conversation (e.g. a folder bundle rendered as one chip while content carries the expanded files).
    */
   displayPrompt?: string | null;
+  /**
+   * Optional client-provided diagnostic metadata, such as submit trace ids. This metadata is not provider prompt content.
+   */
+  metadata?: {
+    [key: string]: unknown;
+  };
 };
 
 export type AgentPromptContentBlock = {
@@ -1949,9 +2009,13 @@ export type ListCliCapabilitiesData = {
      */
     workspaceID?: string;
     /**
-     * Include capabilities hidden from CLI command discovery by provider availability filters. Intended for metadata consumers, not command routing.
+     * Include capabilities hidden from ordinary CLI command discovery by provider availability filters and command visibility. Intended for metadata consumers, not ordinary user command routing.
      */
     includeHidden?: boolean;
+    /**
+     * Include integration-only commands while preserving provider availability filters. Intended for app-runtime integrations.
+     */
+    includeIntegration?: boolean;
   };
   url: "/v1/cli/capabilities";
 };
@@ -5108,10 +5172,10 @@ export type SendWorkspaceAgentSessionInputResponses = {
   /**
    * Workspace agent session input accepted
    */
-  200: WorkspaceAgentSessionResponse;
+  200: SendWorkspaceAgentSessionInputResponse;
 };
 
-export type SendWorkspaceAgentSessionInputResponse =
+export type SendWorkspaceAgentSessionInputResponse2 =
   SendWorkspaceAgentSessionInputResponses[keyof SendWorkspaceAgentSessionInputResponses];
 
 export type UpdateWorkspaceAgentSessionSettingsData = {

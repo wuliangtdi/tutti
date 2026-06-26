@@ -30,6 +30,10 @@ export type WorkbenchAction<TData = unknown> =
       nodeIDs: string[];
       preset: WorkbenchLayoutPreset;
     }
+  | {
+      type: "applyVisibleLayoutPreset";
+      preset: WorkbenchLayoutPreset;
+    }
   | { type: "applyActiveSnapTarget"; nodeID: string }
   | {
       type: "applySnapTarget";

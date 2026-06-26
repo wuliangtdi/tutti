@@ -151,6 +151,11 @@ function summarizeWorkbenchAction<TData>(
         nodeIDs: action.nodeIDs,
         preset: action.preset
       };
+    case "applyVisibleLayoutPreset":
+      return {
+        type: action.type,
+        preset: action.preset
+      };
     case "applySnapTarget":
       return {
         type: action.type,

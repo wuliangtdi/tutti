@@ -347,7 +347,7 @@ const issueManagerZhCN = {
     editTopicDialogTitle: "编辑主题",
     title: "标题",
     updatedAt: "更新时间",
-    taskCount: "{{count}}子任务",
+    taskCount: "{{count}} 个子任务",
     taskDetails: "任务详情",
     taskList: "任务",
     temporaryExecutionDirectory: "临时目录"

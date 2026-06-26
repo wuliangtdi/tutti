@@ -44,6 +44,7 @@ export function WorkbenchHost({
   snapshotRepository,
   shortcutsEnabled,
   wallpaper,
+  windowManagement,
   workspaceId
 }: WorkbenchHostProps) {
   const hostRuntimeConfig = useMemo(
@@ -184,6 +185,7 @@ export function WorkbenchHost({
         surfaceRenderers.shouldCaptureNodePreviewImage
       }
       wallpaper={wallpaper}
+      windowManagement={windowManagement}
       windowChromeI18n={windowChromeI18n}
       windowChromeMode={surfaceRenderers.windowChromeMode}
     />

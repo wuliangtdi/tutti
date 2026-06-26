@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { workspaceProtocolErrorCodes } from "@tutti-os/client-tuttid-ts";
 import { desktopErrorCodes } from "../../../shared/errors/desktopErrors.ts";
-import { resolveDesktopErrorMessage } from "./desktopErrors.ts";
+import {
+  resolveDesktopErrorMessage,
+  wrapLocalizedTuttidErrorIfSpecific
+} from "./desktopErrors.ts";
 
 test("resolveDesktopErrorMessage uses shared protocol-code defaults", () => {
   const message = resolveDesktopErrorMessage({
@@ -71,6 +74,57 @@ test("resolveDesktopErrorMessage falls back to grouped default translations", ()
   );
 
   assert.equal(message, "That request could not be completed.");
+});
+
+test("wrapLocalizedTuttidErrorIfSpecific preserves protocol metadata for reason-specific errors", () => {
+  const source = {
+    code: "workspace_operation_failed",
+    correlationId: "corr-1",
+    developerMessage: "claude-code: ACP adapter not found",
+    reason: "acp_adapter_version_mismatch",
+    retryable: false,
+    statusCode: 502
+  };
+  const wrapped = wrapLocalizedTuttidErrorIfSpecific(source, "en");
+
+  assert.ok(wrapped instanceof Error);
+  assert.match(wrapped.message, /Claude Code's local adapter is unavailable/);
+  assert.equal(
+    (wrapped as { code?: string }).code,
+    "workspace_operation_failed"
+  );
+  assert.equal(
+    (wrapped as { reason?: string }).reason,
+    "acp_adapter_version_mismatch"
+  );
+  assert.equal((wrapped as { correlationId?: string }).correlationId, "corr-1");
+});
+
+test("wrapLocalizedTuttidErrorIfSpecific returns the original error without reason-specific copy", () => {
+  const source = {
+    code: "workspace_operation_failed",
+    developerMessage: "generic failure",
+    reason: "workspace_operation_failed",
+    statusCode: 502
+  };
+
+  assert.equal(wrapLocalizedTuttidErrorIfSpecific(source, "en"), source);
+});
+
+test("resolveDesktopErrorMessage localizes workspace operation reason details", () => {
+  const message = resolveDesktopErrorMessage(
+    {
+      code: "workspace_operation_failed",
+      reason: "acp_adapter_version_mismatch",
+      developerMessage: "claude-code: ACP adapter not found"
+    },
+    "zh-CN"
+  );
+
+  assert.equal(
+    message,
+    "Claude Code 本地适配器不可用或版本不匹配。请先在 Dock 中重新连接 Claude Code，然后重试。"
+  );
 });
 
 test("resolveDesktopErrorMessage localizes file-manager invalid path reasons", () => {

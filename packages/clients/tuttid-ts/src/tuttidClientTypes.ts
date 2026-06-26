@@ -70,6 +70,7 @@ import type {
   ReplaceWorkspaceAppIconRequest,
   ReloadLocalWorkspaceAppRequest,
   ResizeWorkspaceTerminalRequest,
+  SendWorkspaceAgentSessionInputResponse,
   SendWorkspaceAgentSessionInputRequest,
   SubmitWorkspaceAgentInteractiveRequest,
   TrackEvent,
@@ -125,7 +126,7 @@ export type TuttidTrackEventsRequest = TrackEventsRequest;
 export interface TuttidClient {
   listCliCapabilities(
     workspaceID?: string,
-    options?: { includeHidden?: boolean }
+    options?: { includeHidden?: boolean; includeIntegration?: boolean }
   ): Promise<CliCapabilitiesResponse>;
   listWorkspaceAppMentionCandidates(
     workspaceID: string
@@ -563,7 +564,7 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string,
     request: SendWorkspaceAgentSessionInputRequest
-  ): Promise<WorkspaceAgentSession>;
+  ): Promise<SendWorkspaceAgentSessionInputResponse>;
   readWorkspaceAgentSessionAttachment(
     workspaceID: string,
     agentSessionID: string,

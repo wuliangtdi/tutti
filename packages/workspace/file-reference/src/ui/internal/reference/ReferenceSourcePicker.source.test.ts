@@ -9,7 +9,10 @@ const source = readFileSync(
 
 test("preview path exposes the complete path on truncated text", () => {
   assert.match(source, /function ReferencePathText/);
-  assert.match(source, /const pathText = getReferenceNodePathText\(node\);/);
+  assert.match(
+    source,
+    /const pathText = getReferenceNodePathText\(node, hierarchy\);/
+  );
   assert.match(source, /title=\{pathText\}/);
   assert.match(
     source,
@@ -114,4 +117,28 @@ test("tree row click single-selects while plus button toggles multi-selection", 
     source,
     /onClick=\{\(event\) => \{\s*event\.stopPropagation\(\);\s*view\.setFocusedNode\(node\);\s*view\.toggleSelection\(node\);\s*\}\}/
   );
+});
+
+test("root-level references are not hidden behind the select-group hint", () => {
+  assert.match(
+    source,
+    /view\.currentEntries\.length === 0 \? \([\s\S]*hasSelectedGroup[\s\S]*referencePicker\.emptyDirectory[\s\S]*referencePicker\.selectGroupHint[\s\S]*\) : \([\s\S]*view\.currentEntries\.map/
+  );
+});
+
+test("preview group path uses readable hierarchy labels instead of opaque node ids", () => {
+  assert.match(source, /formatReferenceNodePathText\(node, hierarchy\)/);
+  assert.match(source, /hierarchy=\{view\.breadcrumb\}/);
+});
+
+test("focused middle tree row scrolls into view after initial target reveal", () => {
+  assert.match(
+    source,
+    /const focusedRowRef = useRef<HTMLDivElement \| null>\(null\);/
+  );
+  assert.match(
+    source,
+    /focusedRowRef\.current\?\.scrollIntoView\(\{ block: "nearest" \}\);/
+  );
+  assert.match(source, /ref=\{focused \? focusedRowRef : undefined\}/);
 });

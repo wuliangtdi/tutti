@@ -18,6 +18,13 @@ function readStyleSource(fileName: string) {
   );
 }
 
+function readRepoSource(relativePath: string) {
+  return readFileSync(
+    new URL(`../../../../../${relativePath}`, import.meta.url),
+    "utf8"
+  );
+}
+
 function readZIndexToken(source: string, token: string): number {
   const match = new RegExp(`${token}:\\s*(\\d+)`).exec(source);
   assert.ok(match?.[1], `${token} should be defined`);
@@ -26,10 +33,17 @@ function readZIndexToken(source: string, token: string): number {
 
 test("button styling stays on the shared semantic token contract", () => {
   const source = readComponentSource("button.tsx");
+  const semanticSource = readStyleSource("semantic.css");
 
   assert.match(source, /bg-\[var\(--state-danger\)\]/);
   assert.match(source, /text-\[var\(--white-stationary\)\]/);
   assert.match(source, /rounded-md/);
+  assert.match(source, /default:\s*"h-8/);
+  assert.match(source, /dialog:\s*"h-8[\s\S]*rounded-md/);
+  assert.match(source, /variant: "chrome"[\s\S]*size: "icon-sm"/);
+  assert.match(source, /class: "rounded-\[4px\]"/);
+  assert.match(semanticSource, /--radius-md:\s*6px/);
+  assert.doesNotMatch(source, /bg-clip-padding/);
   assert.doesNotMatch(source, /shadow-soft/);
 });
 
@@ -82,8 +96,14 @@ test("badge styling stays subtle instead of using primary fills", () => {
 
 test("field controls use the shared transparency field surface", () => {
   const inputSource = readComponentSource("input.tsx");
+  const semanticSource = readStyleSource("semantic.css");
   assert.match(inputSource, /bg-\[var\(--transparency-block\)\]/);
-  assert.match(inputSource, /rounded-\[6px\]/);
+  assert.match(inputSource, /appearance-none/);
+  assert.match(inputSource, /default:\s*"h-8 rounded-md/);
+  assert.match(inputSource, /md:\s*"h-8 rounded-md/);
+  assert.match(inputSource, /sm:\s*"h-8 rounded-md/);
+  assert.match(semanticSource, /--radius-md:\s*6px/);
+  assert.doesNotMatch(inputSource, /bg-clip-padding/);
   assert.doesNotMatch(inputSource, /border border-input bg-transparent/);
 
   const menuSurfaceSource = readComponentSource("menu-surface.tsx");
@@ -130,6 +150,30 @@ test("field controls use the shared transparency field surface", () => {
   assert.doesNotMatch(selectSource, /dark:bg-input/);
   assert.doesNotMatch(selectSource, /dark:hover:bg-input/);
   assert.doesNotMatch(selectSource, /shadow-soft/);
+});
+
+test("product visual standards stay synchronized with ui-system controls", () => {
+  const desktopVisualLanguage = readRepoSource(
+    "docs/conventions/desktop-visual-language.md"
+  );
+  const uiSystemGuide = readRepoSource("packages/ui/system/ui-system.md");
+
+  for (const source of [desktopVisualLanguage, uiSystemGuide]) {
+    assert.match(source, /32px/);
+    assert.match(source, /6px/);
+    assert.match(source, /--transparency-block/);
+    assert.match(source, /--transparency-hover/);
+    assert.match(source, /--state-danger/);
+    assert.match(source, /UnderlineTabs|underline tabs/);
+    assert.match(source, /font-weight: 500|font-weight:\s*500|500/);
+  }
+
+  assert.match(desktopVisualLanguage, /Workbench Window Chrome/);
+  assert.match(desktopVisualLanguage, /13px/);
+  assert.match(desktopVisualLanguage, /14px/);
+  assert.match(desktopVisualLanguage, /--text-secondary/);
+  assert.match(desktopVisualLanguage, /--text-primary/);
+  assert.match(uiSystemGuide, /chrome icon buttons/);
 });
 
 test("Chinese language contexts use the CJK font stack and medium weights", () => {
@@ -179,7 +223,9 @@ test("Chinese language contexts use the CJK font stack and medium weights", () =
   );
   assert.match(themeSource, /--state-warning:\s*rgb\(234 121 8\)/);
   assert.match(themeSource, /--state-warning:\s*rgb\(251 146 60\)/);
+  assert.match(themeSource, /--state-danger:\s*rgb\(244 91 91\)/);
   assert.match(themeSource, /--on-danger:\s*rgb\(220 38 38 \/ 8%\)/);
+  assert.match(themeSource, /--on-danger:\s*rgb\(248 113 113 \/ 10%\)/);
   assert.match(baseSource, /:lang\(zh\)/);
   assert.match(baseSource, /--font-sans-system:\s*var\(--font-sans-cjk\)/);
   assert.match(baseSource, /--font-sans:\s*var\(--font-sans-cjk\)/);

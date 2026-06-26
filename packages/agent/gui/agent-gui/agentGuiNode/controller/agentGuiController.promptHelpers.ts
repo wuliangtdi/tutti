@@ -3,9 +3,10 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import { mergeAgentGUITimelineItems } from "../model/agentGuiConversationModel";
 import { projectWorkspaceAgentMessagesToTimelineItems } from "../../../shared/agentConversation/projection/workspaceAgentMessageProjection";
-import type {
-  WorkspaceAgentActivityMessage,
-  WorkspaceAgentActivityTimelineItem
+import {
+  createWorkspaceAgentActivityUserMessageIdFromClientSubmitId,
+  type WorkspaceAgentActivityMessage,
+  type WorkspaceAgentActivityTimelineItem
 } from "../../../shared/workspaceAgentActivityTypes";
 
 export function stringPayloadValue(
@@ -28,16 +29,22 @@ export function createOptimisticPromptMessage(input: {
   workspaceId: string;
   agentSessionId: string;
   turnId: string;
+  clientSubmitId?: string;
   userId: string;
   prompt: string;
   content: AgentPromptContentBlock[];
   occurredAtUnixMs: number;
 }): WorkspaceAgentActivityMessage {
+  const clientSubmitMessageId = input.clientSubmitId
+    ? createWorkspaceAgentActivityUserMessageIdFromClientSubmitId(
+        input.clientSubmitId
+      )
+    : null;
   return {
     id: Math.max(1, Math.floor(input.occurredAtUnixMs)),
     workspaceId: input.workspaceId,
     agentSessionId: input.agentSessionId,
-    messageId: `optimistic:user:${input.turnId}`,
+    messageId: clientSubmitMessageId ?? `optimistic:user:${input.turnId}`,
     version: Math.max(1, Math.floor(input.occurredAtUnixMs)),
     turnId: input.turnId,
     role: "user",
@@ -45,6 +52,7 @@ export function createOptimisticPromptMessage(input: {
     payload: {
       __agentGuiOptimisticPrompt: true,
       actorId: input.userId,
+      ...(input.clientSubmitId ? { clientSubmitId: input.clientSubmitId } : {}),
       content: input.content,
       text: input.prompt
     },
