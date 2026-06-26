@@ -104,7 +104,7 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   );
   assert.match(
     css,
-    /\.desktop-dock__slot\[data-node-state="open"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*var\(--text-tertiary\);[^}]*bottom:\s*calc\(var\(--desktop-dock-indicator-offset\) - 2px\);[^}]*width:\s*5px;[^}]*height:\s*5px;[^}]*background:\s*var\(--desktop-dock-indicator-color\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(0 0 0 \/ 12%\);/s
+    /\.desktop-dock__slot\[data-node-state="open"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*rgb\(0 0 0 \/ 46%\);[^}]*bottom:\s*calc\(var\(--desktop-dock-indicator-offset\) - 2px\);[^}]*width:\s*5px;[^}]*height:\s*5px;[^}]*background:\s*var\(--desktop-dock-indicator-color\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(0 0 0 \/ 12%\);/s
   );
   assert.match(
     css,
@@ -113,6 +113,10 @@ test("left dock placement owns vertical frame and popup placement styles", () =>
   assert.match(
     css,
     /\.desktop-dock__slot\[data-node-state="open"\]\[data-wallpaper-tone="light"\]::before,[\s\S]*?\.desktop-dock__slot\[data-node-state="minimized"\]\[data-wallpaper-tone="light"\]::before\s*{[^}]*--desktop-dock-indicator-color:\s*rgb\(0 0 0 \/ 46%\);[^}]*box-shadow:\s*0 0 0 0\.5px rgb\(255 255 255 \/ 58%\);/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.desktop-dock__slot\[data-node-state="minimized"\]::before\s*{[^}]*opacity:/s
   );
 });
 

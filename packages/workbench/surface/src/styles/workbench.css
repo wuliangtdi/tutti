@@ -1291,7 +1291,7 @@
 
 .desktop-dock__slot[data-node-state="open"]::before,
 .desktop-dock__slot[data-node-state="minimized"]::before {
-  --desktop-dock-indicator-color: var(--text-tertiary);
+  --desktop-dock-indicator-color: rgb(0 0 0 / 46%);
   position: absolute;
   bottom: calc(var(--desktop-dock-indicator-offset) - 2px);
   left: 50%;
@@ -1325,10 +1325,6 @@
   bottom: auto;
   left: calc(var(--desktop-dock-indicator-offset) - 2px);
   transform: translateY(-50%);
-}
-
-.desktop-dock__slot[data-node-state="minimized"]::before {
-  opacity: 0.72;
 }
 
 .desktop-dock__btn {
