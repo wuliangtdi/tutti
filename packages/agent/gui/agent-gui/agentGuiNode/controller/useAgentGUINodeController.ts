@@ -4960,14 +4960,26 @@ export function useAgentGUINodeController({
         string,
         WorkspaceAgentActivityMessage[]
       >();
+      const pendingCompletionKeysBySessionId = new Map<string, string>();
       const flushPendingMessages = () => {
         for (const [agentSessionId, messages] of pendingMessagesBySessionId) {
           applyBackgroundTimelineStatusUpdate(
             agentSessionId,
             projectAgentGUIMessagesToTimelineItems(messages)
           );
+          const completionKey =
+            pendingCompletionKeysBySessionId.get(agentSessionId);
+          if (completionKey && conversationListQuery) {
+            markAgentGUIConversationCompletionObserved({
+              query: conversationListQuery,
+              conversationId: agentSessionId,
+              completionKey,
+              allowReadyStatus: true
+            });
+          }
         }
         pendingMessagesBySessionId.clear();
+        pendingCompletionKeysBySessionId.clear();
       };
       for (const event of events) {
         if (event.eventType === "available_commands_update") {
@@ -4980,13 +4992,8 @@ export function useAgentGUINodeController({
             continue;
           }
           const completionKey = completionKeyFromMessage(message);
-          if (completionKey && conversationListQuery) {
-            markAgentGUIConversationCompletionObserved({
-              query: conversationListQuery,
-              conversationId: agentSessionId,
-              completionKey,
-              allowReadyStatus: true
-            });
+          if (completionKey) {
+            pendingCompletionKeysBySessionId.set(agentSessionId, completionKey);
           }
           const messages = pendingMessagesBySessionId.get(agentSessionId);
           if (messages) {

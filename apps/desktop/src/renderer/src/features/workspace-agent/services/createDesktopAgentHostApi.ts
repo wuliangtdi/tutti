@@ -289,11 +289,16 @@ function writeDesktopWorkspaceAgentReadState(
     });
   }
   try {
-    const current = normalizeWorkspaceAgentReadState(
-      JSON.parse(
-        storage.getItem(workspaceAgentReadStateStorageKey(input)) ?? "null"
-      )
-    );
+    let current = emptyWorkspaceAgentReadState();
+    try {
+      current = normalizeWorkspaceAgentReadState(
+        JSON.parse(
+          storage.getItem(workspaceAgentReadStateStorageKey(input)) ?? "null"
+        )
+      );
+    } catch {
+      current = emptyWorkspaceAgentReadState();
+    }
     const next: WorkspaceAgentReadStateSnapshot = {
       ...current,
       [input.kind]: {

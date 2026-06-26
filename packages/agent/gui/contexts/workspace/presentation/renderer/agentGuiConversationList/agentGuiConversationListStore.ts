@@ -342,7 +342,7 @@ async function persistCompletedReadState(
       userId: queryState.query.userId,
       kind: "completed",
       readIds: completed.readIds,
-      unreadIds: []
+      unreadIds: completed.unreadIds
     });
   } catch {
     // Persistence is a best-effort UI hint; keep in-memory state authoritative.
@@ -370,6 +370,10 @@ async function loadWorkspaceAgentReadState(
           }
         );
       const normalized = normalizeWorkspaceAgentReadState(loaded);
+      const current = readStateByQueryKey.get(queryState.queryKey);
+      if (current) {
+        return current;
+      }
       readStateByQueryKey.set(queryState.queryKey, normalized);
       return normalized;
     } catch {
