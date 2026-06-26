@@ -198,6 +198,9 @@ export interface IssueManagerNodeHeaderProps extends HTMLAttributes<HTMLElement>
 }
 
 const issueManagerWorkbenchDragHandleAttribute = "data-workbench-drag-handle";
+const issueManagerHeaderChromeIconButtonClassName =
+  "cursor-pointer rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
+const issueManagerHeaderChromeIconClassName = "size-3.5";
 
 type IssueManagerNodeHeaderDragHandleAttributes = {
   [issueManagerWorkbenchDragHandleAttribute]?: "true";
@@ -258,14 +261,14 @@ export function IssueManagerNodeHeader({
       />
       <div
         {...dragHandleProps}
-        className="z-10 flex min-w-0 cursor-grab items-center gap-2 active:cursor-grabbing"
+        className="z-10 flex min-w-0 flex-1 cursor-grab items-center gap-1 active:cursor-grabbing"
       >
-        <span className="min-w-0 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
+        <span className="shrink-0 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {title?.trim() || copy.t("title")}
         </span>
         <Button
           aria-label={toggleLabel}
-          className="cursor-pointer rounded-md"
+          className={issueManagerHeaderChromeIconButtonClassName}
           data-issue-manager-sidebar-auto-collapsed={
             isSidebarAutoCollapsed ? "true" : undefined
           }
@@ -283,7 +286,7 @@ export function IssueManagerNodeHeader({
           onDoubleClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
         >
-          <PanelIcon className="size-[18px]" />
+          <PanelIcon className={issueManagerHeaderChromeIconClassName} />
         </Button>
       </div>
       <div className="pointer-events-none absolute top-1/2 left-1/2 z-20 flex max-w-[220px] -translate-x-1/2 -translate-y-1/2 items-center justify-center">

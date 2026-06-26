@@ -54,6 +54,7 @@ func (p Provider) newOpenCommand() cliservice.Command {
 			Path:        []string{"app", "open"},
 			Summary:     "Open a workspace app",
 			Description: "Launch or activate an installed workspace app. Use --route to pass an origin-root route intent.",
+			Visibility:  cliservice.CapabilityVisibilityIntegration,
 			InputSchema: map[string]any{
 				"type": "object",
 				"required": []string{

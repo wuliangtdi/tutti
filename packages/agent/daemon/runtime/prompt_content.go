@@ -1,12 +1,15 @@
 package agentruntime
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 )
 
 var ErrPromptImageUnsupported = errors.New("agent prompt image input is unsupported")
+
+const clientSubmitUserMessageIDPrefix = "client-submit:user:"
 
 func normalizeRuntimePromptContent(content []PromptContentBlock) []PromptContentBlock {
 	out := make([]PromptContentBlock, 0, len(content))
@@ -136,6 +139,30 @@ func userPromptActivityPayload(content []PromptContentBlock, displayPrompt strin
 		payload["displayPrompt"] = explicitDisplayPrompt
 	}
 	return payload
+}
+
+func userPromptActivityPayloadExtraFromExecMetadata(ctx context.Context, extra map[string]any) map[string]any {
+	clientSubmitID := metadataString(execMetadataFromContext(ctx), "clientSubmitId")
+	if clientSubmitID == "" {
+		return clonePayload(extra)
+	}
+	payload := clonePayload(extra)
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payload["clientSubmitId"] = clientSubmitID
+	if strings.TrimSpace(payloadString(payload, "messageId")) == "" {
+		payload["messageId"] = userPromptActivityMessageIDFromClientSubmitID(clientSubmitID)
+	}
+	return payload
+}
+
+func userPromptActivityMessageIDFromClientSubmitID(clientSubmitID string) string {
+	normalized := strings.TrimSpace(clientSubmitID)
+	if normalized == "" {
+		return ""
+	}
+	return clientSubmitUserMessageIDPrefix + normalized
 }
 
 func promptContentForACP(content []PromptContentBlock) []map[string]any {

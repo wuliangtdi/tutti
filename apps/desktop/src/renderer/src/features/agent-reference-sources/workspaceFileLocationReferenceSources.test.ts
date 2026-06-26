@@ -109,6 +109,36 @@ test("location reference source searches recent from recent references", async (
   );
 });
 
+test("location reference source recent search only matches file names", async () => {
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async listRecentReferences() {
+      return [
+        {
+          displayName: "spec.md",
+          kind: "file",
+          path: "/Users/local/workspace/project/spec.md"
+        }
+      ];
+    }
+  };
+  const [, localSource] = createWorkspaceFileLocationReferenceSources({
+    adapter,
+    getLocationSections: () => locationSections,
+    localLabel: "Local",
+    projectLabel: "Project"
+  });
+
+  const result = await localSource?.search?.(
+    { workspaceId: "workspace-1" },
+    {
+      query: "workspace",
+      withinNodeId: "__recent__"
+    }
+  );
+
+  assert.deepEqual(result?.entries, []);
+});
+
 test("location reference source scopes directory search by selected location", async () => {
   const withinValues: Array<string | undefined> = [];
   const adapter: WorkspaceFileReferenceAdapter = {

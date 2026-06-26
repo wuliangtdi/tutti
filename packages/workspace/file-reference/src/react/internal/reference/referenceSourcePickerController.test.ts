@@ -568,6 +568,61 @@ test("搜索中切源 → 把当前查询带到目标源并在其下重搜", asy
   assert.equal(controller.getSnapshot().bySource["source-a"]?.mode, "browse");
 });
 
+test("搜索中切源到指定分组时直接用目标分组范围搜索", async () => {
+  const searchInputs: Array<{
+    sourceId: string;
+    withinNodeId?: string | null;
+  }> = [];
+  const tabs: ReferenceSourceTab[] = [
+    {
+      sourceId: "source-a",
+      label: "源 A",
+      capabilities: { searchable: true, previewable: true, paginated: false }
+    },
+    {
+      sourceId: "source-b",
+      label: "源 B",
+      capabilities: { searchable: true, previewable: true, paginated: false }
+    }
+  ];
+  const aggregator = fakeAggregator({
+    tabs,
+    children: {
+      [`source-a:${SOURCE_ROOT_NODE_ID}`]: { entries: [], nextCursor: null },
+      [`source-b:${SOURCE_ROOT_NODE_ID}`]: { entries: [], nextCursor: null }
+    }
+  });
+  const baseSearch = aggregator.search.bind(aggregator);
+  aggregator.search = async (s, sourceId, input) => {
+    searchInputs.push({
+      sourceId,
+      withinNodeId: input.withinNodeId ?? null
+    });
+    return baseSearch(s, sourceId, input);
+  };
+  const controller = createReferenceSourcePickerController({
+    aggregator,
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("report");
+  await flush();
+  controller.setActiveSource("source-b", "recent-group");
+  await flush();
+
+  assert.deepEqual(searchInputs.at(-1), {
+    sourceId: "source-b",
+    withinNodeId: "recent-group"
+  });
+  assert.equal(
+    controller.getSnapshot().bySource["source-b"]?.searchScopeNodeId,
+    "recent-group"
+  );
+});
+
 test("跨 tab 选中累积,confirm 归一为 SelectedReference[]", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({ tabs: tabsTwo, children: {} }),
@@ -657,6 +712,32 @@ test("confirmGrouped:navigable 源文件夹折叠成一个 bundle,松散文件�
   assert.equal(grouped.bundles.length, 1);
   assert.equal(grouped.bundles[0]?.root.ref.nodeId, "g:1");
   assert.equal(grouped.bundles[0]?.root.displayName, "项目A");
+});
+
+test("confirmGrouped 可按调用方过滤后的 selection 确认", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo,
+      children: {},
+      navigable: { "app-artifact": true }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+  const hostFile = file("host-local-file", "/a.png");
+  const hostFolder = folder("host-local-file", "/Downloads");
+  controller.toggleSelection(hostFile);
+  controller.toggleSelection(hostFolder);
+
+  const grouped = await controller.confirmGrouped([hostFile]);
+
+  assert.deepEqual(
+    grouped.files.map((ref) => ref.path),
+    ["/a.png"]
+  );
+  assert.equal(grouped.bundles.length, 0);
 });
 
 test("close 后丢弃迟到的浏览结果", async () => {

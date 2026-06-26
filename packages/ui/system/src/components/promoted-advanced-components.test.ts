@@ -59,6 +59,9 @@ test("promoted advanced primitive sources preserve their core interaction contra
   assert.doesNotMatch(underlineTabsSource, /--accent/);
   assert.match(underlineTabsSource, /gap-\[14px\]/);
   assert.match(underlineTabsSource, /text-\[13px\]/);
+  assert.match(underlineTabsSource, /text-\[13px\] font-medium/);
+  assert.match(underlineTabsSource, /text-\[11px\] font-medium/);
+  assert.doesNotMatch(underlineTabsSource, /font-semibold/);
   assert.match(underlineTabsSource, /duration-\[220ms\]/);
   assert.match(underlineTabsSource, /duration-\[160ms\]/);
   assert.match(underlineTabsSource, /data-visible=/);

@@ -1022,16 +1022,13 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
     return listing.entries
       .filter((entry) => {
         const name = entry.name.toLowerCase();
-        const path = entry.path.toLowerCase();
-        return name.includes(normalizedQuery) || path.includes(normalizedQuery);
+        return name.includes(normalizedQuery);
       })
       .map((entry, index) => ({
         directoryPath: workspaceFileDirectory(entry.path, listing.root),
         kind: entry.kind,
         matchIndices: [],
-        matchTarget: entry.name.toLowerCase().includes(normalizedQuery)
-          ? "basename"
-          : "path",
+        matchTarget: "basename",
         name: entry.name,
         path: entry.path,
         score: listing.entries.length - index

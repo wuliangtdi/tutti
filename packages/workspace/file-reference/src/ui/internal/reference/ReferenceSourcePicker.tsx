@@ -58,7 +58,11 @@ import {
   type ReferenceNodePreviewState,
   type ReferenceGroupedSelection
 } from "../../../react/internal/reference/useReferenceSourcePickerView.ts";
-import { formatReferencePreviewDateTime } from "./referenceSourcePickerPresentation.ts";
+import {
+  formatReferenceNodePathText,
+  formatReferencePreviewDateTime,
+  resolveReferencePreviewSizeBytes
+} from "./referenceSourcePickerPresentation.ts";
 
 export interface ReferenceSourcePickerProps {
   aggregator: ReferenceSourceAggregator;
@@ -338,13 +342,13 @@ export function ReferenceSourcePicker({
                             />
                           ))
                         )
-                      ) : !hasSelectedGroup ? (
-                        <Feedback>
-                          {copy.t("referencePicker.selectGroupHint")}
-                        </Feedback>
                       ) : view.currentEntries.length === 0 ? (
                         <Feedback>
-                          {copy.t("referencePicker.emptyDirectory")}
+                          {copy.t(
+                            hasSelectedGroup
+                              ? "referencePicker.emptyDirectory"
+                              : "referencePicker.selectGroupHint"
+                          )}
                         </Feedback>
                       ) : (
                         // 浏览:就地递归展开树(复刻 agent 引用面板文件树交互)
@@ -391,6 +395,7 @@ export function ReferenceSourcePicker({
               >
                 <PreviewInfoPane
                   copy={copy}
+                  hierarchy={view.breadcrumb}
                   node={view.focusedNode}
                   previewState={view.previewState}
                   sourceLabel={view.activeTabLabel}
@@ -784,15 +789,20 @@ function FullTextTooltip({
 
 function PreviewInfoPane({
   copy,
+  hierarchy,
   node,
   previewState,
   sourceLabel
 }: {
   copy: WorkspaceFileReferenceCopy;
+  hierarchy: readonly ReferenceNode[];
   node: ReferenceNode | null;
   previewState: ReferenceNodePreviewState;
   sourceLabel: string;
 }): JSX.Element {
+  const sizeBytes = node
+    ? resolveReferencePreviewSizeBytes(node, previewState)
+    : null;
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--background-fronted)]">
       {node ? (
@@ -824,7 +834,7 @@ function PreviewInfoPane({
             <p className="truncate text-[15px] font-semibold">
               {node.displayName}
             </p>
-            <ReferencePathText node={node} />
+            <ReferencePathText hierarchy={hierarchy} node={node} />
           </div>
           <dl className="space-y-2 text-[13px]">
             <InfoRow label={copy.t("referencePicker.previewSource")}>
@@ -840,9 +850,9 @@ function PreviewInfoPane({
                 {formatReferencePreviewDateTime(node.mtimeMs)}
               </InfoRow>
             ) : null}
-            {node.sizeBytes != null ? (
+            {sizeBytes != null ? (
               <InfoRow label={copy.t("referencePicker.previewSize")}>
-                {formatBytes(node.sizeBytes)}
+                {formatBytes(sizeBytes)}
               </InfoRow>
             ) : null}
           </dl>
@@ -854,8 +864,14 @@ function PreviewInfoPane({
   );
 }
 
-function ReferencePathText({ node }: { node: ReferenceNode }): JSX.Element {
-  const pathText = getReferenceNodePathText(node);
+function ReferencePathText({
+  hierarchy,
+  node
+}: {
+  hierarchy: readonly ReferenceNode[];
+  node: ReferenceNode;
+}): JSX.Element {
+  const pathText = getReferenceNodePathText(node, hierarchy);
   const lastSlashIndex = pathText.lastIndexOf("/");
   if (lastSlashIndex <= 0 || lastSlashIndex === pathText.length - 1) {
     return (
@@ -883,30 +899,11 @@ function ReferencePathText({ node }: { node: ReferenceNode }): JSX.Element {
   );
 }
 
-function getReferenceNodePathText(node: ReferenceNode): string {
-  const decodedPath = decodeReferenceListFileNodeId(node.ref.nodeId);
-  if (decodedPath) {
-    return decodedPath;
-  }
-  return node.contextLabel?.trim() || node.ref.nodeId;
-}
-
-function decodeReferenceListFileNodeId(nodeId: string): string | null {
-  if (!nodeId.startsWith("f:")) {
-    return null;
-  }
-  try {
-    const normalized = nodeId.slice(2).replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "="
-    );
-    const binary = atob(padded);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  } catch {
-    return null;
-  }
+function getReferenceNodePathText(
+  node: ReferenceNode,
+  hierarchy: readonly ReferenceNode[]
+): string {
+  return formatReferenceNodePathText(node, hierarchy);
 }
 
 function InfoRow({

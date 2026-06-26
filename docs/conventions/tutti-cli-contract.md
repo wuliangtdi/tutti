@@ -41,9 +41,23 @@ Keep these semantics stable unless the app CLI manifest version changes:
 - app handlers receive HTTP `POST` requests under `/tutti/cli/*`
 - app handlers return the existing `CliCommandOutput` shape
 - app command output is validated against the manifest-declared output contract
+- app commands may declare optional `visibility: "integration"` to stay out of
+  ordinary user and Agent discovery while remaining available to app-runtime
+  integrations; omitted visibility is `public`
 
 Do not require migration for existing app manifests when changing builtin CLI
 implementation internals.
+
+`visibility` is a discovery hint, not an authorization boundary. Use it to keep
+integration-only commands out of `tutti --help`, Agent command guides, and
+ordinary command matching. Do not use it for secrets, privileged actions, or
+operations that must be blocked when a user already knows the command.
+
+App-runtime CLI discovery should request integration-only commands without
+skipping provider availability filters. Use the CLI capabilities
+`includeIntegration` query for that path. Reserve `includeHidden` for metadata
+or debugging paths that intentionally need both provider-filtered and
+visibility-filtered capabilities.
 
 ## Builtin Command Source Of Truth
 
@@ -67,6 +81,12 @@ it from the spec.
 
 The framework must return the existing `cliservice.Command` type. The registry,
 OpenAPI route shape, and app CLI registry remain separate.
+
+Builtin capabilities may declare `Capability.Visibility` as `integration` when
+the command is intended for app-runtime integrations rather than ordinary user
+or Agent discovery. Omitted visibility defaults to `public`. For example,
+`workspace-apps.app.open` is integration-only so the model does not discover it
+as a normal user-facing command.
 
 ## Command Kinds
 

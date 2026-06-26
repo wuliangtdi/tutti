@@ -488,6 +488,12 @@ describe("agent GUI workbench contribution copy", () => {
     expect(screen.getByText("Codex")).toBeInTheDocument();
     expect(screen.getByText("Codex").nextElementSibling).toBe(toggleButton);
     expect(toggleButton.nextElementSibling).toBe(newConversationButton);
+    expect(toggleButton).toHaveClass("text-[var(--text-secondary)]");
+    expect(toggleButton).toHaveClass("hover:text-[var(--text-primary)]");
+    expect(toggleButton).toHaveAttribute("data-size", "icon-sm");
+    expect(toggleButton.querySelector("svg")).toHaveClass("size-3.5");
+    expect(newConversationButton).toHaveAttribute("data-size", "icon-sm");
+    expect(newConversationButton.querySelector("svg")).toHaveClass("size-3.5");
     expect(newConversationButton.nextElementSibling).toHaveTextContent(
       "Current session title"
     );

@@ -235,9 +235,5 @@ function matchesRecentReferenceSearch(
   if (!matchesFilterCategories(name, isFolder, filters)) {
     return false;
   }
-  return (
-    query.length === 0 ||
-    name.toLowerCase().includes(query) ||
-    ref.path.toLowerCase().includes(query)
-  );
+  return query.length === 0 || name.toLowerCase().includes(query);
 }

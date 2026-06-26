@@ -45,3 +45,28 @@ func TestScopeSetReservedScopeWarningsDoNotExposeCommands(t *testing.T) {
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 }
+
+func TestScopeSetHidesIntegrationCommandsFromDefaultCapabilities(t *testing.T) {
+	scopeSet := NewScopeSet(ScopeSetOptions{})
+	scopeSet.Upsert(RegisteredApp{
+		AppID: "automation-app",
+		Scope: "automation",
+		Commands: []Command{
+			{Capability: Capability{ID: "app.automation.automation.list", Visibility: CommandVisibilityPublic}},
+			{Capability: Capability{ID: "app.automation.automation.internal-sync", Visibility: CommandVisibilityIntegration}},
+		},
+	})
+
+	capabilities := scopeSet.Capabilities()
+	if len(capabilities) != 1 || capabilities[0].ID != "app.automation.automation.list" {
+		t.Fatalf("capabilities = %#v", capabilities)
+	}
+
+	capabilities = scopeSet.Capabilities(CapabilityListOptions{IncludeIntegration: true})
+	if len(capabilities) != 2 {
+		t.Fatalf("capabilities with integration = %#v", capabilities)
+	}
+	if _, command, ok := scopeSet.Command("app.automation.automation.internal-sync"); !ok || command.Capability.ID == "" {
+		t.Fatalf("integration command lookup failed: %#v", command)
+	}
+}

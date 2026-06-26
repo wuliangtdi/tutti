@@ -34,7 +34,7 @@ export function IssueManagerTaskEmptyState({
   return (
     <div className="flex min-h-[320px] items-center justify-center px-6 py-10 text-center">
       <div className="grid max-w-[420px] justify-items-center gap-2">
-        {illustration ?? null}
+        {illustration ? <div className="mb-2">{illustration}</div> : null}
         <p className="text-[15px] font-semibold leading-[1.35] text-[var(--text-primary)]">
           {title}
         </p>

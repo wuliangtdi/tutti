@@ -163,7 +163,9 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext cliservice.In
 		r.mu.RUnlock()
 		return []cliservice.Capability{}
 	}
-	capabilities := scopeSet.Capabilities()
+	capabilities := scopeSet.Capabilities(appclicore.CapabilityListOptions{
+		IncludeIntegration: invokeContext.IncludeIntegrationCapabilities,
+	})
 	r.mu.RUnlock()
 	return serviceCapabilities(capabilities)
 }
@@ -387,9 +389,19 @@ func serviceCapability(capability appclicore.Capability) cliservice.Capability {
 		Path:        append([]string(nil), capability.Path...),
 		Summary:     capability.Summary,
 		Description: capability.Description,
+		Visibility:  serviceCapabilityVisibility(capability.Visibility),
 		InputSchema: appclicore.CloneSchema(capability.InputSchema),
 		Output:      serviceCapabilityOutput(capability.Output),
 		Source:      serviceCapabilitySource(capability.Source),
+	}
+}
+
+func serviceCapabilityVisibility(visibility appclicore.CommandVisibility) cliservice.CapabilityVisibility {
+	switch appclicore.NormalizeVisibility(visibility) {
+	case appclicore.CommandVisibilityIntegration:
+		return cliservice.CapabilityVisibilityIntegration
+	default:
+		return cliservice.CapabilityVisibilityPublic
 	}
 }
 

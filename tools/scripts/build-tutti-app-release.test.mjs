@@ -342,6 +342,16 @@ test("validateCLIManifest accepts the app CLI HTTP bridge contract", () => {
   );
 });
 
+test("validateCLIManifest rejects invalid command visibility", () => {
+  const manifest = cliManifestForTest();
+  manifest.commands[0].visibility = "private";
+
+  assert.throws(
+    () => validateCLIManifest(manifest, "tutti.cli.json"),
+    /visibility must be public or integration/
+  );
+});
+
 test("buildTuttiAppRelease validates declared CLI manifests", async () => {
   const packageDir = await createPackageForTest("cli-app");
   const manifest = manifestForTest("cli-app");

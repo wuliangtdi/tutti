@@ -32,7 +32,7 @@ export function DesktopAgentGUIWorkbenchHeader({
         className
       )}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-[3px]">
         <span className="min-w-0 truncate text-[13px] font-semibold leading-5 text-[var(--text-primary)]">
           {title?.trim() || t("workspace.agentGui.fallbackAgentLabel")}
         </span>

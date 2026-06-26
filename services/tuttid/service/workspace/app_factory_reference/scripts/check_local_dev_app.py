@@ -216,6 +216,8 @@ def validate_cli_manifest(
             )
         ):
             errors.append(f"CLI manifest commands[{index}].path must be non-empty lowercase path segments")
+        if "visibility" in command and command.get("visibility") not in {"public", "integration"}:
+            errors.append(f"CLI manifest commands[{index}].visibility must be public or integration")
         handler = command.get("handler")
         if not isinstance(handler, dict):
             errors.append(f"CLI manifest commands[{index}] requires a handler")

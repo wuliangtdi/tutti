@@ -67,6 +67,31 @@ test("local source searches recent from the recent reference list", async () => 
   );
 });
 
+test("local source recent search only matches file names", async () => {
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async listRecentReferences() {
+      return [
+        {
+          displayName: "spec.md",
+          kind: "file",
+          path: "/Users/local/workspace/project/spec.md"
+        }
+      ];
+    }
+  };
+  const source = createWorkspaceFileReferenceSource({
+    adapter,
+    label: "Local"
+  });
+
+  const result = await source.search?.(scope, {
+    query: "workspace",
+    withinNodeId: "__recent__"
+  });
+
+  assert.deepEqual(result?.entries, []);
+});
+
 test("local source ignores personal root sentinel for scoping", async () => {
   let observed: { within?: string } | undefined;
   const adapter: WorkspaceFileReferenceAdapter = {

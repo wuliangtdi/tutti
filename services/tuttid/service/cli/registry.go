@@ -183,6 +183,9 @@ func (r *Registry) Capabilities(ctx context.Context, invokeContext InvokeContext
 			if !r.capabilityVisible(id, allowedByProvider) {
 				continue
 			}
+			if !capabilityDiscoverable(command.Capability, invokeContext) {
+				continue
+			}
 			result = append(result, command.Capability)
 		}
 	}
@@ -240,6 +243,24 @@ func (r *Registry) capabilityVisible(id string, allowedByProvider map[string]map
 	}
 	_, visible := allowed[id]
 	return visible
+}
+
+func capabilityDiscoverable(capability Capability, invokeContext InvokeContext) bool {
+	if invokeContext.IncludeIntegrationCapabilities {
+		return true
+	}
+	return NormalizeCapabilityVisibility(capability.Visibility) != CapabilityVisibilityIntegration
+}
+
+func NormalizeCapabilityVisibility(visibility CapabilityVisibility) CapabilityVisibility {
+	switch CapabilityVisibility(strings.TrimSpace(string(visibility))) {
+	case "", CapabilityVisibilityPublic:
+		return CapabilityVisibilityPublic
+	case CapabilityVisibilityIntegration:
+		return CapabilityVisibilityIntegration
+	default:
+		return visibility
+	}
 }
 
 func (r *Registry) Invoke(ctx context.Context, request InvokeRequest) (CommandOutput, error) {

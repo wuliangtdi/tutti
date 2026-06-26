@@ -937,7 +937,7 @@ export const en = {
         requirementStayInWorkspace:
           "1. Work under {{workspaceRoot}}; do not switch to unrelated directories.",
         requirementSummaryOutput:
-          "2. Unless the user specifies another location, write at least docs/tutti/issue_summary_{{issueId}}.md with the result, changes, and conclusion.",
+          "2. Unless the user specifies another location, write at least docs/tutti/task_summary_{{issueId}}.md with the result, changes, and conclusion.",
         taskContentLabel: "Task content",
         taskTitleLabel: "Task title"
       },

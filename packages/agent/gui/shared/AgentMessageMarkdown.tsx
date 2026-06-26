@@ -1123,7 +1123,7 @@ function MarkdownMedia({
           playsInline
           preload="metadata"
           className={cn(
-            "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)]",
+            "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)]",
             className
           )}
         />
@@ -1165,7 +1165,7 @@ function MarkdownMedia({
           playsInline
           preload="metadata"
           className={cn(
-            "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)]",
+            "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)]",
             className
           )}
         />
@@ -1180,7 +1180,7 @@ function MarkdownMedia({
           alt={alt}
           title={title}
           className={cn(
-            "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain",
+            "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
             className
           )}
         />
@@ -1194,7 +1194,7 @@ function MarkdownMedia({
         alt={alt}
         title={title}
         className={cn(
-          "block max-h-[360px] max-w-full rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] object-contain",
+          "mt-2 block max-h-[360px] max-w-full rounded-[8px] bg-[var(--transparency-block)] object-contain",
           className
         )}
         wrapElement="span"
@@ -1203,7 +1203,7 @@ function MarkdownMedia({
   }
 
   return (
-    <span className="flex min-h-[160px] w-full items-center justify-center rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
+    <span className="mt-2 flex min-h-[160px] w-full items-center justify-center rounded-[8px] bg-[var(--transparency-block)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
       {state?.status === "error"
         ? state.reason === "unsupported"
           ? t("agentHost.workspaceFileManager.previewUnsupported")
@@ -1218,7 +1218,7 @@ function MarkdownMedia({
 function UnsupportedMarkdownMediaPreview(): JSX.Element {
   const { t } = useTranslation();
   return (
-    <span className="flex min-h-[160px] w-full items-center justify-center rounded-[8px] border border-[var(--line-2)] bg-[var(--background-panel)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
+    <span className="mt-2 flex min-h-[160px] w-full items-center justify-center rounded-[8px] bg-[var(--transparency-block)] px-5 py-5 text-center text-[13px] leading-5 text-[var(--text-tertiary)]">
       {t("agentHost.workspaceFileManager.previewUnsupported")}
     </span>
   );

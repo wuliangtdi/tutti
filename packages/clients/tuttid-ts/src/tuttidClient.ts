@@ -119,7 +119,8 @@ export function createTuttidClient(
         client,
         query: {
           ...(workspaceID ? { workspaceID } : {}),
-          ...(options?.includeHidden ? { includeHidden: true } : {})
+          ...(options?.includeHidden ? { includeHidden: true } : {}),
+          ...(options?.includeIntegration ? { includeIntegration: true } : {})
         }
       });
       return unwrapData(response, "CLI capabilities request failed.");
@@ -762,8 +763,7 @@ export function createTuttidClient(
         body: request,
         path: { agentSessionID, workspaceID }
       });
-      return unwrapData(response, "Send workspace agent session input failed.")
-        .session;
+      return unwrapData(response, "Send workspace agent session input failed.");
     },
     async readWorkspaceAgentSessionAttachment(
       workspaceID,

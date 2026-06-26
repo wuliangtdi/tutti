@@ -72,6 +72,73 @@ func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
 	}
 }
 
+func TestRunHelpIncludesIntegrationCapabilitiesInsideAppRuntime(t *testing.T) {
+	var sawCapabilitiesRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/cli/capabilities" {
+			http.NotFound(w, r)
+			return
+		}
+		sawCapabilitiesRequest = true
+		if r.URL.Query().Get("workspaceID") != "ws-1" {
+			t.Fatalf("workspaceID query = %q", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("includeIntegration") != "true" {
+			t.Fatalf("includeIntegration query = %q", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("includeHidden") != "" {
+			t.Fatalf("includeHidden query = %q", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"commands":[{"id":"workspace-apps.app.open","path":["app","open"],"summary":"Open app","visibility":"integration","output":{"defaultMode":"json","json":true},"source":{"kind":"builtin"}}]}`))
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	t.Setenv("TUTTI_APP_ID", "automation-app")
+	t.Setenv("TUTTI_CLI", "/tmp/tutti")
+	t.Setenv("TUTTI_WORKSPACE_ID", "ws-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := Run(t.Context(), []string{"--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if !sawCapabilitiesRequest {
+		t.Fatal("capabilities request was not sent")
+	}
+	if !strings.Contains(stdout.String(), "integration-only") || !strings.Contains(stdout.String(), "Do not expose or forward") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+func TestRunHelpDoesNotIncludeIntegrationCapabilitiesWithoutAppCLIContract(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/v1/cli/capabilities" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("includeIntegration") != "" {
+			t.Fatalf("includeIntegration query = %q", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("includeHidden") != "" {
+			t.Fatalf("includeHidden query = %q", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"commands":[]}`))
+	}))
+	defer server.Close()
+
+	writeEndpoint(t, server.URL, "token-1")
+	t.Setenv("TUTTI_APP_ID", "draft-app")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := Run(t.Context(), []string{"--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+}
+
 func TestRunStatusJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/health" {

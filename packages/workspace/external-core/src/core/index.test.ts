@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizeTuttiExternalAtQueryInput,
+  normalizeTuttiExternalBrowserOpenUrlInput,
   normalizeTuttiExternalFileOpenInput,
   normalizeTuttiExternalFileSelectInput,
   normalizeTuttiExternalFileUploadInput,
@@ -64,6 +65,29 @@ test("keeps the default provider set explicit", () => {
     "agent-session",
     "agent-generated-file"
   ]);
+});
+
+test("normalizes browser open URL input", () => {
+  assert.deepEqual(
+    normalizeTuttiExternalBrowserOpenUrlInput({
+      url: " https://example.com/design "
+    }),
+    {
+      url: "https://example.com/design"
+    }
+  );
+});
+
+test("rejects invalid browser open URL input", () => {
+  assert.throws(
+    () => normalizeTuttiExternalBrowserOpenUrlInput({ url: "" }),
+    /browser\.openUrl url is required/
+  );
+  assert.throws(
+    () =>
+      normalizeTuttiExternalBrowserOpenUrlInput({ url: "file:///tmp/a.html" }),
+    /browser\.openUrl protocol is unsupported/
+  );
 });
 
 test("normalizes file select input", () => {

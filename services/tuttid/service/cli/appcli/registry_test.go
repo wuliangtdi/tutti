@@ -56,6 +56,91 @@ func TestRegistryActivateExposesAppCapabilities(t *testing.T) {
 	}
 }
 
+func TestRegistryActivateHidesIntegrationCommandsFromDefaultCapabilities(t *testing.T) {
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, nil)
+	appPackage := writeTestPackage(t, "automation-app", "automation", `[
+    {
+      "path": ["list"],
+      "summary": "List automations",
+      "output": {"defaultMode":"json","json":true},
+      "handler": {"kind":"http","method":"POST","path":"/tutti/cli/list"}
+    },
+    {
+      "path": ["internal-sync"],
+      "summary": "Sync internal automation state",
+      "visibility": "integration",
+      "output": {"defaultMode":"json","json":true},
+      "handler": {"kind":"http","method":"POST","path":"/tutti/cli/internal-sync"}
+    }
+  ]`)
+
+	state := registry.Activate(context.Background(), Activation{
+		WorkspaceID: "ws-1",
+		AppPackage:  appPackage,
+		BaseURL:     "http://127.0.0.1:1",
+	})
+	if state.Status != workspacebiz.AppCLIStatusActive {
+		t.Fatalf("Activate() state = %#v", state)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), cliservice.InvokeContext{Source: "cli", WorkspaceID: "ws-1"})
+	if got, want := capabilityIDs(capabilities), []string{"app.automation-app.automation.list"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids = %#v, want %#v", got, want)
+	}
+
+	capabilities = registry.Capabilities(context.Background(), cliservice.InvokeContext{
+		Source:                "agent-context",
+		WorkspaceID:           "ws-1",
+		SkipCapabilityFilters: true,
+	})
+	if got, want := capabilityIDs(capabilities), []string{"app.automation-app.automation.list"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids with provider filters skipped = %#v, want %#v", got, want)
+	}
+
+	capabilities = registry.Capabilities(context.Background(), cliservice.InvokeContext{
+		Source:                         "cli",
+		WorkspaceID:                    "ws-1",
+		IncludeIntegrationCapabilities: true,
+	})
+	if got, want := capabilityIDs(capabilities), []string{"app.automation-app.automation.list", "app.automation-app.automation.internal-sync"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids with hidden = %#v, want %#v", got, want)
+	}
+}
+
+func TestRegistryInvokeAllowsIntegrationCommandsByID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/tutti/cli/internal-sync" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"json","value":{"ok":true}}`))
+	}))
+	defer server.Close()
+
+	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, fakeRuntime{baseURL: server.URL})
+	appPackage := writeTestPackage(t, "automation-app", "automation", `[
+    {
+      "path": ["internal-sync"],
+      "summary": "Sync internal automation state",
+      "visibility": "integration",
+      "output": {"defaultMode":"json","json":true},
+      "handler": {"kind":"http","method":"POST","path":"/tutti/cli/internal-sync"}
+    }
+  ]`)
+	registry.Activate(context.Background(), Activation{WorkspaceID: "ws-1", AppPackage: appPackage, BaseURL: server.URL})
+
+	output, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+		CommandID: "app.automation-app.automation.internal-sync",
+		Context:   cliservice.InvokeContext{WorkspaceID: "ws-1"},
+	})
+	if err != nil {
+		t.Fatalf("Invoke() error = %v", err)
+	}
+	if output.Kind != cliservice.OutputModeJSON || output.Value["ok"] != true {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
 func TestRegistryActivateExposesDocumentationFile(t *testing.T) {
 	registry := NewRegistry(fakeWorkspaceCatalog{workspaceID: "ws-1"}, nil)
 	appPackage := writeTestPackageWithDocumentation(t, "automation-app", "automation", "COMMANDS.md", testJSONCommand())
@@ -311,4 +396,24 @@ func testJSONCommand() string {
       "handler": {"kind":"http","method":"POST","path":"/tutti/cli/run"}
     }
   ]`
+}
+
+func capabilityIDs(capabilities []cliservice.Capability) []string {
+	ids := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		ids = append(ids, capability.ID)
+	}
+	return ids
+}
+
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }

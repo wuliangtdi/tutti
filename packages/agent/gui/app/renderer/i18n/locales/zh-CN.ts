@@ -868,7 +868,7 @@ export const zhCN = {
         requirementStayInWorkspace:
           "1. 在 {{workspaceRoot}} 下工作，不要切换到其他无关目录。",
         requirementSummaryOutput:
-          "2. 如果用户没有另行指定位置，至少输出 docs/tutti/issue_summary_{{issueId}}.md，说明处理结果、改动与结论。",
+          "2. 如果用户没有另行指定位置，至少输出 docs/tutti/task_summary_{{issueId}}.md，说明处理结果、改动与结论。",
         taskContentLabel: "任务内容",
         taskTitleLabel: "任务标题"
       },

@@ -96,6 +96,32 @@ func TestDaemonAPIGeneratedRoutesListWorkspaceAppMentionCandidates(t *testing.T)
 	}
 }
 
+func TestWorkspaceAppMentionCLIAppsExcludeIntegrationCapabilities(t *testing.T) {
+	appCommands := &workspaceAppMentionDynamicCommands{}
+	registry := &cliservice.Registry{AppCommands: appCommands}
+
+	appsByID := workspaceAppMentionCLIAppsByID(context.Background(), registry, "workspace-1")
+
+	if len(appCommands.contexts) != 1 {
+		t.Fatalf("contexts = %#v, want one call", appCommands.contexts)
+	}
+	contextValue := appCommands.contexts[0]
+	if !contextValue.SkipCapabilityFilters {
+		t.Fatalf("SkipCapabilityFilters = false, want true for metadata path")
+	}
+	if contextValue.IncludeIntegrationCapabilities {
+		t.Fatalf("IncludeIntegrationCapabilities = true, want false for mention metadata")
+	}
+
+	app := appsByID["automation-app"]
+	if app.metadata.CommandCount != 1 {
+		t.Fatalf("command count = %d, want only public command", app.metadata.CommandCount)
+	}
+	if len(app.metadata.CommandPaths) != 1 || app.metadata.CommandPaths[0] != "automation list" {
+		t.Fatalf("command paths = %#v, want only public list command", app.metadata.CommandPaths)
+	}
+}
+
 type workspaceAppMentionTestCLIProvider struct {
 	capabilities []cliservice.Capability
 	filterCalls  int
@@ -167,5 +193,39 @@ func workspaceAppMentionTestApp(appID string, name string, description string, i
 		Installation: installation,
 		IconURL:      &iconURL,
 		Runtime:      workspacebiz.AppRuntimeState{Status: workspacebiz.AppRuntimeStatusIdle},
+	}
+}
+
+type workspaceAppMentionDynamicCommands struct {
+	contexts []cliservice.InvokeContext
+}
+
+func (f *workspaceAppMentionDynamicCommands) Capabilities(_ context.Context, contextValue cliservice.InvokeContext) []cliservice.Capability {
+	f.contexts = append(f.contexts, contextValue)
+	capabilities := []cliservice.Capability{
+		workspaceAppMentionAppCapability("app.automation-app.automation.list", "automation-app", []string{"automation", "list"}, "List automations"),
+	}
+	if contextValue.IncludeIntegrationCapabilities {
+		capabilities = append(capabilities,
+			workspaceAppMentionAppCapability("app.automation-app.automation.internal-sync", "automation-app", []string{"automation", "internal-sync"}, "Sync internal automation state"),
+		)
+	}
+	return capabilities
+}
+
+func (*workspaceAppMentionDynamicCommands) Invoke(context.Context, cliservice.InvokeRequest) (cliservice.CommandOutput, error) {
+	return cliservice.CommandOutput{}, cliservice.ErrCommandNotFound
+}
+
+func workspaceAppMentionAppCapability(id string, appID string, path []string, summary string) cliservice.Capability {
+	return cliservice.Capability{
+		ID:      id,
+		Path:    path,
+		Summary: summary,
+		Source: cliservice.CapabilitySource{
+			Kind:    cliservice.CapabilitySourceApp,
+			AppID:   appID,
+			AppName: "Automation",
+		},
 	}
 }

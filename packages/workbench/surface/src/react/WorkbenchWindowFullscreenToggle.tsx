@@ -45,7 +45,7 @@ export function WorkbenchWindowFullscreenToggle<TData>({
         controller.commands.enterFullscreen(node.id);
       }}
     >
-      <Icon aria-hidden className="size-[15px]" />
+      <Icon aria-hidden className="size-3.5" />
     </Button>
   );
 }

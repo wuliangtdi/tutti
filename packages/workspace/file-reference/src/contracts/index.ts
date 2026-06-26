@@ -1,5 +1,6 @@
 export interface WorkspaceFileReference {
   displayName?: string;
+  hostPath?: string;
   kind: "file" | "folder" | (string & {});
   mtimeMs?: number | null;
   path: string;

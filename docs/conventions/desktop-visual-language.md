@@ -153,6 +153,46 @@ Shared primitives should read as product infrastructure.
 - default icon usage should stay small and integrated with text or state
 - oversized or high-contrast icons should be reserved for empty states, brand anchors, or rare hero moments
 
+### Workbench Window Chrome
+
+Workbench window headers should share one compact chrome language across Agent
+GUI, task center, file manager, and future workspace tools.
+
+Use these rules:
+
+- use `--background-panel` for the header surface unless a host shell owns a
+  more specific chrome token
+- keep window titles at `13px`, semibold, `20px` line height, and
+  `--text-primary`
+- keep routine chrome icons at `14px`; reserve larger icons for content
+  regions, empty states, or app identity
+- use `--text-secondary` for inactive icon actions and `--text-primary` for
+  hover/focus states
+- place routine header actions with `4px` gaps and prevent pointer or double
+  click events on those actions from starting window drags
+- keep drag handles structural and invisible; do not create a second visible
+  titlebar treatment inside individual tools
+
+Window chrome should feel like a shared product shell, not like each workspace
+module designed its own toolbar.
+
+### Shared Control Defaults
+
+Default workbench controls should be precise and quiet.
+
+Use these rules:
+
+- routine buttons and text inputs default to `32px` height and `6px` radius
+- small icon buttons may use tighter radii, but should still inherit the shared
+  radius scale instead of one-off values
+- transparent field surfaces use `--transparency-block`, with
+  `--transparency-hover` for hover and focus surfaces
+- destructive buttons use `--state-danger`, `--state-danger-hover`, and
+  `--white-stationary` instead of raw red fills
+- underline tabs use `13px` labels and medium weight; in English contexts this
+  means `font-weight: 500`, while CJK contexts keep the same 500 emphasis
+  through the shared language rules
+
 ## Page Composition
 
 Screens should follow a stable composition order:

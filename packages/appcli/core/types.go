@@ -9,6 +9,8 @@ const (
 	OutputModeJSON  OutputMode = "json"
 )
 
+type CommandVisibility string
+
 type TableColumn struct {
 	Key   string
 	Label string
@@ -46,6 +48,7 @@ type Capability struct {
 	Path        []string
 	Summary     string
 	Description string
+	Visibility  CommandVisibility
 	InputSchema map[string]any
 	Output      CapabilityOutput
 	Source      CapabilitySource

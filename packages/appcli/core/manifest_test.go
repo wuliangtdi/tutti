@@ -18,6 +18,23 @@ func TestValidateManifestRejectsReservedHandlerPath(t *testing.T) {
 	}
 }
 
+func TestValidateManifestRejectsUnknownVisibility(t *testing.T) {
+	err := ValidateManifest(Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:       []string{"run"},
+			Summary:    "Run automation",
+			Visibility: "private",
+			Output:     ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler:    ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/run"},
+		}},
+	})
+	if err == nil {
+		t.Fatal("ValidateManifest() error = nil, want visibility error")
+	}
+}
+
 func TestBuildCommandsBuildsAppCapability(t *testing.T) {
 	manifest := Manifest{
 		SchemaVersion: ManifestSchemaVersion,
@@ -27,6 +44,7 @@ func TestBuildCommandsBuildsAppCapability(t *testing.T) {
 			Path:        []string{"run"},
 			Summary:     "Run automation",
 			Description: "Runs a job",
+			Visibility:  CommandVisibilityIntegration,
 			InputSchema: map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
 			Output:      ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
 			Handler:     ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/run"},
@@ -51,5 +69,25 @@ func TestBuildCommandsBuildsAppCapability(t *testing.T) {
 	}
 	if capability.Source.AppID != "automation-app" || capability.Source.CLIDescription != "Automation commands" {
 		t.Fatalf("capability source = %#v", capability.Source)
+	}
+	if capability.Visibility != CommandVisibilityIntegration {
+		t.Fatalf("capability visibility = %q", capability.Visibility)
+	}
+}
+
+func TestBuildCommandsDefaultsVisibilityToPublic(t *testing.T) {
+	commands := BuildCommands(Manifest{
+		SchemaVersion: ManifestSchemaVersion,
+		Scope:         "automation",
+		Commands: []ManifestCommand{{
+			Path:    []string{"run"},
+			Summary: "Run automation",
+			Output:  ManifestCommandOutput{DefaultMode: OutputModeJSON, JSON: true},
+			Handler: ManifestCommandHandler{Kind: "http", Method: "POST", Path: "/tutti/cli/run"},
+		}},
+	}, CommandBuildOptions{AppID: "automation-app"})
+
+	if len(commands) != 1 || commands[0].Capability.Visibility != CommandVisibilityPublic {
+		t.Fatalf("commands = %#v", commands)
 	}
 }

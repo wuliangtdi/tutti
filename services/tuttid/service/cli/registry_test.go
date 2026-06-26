@@ -179,6 +179,54 @@ func TestRegistryCapabilitiesCanSkipProviderFilters(t *testing.T) {
 	}
 }
 
+func TestRegistryHidesIntegrationCapabilitiesFromDefaultList(t *testing.T) {
+	registry, err := NewRegistry(
+		testCommandWithPath("diagnostics.visible", []string{"visible"}),
+		Command{
+			Capability: Capability{
+				ID:         "diagnostics.internal",
+				Path:       []string{"internal"},
+				Summary:    "Run internal command",
+				Visibility: CapabilityVisibilityIntegration,
+				Output: CapabilityOutput{
+					DefaultMode: OutputModePlain,
+					JSON:        true,
+				},
+			},
+			Handler: func(context.Context, InvokeRequest) (CommandOutput, error) {
+				return CommandOutput{
+					Kind: OutputModePlain,
+					Text: "internal ok",
+				}, nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+
+	capabilities := registry.Capabilities(context.Background(), InvokeContext{Source: "cli"})
+	if got, want := capabilityIDs(capabilities), []string{"diagnostics.visible"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids = %#v, want %#v", got, want)
+	}
+
+	capabilities = registry.Capabilities(context.Background(), InvokeContext{
+		Source:                         "cli",
+		IncludeIntegrationCapabilities: true,
+	})
+	if got, want := capabilityIDs(capabilities), []string{"diagnostics.visible", "diagnostics.internal"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capability ids with integration = %#v, want %#v", got, want)
+	}
+
+	output, err := registry.Invoke(context.Background(), InvokeRequest{CommandID: "diagnostics.internal"})
+	if err != nil {
+		t.Fatalf("Invoke integration command: %v", err)
+	}
+	if output.Text != "internal ok" {
+		t.Fatalf("output = %#v", output)
+	}
+}
+
 type filteringTestProvider struct {
 	testProvider
 	visibleIDs map[string]bool

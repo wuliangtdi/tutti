@@ -82,6 +82,7 @@ export interface WorkspaceAppUploadXMLHttpRequest {
 
 export const workspaceAppExternalChannels = {
   atQuery: "workspace-app-at:query",
+  browserOpenUrl: "workspace-app:open-url",
   filesOpen: "workspace-app-files:open",
   filesSelect: "workspace-app-files:select",
   filesUploadCancel: "workspace-app-files:upload-cancel",
@@ -120,6 +121,16 @@ export function createWorkspaceAppExternalBridge(
       },
       subscribe(listener) {
         return dependencies.appContext.subscribe(listener);
+      }
+    },
+    browser: {
+      openUrl(input) {
+        requireUserActivation(
+          dependencies.isUserActivationActive(),
+          "browser.openUrl"
+        );
+        dependencies.send(workspaceAppExternalChannels.browserOpenUrl, input);
+        return Promise.resolve();
       }
     },
     at: {

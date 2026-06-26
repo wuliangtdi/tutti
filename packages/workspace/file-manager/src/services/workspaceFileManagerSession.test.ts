@@ -970,6 +970,9 @@ test("recent locations load recent entries, search locally, and block mutations"
     ["/Users/demo/notes.txt"]
   );
 
+  await session.search("demo");
+  assert.deepEqual(session.store.searchEntries, []);
+
   await session.createFile("/Users/demo/new.txt");
   const importResult = await session.importFiles("/Users/demo");
   await session.refresh();
@@ -977,7 +980,7 @@ test("recent locations load recent entries, search locally, and block mutations"
   assert.equal(createFileCalls, 0);
   assert.equal(hostSearchCalls, 0);
   assert.equal(listDirectoryCalls, 0);
-  assert.equal(listRecentCalls, 3);
+  assert.equal(listRecentCalls, 4);
   assert.equal(importResult.supported, false);
   session.dispose();
 });

@@ -4,7 +4,6 @@ export type IssueManagerSidebarPresentationState =
   | {
       body: string;
       kind: "empty";
-      title: string;
     }
   | {
       kind: "error";
@@ -36,8 +35,7 @@ export function resolveIssueManagerSidebarPresentationState(input: {
   if (sidebarViewState.kind === "empty") {
     return {
       body: sidebarViewState.body,
-      kind: "empty",
-      title: sidebarViewState.title
+      kind: "empty"
     };
   }
 

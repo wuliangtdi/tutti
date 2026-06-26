@@ -75,6 +75,9 @@ func TestOpenPublishesWorkspaceAppWorkbenchLaunch(t *testing.T) {
 
 func TestOpenCommandAdvertisesRepeatableParamSchema(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{}, &fakeAppLauncher{}, nil).newOpenCommand()
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration {
+		t.Fatalf("visibility = %q, want integration", command.Capability.Visibility)
+	}
 	properties := command.Capability.InputSchema["properties"].(map[string]any)
 	param := properties["param"].(map[string]any)
 	oneOf := param["oneOf"].([]map[string]any)

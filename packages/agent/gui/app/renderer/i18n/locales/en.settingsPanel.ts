@@ -63,7 +63,7 @@ export const enSettingsPanel = {
   agent: {
     title: "Agent",
     defaultAgentLabel: "Default Agent",
-    defaultAgentHelp: "The default AI provider for new issues and terminals",
+    defaultAgentHelp: "The default AI provider for new tasks and terminals",
     moveUp: "Move up",
     moveDown: "Move down",
     fullAccessLabel: "Full Access Mode",

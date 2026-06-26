@@ -4,6 +4,7 @@ import {
   tuttiExternalWorkspaceAgentProviders,
   type TuttiExternalAtProviderId,
   type TuttiExternalAtQueryInput,
+  type TuttiExternalBrowserOpenUrlInput,
   type TuttiExternalFileOpenInput,
   type TuttiExternalFileSelectInput,
   type TuttiExternalFileUploadInput,
@@ -96,6 +97,27 @@ export function normalizeTuttiExternalAtQueryInput(
     maxResults: normalizeMaxResults(input.maxResults),
     providers: normalizeProviders(input.providers)
   };
+}
+
+export function normalizeTuttiExternalBrowserOpenUrlInput(
+  input: unknown
+): TuttiExternalBrowserOpenUrlInput {
+  if (!isRecord(input)) {
+    throw new Error("browser.openUrl input must be an object.");
+  }
+  const url = normalizeRequiredString(input.url, "browser.openUrl url");
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("browser.openUrl protocol is unsupported.");
+    }
+    return { url: parsed.toString() };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("unsupported")) {
+      throw error;
+    }
+    throw new Error("browser.openUrl url is invalid.");
+  }
 }
 
 export function normalizeTuttiExternalFileSelectInput(

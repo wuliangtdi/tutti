@@ -1,6 +1,6 @@
 import {
-  FileIcon,
   FolderIcon,
+  RecentLinedIcon,
   ScrollArea,
   Tooltip,
   TooltipContent,
@@ -73,14 +73,14 @@ function WorkspaceFileManagerSidebarLocation({
   location: WorkspaceFileLocation;
   onSelectLocation: (location: WorkspaceFileLocation) => void;
 }): ReactElement {
-  const Icon = location.kind === "recent" ? FileIcon : FolderIcon;
+  const Icon = location.kind === "recent" ? RecentLinedIcon : FolderIcon;
   const content = (
     <button
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 rounded-md px-2 text-left text-sm text-[var(--text-secondary)] transition-colors",
+        "flex h-8 min-w-0 items-center gap-2 rounded-md border border-transparent px-2 text-left text-sm text-[var(--text-secondary)] transition-colors",
         active
-          ? "bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-sm"
+          ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)] shadow-none"
           : "hover:bg-[var(--transparency-block)] hover:text-[var(--text-primary)]",
         disabled && "pointer-events-none opacity-60"
       )}
