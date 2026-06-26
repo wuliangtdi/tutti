@@ -45,7 +45,7 @@
   - `corepack pnpm@10.11.0 check:agent-activity-runtime-boundaries`
 - Status: fixed locally
 - Commit: `95b39cc0`
-- Feishu status update: pending.
+- Feishu status update: confirmed `修复中`.
 
 ## CQs9rF6GhekdMAcbDhsc1Q9PnWA - Create App session stops early / command detail empty
 
@@ -61,4 +61,4 @@
   - `corepack pnpm@10.11.0 check:agent-activity-runtime-boundaries`
 - Status: fixed locally
 - Commit: `95b39cc0`
-- Feishu status update: pending.
+- Feishu status update: confirmed `修复中`.
