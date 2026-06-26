@@ -3,6 +3,10 @@ export {
   type RichTextTriggerEditorProps
 } from "./RichTextTriggerEditor.tsx";
 export {
+  type RichTextTriggerMenuAnchor,
+  type RichTextTriggerMenuPlacement
+} from "./richTextTriggerMenuPlacement.ts";
+export {
   RichTextTriggerTextarea,
   type RichTextTriggerTextareaProps
 } from "./RichTextTriggerTextarea.tsx";

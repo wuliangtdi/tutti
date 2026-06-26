@@ -19,11 +19,14 @@ interface AbsoluteViewportMenuPlacement {
   type: "absolute";
   left: number;
   top: number;
+  boundaryPoint?: MenuPoint;
+  constrainToBoundary?: boolean;
 }
 
 interface PointViewportMenuPlacement {
   type: "point";
   point: MenuPoint;
+  boundaryPoint?: MenuPoint;
   alignX?: MenuPointAlignment;
   alignY?: MenuPointAlignment;
   padding?: number;
@@ -362,24 +365,34 @@ const ViewportMenuSurface = React.forwardRef<
 
   const resolvedPlacement = React.useMemo(() => {
     if (placement.type === "absolute") {
-      const boundary = resolveMenuBoundaryFromPoint({
-        x: placement.left,
-        y: placement.top
-      });
+      const boundary = resolveMenuBoundaryFromPoint(
+        placement.boundaryPoint ?? {
+          x: placement.left,
+          y: placement.top
+        }
+      );
       const menuSize = measuredSize ?? { width: 0, height: 0 };
       return {
         portalTarget: boundary.element,
-        position: clampMenuPositionToBoundary({
-          left: placement.left,
-          top: placement.top,
-          width: menuSize.width,
-          height: menuSize.height,
-          boundary: boundary.rect
-        })
+        position:
+          placement.constrainToBoundary === false
+            ? {
+                left: placement.left,
+                top: placement.top
+              }
+            : clampMenuPositionToBoundary({
+                left: placement.left,
+                top: placement.top,
+                width: menuSize.width,
+                height: menuSize.height,
+                boundary: boundary.rect
+              })
       };
     }
 
-    const boundary = resolveMenuBoundaryFromPoint(placement.point);
+    const boundary = resolveMenuBoundaryFromPoint(
+      placement.boundaryPoint ?? placement.point
+    );
     const menuSize = measuredSize ??
       placement.estimatedSize ?? { width: 0, height: 0 };
     const relativePoint = {

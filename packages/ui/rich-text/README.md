@@ -150,6 +150,7 @@ Helpers now exported:
 
 Runtime surfaces now exported:
 
+- `RichTextTriggerEditor`
 - `RichTextTriggerTextarea`
 - `RichTextMentionReadonly`
 
@@ -159,6 +160,10 @@ Current runtime behavior:
 - query results are flattened into a shared result shape
 - mention hydration uses `resolveMention` when the owning trigger provider is
   available and keeps the label-only fallback when it is not
+- `RichTextTriggerEditor` anchors trigger menus below the cursor by default;
+  hosts can set `menuPlacement` to `bottom-start`, `top-start`, or `auto-start`
+  and adjust the gap with `menuOffset`; hosts that want AgentGUI-style panels
+  aligned to the editor surface can set `menuAnchor` to `editor`
 
 ## External At-Panel Integration
 

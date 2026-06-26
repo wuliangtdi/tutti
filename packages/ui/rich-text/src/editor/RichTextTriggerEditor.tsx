@@ -1,9 +1,11 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
   type JSX
@@ -44,6 +46,13 @@ import {
   resolveRichTextTriggerText,
   type RichTextTriggerTextOverrides
 } from "./richTextTriggerText.ts";
+import {
+  resolveRichTextTriggerMenuPlacement,
+  richTextTriggerMenuEstimatedSize,
+  type RichTextTriggerMenuAnchor,
+  type RichTextTriggerMenuPlacement,
+  type RichTextTriggerResolvedMenuPlacement
+} from "./richTextTriggerMenuPlacement.ts";
 import { RichTextTriggerMenuItem } from "./RichTextTriggerMenuItem.tsx";
 import type { RichTextI18nRuntime } from "../i18n/richTextI18n.ts";
 import { MentionReference } from "../extensions/mentionReference.ts";
@@ -69,6 +78,9 @@ export interface RichTextTriggerEditorProps {
   textOverrides?: RichTextTriggerTextOverrides;
   overlay?: ReactNode;
   focusSignal?: unknown;
+  menuAnchor?: RichTextTriggerMenuAnchor;
+  menuPlacement?: RichTextTriggerMenuPlacement;
+  menuOffset?: number;
   menuZIndex?: string | number;
 }
 
@@ -110,9 +122,11 @@ export function RichTextTriggerEditor({
   textOverrides,
   overlay,
   focusSignal,
+  menuAnchor = "cursor",
+  menuPlacement = "bottom-start",
+  menuOffset = 6,
   menuZIndex
 }: RichTextTriggerEditorProps): JSX.Element {
-  const menuOffset = 6;
   const normalizedValue = normalizeRichTextContent(value);
   const text = resolveRichTextTriggerText(
     textOverrides,
@@ -141,11 +155,14 @@ export function RichTextTriggerEditor({
   );
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(
-    null
-  );
+  const [resolvedMenuAnchor, setResolvedMenuAnchor] =
+    useState<RichTextTriggerResolvedMenuPlacement | null>(null);
 
   latestOnChangeRef.current = onChange;
+
+  const resetMenuPlacement = useCallback(() => {
+    setResolvedMenuAnchor(null);
+  }, []);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -176,7 +193,7 @@ export function RichTextTriggerEditor({
         setMatches([]);
         setActiveIndex(0);
         setIsLoading(false);
-        setMenuPoint(null);
+        resetMenuPlacement();
       }, 100);
     },
     onFocus() {
@@ -371,39 +388,56 @@ export function RichTextTriggerEditor({
 
   useLayoutEffect(() => {
     if (!editor || !query) {
-      setMenuPoint(null);
+      resetMenuPlacement();
       return;
     }
 
-    const updateMenuPoint = () => {
+    const updateMenuAnchor = () => {
       const coords = editor.view.coordsAtPos(editor.state.selection.from);
-      const nextMenuPoint = {
-        x: coords.left,
-        y: coords.bottom + menuOffset
-      };
-      setMenuPoint(nextMenuPoint);
+      const editorRect = editor.view.dom.getBoundingClientRect();
+      const nextMenuAnchor = resolveRichTextTriggerMenuPlacement({
+        cursorRect: coords,
+        editorRect,
+        menuAnchor,
+        menuOffset,
+        menuPlacement,
+        viewportWidth: typeof window === "undefined" ? 1280 : window.innerWidth,
+        viewportHeight: typeof window === "undefined" ? 720 : window.innerHeight
+      });
+      setResolvedMenuAnchor(nextMenuAnchor);
     };
 
-    updateMenuPoint();
-    window.addEventListener("resize", updateMenuPoint);
-    window.addEventListener("scroll", updateMenuPoint, {
+    updateMenuAnchor();
+    window.addEventListener("resize", updateMenuAnchor);
+    window.addEventListener("scroll", updateMenuAnchor, {
       capture: true,
       passive: true
     });
     return () => {
-      window.removeEventListener("resize", updateMenuPoint);
-      window.removeEventListener("scroll", updateMenuPoint, true);
+      window.removeEventListener("resize", updateMenuAnchor);
+      window.removeEventListener("scroll", updateMenuAnchor, true);
     };
-  }, [editor, menuOffset, query]);
+  }, [
+    editor,
+    menuAnchor,
+    menuOffset,
+    menuPlacement,
+    query,
+    resetMenuPlacement
+  ]);
 
   const canQueryTrigger =
     !!query &&
     activeTriggerConfigs.length > 0 &&
     query.keyword.length >= minQueryLength;
-  const isMenuOpen = canQueryTrigger && (isFocused || !!menuPoint);
+  const isMenuOpen = canQueryTrigger && (isFocused || !!resolvedMenuAnchor);
   const isEmpty =
     !editor ||
     serializeRichTextDocumentToContent(editor.getJSON()).trim().length === 0;
+  const menuSurfaceStyle = resolveMenuSurfaceStyle(
+    resolvedMenuAnchor,
+    menuZIndex
+  );
 
   const applyMatch = (match: RichTextTriggerQueryMatch) => {
     if (!editor || !query) {
@@ -426,7 +460,7 @@ export function RichTextTriggerEditor({
     setMatches([]);
     setActiveIndex(0);
     setIsLoading(false);
-    setMenuPoint(null);
+    resetMenuPlacement();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -443,7 +477,7 @@ export function RichTextTriggerEditor({
       setMatches([]);
       setActiveIndex(0);
       setIsLoading(false);
-      setMenuPoint(null);
+      resetMenuPlacement();
       return;
     }
 
@@ -498,21 +532,12 @@ export function RichTextTriggerEditor({
         </div>
       ) : null}
       {overlay}
-      {isMenuOpen && menuPoint ? (
+      {isMenuOpen && resolvedMenuAnchor ? (
         <ViewportMenuSurface
           open
           className="tutti-rich-text-at-menu max-h-64 w-[min(28rem,calc(100vw-24px))] overflow-y-auto p-1"
-          placement={{
-            type: "point",
-            point: menuPoint,
-            alignX: "start",
-            alignY: "start",
-            estimatedSize: {
-              width: 360,
-              height: 256
-            }
-          }}
-          style={menuZIndex === undefined ? undefined : { zIndex: menuZIndex }}
+          placement={resolveViewportMenuSurfacePlacement(resolvedMenuAnchor)}
+          style={menuSurfaceStyle}
         >
           {matches.length > 0 ? (
             matches.map((match, index) => (
@@ -537,6 +562,43 @@ export function RichTextTriggerEditor({
       ) : null}
     </div>
   );
+}
+
+function resolveViewportMenuSurfacePlacement(
+  menuAnchor: RichTextTriggerResolvedMenuPlacement
+) {
+  return {
+    type: "point" as const,
+    ...(menuAnchor.boundaryPoint
+      ? { boundaryPoint: menuAnchor.boundaryPoint }
+      : {}),
+    point: menuAnchor.point,
+    alignX: "start" as const,
+    alignY: menuAnchor.alignY,
+    estimatedSize: {
+      width: menuAnchor.width ?? richTextTriggerMenuEstimatedSize.width,
+      height: richTextTriggerMenuEstimatedSize.height
+    }
+  };
+}
+
+function resolveMenuSurfaceStyle(
+  menuAnchor: RichTextTriggerResolvedMenuPlacement | null,
+  menuZIndex: string | number | undefined
+): CSSProperties | undefined {
+  if (!menuAnchor && menuZIndex === undefined) {
+    return undefined;
+  }
+
+  return {
+    ...(menuAnchor?.width !== undefined
+      ? {
+          width: menuAnchor.width,
+          maxWidth: menuAnchor.width
+        }
+      : {}),
+    ...(menuZIndex === undefined ? {} : { zIndex: menuZIndex })
+  };
 }
 
 function findEditorAtQuery(
