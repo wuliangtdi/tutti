@@ -3,7 +3,9 @@ package agentstatus
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -87,6 +89,8 @@ type ProbeResult struct {
 	Message    string
 	BinaryPath string
 	Command    []string
+	Checks     []ProviderCheck
+	LastError  *ProviderLastError
 }
 
 type RunActionResult struct {
@@ -110,6 +114,30 @@ type ProviderStatus struct {
 	Adapter      AdapterStatus
 	Auth         AuthInfo
 	Actions      []Action
+	Network      *NetworkStatus
+	Checks       []ProviderCheck
+	LastError    *ProviderLastError
+	ActiveAction *ActiveAction
+}
+
+type ProviderCheck struct {
+	Name   string
+	Passed bool
+	Detail string
+}
+
+type ProviderLastError struct {
+	Code    string
+	Message string
+}
+
+type ActiveAction struct {
+	ID         ActionID
+	Status     string
+	Step       string
+	Registry   string
+	NodeTarget string
+	Stdout     string
 }
 
 type Availability struct {
@@ -147,9 +175,10 @@ type TerminalCommand struct {
 }
 
 type InstallCommandInput struct {
-	Command string
-	CWD     string
-	Env     []string
+	Command  string
+	CWD      string
+	Env      []string
+	OnStdout func(string)
 }
 
 type InstallCommandResult struct {
@@ -163,6 +192,7 @@ type Service struct {
 	FileExists                  func(string) bool
 	HomeDir                     func() (string, error)
 	HTTPClient                  *http.Client
+	ResolveProxy                func(*http.Request) (*url.URL, error)
 	LookPath                    func(string) (string, error)
 	InstallCommand              func(context.Context, InstallCommandInput) (InstallCommandResult, error)
 	InstallTimeout              time.Duration
@@ -175,6 +205,9 @@ type Service struct {
 	Registry                    Registry
 	ExternalAgentRegistry       externalagentregistry.Store
 	ManagedRuntime              managedruntime.Resolver
+	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
+	// so the dock/wizard surface that login dropped. Shared pointer across copies.
+	RunOutcomes *RunOutcomeStore
 }
 
 const authStatusCommandTimeout = 5 * time.Second
@@ -196,6 +229,24 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 	statuses := make([]ProviderStatus, 0, len(specs))
 	for _, spec := range specs {
 		statuses = append(statuses, s.statusForSpec(ctx, spec, now))
+	}
+
+	// Registry reachability (install path) and proxy detection are provider-
+	// independent, so probe them once; the API endpoint (run/login path) differs
+	// per provider, so probe that per status. All are reported separately on each
+	// provider's Network.
+	if len(statuses) > 0 {
+		registry := s.probeRegistry(ctx)
+		proxy := s.probeProxy(ctx)
+		for i := range statuses {
+			api := s.probeProviderAPI(ctx, statuses[i].Provider)
+			statuses[i].Network = &NetworkStatus{
+				Registry:    registry,
+				ProviderAPI: api,
+				Proxy:       proxy,
+			}
+			logNetworkProbe(statuses[i].Provider, registry, api, proxy)
+		}
 	}
 
 	return Snapshot{
@@ -221,6 +272,8 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		CheckedAt:  now,
 		BinaryPath: status.Adapter.BinaryPath,
 		Command:    cloneStrings(spec.AdapterCommand),
+		Checks:     cloneProviderChecks(status.Checks),
+		LastError:  cloneProviderLastError(status.LastError),
 	}
 	if !status.CLI.Installed {
 		result.Status = ProbeFailed
@@ -235,6 +288,12 @@ func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, erro
 		result.Status = ProbeFailed
 		result.ReasonCode = firstNonBlank(status.Availability.ReasonCode, "acp_adapter_not_found")
 		result.Message = agentProviderProbeAdapterUnavailableMessage(result.ReasonCode)
+		return result, nil
+	}
+	if spec.Provider == agentprovider.Codex && status.LastError != nil {
+		result.Status = ProbeFailed
+		result.ReasonCode = codexReasonCodeFromErrorCode(status.LastError.Code)
+		result.Message = status.LastError.Message
 		return result, nil
 	}
 
@@ -272,7 +331,14 @@ func (s Service) probeAdapterRuntimeCommand(
 	} else {
 		result.BinaryPath = command[0]
 	}
-	return s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
+	result = s.probeCommandWithReadyAfter(ctx, result, command, env, s.probeReadyAfterForSpec(spec))
+	if spec.Provider == agentprovider.Codex && result.Status == ProbeFailed {
+		if code, ok := classifyCodexRuntimeError(result.Message); ok {
+			result.LastError = &ProviderLastError{Code: string(code), Message: result.Message}
+			result.ReasonCode = codexReasonCodeFromErrorCode(string(code))
+		}
+	}
+	return result
 }
 
 func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunActionResult, error) {
@@ -299,6 +365,9 @@ func (s Service) RunAction(ctx context.Context, input RunActionInput) (RunAction
 func (s Service) runInstallAction(ctx context.Context, spec ProviderSpec, result RunActionResult) (RunActionResult, error) {
 	if result, ok := unsupportedProviderRunActionResult(spec, result); ok {
 		return result, nil
+	}
+	if spec.Provider == agentprovider.Codex {
+		defer clearActiveAction(spec.Provider)
 	}
 	runtimeResolution := s.resolveProviderRuntime(ctx, spec)
 	summary, updatedRuntime, err := s.installMissingProviderRuntime(baseContext(ctx), spec, runtimeResolution)
@@ -379,6 +448,14 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		}
 	}
 	auth := s.resolveAuth(ctx, spec, installed, runtimeResolution.CLIPath)
+	cliVersion := ""
+	if installed {
+		cliVersion = s.cliVersion(ctx, runtimeResolution.CLIPath)
+	}
+	codexPlatformOK := true
+	if spec.Provider == agentprovider.Codex && installed {
+		codexPlatformOK = s.codexPlatformBinaryOK(runtimeResolution.CLIPath)
+	}
 	availability := Availability{
 		CheckedAt: &now,
 		Status:    AvailabilityReady,
@@ -401,6 +478,14 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		availability.Status = AvailabilityNotInstalled
 		availability.ReasonCode = "acp_adapter_version_mismatch"
 		actions = append(actions, daemonAction(ActionInstall))
+	} else if spec.Provider == agentprovider.Codex && !codexPlatformOK {
+		availability.Status = AvailabilityNotInstalled
+		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrPlatformPkgIncomplete))
+		actions = append(actions, daemonAction(ActionInstall))
+	} else if spec.Provider == agentprovider.Codex && !codexVersionMeetsMinimum(cliVersion) {
+		availability.Status = AvailabilityNotInstalled
+		availability.ReasonCode = codexReasonCodeFromErrorCode(string(CodexErrVersionTooOld))
+		actions = append(actions, daemonAction(ActionInstall))
 	} else {
 		actions = append(actions, terminalAction(ActionLogin, loginCommandForRuntime(spec, runtimeResolution)))
 		switch auth.Status {
@@ -415,12 +500,13 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		}
 	}
 
-	return ProviderStatus{
+	status := ProviderStatus{
 		Provider:     spec.Provider,
 		Availability: availability,
 		CLI: CLIStatus{
 			Installed:  installed,
 			BinaryPath: runtimeResolution.CLIPath,
+			Version:    cliVersion,
 		},
 		Adapter: AdapterStatus{
 			Installed:  adapterReady,
@@ -430,6 +516,19 @@ func (s Service) statusForSpec(ctx context.Context, spec ProviderSpec, now time.
 		Auth:    auth,
 		Actions: actions,
 	}
+	if spec.Provider == agentprovider.Codex {
+		status.Checks = codexProviderChecks(status, codexPlatformOK)
+		status.LastError = codexProviderLastError(status)
+		status.ActiveAction = activeActionForProvider(spec.Provider)
+		slog.Info(
+			"codex agent provider status checked",
+			"availability", status.Availability.Status,
+			"reasonCode", status.Availability.ReasonCode,
+			"version", status.CLI.Version,
+			"lastErrorCode", providerLastErrorCode(status.LastError),
+		)
+	}
+	return status
 }
 
 func (s Service) shouldProbeAdapterCommandForStatus(spec ProviderSpec, runtimeResolution providerRuntimeResolution) bool {

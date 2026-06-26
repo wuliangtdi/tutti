@@ -30,6 +30,20 @@ test("normalizes paths under the logical workspace root", () => {
   assert.equal(normalizeWorkspaceFilePath(""), "/");
 });
 
+test("normalizes Windows drive paths without treating them as relative", () => {
+  assert.equal(
+    normalizeWorkspaceFilePath("src\\main.ts", "C:\\Users\\demo\\project"),
+    "C:/Users/demo/project/src/main.ts"
+  );
+  assert.equal(
+    normalizeWorkspaceFilePath(
+      "C:\\tmp\\report.txt",
+      "C:\\Users\\demo\\project"
+    ),
+    "C:/tmp/report.txt"
+  );
+});
+
 test("formatWorkspaceFileModifiedTime uses the shared English short date-time format", () => {
   const timestamp = new Date(2026, 4, 23, 11, 39).getTime();
 
@@ -59,6 +73,36 @@ test("derives logical parent directory", () => {
       "/Users/demo/project"
     ),
     "/Users/demo/project"
+  );
+});
+
+test("derives external absolute parent directories outside the current root", () => {
+  assert.equal(
+    workspaceFileDirectory("/tmp/hello_world.md", "/Users/demo"),
+    "/tmp"
+  );
+  assert.equal(workspaceFileDirectory("/hello_world.md", "/Users/demo"), "/");
+  assert.equal(
+    workspaceFileDirectory(
+      "/var/folders/demo/T/codex-presentations/slides.pptx",
+      "/Users/demo"
+    ),
+    "/var/folders/demo/T/codex-presentations"
+  );
+  assert.equal(
+    workspaceFileDirectory("../../tmp/file.txt", "/Users/demo"),
+    "/Users/demo"
+  );
+});
+
+test("derives Windows drive parent directories outside the current root", () => {
+  assert.equal(
+    workspaceFileDirectory("C:\\tmp\\hello_world.md", "C:\\Users\\demo"),
+    "C:/tmp"
+  );
+  assert.equal(
+    workspaceFileDirectory("C:\\hello_world.md", "C:\\Users\\demo"),
+    "C:/"
   );
 });
 

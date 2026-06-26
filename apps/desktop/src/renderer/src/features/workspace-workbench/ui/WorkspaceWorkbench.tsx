@@ -32,6 +32,7 @@ import {
 } from "@renderer/features/workspace-app-center";
 import { useWorkspaceCatalogService } from "@renderer/features/workspace-catalog";
 import {
+  AgentEnvPanel,
   DesktopAgentProviderManageDialog,
   IAgentProviderStatusService,
   registerWorkspaceAgentGuiLaunchHandler,
@@ -702,6 +703,11 @@ function ReadyWorkspaceWorkbench({
         request={runtime.closeDialog.request}
         onCancel={runtime.closeDialog.onCancel}
         onConfirm={runtime.closeDialog.onConfirm}
+      />
+      <AgentEnvPanel
+        agentProviderStatusService={agentProviderStatusService}
+        workspaceId={state.workspace.id}
+        workbenchHost={workbenchHost ?? undefined}
       />
     </main>
   );

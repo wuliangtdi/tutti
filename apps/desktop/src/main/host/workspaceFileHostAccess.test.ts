@@ -82,6 +82,53 @@ test("workspace file host access resolves and opens workspace files", async () =
   }
 });
 
+test("workspace file host access resolves external absolute workspace file paths", async () => {
+  const homeRoot = await createWorkspaceRootWithFile("home.txt", "home");
+  const externalRoot = await createWorkspaceRootWithFile(
+    "exports/report.txt",
+    "external"
+  );
+  const targetPath = path.join(externalRoot, "exports/report.txt");
+  const restoreHome = installHomeDirectory(homeRoot);
+  try {
+    const openedPaths: string[] = [];
+    let revealedPath = "";
+    const hostAccess = createWorkspaceFileHostAccess({
+      openPath: async (targetPath) => {
+        openedPaths.push(targetPath);
+        return "";
+      },
+      showItemInFolder(targetPath) {
+        revealedPath = targetPath;
+      }
+    });
+
+    await hostAccess.openFile({
+      path: targetPath,
+      workspaceID: "workspace-1"
+    });
+    const fileUrl = await hostAccess.resolveWorkspaceFileFileUrl({
+      path: targetPath,
+      workspaceID: "workspace-1"
+    });
+    const bytes = await hostAccess.readPreviewFile({
+      path: targetPath,
+      workspaceID: "workspace-1"
+    });
+    await hostAccess.revealWorkspaceFile({
+      path: targetPath,
+      workspaceID: "workspace-1"
+    });
+
+    assert.deepEqual(openedPaths, [path.resolve(targetPath)]);
+    assert.equal(fileUrl, pathToFileURL(path.resolve(targetPath)).href);
+    assert.equal(Buffer.from(bytes).toString("utf8"), "external");
+    assert.equal(revealedPath, path.resolve(targetPath));
+  } finally {
+    restoreHome();
+  }
+});
+
 test("workspace file host access treats missing default applications as handled", async () => {
   const workspaceRoot = await createWorkspaceRootWithFile(
     "exports/report.tutti-unknown",

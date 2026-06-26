@@ -12,6 +12,10 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/apierrors"
 )
 
+type pathAwareWorkspaceFileResponseRootResolver interface {
+	ResolveWorkspaceRootForPath(context.Context, string, string) (workspacefiles.WorkspaceRoot, error)
+}
+
 func (api DaemonAPI) ListWorkspaceFileDirectory(
 	ctx context.Context,
 	request tuttigenerated.ListWorkspaceFileDirectoryRequestObject,
@@ -92,7 +96,7 @@ func (api DaemonAPI) CreateWorkspaceFileDirectory(
 	if err != nil {
 		return writeCreateWorkspaceFileDirectoryError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeCreateWorkspaceFileDirectoryError(err), nil
 	}
@@ -298,7 +302,7 @@ func (api DaemonAPI) CreateWorkspaceFile(
 	if err != nil {
 		return writeCreateWorkspaceFileError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeCreateWorkspaceFileError(err), nil
 	}
@@ -344,7 +348,7 @@ func (api DaemonAPI) ReadWorkspaceFilePreview(
 	if err != nil {
 		return writeReadWorkspaceFilePreviewError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, content.Path.String())
 	if err != nil {
 		return writeReadWorkspaceFilePreviewError(err), nil
 	}
@@ -394,7 +398,7 @@ func (api DaemonAPI) WriteWorkspaceFileText(
 	if err != nil {
 		return writeWriteWorkspaceFileTextError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeWriteWorkspaceFileTextError(err), nil
 	}
@@ -499,7 +503,7 @@ func (api DaemonAPI) MoveWorkspaceFileEntry(
 	if err != nil {
 		return writeMoveWorkspaceFileEntryError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeMoveWorkspaceFileEntryError(err), nil
 	}
@@ -553,7 +557,7 @@ func (api DaemonAPI) RenameWorkspaceFileEntry(
 	if err != nil {
 		return writeRenameWorkspaceFileEntryError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeRenameWorkspaceFileEntryError(err), nil
 	}
@@ -602,7 +606,7 @@ func (api DaemonAPI) CopyWorkspaceFileEntry(
 	if err != nil {
 		return writeCopyWorkspaceFileEntryError(err), nil
 	}
-	root, err := api.workspaceFileResponseRoot(ctx, workspaceID)
+	root, err := api.workspaceFileResponseRootForPath(ctx, workspaceID, entry.Path.String())
 	if err != nil {
 		return writeCopyWorkspaceFileEntryError(err), nil
 	}
@@ -621,6 +625,22 @@ func (api DaemonAPI) workspaceFileResponseRoot(
 	workspaceID string,
 ) (workspacefiles.LogicalPath, error) {
 	root, err := api.FileService.ResolveWorkspaceRoot(ctx, workspaceID)
+	if err != nil {
+		return "", err
+	}
+	return workspacefiles.NormalizeLogicalRoot(root.LogicalRoot), nil
+}
+
+func (api DaemonAPI) workspaceFileResponseRootForPath(
+	ctx context.Context,
+	workspaceID string,
+	path string,
+) (workspacefiles.LogicalPath, error) {
+	pathResolver, ok := api.FileService.(pathAwareWorkspaceFileResponseRootResolver)
+	if !ok {
+		return api.workspaceFileResponseRoot(ctx, workspaceID)
+	}
+	root, err := pathResolver.ResolveWorkspaceRootForPath(ctx, workspaceID, path)
 	if err != nil {
 		return "", err
 	}

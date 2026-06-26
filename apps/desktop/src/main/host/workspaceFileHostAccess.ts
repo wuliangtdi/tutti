@@ -334,11 +334,31 @@ function defaultShowItemInFolder(path: string): void {
 function resolveWorkspaceTargetPath(
   payload: DesktopWorkspaceFilePathPayload
 ): string {
-  return resolveWorkspaceLogicalFilePath({
+  const rootDirectory = resolveWorkspaceTargetRoot(payload.path);
+  const targetPath = resolveWorkspaceLogicalFilePath({
     logicalPath: payload.path,
     logicalRoot: workspaceLogicalRoot,
-    physicalRootDirectory: homedir()
+    physicalRootDirectory: rootDirectory
   });
+  return targetPath;
+}
+
+function resolveWorkspaceTargetRoot(logicalPath: string): string {
+  const normalizedPath = logicalPath.trim().replaceAll("\\", "/");
+  if (
+    isWorkspaceLogicalPath(normalizedPath) ||
+    !path.isAbsolute(normalizedPath)
+  ) {
+    return homedir();
+  }
+  return path.parse(normalizedPath).root || path.resolve(path.sep);
+}
+
+function isWorkspaceLogicalPath(value: string): boolean {
+  return (
+    value === workspaceLogicalRoot ||
+    value.startsWith(`${workspaceLogicalRoot}/`)
+  );
 }
 
 async function shouldTreatSystemOpenFailureAsHandled(

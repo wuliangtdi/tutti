@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -273,6 +272,92 @@ func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 	if status.Auth.Status != AuthUnknown {
 		t.Fatalf("Auth.Status = %q, want %q", status.Auth.Status, AuthUnknown)
 	}
+}
+
+func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", "0.100.0")
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex 0.100.0'; exit 0; fi\nsleep 5\n")
+	visiblePath := filepath.Join(binDir, "codex")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, visiblePath); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+	platformPath, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	if _, ok := service.codexPlatformBinaryComplete(pkgDir, runtime.GOOS, runtime.GOARCH); !ok {
+		t.Fatalf("test codex platform binary is not complete at %s", platformPath)
+	}
+
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+
+	status := onlyStatus(t, snapshot)
+	if status.CLI.Version != "0.100.0" {
+		t.Fatalf("CLI.Version = %q, want 0.100.0", status.CLI.Version)
+	}
+	if status.LastError == nil || status.LastError.Code != string(CodexErrVersionTooOld) {
+		t.Fatalf("LastError = %#v, CLI.BinaryPath=%q, packageDir=%q, want codex version too old", status.LastError, status.CLI.BinaryPath, codexPackageDirForBinary(status.CLI.BinaryPath))
+	}
+	assertProviderCheck(t, status.Checks, "cli_present", true)
+	assertProviderCheck(t, status.Checks, "platform_binary", true)
+	assertProviderCheck(t, status.Checks, "version_floor", false)
+	assertProviderCheck(t, status.Checks, "auth", true)
+}
+
+func TestServiceProbeReportsCodexPlatformPackageIncomplete(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+	codexPath := filepath.Join(pkgDir, "bin", "codex")
+	writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin dir: %v", err)
+	}
+	if err := os.Symlink(codexPath, filepath.Join(binDir, "codex")); err != nil {
+		t.Fatalf("symlink codex: %v", err)
+	}
+
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir}
+	}
+	service.IsExecutableFile = isTestExecutable
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+
+	result, err := service.Probe(context.Background(), ProbeInput{Provider: "codex"})
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if result.Status != ProbeFailed {
+		t.Fatalf("Status = %q, want failed; result=%#v", result.Status, result)
+	}
+	if result.LastError == nil || result.LastError.Code != string(CodexErrPlatformPkgIncomplete) {
+		t.Fatalf("LastError = %#v, want platform package incomplete", result.LastError)
+	}
+	assertProviderCheck(t, result.Checks, "platform_binary", false)
 }
 
 func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.T) {
@@ -827,67 +912,164 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	}
 }
 
-func TestServiceRunCodexCLILatestInstallerDownloadsLatestAssets(t *testing.T) {
+func TestServiceRunCodexCLILatestInstallerUsesGlobalNPM(t *testing.T) {
 	home := t.TempDir()
-	installDir := filepath.Join(home, ".local", "bin")
-	archivePath, archiveSHA256 := codexCLIPackageArchive(t)
-	target, ok := codexCLIPackageTarget(runtime.GOOS, runtime.GOARCH)
-	if !ok {
-		t.Skipf("codex CLI package target unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	archiveName := "codex-package-" + target + ".tar.gz"
-	requestedPaths := []string{}
-	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requestedPaths = append(requestedPaths, request.URL.Path)
-		switch request.URL.Path {
-		case "/" + archiveName:
-			http.ServeFile(writer, request, archivePath)
-		case "/codex-package_SHA256SUMS":
-			_, _ = writer.Write([]byte(archiveSHA256 + "  " + archiveName + "\n"))
-		default:
-			http.NotFound(writer, request)
-		}
-	}))
-	defer installerServer.Close()
-
+	binDir := filepath.Join(home, "bin")
+	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
+	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
 	service := probeTestService(home)
-	service.HTTPClient = installerServer.Client()
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	service.Registry = Registry{Specs: []ProviderSpec{{
+		Provider:           "codex",
+		BinaryNames:        []string{"codex-test"},
+		AdapterBinaryNames: []string{"codex-test"},
+		AdapterCommand:     []string{"codex-test", "app-server"},
+		AuthStatusCommand:  []string{"login", "status"},
+		Install:            codexCLIInstallerSpec(),
+		LoginArgs:          []string{"login"},
+	}}}
+	var command InstallCommandInput
+	service.InstallCommand = func(_ context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		command = input
+		input.OnStdout("installed")
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
+	}
 	result, err := service.runCodexCLILatestInstaller(context.Background(), InstallerSpec{
-		Kind: InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{
-			BaseURL: installerServer.URL,
-		},
-	}, installDir)
+		Kind:     InstallerKindCodexCLILatest,
+		CodexCLI: &CodexCLILatestInstallerSpec{},
+	}, "")
 	if err != nil {
 		t.Fatalf("runCodexCLILatestInstaller() error = %v", err)
 	}
 	if result.ExitCode != 0 {
 		t.Fatalf("ExitCode = %d, want 0; stderr=%q", result.ExitCode, result.Stderr)
 	}
-	if result.Stdout == "" {
-		t.Fatal("Stdout is empty, want install summary")
+	if !strings.Contains(command.Command, npmPath) ||
+		!strings.Contains(command.Command, "install") ||
+		!strings.Contains(command.Command, "-g") ||
+		!strings.Contains(command.Command, "@openai/codex") ||
+		!strings.Contains(command.Command, "--include=optional") ||
+		strings.Contains(command.Command, "--prefix") {
+		t.Fatalf("Command = %q, want global npm install with optional deps", command.Command)
 	}
-	for _, path := range requestedPaths {
-		if strings.Contains(path, "api.github.com") || strings.Contains(path, "/api/") {
-			t.Fatalf("requested path %q, want latest/download asset paths only", path)
+	if !slices.Contains(command.Env, "npm_config_registry=https://registry.example.test") {
+		t.Fatalf("Env = %#v, want selected npm registry", command.Env)
+	}
+}
+
+func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, "bin")
+	npmPath := filepath.Join(binDir, npmBinaryNameForTest())
+	nodePath := filepath.Join(binDir, nodeBinaryNameForTest())
+	writeExecutable(t, npmPath, "#!/bin/sh\nexit 0\n")
+	writeExecutable(t, nodePath, "#!/bin/sh\nexit 0\n")
+	service := probeTestService(home)
+	service.Environ = func() []string {
+		return []string{"PATH=" + binDir, agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		return AuthInfo{Status: AuthAuthenticated}, true
+	}
+	service.Registry = Registry{Specs: []ProviderSpec{{
+		Provider:           "codex",
+		BinaryNames:        []string{"codex-test"},
+		AdapterBinaryNames: []string{"codex-test"},
+		AdapterCommand:     []string{"codex-test", "app-server"},
+		AuthStatusCommand:  []string{"login", "status"},
+		Install:            codexCLIInstallerSpec(),
+		LoginArgs:          []string{"login"},
+	}}}
+
+	installStarted := make(chan struct{})
+	releaseInstall := make(chan struct{})
+	var releaseInstallOnce sync.Once
+	done := make(chan RunActionResult, 1)
+	pkgDir := filepath.Join(home, "lib", "node_modules", "@openai", "codex")
+	service.InstallCommand = func(ctx context.Context, input InstallCommandInput) (InstallCommandResult, error) {
+		// This callback runs on the RunAction goroutine, so it must never call
+		// t.Fatalf/t.Skipf — those Goexit only this goroutine and hang the test on
+		// <-done. Use t.Errorf and return so the test goroutine unblocks.
+		if !strings.Contains(input.Command, npmPath) ||
+			!strings.Contains(input.Command, "install") ||
+			!strings.Contains(input.Command, "-g") ||
+			!strings.Contains(input.Command, "@openai/codex") ||
+			!strings.Contains(input.Command, "--include=optional") ||
+			strings.Contains(input.Command, "--prefix") {
+			t.Errorf("Command = %q, want global npm install with optional deps", input.Command)
 		}
+		if !slices.Contains(input.Env, "npm_config_registry=https://registry.example.test") {
+			t.Errorf("Env = %#v, want selected npm registry", input.Env)
+		}
+		input.OnStdout("fetching @openai/codex")
+		close(installStarted)
+		select {
+		case <-releaseInstall:
+		case <-ctx.Done():
+			return InstallCommandResult{ExitCode: 1, Stderr: ctx.Err().Error()}, ctx.Err()
+		}
+		writePackageManifest(t, pkgDir, "@openai/codex", MinSupportedCodexVersion)
+		codexPath := filepath.Join(pkgDir, "bin", "codex")
+		writeExecutable(t, codexPath, "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\nsleep 5\n")
+		// Platform support was already checked on the test goroutine below, so ok
+		// is true here.
+		platformPath, _ := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH)
+		writeExecutable(t, platformPath, "#!/bin/sh\nexit 0\n")
+		if err := os.Symlink(codexPath, filepath.Join(binDir, "codex-test")); err != nil {
+			t.Errorf("symlink codex: %v", err)
+			return InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, err
+		}
+		return InstallCommandResult{ExitCode: 0, Stdout: "installed"}, nil
 	}
-	if !slices.Equal(requestedPaths, []string{"/" + archiveName, "/codex-package_SHA256SUMS"}) {
-		t.Fatalf("requestedPaths = %#v, want archive then checksum", requestedPaths)
+	if _, ok := codexPlatformBinaryPath(pkgDir, runtime.GOOS, runtime.GOARCH); !ok {
+		t.Skipf("codex platform package unavailable for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".codex", "packages", "standalone", "current", "bin", "codex")); err != nil {
-		t.Fatalf("current codex missing: %v", err)
+	go func() {
+		result, err := service.RunAction(context.Background(), RunActionInput{
+			Provider: "codex",
+			ActionID: ActionInstall,
+		})
+		if err != nil {
+			t.Errorf("RunAction() error = %v", err)
+		}
+		done <- result
+	}()
+
+	select {
+	case <-installStarted:
+	case result := <-done:
+		t.Fatalf("RunAction completed before install started: %#v", result)
 	}
-	visiblePath := filepath.Join(installDir, "codex")
-	if !service.executableFile(visiblePath) {
-		t.Fatalf("visible codex path %s is not executable", visiblePath)
-	}
-	output, err := exec.Command(visiblePath, "--version").CombinedOutput()
+	defer releaseInstallOnce.Do(func() { close(releaseInstall) })
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
-		t.Fatalf("run installed codex: %v; output=%s", err, output)
+		t.Fatalf("List() error = %v", err)
 	}
-	if strings.TrimSpace(string(output)) != "codex 1.2.3" {
-		t.Fatalf("codex --version = %q, want codex 1.2.3", strings.TrimSpace(string(output)))
+	status := onlyStatus(t, snapshot)
+	if status.ActiveAction == nil {
+		t.Fatal("ActiveAction = nil, want running install action")
+	}
+	if status.ActiveAction.Registry != "https://registry.example.test" {
+		t.Fatalf("ActiveAction.Registry = %q, want registry override", status.ActiveAction.Registry)
+	}
+	if status.ActiveAction.NodeTarget != nodePath {
+		t.Fatalf("ActiveAction.NodeTarget = %q, want %q", status.ActiveAction.NodeTarget, nodePath)
+	}
+	if !strings.Contains(status.ActiveAction.Stdout, "fetching @openai/codex") {
+		t.Fatalf("ActiveAction.Stdout = %q, want npm stdout", status.ActiveAction.Stdout)
+	}
+
+	releaseInstallOnce.Do(func() { close(releaseInstall) })
+	result := <-done
+	if result.Status != RunActionCompleted {
+		t.Fatalf("Status = %q, want completed; result=%#v", result.Status, result)
 	}
 }
 
@@ -2017,9 +2199,35 @@ func firstAction(t *testing.T, actions []Action) Action {
 	return actions[0]
 }
 
+func assertProviderCheck(t *testing.T, checks []ProviderCheck, name string, passed bool) {
+	t.Helper()
+	for _, check := range checks {
+		if check.Name == name {
+			if check.Passed != passed {
+				t.Fatalf("check %q passed = %v, want %v; checks=%#v", name, check.Passed, passed, checks)
+			}
+			return
+		}
+	}
+	t.Fatalf("check %q missing in %#v", name, checks)
+}
+
+func isTestExecutable(path string) bool {
+	stat, err := os.Stat(path)
+	return err == nil && !stat.IsDir() && stat.Mode().Perm()&0111 != 0
+}
+
 func isTestExecutableUnderHome(home string) func(string) bool {
 	return func(path string) bool {
-		rel, err := filepath.Rel(home, path)
+		homePath, err := filepath.EvalSymlinks(home)
+		if err != nil {
+			homePath = home
+		}
+		resolvedPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			resolvedPath = path
+		}
+		rel, err := filepath.Rel(homePath, resolvedPath)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 			return false
 		}
@@ -2176,63 +2384,6 @@ func releaseBinaryArchive(t *testing.T, binaryName string, contents string) (str
 	data, err := os.ReadFile(archivePath)
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
-	}
-	sum := sha256.Sum256(data)
-	return archivePath, hex.EncodeToString(sum[:])
-}
-
-func codexCLIPackageArchive(t *testing.T) (string, string) {
-	t.Helper()
-	archivePath := filepath.Join(t.TempDir(), "codex-package.tar.gz")
-	file, err := os.Create(archivePath)
-	if err != nil {
-		t.Fatalf("create codex package archive: %v", err)
-	}
-	gzipWriter := gzip.NewWriter(file)
-	tarWriter := tar.NewWriter(gzipWriter)
-	files := map[string]struct {
-		mode     int64
-		contents string
-	}{
-		"codex-package.json": {
-			mode:     0o644,
-			contents: `{"name":"codex-package","version":"1.2.3"}`,
-		},
-		"bin/codex": {
-			mode:     0o755,
-			contents: "#!/bin/sh\necho 'codex 1.2.3'\n",
-		},
-		"codex-path/rg": {
-			mode:     0o755,
-			contents: "#!/bin/sh\necho rg\n",
-		},
-	}
-	for name, file := range files {
-		contentBytes := []byte(file.contents)
-		header := &tar.Header{
-			Name: name,
-			Mode: file.mode,
-			Size: int64(len(contentBytes)),
-		}
-		if err := tarWriter.WriteHeader(header); err != nil {
-			t.Fatalf("write codex package header: %v", err)
-		}
-		if _, err := tarWriter.Write(contentBytes); err != nil {
-			t.Fatalf("write codex package contents: %v", err)
-		}
-	}
-	if err := tarWriter.Close(); err != nil {
-		t.Fatalf("close codex package tar writer: %v", err)
-	}
-	if err := gzipWriter.Close(); err != nil {
-		t.Fatalf("close codex package gzip writer: %v", err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatalf("close codex package archive file: %v", err)
-	}
-	data, err := os.ReadFile(archivePath)
-	if err != nil {
-		t.Fatalf("read codex package archive: %v", err)
 	}
 	sum := sha256.Sum256(data)
 	return archivePath, hex.EncodeToString(sum[:])

@@ -6,6 +6,10 @@ type WorkspaceResolver interface {
 	ResolveWorkspaceRoot(ctx context.Context, workspaceID string) (WorkspaceRoot, error)
 }
 
+type PathAwareWorkspaceResolver interface {
+	ResolveWorkspaceRootForPath(ctx context.Context, workspaceID string, path string) (WorkspaceRoot, error)
+}
+
 type FileAdapter interface {
 	ListDirectory(ctx context.Context, root WorkspaceRoot, path LogicalPath, includeHidden bool) (DirectoryListing, error)
 	CreateFile(ctx context.Context, root WorkspaceRoot, path LogicalPath) (FileEntry, error)

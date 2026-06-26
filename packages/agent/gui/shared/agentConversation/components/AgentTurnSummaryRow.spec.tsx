@@ -250,6 +250,60 @@ describe("AgentTurnSummaryRow", () => {
     ).toBeTruthy();
   });
 
+  it("dispatches workspace actions for external absolute file changes", async () => {
+    const onLinkAction = vi.fn();
+    const externalPath =
+      "/var/folders/17/demo/T/codex-presentations/test-note.md";
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:external",
+          turnId: "turn-external",
+          fileCount: 1,
+          modifiedCount: 0,
+          createdCount: 1,
+          occurredAtUnixMs: 25,
+          files: [
+            {
+              label: externalPath,
+              path: externalPath,
+              fileName: "test-note.md",
+              directory: "/var/folders/17/demo/T/codex-presentations",
+              changeType: "created",
+              toolName: "write_file",
+              messageId: "call:external",
+              content: "# Test note",
+              newString: "# Test note",
+              occurredAtUnixMs: 25
+            }
+          ]
+        }}
+        workspaceRoot="/Users/demo/project"
+        label="Changed files"
+        onLinkAction={onLinkAction}
+      />
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: /test-note\.md/i
+      })[0]!
+    );
+
+    const openFileButton = await screen.findByRole("button", {
+      name: /agentHost\.workspaceAgentSessionDetailOpenFile:\/var\/folders\/17\/demo\/T\/codex-presentations\/test-note\.md/i
+    });
+    fireEvent.click(openFileButton);
+
+    expect(onLinkAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: externalPath,
+        type: "open-workspace-file"
+      })
+    );
+  });
+
   it("renders created edit-file content without falling back to monaco loading", async () => {
     render(
       <AgentTurnSummaryRow

@@ -117,11 +117,13 @@ test("workspace files launch coordinator preserves open directory mode", async (
   ]);
 });
 
-test("workspace files launch coordinator rejects /workspace as an unsupported absolute path", async () => {
+test("workspace files launch coordinator preserves legacy absolute workspace paths", async () => {
+  const requests: Array<{ path: string; workspaceId: string }> = [];
   const dispose = registerWorkspaceFilesLaunchHandler(
     "workspace-legacy",
-    () => {
-      throw new Error("legacy /workspace path should not launch");
+    (request) => {
+      requests.push(request);
+      return true;
     }
   );
 
@@ -131,12 +133,18 @@ test("workspace files launch coordinator rejects /workspace as an unsupported ab
       path: "/workspace/docs/spec.md",
       workspaceId: "workspace-legacy"
     }),
-    false
+    true
   );
   dispose();
+  assert.deepEqual(requests, [
+    {
+      path: "/workspace/docs/spec.md",
+      workspaceId: "workspace-legacy"
+    }
+  ]);
 });
 
-test("workspace files launch coordinator preserves home absolute paths and rejects unsupported absolute paths", async () => {
+test("workspace files launch coordinator preserves local absolute paths outside home", async () => {
   const requests: Array<{ path: string; workspaceId: string }> = [];
   const dispose = registerWorkspaceFilesLaunchHandler(
     "workspace-absolute",
@@ -160,7 +168,7 @@ test("workspace files launch coordinator preserves home absolute paths and rejec
       path: "/Users/other/demo/README.md",
       workspaceId: "workspace-absolute"
     }),
-    false
+    true
   );
   assert.equal(
     await requestWorkspaceFilesLaunch({
@@ -168,15 +176,83 @@ test("workspace files launch coordinator preserves home absolute paths and rejec
       path: "/tmp/README.md",
       workspaceId: "workspace-absolute"
     }),
-    false
+    true
+  );
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "/Users/example",
+      path: "/var/folders/demo/T/codex-presentations/file.pptx",
+      workspaceId: "workspace-absolute"
+    }),
+    true
+  );
+  assert.equal(
+    await requestWorkspaceFilesLaunch({
+      homeDirectory: "C:\\Users\\example",
+      path: "C:\\tmp\\report.txt",
+      workspaceId: "workspace-absolute"
+    }),
+    true
   );
   dispose();
   assert.deepEqual(requests, [
     {
       path: "/Users/example/demo/README.md",
       workspaceId: "workspace-absolute"
+    },
+    {
+      path: "/Users/other/demo/README.md",
+      workspaceId: "workspace-absolute"
+    },
+    {
+      path: "/tmp/README.md",
+      workspaceId: "workspace-absolute"
+    },
+    {
+      path: "/var/folders/demo/T/codex-presentations/file.pptx",
+      workspaceId: "workspace-absolute"
+    },
+    {
+      path: "C:/tmp/report.txt",
+      workspaceId: "workspace-absolute"
     }
   ]);
+});
+
+test("workspace files launch coordinator rejects non-local and special paths", async () => {
+  const dispose = registerWorkspaceFilesLaunchHandler(
+    "workspace-invalid-paths",
+    () => {
+      throw new Error("invalid path should not launch");
+    }
+  );
+
+  for (const path of [
+    "",
+    "#readme",
+    "https://example.com/file.txt",
+    "file:///tmp/file.txt",
+    '{"path":"/tmp/file.txt"}',
+    '["/tmp/file.txt"]',
+    "/dev/null",
+    "/dev/./null",
+    "/dev//null",
+    "NUL",
+    "NUL.txt",
+    "C:\\tmp\\NUL",
+    "\\\\server\\share\\file.txt",
+    "//server/share/file.txt"
+  ]) {
+    assert.equal(
+      await requestWorkspaceFilesLaunch({
+        path,
+        workspaceId: "workspace-invalid-paths"
+      }),
+      false,
+      path
+    );
+  }
+  dispose();
 });
 
 test("workspace files launch coordinator preserves hidden internal state paths under home", async () => {

@@ -133,6 +133,62 @@ test("revealPath loads the parent directory and selects the requested file", asy
   assert.equal(store.isLoading, false);
 });
 
+test("revealPath loads external absolute parent directories outside the current root", async () => {
+  const store = createTestStore();
+  store.root = "/Users/demo";
+  store.currentDirectoryPath = "/Users/demo";
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory(input) {
+        assert.equal(input.path, "/tmp");
+        return {
+          directoryPath: input.path,
+          entries: [createFileEntry("/tmp/hello_world.md")],
+          root: "/",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  await controller.revealPath("/tmp/hello_world.md");
+
+  assert.equal(store.root, "/");
+  assert.equal(store.currentDirectoryPath, "/tmp");
+  assert.equal(store.selectedPath, "/tmp/hello_world.md");
+  assert.equal(store.isLoading, false);
+});
+
+test("revealPath handles Windows drive paths outside the current root", async () => {
+  const store = createTestStore();
+  store.root = "C:/Users/demo";
+  store.currentDirectoryPath = "C:/Users/demo";
+  const controller = new WorkspaceFileManagerNavigationController({
+    host: {
+      async listDirectory(input) {
+        assert.equal(input.path, "C:/tmp");
+        return {
+          directoryPath: input.path,
+          entries: [createFileEntry("C:/tmp/hello_world.md")],
+          root: "C:/",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    resolveErrorMessage: defaultResolveErrorMessage,
+    store
+  });
+
+  await controller.revealPath("C:\\tmp\\hello_world.md");
+
+  assert.equal(store.root, "C:/");
+  assert.equal(store.currentDirectoryPath, "C:/tmp");
+  assert.equal(store.selectedPath, "C:/tmp/hello_world.md");
+  assert.equal(store.isLoading, false);
+});
+
 test("revealPath includes hidden entries when parent path contains a hidden segment", async () => {
   const store = createTestStore();
   store.root = "/Users/demo";

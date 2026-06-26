@@ -1834,6 +1834,7 @@ func acpSystemNoticeEvent(session Session, turnID string, update map[string]any,
 	copyStringPayload(payload, notice, "source")
 	copyStringPayload(payload, notice, "title")
 	copyStringPayload(payload, notice, "detail")
+	copyStringPayload(payload, notice, "code")
 	copyBoolPayload(payload, notice, "retryable")
 	if extra := clonePayloadValue(notice["extra"]); extra != nil {
 		payload["extra"] = extra

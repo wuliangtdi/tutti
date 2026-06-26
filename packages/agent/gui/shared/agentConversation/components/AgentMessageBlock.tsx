@@ -23,6 +23,11 @@ import {
 import { AgentRichTextReadonly } from "../../AgentRichTextReadonly";
 import { resolveAgentConversationLinkAction } from "../actions/agentConversationLinkActions";
 import { workspaceAgentProviderLabel } from "../../workspaceAgentProviderLabel";
+import { openAgentEnvPanel } from "../../agentEnv/agentEnvPanelStore";
+import {
+  classifyFailedAgentMessage,
+  resolveAgentErrorPresentation
+} from "../../agentEnv/agentErrorPresentation";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import type {
   AgentMessageContentVM,
@@ -47,6 +52,9 @@ interface AgentMessageBlockProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   thinkingLabel: string;
   onAuthLogin?: (provider?: string | null) => void;
+  // The conversation's provider, so a failed message recovered as an env error
+  // routes its wizard CTA to the right provider.
+  provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
@@ -61,6 +69,7 @@ export function AgentMessageBlock({
   onLinkAction,
   thinkingLabel,
   onAuthLogin,
+  provider,
   availableSkills,
   workspaceAppIcons,
   previewMode = false,
@@ -139,6 +148,13 @@ export function AgentMessageBlock({
               label={rawTimelineJsonLabel}
             />
           ) : null;
+        // Recover a structured error card from a failed message that the provider
+        // reported as plain text (e.g. a dropped-login 401), so it still gets the
+        // wizard call-to-action instead of a dead red message.
+        const recoveredError =
+          !isUser && !message.visibleError && message.statusKind === "failed"
+            ? recoverVisibleErrorFromFailedMessage(message, provider)
+            : null;
         const content =
           isUser && message.contentKind === "image-grid" ? (
             <AgentUserImageGrid message={message} />
@@ -154,6 +170,11 @@ export function AgentMessageBlock({
           ) : message.visibleError ? (
             <AgentVisibleErrorMessage
               message={message}
+              onAuthLogin={onAuthLogin}
+            />
+          ) : recoveredError ? (
+            <AgentVisibleErrorMessage
+              message={recoveredError}
               onAuthLogin={onAuthLogin}
             />
           ) : message.systemNotice ? (
@@ -591,19 +612,53 @@ function systemNoticeTitle(message: AgentMessageContentVM): string {
   }
 }
 
+// Builds a synthetic visibleError from a plain failed message whose text is a
+// recognizable env failure, so it renders as the structured remediation card.
+function recoverVisibleErrorFromFailedMessage(
+  message: AgentMessageContentVM,
+  provider: string | null | undefined
+): AgentMessageContentVM | null {
+  const code = classifyFailedAgentMessage(message.body);
+  if (!code) {
+    return null;
+  }
+  return {
+    ...message,
+    visibleError: {
+      code,
+      phase: null,
+      provider: provider ?? null,
+      detail: message.body,
+      retryable: null
+    }
+  };
+}
+
 function AgentVisibleErrorMessage({
-  message,
-  onAuthLogin
+  message
 }: {
   message: AgentMessageContentVM;
   onAuthLogin?: (provider?: string | null) => void;
 }): JSX.Element {
   "use memo";
   const error = message.visibleError;
-  const title = visibleErrorTitle(message);
-  const hint = visibleErrorHint(message);
   const detail = error?.detail?.trim() ?? "";
-  const showAuthLogin = error?.code === "auth_required" && onAuthLogin;
+
+  // One card for every run-failure code. The presentation (keyed on the codes
+  // the daemon actually emits — see agentErrorPresentation) supplies a granular,
+  // provider-aware message and, when the failure is something the env wizard can
+  // detect or repair, a single deep-linking call-to-action. Transient/server-side
+  // failures resolve to no focus, so no (misleading) wizard button is shown.
+  const providerLabel = workspaceAgentProviderLabel(
+    error?.provider ?? "unknown"
+  );
+  const presentation = resolveAgentErrorPresentation(error?.code);
+  const headline = presentation?.messageKey
+    ? translate(presentation.messageKey, { provider: providerLabel })
+    : visibleErrorTitle(message);
+  const focus = presentation?.focus ?? null;
+  const actionKey = presentation?.actionKey ?? null;
+  const hint = visibleErrorHint(message);
   return (
     <section
       role="alert"
@@ -611,25 +666,36 @@ function AgentVisibleErrorMessage({
     >
       <div className="flex min-w-0 items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">{title}</div>
+          <div className="font-medium text-[var(--text-primary)]">
+            {headline}
+          </div>
           {hint ? (
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}
             </div>
           ) : null}
           {detail ? (
-            <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
+            <AgentMessageDetailsDisclosure
+              detail={detail}
+              className="mt-1"
+              label={translate("agentHost.agentGui.visibleErrorRawDetails")}
+            />
           ) : null}
         </div>
-        {showAuthLogin ? (
+        {focus && actionKey ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="mt-0.5 shrink-0"
-            onClick={() => onAuthLogin(error?.provider ?? null)}
+            onClick={() =>
+              openAgentEnvPanel({
+                provider: error?.provider ?? "codex",
+                focus
+              })
+            }
           >
-            {translate("agentHost.agentGui.authLogin")}
+            {translate(actionKey)}
           </Button>
         ) : null}
       </div>
@@ -639,10 +705,12 @@ function AgentVisibleErrorMessage({
 
 function AgentMessageDetailsDisclosure({
   detail,
-  className = ""
+  className = "",
+  label
 }: {
   detail: string;
   className?: string;
+  label?: string;
 }): JSX.Element {
   "use memo";
   const [expanded, setExpanded] = useState(false);
@@ -654,7 +722,7 @@ function AgentMessageDetailsDisclosure({
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        {translate("agentHost.agentGui.visibleErrorDetails")}
+        {label ?? translate("agentHost.agentGui.visibleErrorDetails")}
         <ChevronRight
           size={12}
           strokeWidth={2.2}

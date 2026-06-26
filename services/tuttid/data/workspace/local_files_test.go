@@ -49,6 +49,52 @@ func TestLocalFilesAdapterListsLogicalChildren(t *testing.T) {
 	}
 }
 
+func TestLocalFilesAdapterReadsExternalAbsolutePathsFromFilesystemRoot(t *testing.T) {
+	t.Parallel()
+
+	targetDir := t.TempDir()
+	targetPath := filepath.Join(targetDir, "test-note.md")
+	if err := os.WriteFile(targetPath, []byte("# Test note\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := workspacefiles.WorkspaceRoot{
+		WorkspaceID:  "ws-1",
+		LogicalRoot:  filepath.ToSlash(string(filepath.Separator)),
+		PhysicalRoot: string(filepath.Separator),
+	}
+	adapter := LocalFilesAdapter{}
+	listing, err := adapter.ListDirectory(
+		context.Background(),
+		root,
+		workspacefiles.LogicalPath(filepath.ToSlash(targetDir)),
+		false,
+	)
+	if err != nil {
+		t.Fatalf("ListDirectory() error = %v", err)
+	}
+
+	if listing.DirectoryPath.String() != filepath.ToSlash(targetDir) {
+		t.Fatalf("directoryPath = %q, want %q", listing.DirectoryPath, filepath.ToSlash(targetDir))
+	}
+	if len(listing.Entries) != 1 || listing.Entries[0].Path.String() != filepath.ToSlash(targetPath) {
+		t.Fatalf("entries = %#v, want test note", listing.Entries)
+	}
+
+	content, err := adapter.ReadFile(
+		context.Background(),
+		root,
+		workspacefiles.LogicalPath(filepath.ToSlash(targetPath)),
+		workspacefiles.DefaultReadFileMaxBytes,
+	)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(content.Bytes) != "# Test note\n" {
+		t.Fatalf("content = %q", string(content.Bytes))
+	}
+}
+
 func TestLocalFilesAdapterRejectsSymlinkEscape(t *testing.T) {
 	t.Parallel()
 

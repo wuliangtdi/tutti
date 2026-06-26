@@ -209,11 +209,18 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentActivityProjection := agentservice.NewActivityProjection(agentActivityRepo)
 	agentActivityProjection.SetPublisher(eventstreamservice.AgentActivityPublisher{Service: events})
 	managedRuntimeResolver := managedruntime.DefaultResolver{}
+	// Shared so a runtime auth failure (reporter side) surfaces in the status
+	// probe (List side) — see agentRunOutcomeReporter.
+	runOutcomes := agentstatusservice.NewRunOutcomeStore()
 	agentStatusService := agentstatusservice.Service{
 		ManagedRuntime: managedRuntimeResolver,
+		RunOutcomes:    runOutcomes,
 	}
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
-		Reporter:         agentActivityProjection,
+		Reporter: agentRunOutcomeReporter{
+			inner: agentActivityProjection,
+			store: runOutcomes,
+		},
 		ProcessTransport: agentdaemon.NewLocalProcessTransport(),
 		ProviderCommandResolver: func(ctx context.Context, provider string) (agentdaemon.ProviderCommand, error) {
 			resolved, err := agentStatusService.ResolveProviderCommand(ctx, provider)

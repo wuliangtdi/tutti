@@ -23,11 +23,27 @@ func (r fakeResolver) ResolveWorkspaceRoot(_ context.Context, workspaceID string
 	return root, nil
 }
 
+type fakePathAwareResolver struct {
+	fakeResolver
+	rootByPath map[string]WorkspaceRoot
+}
+
+func (r fakePathAwareResolver) ResolveWorkspaceRootForPath(ctx context.Context, workspaceID string, path string) (WorkspaceRoot, error) {
+	if root, ok := r.rootByPath[path]; ok {
+		if root.WorkspaceID == "" {
+			root.WorkspaceID = workspaceID
+		}
+		return root, nil
+	}
+	return r.ResolveWorkspaceRoot(ctx, workspaceID)
+}
+
 type fakeAdapter struct {
 	directoryListingByPath   map[LogicalPath]DirectoryListing
 	listDirectoryCallsByPath map[LogicalPath]int
 	listDirectoryDelayByPath map[LogicalPath]time.Duration
 	listDirectoryErrByPath   map[LogicalPath]error
+	listRoot                 WorkspaceRoot
 	listPath                 LogicalPath
 	listIncludeHidden        bool
 	createFile               LogicalPath
@@ -38,6 +54,12 @@ type fakeAdapter struct {
 	createDir                LogicalPath
 	deletePath               LogicalPath
 	deleteKind               EntryKind
+	moveRoot                 WorkspaceRoot
+	movePath                 LogicalPath
+	moveTargetDirectory      LogicalPath
+	renameRoot               WorkspaceRoot
+	renamePath               LogicalPath
+	renameName               string
 	conflicts                []UploadConflict
 	uploadDir                LogicalPath
 	uploadPaths              []string
@@ -46,6 +68,7 @@ type fakeAdapter struct {
 }
 
 func (a *fakeAdapter) ListDirectory(ctx context.Context, root WorkspaceRoot, logicalPath LogicalPath, includeHidden bool) (DirectoryListing, error) {
+	a.listRoot = root
 	a.listPath = logicalPath
 	a.listIncludeHidden = includeHidden
 	if a.listDirectoryCallsByPath != nil {
@@ -117,14 +140,20 @@ func (a *fakeAdapter) DeleteEntry(_ context.Context, _ WorkspaceRoot, logicalPat
 	return nil
 }
 
-func (*fakeAdapter) MoveEntry(_ context.Context, _ WorkspaceRoot, logicalPath LogicalPath, targetDirectoryPath LogicalPath) (FileEntry, error) {
+func (a *fakeAdapter) MoveEntry(_ context.Context, root WorkspaceRoot, logicalPath LogicalPath, targetDirectoryPath LogicalPath) (FileEntry, error) {
+	a.moveRoot = root
+	a.movePath = logicalPath
+	a.moveTargetDirectory = targetDirectoryPath
 	return FileEntry{
 		Path: LogicalPath(targetDirectoryPath.String() + "/" + LogicalPathBase(logicalPath)),
 		Kind: EntryKindFile,
 	}, nil
 }
 
-func (*fakeAdapter) RenameEntry(_ context.Context, _ WorkspaceRoot, logicalPath LogicalPath, newName string) (FileEntry, error) {
+func (a *fakeAdapter) RenameEntry(_ context.Context, root WorkspaceRoot, logicalPath LogicalPath, newName string) (FileEntry, error) {
+	a.renameRoot = root
+	a.renamePath = logicalPath
+	a.renameName = newName
 	parentDirectoryPath := LogicalPathDir(logicalPath)
 	return FileEntry{
 		Path: LogicalPath(parentDirectoryPath.String() + "/" + newName),
@@ -188,6 +217,200 @@ func TestServiceListDirectoryNormalizesPath(t *testing.T) {
 	}
 	if len(listing.Entries) != 1 {
 		t.Fatalf("entries length = %d", len(listing.Entries))
+	}
+}
+
+func TestServiceListDirectoryUsesPathAwareRootForExternalAbsolutePath(t *testing.T) {
+	adapter := &fakeAdapter{}
+	service := Service{
+		Resolver: fakePathAwareResolver{
+			fakeResolver: fakeResolver{
+				root: WorkspaceRoot{
+					LogicalRoot:  "/Users/example",
+					PhysicalRoot: "/Users/example",
+				},
+			},
+			rootByPath: map[string]WorkspaceRoot{
+				"/var/folders/demo/T/codex-presentations": {
+					LogicalRoot:  "/",
+					PhysicalRoot: "/",
+				},
+			},
+		},
+		Adapter: adapter,
+	}
+
+	_, err := service.ListDirectory(context.Background(), "ws-1", DirectoryListInput{
+		Path: "/var/folders/demo/T/codex-presentations",
+	})
+	if err != nil {
+		t.Fatalf("ListDirectory() error = %v", err)
+	}
+	if adapter.listRoot.LogicalRoot != "/" || adapter.listRoot.PhysicalRoot != "/" {
+		t.Fatalf("list root = %+v, want filesystem root", adapter.listRoot)
+	}
+	if adapter.listPath != "/var/folders/demo/T/codex-presentations" {
+		t.Fatalf("list path = %q", adapter.listPath)
+	}
+}
+
+func TestServiceRenameEntryUsesPathAwareRootForExternalAbsolutePath(t *testing.T) {
+	adapter := &fakeAdapter{}
+	service := Service{
+		Resolver: fakePathAwareResolver{
+			fakeResolver: fakeResolver{
+				root: WorkspaceRoot{
+					LogicalRoot:  "/Users/example",
+					PhysicalRoot: "/Users/example",
+				},
+			},
+			rootByPath: map[string]WorkspaceRoot{
+				"/tmp/report.txt": {
+					LogicalRoot:  "/",
+					PhysicalRoot: "/",
+				},
+			},
+		},
+		Adapter: adapter,
+	}
+
+	entry, err := service.RenameEntry(context.Background(), "ws-1", "/tmp/report.txt", "renamed.txt")
+	if err != nil {
+		t.Fatalf("RenameEntry() error = %v", err)
+	}
+	if adapter.renameRoot.LogicalRoot != "/" || adapter.renameRoot.PhysicalRoot != "/" {
+		t.Fatalf("rename root = %+v, want filesystem root", adapter.renameRoot)
+	}
+	if adapter.renamePath != "/tmp/report.txt" {
+		t.Fatalf("rename path = %q", adapter.renamePath)
+	}
+	if adapter.renameName != "renamed.txt" {
+		t.Fatalf("rename name = %q", adapter.renameName)
+	}
+	if entry.Path != "/tmp/renamed.txt" {
+		t.Fatalf("renamed entry path = %q", entry.Path)
+	}
+}
+
+func TestServiceMoveEntryUsesPathAwareRootWhenTargetIsExternal(t *testing.T) {
+	adapter := &fakeAdapter{}
+	service := Service{
+		Resolver: fakePathAwareResolver{
+			fakeResolver: fakeResolver{
+				root: WorkspaceRoot{
+					LogicalRoot:  "/Users/example",
+					PhysicalRoot: "/Users/example",
+				},
+			},
+			rootByPath: map[string]WorkspaceRoot{
+				"/tmp/output": {
+					LogicalRoot:  "/",
+					PhysicalRoot: "/",
+				},
+			},
+		},
+		Adapter: adapter,
+	}
+
+	entry, err := service.MoveEntry(
+		context.Background(),
+		"ws-1",
+		"/Users/example/project/report.txt",
+		"/tmp/output",
+	)
+	if err != nil {
+		t.Fatalf("MoveEntry() error = %v", err)
+	}
+	if adapter.moveRoot.LogicalRoot != "/" || adapter.moveRoot.PhysicalRoot != "/" {
+		t.Fatalf("move root = %+v, want filesystem root", adapter.moveRoot)
+	}
+	if adapter.movePath != "/Users/example/project/report.txt" {
+		t.Fatalf("move path = %q", adapter.movePath)
+	}
+	if adapter.moveTargetDirectory != "/tmp/output" {
+		t.Fatalf("move target = %q", adapter.moveTargetDirectory)
+	}
+	if entry.Path != "/tmp/output/report.txt" {
+		t.Fatalf("moved entry path = %q", entry.Path)
+	}
+}
+
+func TestServiceMoveEntryRejectsDefaultRootWhenTargetIsExternal(t *testing.T) {
+	adapter := &fakeAdapter{}
+	service := Service{
+		Resolver: fakePathAwareResolver{
+			fakeResolver: fakeResolver{
+				root: WorkspaceRoot{
+					LogicalRoot:  "/Users/example",
+					PhysicalRoot: "/Users/example",
+				},
+			},
+			rootByPath: map[string]WorkspaceRoot{
+				"/tmp/output": {
+					LogicalRoot:  "/",
+					PhysicalRoot: "/",
+				},
+			},
+		},
+		Adapter: adapter,
+	}
+
+	for _, value := range []string{"/Users/example", ""} {
+		_, err := service.MoveEntry(
+			context.Background(),
+			"ws-1",
+			value,
+			"/tmp/output",
+		)
+		if !errors.Is(err, ErrRootDeleteForbidden) {
+			t.Fatalf("MoveEntry(%q) error = %v, want ErrRootDeleteForbidden", value, err)
+		}
+		if adapter.movePath != "" {
+			t.Fatalf("adapter move path = %q, want no call", adapter.movePath)
+		}
+	}
+}
+
+func TestServiceMoveEntryKeepsRelativeSourceUnderDefaultRootWhenTargetIsExternal(t *testing.T) {
+	adapter := &fakeAdapter{}
+	service := Service{
+		Resolver: fakePathAwareResolver{
+			fakeResolver: fakeResolver{
+				root: WorkspaceRoot{
+					LogicalRoot:  "/Users/example",
+					PhysicalRoot: "/Users/example",
+				},
+			},
+			rootByPath: map[string]WorkspaceRoot{
+				"/tmp/output": {
+					LogicalRoot:  "/",
+					PhysicalRoot: "/",
+				},
+			},
+		},
+		Adapter: adapter,
+	}
+
+	entry, err := service.MoveEntry(
+		context.Background(),
+		"ws-1",
+		"project/report.txt",
+		"/tmp/output",
+	)
+	if err != nil {
+		t.Fatalf("MoveEntry() error = %v", err)
+	}
+	if adapter.moveRoot.LogicalRoot != "/" || adapter.moveRoot.PhysicalRoot != "/" {
+		t.Fatalf("move root = %+v, want filesystem root", adapter.moveRoot)
+	}
+	if adapter.movePath != "/Users/example/project/report.txt" {
+		t.Fatalf("move path = %q", adapter.movePath)
+	}
+	if adapter.moveTargetDirectory != "/tmp/output" {
+		t.Fatalf("move target = %q", adapter.moveTargetDirectory)
+	}
+	if entry.Path != "/tmp/output/report.txt" {
+		t.Fatalf("moved entry path = %q", entry.Path)
 	}
 }
 

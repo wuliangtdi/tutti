@@ -160,6 +160,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   );
   const basePath = conversation.sourceDetail.cwd;
   const workspaceRoot = conversation.workspaceRoot;
+  const provider = conversation.activity.agentProvider;
   const shouldVirtualize = useMemo(
     () => assessAgentTranscriptComplexity(turnGroups).shouldVirtualize,
     [turnGroups]
@@ -213,6 +214,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
             labels={labels}
             onLinkAction={onLinkAction}
             onAuthLogin={onAuthLogin}
+            provider={provider}
             availableSkills={availableSkills}
             workspaceAppIcons={workspaceAppIcons}
             previewMode={previewMode}

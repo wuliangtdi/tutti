@@ -729,6 +729,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           provider: displayProviderLabel
         }
       ),
+      installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
       collaboratorSessionReadOnlyPlaceholder: t(
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder"
       ),
@@ -843,6 +844,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       emptyProvider: displayProviderLabel,
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
+      agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(
         "agentHost.agentGui.emptyProjectConversations"
@@ -900,6 +902,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       authRequired: t("agentHost.agentGui.authRequired"),
       authLogin: t("agentHost.agentGui.authLogin"),
       activatingSession: t("agentHost.agentGui.activatingSession"),
+      cancellingSession: t("agentHost.agentGui.cancellingSession"),
       retryActivation: t("agentHost.agentGui.retryActivation"),
       continueInNewConversation: t(
         "agentHost.agentGui.continueInNewConversation"

@@ -13,7 +13,8 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import { ChevronRight, ExternalLink, Info } from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Wrench } from "lucide-react";
+import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import type {
   ReferenceLocateTarget,
   ReferenceNode,
@@ -138,6 +139,7 @@ export type AgentWorkspaceReferenceInitialTargetResolver = (
 ) => ReferenceLocateTarget | null;
 
 const AGENT_GUI_STICK_TO_BOTTOM_THRESHOLD_PX = 24;
+const AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX = 240;
 const AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE = 5;
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
@@ -202,6 +204,7 @@ export interface AgentGUIViewLabels {
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
+  installRequiredAction: string;
   collaboratorSessionReadOnlyPlaceholder: string;
   send: string;
   modelLabel: string;
@@ -253,6 +256,7 @@ export interface AgentGUIViewLabels {
   emptyProvider?: string;
   conversations: string;
   newConversation: string;
+  agentEnvSetup: string;
   noConversations: string;
   emptyProjectConversations: string;
   startConversation: string;
@@ -285,6 +289,7 @@ export interface AgentGUIViewLabels {
   authRequired: string;
   authLogin: string;
   activatingSession: string;
+  cancellingSession: string;
   retryActivation: string;
   continueInNewConversation: string;
   goalLabel: string;
@@ -416,6 +421,7 @@ interface AgentGUINodeViewProps {
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
+    loadOlderConversationMessages: () => void;
     showPromptImagesUnsupported: () => void;
     submitApprovalOption: (requestId: string, optionId: string) => void;
     submitInteractivePrompt: (input: {
@@ -1185,6 +1191,9 @@ export function AgentGUINodeView({
       ? "0 minmax(var(--agent-gui-detail-min-width), 1fr)"
       : "var(--agent-gui-conversation-rail-width) minmax(var(--agent-gui-detail-min-width), 1fr)"
   } as CSSProperties;
+  const openAgentEnvSetup = useCallback(() => {
+    openAgentEnvPanel({ provider: viewModel.data.provider, focus: null });
+  }, [viewModel.data.provider]);
   const conversationRailStoreState =
     useMemo<AgentGUIConversationRailStoreSnapshot>(
       () => ({
@@ -1204,6 +1213,7 @@ export function AgentGUINodeView({
         openclawGateway,
         isCollapsed: conversationRailCollapsed,
         onCreateConversation: requestCreateConversation,
+        onOpenAgentEnvSetup: openAgentEnvSetup,
         onRetryOpenclawGateway: retryOpenclawGateway,
         onSelectConversation: selectConversation,
         onToggleConversationPinned: toggleConversationPinned,
@@ -1222,6 +1232,7 @@ export function AgentGUINodeView({
         conversationRailCollapsed,
         createConversationDisabled,
         labels,
+        openAgentEnvSetup,
         openConversationWindow,
         openProjectFiles,
         openclawGateway,
@@ -1497,6 +1508,11 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     scrollTop: number;
     clientHeight: number;
   } | null>(null);
+  const pendingPrependScrollAnchorRef = useRef<{
+    conversationId: string;
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
   const [
     bottomDockDismissedPromptRequestId,
     setBottomDockDismissedPromptRequestId
@@ -1702,16 +1718,22 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       approvalRequired: labels.approvalRequired,
       authRequired: labels.authRequired,
       authLogin: labels.authLogin,
-      activatingSession: labels.activatingSession,
+      // While connecting, if the user already requested a cancel that is waiting
+      // for the session to come up, show "cancelling" instead of "connecting".
+      activatingSession: viewModel.isCancelPending
+        ? labels.cancellingSession
+        : labels.activatingSession,
       retryActivation: labels.retryActivation,
       continueInNewConversation: labels.continueInNewConversation
     }),
     [
       labels.activatingSession,
+      labels.cancellingSession,
       labels.approvalRequired,
       labels.authRequired,
       labels.continueInNewConversation,
-      labels.retryActivation
+      labels.retryActivation,
+      viewModel.isCancelPending
     ]
   );
   const goalBannerLabels = useMemo<AgentGoalBannerLabels>(
@@ -2188,11 +2210,26 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       timeline.scrollHeight - timeline.clientHeight
     );
     const anchor = timelineScrollAnchorRef.current;
+    const prependAnchor = pendingPrependScrollAnchorRef.current;
     let nextScrollTop = timeline.scrollTop;
 
     if (!anchor || anchor.conversationId !== activeConversationId) {
       timeline.scrollTop = maxScrollTop;
       nextScrollTop = maxScrollTop;
+    } else if (prependAnchor?.conversationId === activeConversationId) {
+      const nextScrollHeight = timeline.scrollHeight;
+      const delta = nextScrollHeight - prependAnchor.scrollHeight;
+      nextScrollTop = Math.max(0, prependAnchor.scrollTop + delta);
+      timeline.scrollTop = nextScrollTop;
+      if (viewModel.isLoadingOlderMessages) {
+        pendingPrependScrollAnchorRef.current = {
+          conversationId: activeConversationId,
+          scrollHeight: nextScrollHeight,
+          scrollTop: nextScrollTop
+        };
+      } else {
+        pendingPrependScrollAnchorRef.current = null;
+      }
     } else {
       const distanceFromBottom =
         anchor.scrollHeight - anchor.scrollTop - anchor.clientHeight;
@@ -2211,7 +2248,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       scrollTop: nextScrollTop,
       clientHeight: timeline.clientHeight
     };
-  }, [conversation, showTimelineSkeleton, viewModel.activeConversationId]);
+  }, [
+    conversation,
+    showTimelineSkeleton,
+    viewModel.activeConversationId,
+    viewModel.isLoadingOlderMessages
+  ]);
 
   useLayoutEffect(() => {
     const timeline = timelineRef.current;
@@ -2287,6 +2329,18 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         scrollTop: timeline.scrollTop,
         clientHeight: timeline.clientHeight
       };
+      if (
+        viewModel.hasOlderMessages &&
+        !viewModel.isLoadingOlderMessages &&
+        timeline.scrollTop <= AGENT_GUI_TOP_HISTORY_PREFETCH_THRESHOLD_PX
+      ) {
+        pendingPrependScrollAnchorRef.current = {
+          conversationId: activeConversationId,
+          scrollHeight: timeline.scrollHeight,
+          scrollTop: timeline.scrollTop
+        };
+        actions.loadOlderConversationMessages();
+      }
     };
 
     captureScrollAnchor();
@@ -2294,7 +2348,12 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     return () => {
       timeline.removeEventListener("scroll", captureScrollAnchor);
     };
-  }, [viewModel.activeConversationId]);
+  }, [
+    actions,
+    viewModel.activeConversationId,
+    viewModel.hasOlderMessages,
+    viewModel.isLoadingOlderMessages
+  ]);
 
   return (
     <main className={styles.detail}>
@@ -2324,6 +2383,19 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               {labels.installRequiredPlaceholder}
             </span>
           </span>
+          <button
+            type="button"
+            className={styles.providerSetupNoticeAction}
+            data-testid="agent-gui-provider-setup-notice-action"
+            onClick={() =>
+              openAgentEnvPanel({
+                provider: viewModel.data.provider,
+                focus: "detect"
+              })
+            }
+          >
+            {labels.installRequiredAction}
+          </button>
         </div>
       ) : null}
       <ScrollArea
@@ -2356,6 +2428,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           <AgentGUIConversationTimelinePane
             conversation={conversation}
             isLoading={showTimelineSkeleton}
+            isLoadingOlderMessages={viewModel.isLoadingOlderMessages}
             loadingLabel={labels.loadingConversation}
             empty={conversationFlowEmpty}
             onLinkAction={stableLinkAction}
@@ -2787,6 +2860,7 @@ interface AgentGUIConversationRailPaneProps {
   openclawGateway: OpenclawGatewayViewModel | null;
   isCollapsed: boolean;
   onCreateConversation: (options?: { projectPath?: string | null }) => void;
+  onOpenAgentEnvSetup: () => void;
   onRetryOpenclawGateway: () => void;
   onSelectConversation: (agentSessionId: string) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
@@ -2867,6 +2941,7 @@ function agentGUIConversationRailStoreSnapshotsEqual(
     current.openclawGateway === next.openclawGateway &&
     current.isCollapsed === next.isCollapsed &&
     current.onCreateConversation === next.onCreateConversation &&
+    current.onOpenAgentEnvSetup === next.onOpenAgentEnvSetup &&
     current.onRetryOpenclawGateway === next.onRetryOpenclawGateway &&
     current.onSelectConversation === next.onSelectConversation &&
     current.onToggleConversationPinned === next.onToggleConversationPinned &&
@@ -3073,6 +3148,7 @@ const AgentGUIConversationRailPane = memo(
     openclawGateway,
     isCollapsed,
     onCreateConversation,
+    onOpenAgentEnvSetup,
     onRetryOpenclawGateway,
     onSelectConversation,
     onToggleConversationPinned,
@@ -3325,6 +3401,19 @@ const AgentGUIConversationRailPane = memo(
             })
           )}
         </ScrollArea>
+        <div className="shrink-0 border-t border-[var(--border-1)] px-2 py-1.5">
+          <Button
+            type="button"
+            variant="ghost"
+            className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            title={labels.agentEnvSetup}
+            disabled={previewMode}
+            onClick={() => onOpenAgentEnvSetup()}
+          >
+            <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+            <span>{labels.agentEnvSetup}</span>
+          </Button>
+        </div>
         <ConfirmationDialog
           cancelLabel={labels.cancel}
           className={AGENT_GUI_CONFIRMATION_DIALOG_CLASS_NAME}
@@ -3967,6 +4056,7 @@ function AgentGUIProjectRailHeader({
 interface AgentGUIConversationTimelinePaneProps {
   conversation: AgentConversationVM | null;
   isLoading: boolean;
+  isLoadingOlderMessages: boolean;
   loadingLabel: string;
   empty: React.JSX.Element;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
@@ -3986,6 +4076,7 @@ const AgentGUIConversationTimelinePane = memo(
   function AgentGUIConversationTimelinePane({
     conversation,
     isLoading,
+    isLoadingOlderMessages,
     loadingLabel,
     empty,
     onLinkAction,
@@ -3998,18 +4089,29 @@ const AgentGUIConversationTimelinePane = memo(
     "use memo";
 
     return (
-      <AgentConversationFlow
-        conversation={conversation}
-        isLoading={isLoading}
-        loadingLabel={loadingLabel}
-        empty={empty}
-        onLinkAction={onLinkAction}
-        onAuthLogin={onAuthLogin}
-        availableSkills={availableSkills}
-        workspaceAppIcons={workspaceAppIcons}
-        previewMode={previewMode}
-        labels={labels}
-      />
+      <>
+        {isLoadingOlderMessages && !isLoading ? (
+          <div
+            className="mx-auto flex h-8 items-center justify-center text-[12px] text-[var(--text-secondary)]"
+            data-testid="agent-gui-older-messages-loading"
+            role="status"
+          >
+            <span className="tsh-inline-loading-ellipsis">{loadingLabel}</span>
+          </div>
+        ) : null}
+        <AgentConversationFlow
+          conversation={conversation}
+          isLoading={isLoading}
+          loadingLabel={loadingLabel}
+          empty={empty}
+          onLinkAction={onLinkAction}
+          onAuthLogin={onAuthLogin}
+          availableSkills={availableSkills}
+          workspaceAppIcons={workspaceAppIcons}
+          previewMode={previewMode}
+          labels={labels}
+        />
+      </>
     );
   }
 );

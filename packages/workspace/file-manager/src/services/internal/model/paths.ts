@@ -15,7 +15,7 @@ export function normalizeWorkspaceFilePath(
     return root;
   }
 
-  if (!raw.startsWith("/") && root) {
+  if (!isWorkspaceFileAbsolutePath(raw) && root) {
     return normalizeWorkspaceFileAbsolutePath(`${root}/${raw}`);
   }
 
@@ -30,7 +30,14 @@ function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
     return workspaceFileManagerLogicalRoot;
   }
 
-  const segments = raw
+  const drive = readWindowsDrive(raw);
+  const startsWithSlash = raw.startsWith("/");
+  const body = drive
+    ? raw.slice(drive.length).replace(/^\/+/, "")
+    : startsWithSlash
+      ? raw.slice(1)
+      : raw;
+  const segments = body
     .split("/")
     .filter(Boolean)
     .filter((segment) => segment !== ".");
@@ -44,7 +51,10 @@ function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
   }
 
   if (result.length === 0) {
-    return workspaceFileManagerLogicalRoot;
+    return drive ? `${drive}/` : workspaceFileManagerLogicalRoot;
+  }
+  if (drive) {
+    return `${drive}/${result.join("/")}`;
   }
   return `/${result.join("/")}`;
 }
@@ -61,19 +71,30 @@ export function workspaceFileDirectory(
   rootPath?: string | null
 ): string {
   const root = normalizeWorkspaceFilePath(rootPath);
+  const rawPath = String(path ?? "")
+    .trim()
+    .replaceAll("\\", "/");
   const normalized = normalizeWorkspaceFilePath(path, root);
   if (normalized === root) {
     return root;
   }
 
-  const parts = normalized.split("/").filter(Boolean);
+  const drive = readWindowsDrive(normalized);
+  const body = drive ? normalized.slice(drive.length) : normalized;
+  const parts = body.split("/").filter(Boolean);
   parts.pop();
-  if (parts.length === 0) {
-    return root;
-  }
-  const directory = `/${parts.join("/")}`;
+  const directory = drive
+    ? parts.length === 0
+      ? `${drive}/`
+      : `${drive}/${parts.join("/")}`
+    : parts.length === 0
+      ? workspaceFileManagerLogicalRoot
+      : `/${parts.join("/")}`;
   if (root !== workspaceFileManagerLogicalRoot) {
-    return isWorkspaceFilePathWithinRoot(directory, root) ? directory : root;
+    if (isWorkspaceFilePathWithinRoot(directory, root)) {
+      return directory;
+    }
+    return isWorkspaceFileAbsolutePath(rawPath) ? directory : root;
   }
   return directory;
 }
@@ -136,9 +157,21 @@ export function isWorkspaceFilePathWithinRoot(
 ): boolean {
   const root = normalizeWorkspaceFilePath(rootPath);
   const normalized = normalizeWorkspaceFilePath(path, root);
+  const comparison =
+    readWindowsDrive(root) || readWindowsDrive(normalized)
+      ? { normalized: normalized.toLowerCase(), root: root.toLowerCase() }
+      : { normalized, root };
   return (
-    root === workspaceFileManagerLogicalRoot ||
-    normalized === root ||
-    normalized.startsWith(`${root}/`)
+    comparison.root === workspaceFileManagerLogicalRoot ||
+    comparison.normalized === comparison.root ||
+    comparison.normalized.startsWith(`${comparison.root}/`)
   );
+}
+
+function isWorkspaceFileAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || readWindowsDrive(path) !== "";
+}
+
+function readWindowsDrive(path: string): string {
+  return /^[A-Za-z]:/.exec(path)?.[0] ?? "";
 }

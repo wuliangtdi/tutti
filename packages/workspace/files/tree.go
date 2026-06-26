@@ -13,12 +13,7 @@ func (s Service) GetDirectoryTreeSnapshot(
 	workspaceID string,
 	input DirectoryTreeSnapshotInput,
 ) (DirectoryTreeSnapshot, error) {
-	root, err := s.resolve(ctx, workspaceID)
-	if err != nil {
-		return DirectoryTreeSnapshot{}, err
-	}
-
-	logicalPath, err := NormalizeLogicalPathWithinRoot(input.Path, root.LogicalRoot)
+	root, logicalPath, err := s.resolvePath(ctx, workspaceID, input.Path)
 	if err != nil {
 		return DirectoryTreeSnapshot{}, err
 	}

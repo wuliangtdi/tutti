@@ -12,11 +12,7 @@ type Service struct {
 }
 
 func (s Service) ListDirectory(ctx context.Context, workspaceID string, input DirectoryListInput) (DirectoryListing, error) {
-	root, err := s.resolve(ctx, workspaceID)
-	if err != nil {
-		return DirectoryListing{}, err
-	}
-	logicalPath, err := NormalizeLogicalPathWithinRoot(input.Path, root.LogicalRoot)
+	root, logicalPath, err := s.resolvePath(ctx, workspaceID, input.Path)
 	if err != nil {
 		return DirectoryListing{}, err
 	}
@@ -98,14 +94,26 @@ func (s Service) DeleteEntry(ctx context.Context, workspaceID string, value stri
 }
 
 func (s Service) MoveEntry(ctx context.Context, workspaceID string, value string, targetDirectoryValue string) (FileEntry, error) {
-	root, logicalPath, err := s.resolvePath(ctx, workspaceID, value)
+	defaultRoot, err := s.resolve(ctx, workspaceID)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	root, err := s.resolveRootForPathsFromDefault(ctx, workspaceID, defaultRoot, value, targetDirectoryValue)
+	if err != nil {
+		return FileEntry{}, err
+	}
+	if defaultLogicalPath, err := NormalizeLogicalPathWithinRoot(value, defaultRoot.LogicalRoot); err == nil &&
+		IsLogicalRoot(defaultLogicalPath, defaultRoot.LogicalRoot) {
+		return FileEntry{}, ErrRootDeleteForbidden
+	}
+	logicalPath, err := NormalizeLogicalPathWithinRoot(pathValueForRoot(value, defaultRoot, root), root.LogicalRoot)
 	if err != nil {
 		return FileEntry{}, err
 	}
 	if IsLogicalRoot(logicalPath, root.LogicalRoot) {
 		return FileEntry{}, ErrRootDeleteForbidden
 	}
-	targetDirectoryPath, err := NormalizeLogicalPathWithinRoot(targetDirectoryValue, root.LogicalRoot)
+	targetDirectoryPath, err := NormalizeLogicalPathWithinRoot(pathValueForRoot(targetDirectoryValue, defaultRoot, root), root.LogicalRoot)
 	if err != nil {
 		return FileEntry{}, err
 	}
@@ -154,12 +162,7 @@ func (s Service) CopyEntry(ctx context.Context, workspaceID string, value string
 }
 
 func (s Service) UploadFiles(ctx context.Context, workspaceID string, input UploadInput) (UploadResult, error) {
-	root, err := s.resolve(ctx, workspaceID)
-	if err != nil {
-		return UploadResult{}, err
-	}
-
-	targetDirectoryPath, err := NormalizeLogicalPathWithinRoot(input.TargetDirectoryPath, root.LogicalRoot)
+	root, targetDirectoryPath, err := s.resolvePath(ctx, workspaceID, input.TargetDirectoryPath)
 	if err != nil {
 		return UploadResult{}, err
 	}
@@ -193,12 +196,7 @@ func (s Service) UploadFiles(ctx context.Context, workspaceID string, input Uplo
 }
 
 func (s Service) PreflightUploadFiles(ctx context.Context, workspaceID string, input PreflightUploadInput) (PreflightUploadResult, error) {
-	root, err := s.resolve(ctx, workspaceID)
-	if err != nil {
-		return PreflightUploadResult{}, err
-	}
-
-	targetDirectoryPath, err := NormalizeLogicalPathWithinRoot(input.TargetDirectoryPath, root.LogicalRoot)
+	root, targetDirectoryPath, err := s.resolvePath(ctx, workspaceID, input.TargetDirectoryPath)
 	if err != nil {
 		return PreflightUploadResult{}, err
 	}
@@ -232,7 +230,7 @@ func (s Service) PreflightUploadFiles(ctx context.Context, workspaceID string, i
 }
 
 func (s Service) Search(ctx context.Context, workspaceID string, input SearchInput) (SearchResult, error) {
-	root, err := s.resolve(ctx, workspaceID)
+	root, err := s.resolveRootForPaths(ctx, workspaceID, input.Within)
 	if err != nil {
 		return SearchResult{}, err
 	}
@@ -299,7 +297,7 @@ func (s Service) ListRecent(ctx context.Context, workspaceID string, input Recen
 }
 
 func (s Service) resolvePath(ctx context.Context, workspaceID string, value string) (WorkspaceRoot, LogicalPath, error) {
-	root, err := s.resolve(ctx, workspaceID)
+	root, err := s.resolveRootForPaths(ctx, workspaceID, value)
 	if err != nil {
 		return WorkspaceRoot{}, "", err
 	}
@@ -308,6 +306,49 @@ func (s Service) resolvePath(ctx context.Context, workspaceID string, value stri
 		return WorkspaceRoot{}, "", err
 	}
 	return root, logicalPath, nil
+}
+
+func (s Service) resolveRootForPaths(ctx context.Context, workspaceID string, values ...string) (WorkspaceRoot, error) {
+	root, err := s.resolve(ctx, workspaceID)
+	if err != nil {
+		return WorkspaceRoot{}, err
+	}
+	return s.resolveRootForPathsFromDefault(ctx, workspaceID, root, values...)
+}
+
+func (s Service) resolveRootForPathsFromDefault(ctx context.Context, workspaceID string, root WorkspaceRoot, values ...string) (WorkspaceRoot, error) {
+	pathResolver, ok := s.Resolver.(PathAwareWorkspaceResolver)
+	if !ok {
+		return root, nil
+	}
+	for _, value := range values {
+		pathRoot, err := pathResolver.ResolveWorkspaceRootForPath(ctx, workspaceID, value)
+		if err != nil {
+			return WorkspaceRoot{}, err
+		}
+		pathRoot = normalizeResolvedRoot(pathRoot, workspaceID)
+		if pathRoot.LogicalRoot != root.LogicalRoot || strings.TrimSpace(pathRoot.PhysicalRoot) != strings.TrimSpace(root.PhysicalRoot) {
+			return pathRoot, nil
+		}
+	}
+	return root, nil
+}
+
+func pathValueForRoot(value string, defaultRoot WorkspaceRoot, root WorkspaceRoot) string {
+	raw := strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if raw == "" || strings.HasPrefix(raw, "/") || sameWorkspaceRoot(defaultRoot, root) {
+		return value
+	}
+	defaultLogicalPath, err := NormalizeLogicalPathWithinRoot(value, defaultRoot.LogicalRoot)
+	if err != nil {
+		return value
+	}
+	return defaultLogicalPath.String()
+}
+
+func sameWorkspaceRoot(left WorkspaceRoot, right WorkspaceRoot) bool {
+	return NormalizeLogicalRoot(left.LogicalRoot) == NormalizeLogicalRoot(right.LogicalRoot) &&
+		strings.TrimSpace(left.PhysicalRoot) == strings.TrimSpace(right.PhysicalRoot)
 }
 
 func (s Service) resolve(ctx context.Context, workspaceID string) (WorkspaceRoot, error) {
@@ -321,16 +362,20 @@ func (s Service) resolve(ctx context.Context, workspaceID string) (WorkspaceRoot
 	if err != nil {
 		return WorkspaceRoot{}, err
 	}
+	return normalizeResolvedRoot(root, workspaceID), nil
+}
+
+func (s Service) adapter() FileAdapter {
+	return s.Adapter
+}
+
+func normalizeResolvedRoot(root WorkspaceRoot, workspaceID string) WorkspaceRoot {
 	root.WorkspaceID = strings.TrimSpace(root.WorkspaceID)
 	if root.WorkspaceID == "" {
 		root.WorkspaceID = strings.TrimSpace(workspaceID)
 	}
 	root.LogicalRoot = NormalizeLogicalRoot(root.LogicalRoot).String()
-	return root, nil
-}
-
-func (s Service) adapter() FileAdapter {
-	return s.Adapter
+	return root
 }
 
 func normalizeDirectoryListing(root WorkspaceRoot, requested LogicalPath, listing DirectoryListing) DirectoryListing {

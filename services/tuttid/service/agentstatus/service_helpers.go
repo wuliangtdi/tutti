@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -136,7 +137,7 @@ func runDefaultInstallCommand(ctx context.Context, input InstallCommandInput) (I
 	cmd.Env = input.Env
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	cmd.Stdout = installStdoutWriter{buffer: &stdout, onWrite: input.OnStdout}
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
@@ -155,6 +156,21 @@ func runDefaultInstallCommand(ctx context.Context, input InstallCommandInput) (I
 	}
 	result.ExitCode = 1
 	return result, err
+}
+
+type installStdoutWriter struct {
+	buffer  *bytes.Buffer
+	onWrite func(string)
+}
+
+func (w installStdoutWriter) Write(p []byte) (int, error) {
+	if w.buffer != nil {
+		_, _ = w.buffer.Write(p)
+	}
+	if w.onWrite != nil {
+		w.onWrite(string(p))
+	}
+	return len(p), nil
 }
 
 func baseContext(ctx context.Context) context.Context {
@@ -182,6 +198,12 @@ func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed b
 		return AuthInfo{Status: AuthUnknown}
 	}
 	if spec.Provider == agentprovider.ClaudeCode && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
+		return AuthInfo{Status: AuthRequired}
+	}
+	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
+	// the stale "logged in" marker/command result until the user re-authenticates
+	// or a request succeeds again.
+	if s.RunOutcomes.AuthInvalidated(spec.Provider) {
 		return AuthInfo{Status: AuthRequired}
 	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
@@ -245,6 +267,147 @@ func (s Service) runAuthStatusCommand(ctx context.Context, spec ProviderSpec, bi
 		return s.RunAuthStatusCommand(ctx, spec, binaryPath)
 	}
 	return runAuthStatusCommand(ctx, spec, binaryPath)
+}
+
+// cliVersionTokenPattern matches the first semver-ish token in `--version`
+// output. This is provider-agnostic on purpose: codex prints "codex-cli
+// 0.142.1" while claude prints "2.1.191 (Claude Code)" — taking the last
+// whitespace field works for the former but yields "Code)" for the latter, so
+// we extract the version token instead.
+var cliVersionTokenPattern = regexp.MustCompile(`[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:[-+][0-9A-Za-z.-]+)?`)
+
+// parseCLIVersion extracts the version token from `<cli> --version` output.
+func parseCLIVersion(output string) string {
+	return cliVersionTokenPattern.FindString(strings.TrimSpace(output))
+}
+
+// cliVersion runs `<binary> --version` and returns the parsed version token, or
+// "" when the binary is absent, errors, or prints nothing version-like. Used for
+// every supported provider (not just codex) so the config panel can show the
+// installed CLI version.
+func (Service) cliVersion(ctx context.Context, binaryPath string) string {
+	binaryPath = strings.TrimSpace(binaryPath)
+	if binaryPath == "" {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
+	defer cancel()
+	output, err := exec.CommandContext(commandCtx, binaryPath, "--version").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return parseCLIVersion(string(output))
+}
+
+func (s Service) codexPlatformBinaryOK(binaryPath string) bool {
+	pkgDir := codexPackageDirForBinary(binaryPath)
+	if pkgDir == "" {
+		return true
+	}
+	_, ok := s.codexPlatformBinaryComplete(pkgDir, runtime.GOOS, runtime.GOARCH)
+	return ok
+}
+
+func codexProviderChecks(status ProviderStatus, platformBinaryOK bool) []ProviderCheck {
+	return []ProviderCheck{
+		{
+			Name:   "cli_present",
+			Passed: status.CLI.Installed,
+			Detail: firstNonBlank(status.CLI.BinaryPath, "CLI binary not found"),
+		},
+		{
+			Name:   "platform_binary",
+			Passed: platformBinaryOK,
+			Detail: codexPlatformBinaryDetail(status.CLI.BinaryPath, platformBinaryOK),
+		},
+		{
+			Name:   "version_floor",
+			Passed: codexVersionMeetsMinimum(status.CLI.Version),
+			Detail: firstNonBlank(status.CLI.Version, "version unknown"),
+		},
+		{
+			Name:   "auth",
+			Passed: status.Auth.Status == AuthAuthenticated,
+			Detail: providerAvailabilityAuthDetailForStatus(status.Auth),
+		},
+	}
+}
+
+func codexProviderLastError(status ProviderStatus) *ProviderLastError {
+	switch strings.TrimSpace(status.Availability.ReasonCode) {
+	case "cli_not_found":
+		return &ProviderLastError{Code: string(CodexErrCLIMissing), Message: "CLI binary not found"}
+	case "codex_platform_pkg_incomplete":
+		return &ProviderLastError{Code: string(CodexErrPlatformPkgIncomplete), Message: "Codex platform package is incomplete"}
+	case "codex_version_too_old":
+		return &ProviderLastError{Code: string(CodexErrVersionTooOld), Message: "Codex CLI version is below " + MinSupportedCodexVersion}
+	case "auth_required", "auth_unknown":
+		return &ProviderLastError{Code: string(CodexErrAuthRequired), Message: "authentication required"}
+	default:
+		return nil
+	}
+}
+
+func codexReasonCodeFromErrorCode(code string) string {
+	switch CodexErrorCode(code) {
+	case CodexErrCLIMissing:
+		return "cli_not_found"
+	case CodexErrPlatformPkgIncomplete:
+		return "codex_platform_pkg_incomplete"
+	case CodexErrVersionTooOld:
+		return "codex_version_too_old"
+	case CodexErrAuthRequired:
+		return "auth_required"
+	case CodexErrNetwork:
+		return "network_error"
+	default:
+		return "codex_runtime_error"
+	}
+}
+
+func codexPlatformBinaryDetail(binaryPath string, ok bool) string {
+	if ok {
+		return firstNonBlank(binaryPath, "platform binary available")
+	}
+	return "Codex platform package is incomplete"
+}
+
+func providerAvailabilityAuthDetailForStatus(auth AuthInfo) string {
+	switch auth.Status {
+	case AuthAuthenticated:
+		return firstNonBlank(auth.AccountLabel, "authenticated")
+	case AuthRequired:
+		return "authentication required"
+	default:
+		return "authentication unknown"
+	}
+}
+
+func cloneProviderChecks(input []ProviderCheck) []ProviderCheck {
+	if len(input) == 0 {
+		return []ProviderCheck{}
+	}
+	result := make([]ProviderCheck, len(input))
+	copy(result, input)
+	return result
+}
+
+func cloneProviderLastError(input *ProviderLastError) *ProviderLastError {
+	if input == nil {
+		return nil
+	}
+	cloned := *input
+	return &cloned
+}
+
+func providerLastErrorCode(input *ProviderLastError) string {
+	if input == nil {
+		return ""
+	}
+	return input.Code
 }
 
 func (s Service) authStatusCommandRetryDelay() time.Duration {

@@ -328,6 +328,7 @@ export const zhCN = {
       followupPlaceholder: "要求 {{provider}} 继续后续变更",
       installRequiredPlaceholder:
         "请先从 Dock 安装 {{provider}}，然后再发送消息",
+      installRequiredAction: "设置",
       collaboratorSessionReadOnlyPlaceholder: "非当前用户会话，不可直接对话",
       send: "发送",
       modelLabel: "模型",
@@ -542,6 +543,7 @@ export const zhCN = {
       empty: "需要 {{provider}} 帮你做些什么？",
       conversations: "会话",
       newConversation: "新建会话",
+      agentEnvSetup: "环境检测",
       noConversations: "还没有会话",
       emptyProjectConversations: "暂无对话",
       batchRunnerStandaloneTitle: "Agent GUI 批量执行面板",
@@ -663,6 +665,7 @@ export const zhCN = {
       authRequired: "需要认证",
       authLogin: "登录",
       activatingSession: "正在连接会话...",
+      cancellingSession: "正在取消中...",
       retryActivation: "重试",
       continueInNewConversation: "去新会话",
       goalLabel: "目标",
@@ -686,6 +689,23 @@ export const zhCN = {
       visibleErrorQuotaOrRateLimit:
         "{{provider}} 请求失败：额度或频率限制已触发",
       visibleErrorDetails: "查看详情",
+      visibleErrorRawDetails: "原始错误",
+      visibleErrorCliNotFound:
+        "未检测到 {{provider}} CLI，无法运行。请先完成安装。",
+      visibleErrorVersionUnsupported:
+        "当前 {{provider}} 版本过旧，不支持此请求。请先升级。",
+      visibleErrorNetwork: "{{provider}} 无法连接网络以完成此请求。",
+      visibleErrorConfigTimeout:
+        "{{provider}} 在请求超时前未能应用会话设置。请稍后重试。",
+      visibleErrorStreamDisconnected:
+        "{{provider}} 的响应在完成前被中断。请稍后重试。",
+      visibleErrorConcurrencyLimit:
+        "{{provider}} 当前处理的请求过多。请在其他任务完成后再试。",
+      visibleErrorActionInstall: "去安装",
+      visibleErrorActionUpgrade: "去升级",
+      visibleErrorActionRelogin: "登录",
+      visibleErrorActionCheckNetwork: "检测网络",
+      visibleErrorActionDetect: "打开检测",
       systemNoticeTransportRetry: "Codex 连接中断，正在重连",
       systemNoticeTransportFallback: "Codex 已切换到 HTTPS 传输",
       systemNoticeWarning: "Codex 警告",

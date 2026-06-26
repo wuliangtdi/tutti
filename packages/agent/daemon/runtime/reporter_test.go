@@ -458,6 +458,7 @@ func TestReportActivityInputForwardsSystemNoticeMetadataToPayload(t *testing.T) 
 		"title":             "Codex warning",
 		"detail":            "Skill descriptions were shortened to fit the 2% skills context budget.",
 		"additionalDetails": "Disable unused skills or plugins to leave more room for the rest.",
+		"code":              "CODEX_VERSION_TOO_OLD",
 		"retryable":         false,
 		"streamState":       messageStreamStateCompleted,
 	})
@@ -474,6 +475,7 @@ func TestReportActivityInputForwardsSystemNoticeMetadataToPayload(t *testing.T) 
 		notice.Payload["title"] != "Codex warning" ||
 		notice.Payload["detail"] != "Skill descriptions were shortened to fit the 2% skills context budget." ||
 		notice.Payload["additionalDetails"] != "Disable unused skills or plugins to leave more room for the rest." ||
+		notice.Payload["code"] != "CODEX_VERSION_TOO_OLD" ||
 		notice.Payload["retryable"] != false {
 		t.Fatalf("notice message payload = %#v, want system notice metadata forwarded to the GUI", notice.Payload)
 	}

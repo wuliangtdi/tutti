@@ -5,6 +5,7 @@ import {
   latestAgentActivityMessageVersion,
   mergeAgentActivityMessages
 } from "./merge.ts";
+import { loadAllAgentSessionMessages } from "./pagination.ts";
 import type {
   AgentActivityComposerOptions,
   AgentActivityLoadComposerOptionsInput,
@@ -38,6 +39,7 @@ export interface AgentActivityController {
     agentSessionId: string;
     afterVersion?: number;
     beforeVersion?: number;
+    cache?: boolean;
     limit?: number;
     order?: AgentActivityMessageOrder;
     signal?: AbortSignal;
@@ -215,6 +217,7 @@ export function createAgentActivityController({
       agentSessionId,
       afterVersion,
       beforeVersion,
+      cache = true,
       limit,
       order,
       signal
@@ -228,9 +231,11 @@ export function createAgentActivityController({
         order,
         signal
       });
-      updateSnapshot((current) =>
-        mergeSnapshotMessages(current, agentSessionId, response.messages)
-      );
+      if (cache) {
+        updateSnapshot((current) =>
+          mergeSnapshotMessages(current, agentSessionId, response.messages)
+        );
+      }
       return {
         ...response,
         messages: response.messages.map((message) => ({
@@ -387,21 +392,23 @@ export function createAgentActivityController({
     }
     const cachedMessages = snapshot.sessionMessagesById[agentSessionId] ?? [];
     const afterVersion = latestAgentActivityMessageVersion(cachedMessages);
-    const sync = adapter
-      .listSessionMessages({
-        workspaceId,
-        agentSessionId,
-        afterVersion,
-        signal
-      })
-      .then((response) => {
-        if (signal?.aborted) {
-          return;
-        }
+    const sync = loadAllAgentSessionMessages({
+      afterVersion,
+      shouldAbort: () => signal?.aborted ?? false,
+      listPage: (cursor) =>
+        adapter.listSessionMessages({
+          workspaceId,
+          agentSessionId,
+          afterVersion: cursor,
+          signal
+        }),
+      onPage: (messages) => {
         updateSnapshot((current) =>
-          mergeSnapshotMessages(current, agentSessionId, response.messages)
+          mergeSnapshotMessages(current, agentSessionId, messages)
         );
-      })
+      }
+    })
+      .then(() => undefined)
       .catch(() => {})
       .finally(() => {
         if (activeMessageSyncs.get(agentSessionId) === sync) {

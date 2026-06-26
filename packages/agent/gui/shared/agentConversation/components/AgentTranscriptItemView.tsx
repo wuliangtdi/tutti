@@ -22,6 +22,7 @@ interface AgentTranscriptItemViewProps {
   };
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onAuthLogin?: (provider?: string | null) => void;
+  provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   previewMode?: boolean;
@@ -38,6 +39,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
   labels,
   onLinkAction,
   onAuthLogin,
+  provider,
   availableSkills,
   workspaceAppIcons,
   previewMode = false,
@@ -71,6 +73,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
           row={row}
           onLinkAction={onLinkAction}
           onAuthLogin={onAuthLogin}
+          provider={provider}
           availableSkills={availableSkills}
           workspaceAppIcons={workspaceAppIcons}
           previewMode={previewMode}

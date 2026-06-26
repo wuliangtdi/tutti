@@ -40,6 +40,10 @@ import { useAnalyticsDebugPreferenceService } from "@renderer/features/analytics
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
+import {
+  setAgentDiagnosticsConsent,
+  useAgentDiagnosticsConsent
+} from "@renderer/lib/agentDiagnosticsConsent";
 import { formatWorkspaceSettingsBytes } from "../services/workspaceSettingsFormat";
 import type { WorkspaceSettingsDeveloperLogsSnapshotState } from "../services/workspaceSettingsTypes";
 import type {
@@ -2461,6 +2465,7 @@ function WorkspaceGeneralSettingsSection({
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
+  const agentDiagnosticsReporting = useAgentDiagnosticsConsent();
   const isUpdatingLocale = changingLocale !== null;
   const pendingLocale = changingLocale ?? locale;
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
@@ -2549,6 +2554,26 @@ function WorkspaceGeneralSettingsSection({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.agentDiagnosticsReportingLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t(
+              "workspace.settings.general.agentDiagnosticsReportingDescription"
+            )}
+          </p>
+        </div>
+        <Switch
+          aria-label={t(
+            "workspace.settings.general.agentDiagnosticsReportingLabel"
+          )}
+          checked={agentDiagnosticsReporting}
+          onCheckedChange={setAgentDiagnosticsConsent}
+        />
       </div>
     </div>
   );

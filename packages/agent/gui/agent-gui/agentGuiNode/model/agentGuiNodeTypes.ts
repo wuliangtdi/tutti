@@ -168,9 +168,12 @@ export interface AgentGUINodeViewModel {
   draftContent: AgentComposerDraft;
   isLoadingConversations: boolean;
   isLoadingMessages: boolean;
+  isLoadingOlderMessages: boolean;
+  hasOlderMessages: boolean;
   isCreatingConversation: boolean;
   isSubmitting: boolean;
   isInterrupting: boolean;
+  isCancelPending: boolean;
   isRespondingApproval: boolean;
   promptImagesSupported: boolean;
   compactSupported: boolean | null;

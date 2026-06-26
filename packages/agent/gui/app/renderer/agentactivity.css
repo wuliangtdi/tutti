@@ -5449,6 +5449,18 @@ button.agent-gui-node__conversation-section-toggle:hover
   top: calc(64px + 4px);
 }
 
+.agent-gui-node__provider-setup-notice-action {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .agent-gui-node__layout [data-slot="status-dot"],
 [data-testid="workspace-agent-message-center"] [data-slot="status-dot"] {
   --agent-gui-status-dot-color: var(

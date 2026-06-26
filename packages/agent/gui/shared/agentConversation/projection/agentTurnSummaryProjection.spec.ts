@@ -252,6 +252,11 @@ describe("projectAgentTurnSummaryRowForTurn", () => {
         path: "/Users/example/tsh-project/tutti/src/routes.ts",
         label: "routes.ts",
         changeType: "created"
+      }),
+      expect.objectContaining({
+        path: "/tmp/outside.txt",
+        label: "outside.txt",
+        changeType: "created"
       })
     ]);
   });
@@ -903,6 +908,10 @@ describe("projectAgentTurnSummaryRows", () => {
     );
 
     expect(rows[0]?.files).toEqual([
+      expect.objectContaining({
+        path: "/tmp/outside.txt",
+        label: "outside.txt"
+      }),
       expect.objectContaining({
         path: "ppt_news/generate_news_ppt.py",
         label: "generate_news_ppt.py"

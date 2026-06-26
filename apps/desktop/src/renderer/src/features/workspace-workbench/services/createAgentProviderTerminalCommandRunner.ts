@@ -30,7 +30,7 @@ export function createAgentProviderTerminalCommandRunner(
         throw new Error("Missing workbench host for terminal command.");
       }
       try {
-        await launchTerminalCommand({
+        const nodeId = await launchTerminalCommand({
           command,
           host,
           runtimeApi,
@@ -42,6 +42,22 @@ export function createAgentProviderTerminalCommandRunner(
           event: "agent-provider.terminal-command.complete",
           level: "info"
         });
+        return {
+          close: () => {
+            try {
+              host.closeNode(nodeId);
+            } catch (error) {
+              logTerminalCommandEvent(runtimeApi, {
+                command,
+                context,
+                error,
+                event: "agent-provider.terminal-command.close-error",
+                level: "warn",
+                nodeId
+              });
+            }
+          }
+        };
       } catch (error) {
         logTerminalCommandEvent(runtimeApi, {
           command,
@@ -74,7 +90,7 @@ async function launchTerminalCommand(input: {
   host: WorkbenchHostHandle;
   runtimeApi: DesktopRuntimeApi;
   workspaceId?: string;
-}): Promise<void> {
+}): Promise<string> {
   const exitedFullscreenNodeId = exitFocusedFullscreenNode(input.host);
   if (exitedFullscreenNodeId) {
     logTerminalCommandEvent(input.runtimeApi, {
@@ -105,6 +121,7 @@ async function launchTerminalCommand(input: {
   if (!nodeId) {
     throw new Error("Terminal command did not open a workbench node.");
   }
+  return nodeId;
 }
 
 function terminalRunInput(input: string): string {

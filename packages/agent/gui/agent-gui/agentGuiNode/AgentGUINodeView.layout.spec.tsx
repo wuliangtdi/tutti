@@ -1224,6 +1224,85 @@ describe("AgentGUINodeView layout persistence", () => {
       gap: "24px"
     });
   });
+
+  it("renders older-message loading above the transcript", () => {
+    const activeConversation = createConversationSummary("session-1");
+    renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        conversations: [activeConversation],
+        activeConversation,
+        activeConversationId: activeConversation.id,
+        conversationDetail: createConversationDetail(),
+        isLoadingOlderMessages: true
+      }
+    });
+
+    const loading = screen.getByTestId("agent-gui-older-messages-loading");
+    expect(loading).toHaveTextContent("loadingConversation");
+    expect(screen.getByTestId("agent-conversation-flow")).toBeInTheDocument();
+  });
+
+  it("prefetches older messages near the top and preserves the prepend anchor", () => {
+    const activeConversation = createConversationSummary("session-1");
+    const actions = createActions();
+    const activeViewModel = {
+      ...createViewModel(),
+      conversations: [activeConversation],
+      activeConversation,
+      activeConversationId: activeConversation.id,
+      conversationDetail: createConversationDetail()
+    };
+    const { rerender } = renderAgentGUINodeView({
+      actions,
+      viewModel: activeViewModel
+    });
+    const timeline = screen.getByTestId("agent-gui-timeline") as HTMLElement;
+    let scrollHeight = 1000;
+    Object.defineProperty(timeline, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight
+    });
+    Object.defineProperty(timeline, "clientHeight", {
+      configurable: true,
+      get: () => 400
+    });
+
+    timeline.scrollTop = 500;
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        viewModel: { ...activeViewModel, hasOlderMessages: true }
+      })
+    );
+    expect(actions.loadOlderConversationMessages).not.toHaveBeenCalled();
+
+    timeline.scrollTop = 200;
+    fireEvent.scroll(timeline);
+    expect(actions.loadOlderConversationMessages).toHaveBeenCalledTimes(1);
+
+    scrollHeight = 1032;
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        viewModel: {
+          ...activeViewModel,
+          hasOlderMessages: true,
+          isLoadingOlderMessages: true
+        }
+      })
+    );
+    expect(timeline.scrollTop).toBe(232);
+
+    scrollHeight = 1200;
+    rerender(
+      buildAgentGUINodeViewElement({
+        actions,
+        viewModel: { ...activeViewModel, hasOlderMessages: true }
+      })
+    );
+    expect(timeline.scrollTop).toBe(400);
+  });
 });
 
 describe("AgentGUINodeView usage", () => {
@@ -1365,6 +1444,9 @@ describe("AgentGUINodeView provider setup notice", () => {
     expect(notice).toHaveTextContent("installRequiredPlaceholder");
     expect(notice).toHaveAttribute("role", "status");
     expect(notice).toHaveAttribute("data-slot", "toast");
+    expect(
+      screen.getByTestId("agent-gui-provider-setup-notice-action")
+    ).toHaveTextContent("installRequiredAction");
   });
 
   it("floats the setup notice above the detail content without affecting layout", () => {
@@ -1492,6 +1574,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
+    loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),
     submitApprovalOption: vi.fn(),
     submitInteractivePrompt: vi.fn(),
@@ -1531,9 +1614,12 @@ function createViewModel(): AgentGUINodeViewModel {
     draftContent: { prompt: "", images: [] },
     isLoadingConversations: false,
     isLoadingMessages: false,
+    isLoadingOlderMessages: false,
+    hasOlderMessages: false,
     isCreatingConversation: false,
     isSubmitting: false,
     isInterrupting: false,
+    isCancelPending: false,
     isRespondingApproval: false,
     promptImagesSupported: true,
     compactSupported: null,
@@ -1654,6 +1740,7 @@ function createLabels(): AgentGUIViewLabels {
     initialPlaceholder: "initialPlaceholder",
     followupPlaceholder: "followupPlaceholder",
     installRequiredPlaceholder: "installRequiredPlaceholder",
+    installRequiredAction: "installRequiredAction",
     collaboratorSessionReadOnlyPlaceholder:
       "collaboratorSessionReadOnlyPlaceholder",
     send: "send",
@@ -1728,6 +1815,7 @@ function createLabels(): AgentGUIViewLabels {
     empty: "empty",
     conversations: "conversations",
     newConversation: "newConversation",
+    agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",
     emptyProjectConversations: "emptyProjectConversations",
     startConversation: "startConversation",
@@ -1762,6 +1850,7 @@ function createLabels(): AgentGUIViewLabels {
     authRequired: "authRequired",
     authLogin: "authLogin",
     activatingSession: "activatingSession",
+    cancellingSession: "cancellingSession",
     retryActivation: "retryActivation",
     continueInNewConversation: "continueInNewConversation",
     goalLabel: "goalLabel",

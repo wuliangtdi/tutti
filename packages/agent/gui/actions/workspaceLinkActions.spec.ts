@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveLocalAssetPreviewLinkAction,
+  resolveWorkspaceLinkAction,
   resolveWorkspaceMentionLinkAction,
   resolveWorkspaceFileLinkAction,
   resolveWorkspaceFilePathCandidate
@@ -28,7 +30,12 @@ describe("resolveWorkspaceFileLinkAction", () => {
         basePath: "/Users/test/project/tutti",
         source: "agent-markdown"
       })
-    ).toBeNull();
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/workspace/src/App.tsx",
+      directoryPath: "/workspace/src",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
   });
 
   it("allows local absolute paths when the workspace root is the filesystem root", () => {
@@ -45,6 +52,58 @@ describe("resolveWorkspaceFileLinkAction", () => {
       directoryPath: "/Users/test/project/tutti/src",
       workspaceRoot: "/"
     });
+  });
+
+  it("allows explicit local absolute paths outside the selected workspace root", () => {
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/var/folders/17/demo/T/codex-presentations/test-note.md",
+        workspaceRoot: "/Users/test/project/tutti",
+        basePath: "/Users/test/project/tutti",
+        source: "agent-file-change"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/var/folders/17/demo/T/codex-presentations/test-note.md",
+      directoryPath: "/var/folders/17/demo/T/codex-presentations",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/tmp/report.txt",
+        workspaceRoot: "/Users/test/project/tutti",
+        basePath: "/Users/test/project/tutti",
+        source: "agent-file-change"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/tmp/report.txt",
+      directoryPath: "/tmp",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
+  });
+
+  it("rejects special local device and network share paths before launch", () => {
+    for (const path of [
+      "/dev/null",
+      "/dev/./null",
+      "/dev//null",
+      "NUL",
+      "NUL.txt",
+      "C:\\tmp\\NUL",
+      "\\\\server\\share\\file.txt",
+      "//server/share/file.txt"
+    ]) {
+      expect(
+        resolveWorkspaceFileLinkAction({
+          path,
+          workspaceRoot: "/",
+          basePath: "/",
+          source: "agent-file-change"
+        })
+      ).toBeNull();
+    }
   });
 
   it("allows direct generated image paths under Tutti state outside the workspace root", () => {
@@ -70,7 +129,12 @@ describe("resolveWorkspaceFileLinkAction", () => {
         basePath: "/Users/test/project/tutti",
         source: "agent-markdown"
       })
-    ).toBeNull();
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/secrets.txt",
+      directoryPath: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
   });
 
   it("allows direct generated video paths under Tutti state outside the workspace root", () => {
@@ -96,7 +160,13 @@ describe("resolveWorkspaceFileLinkAction", () => {
         basePath: "/Users/test/project/tutti",
         source: "agent-markdown"
       })
-    ).toBeNull();
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/generated_videos/raw.mov",
+      directoryPath:
+        "/Users/test/.tutti-dev/agent/runs/session-1/codex-home/generated_videos",
+      workspaceRoot: "/Users/test/project/tutti"
+    });
   });
 
   it("allows direct workspace app data paths without a selected project", () => {
@@ -247,5 +317,56 @@ describe("resolveWorkspaceMentionLinkAction", () => {
         source: "agent-markdown"
       })
     ).toBeNull();
+  });
+});
+
+describe("resolveLocalAssetPreviewLinkAction", () => {
+  it("resolves staged local asset paths as preview actions", () => {
+    expect(
+      resolveLocalAssetPreviewLinkAction({
+        path: "/var/cache/tsh/local-assets/room-1/user-1/asset.png",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-local-asset-preview",
+      path: "/var/cache/tsh/local-assets/room-1/user-1/asset.png",
+      name: "asset.png",
+      source: "agent-markdown"
+    });
+  });
+
+  it("rejects local asset metadata sidecars", () => {
+    expect(
+      resolveLocalAssetPreviewLinkAction({
+        path: "/var/cache/tsh/local-assets/room-1/user-1/asset.png.metadata.json",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
+
+  it("rejects other VM absolute paths", () => {
+    expect(
+      resolveLocalAssetPreviewLinkAction({
+        path: "/var/lib/tsh/notes.md",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
+});
+
+describe("resolveWorkspaceLinkAction", () => {
+  it("opens staged local asset links with the preview action", () => {
+    expect(
+      resolveWorkspaceLinkAction({
+        href: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
+        workspaceRoot: "/workspace/project-a",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-local-asset-preview",
+      path: "/var/cache/tsh/local-assets/room-1/user-1/photo.png",
+      name: "photo.png",
+      source: "agent-markdown"
+    });
   });
 });

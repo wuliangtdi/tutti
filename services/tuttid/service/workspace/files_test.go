@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,6 +58,105 @@ func TestFileServiceListDirectoryAcceptsHomeAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestFileServiceListDirectoryAcceptsExternalAbsolutePaths(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	adapter := &fileSearchDeadlineAdapter{}
+	service := FileService{Adapter: adapter}
+	targetPath := filepath.Join(t.TempDir(), "codex-presentations")
+
+	_, err := service.ListDirectory(context.Background(), "ws-1", workspacefiles.DirectoryListInput{
+		IncludeHidden: true,
+		Path:          targetPath,
+	})
+	if err != nil {
+		t.Fatalf("ListDirectory() error = %v", err)
+	}
+
+	wantRoot := filesystemRootForPath(targetPath)
+	if adapter.listRoot.LogicalRoot != filepath.ToSlash(wantRoot) {
+		t.Fatalf("logical root = %q, want %q", adapter.listRoot.LogicalRoot, filepath.ToSlash(wantRoot))
+	}
+	if adapter.listRoot.PhysicalRoot != wantRoot {
+		t.Fatalf("physical root = %q, want %q", adapter.listRoot.PhysicalRoot, wantRoot)
+	}
+	if adapter.listPath.String() != filepath.ToSlash(filepath.Clean(targetPath)) {
+		t.Fatalf("list path = %q, want %q", adapter.listPath, filepath.ToSlash(filepath.Clean(targetPath)))
+	}
+	if !adapter.listIncludeHidden {
+		t.Fatal("include hidden = false, want true")
+	}
+}
+
+func TestFileServiceResolveWorkspaceRootForPathRejectsUnsupportedSpecialPaths(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	service := FileService{}
+
+	for _, path := range []string{
+		"/dev/null",
+		"/dev/./null",
+		"/dev//null",
+		"NUL",
+		"NUL.txt",
+		"C:\\tmp\\NUL",
+	} {
+		_, err := service.ResolveWorkspaceRootForPath(context.Background(), "ws-1", path)
+		if !errors.Is(err, workspacefiles.ErrInvalidPath) {
+			t.Fatalf("ResolveWorkspaceRootForPath(%q) error = %v, want ErrInvalidPath", path, err)
+		}
+	}
+}
+
+func TestFileServiceRenameEntryAcceptsExternalAbsolutePaths(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	adapter := &fileSearchDeadlineAdapter{}
+	service := FileService{Adapter: adapter}
+	targetPath := filepath.Join(t.TempDir(), "report.txt")
+
+	_, err := service.RenameEntry(context.Background(), "ws-1", targetPath, "renamed.txt")
+	if err != nil {
+		t.Fatalf("RenameEntry() error = %v", err)
+	}
+
+	wantRoot := filesystemRootForPath(targetPath)
+	if adapter.renameRoot.PhysicalRoot != wantRoot {
+		t.Fatalf("rename physical root = %q, want %q", adapter.renameRoot.PhysicalRoot, wantRoot)
+	}
+	if adapter.renamePath.String() != filepath.ToSlash(filepath.Clean(targetPath)) {
+		t.Fatalf("rename path = %q, want %q", adapter.renamePath, filepath.ToSlash(filepath.Clean(targetPath)))
+	}
+	if adapter.renameName != "renamed.txt" {
+		t.Fatalf("rename name = %q", adapter.renameName)
+	}
+}
+
+func TestFileServiceMoveEntryUsesExternalRootWhenTargetIsExternal(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	adapter := &fileSearchDeadlineAdapter{}
+	service := FileService{Adapter: adapter}
+	sourcePath := filepath.Join(homeDir, "project", "report.txt")
+	targetDirectoryPath := filepath.Join(t.TempDir(), "output")
+
+	_, err := service.MoveEntry(context.Background(), "ws-1", sourcePath, targetDirectoryPath)
+	if err != nil {
+		t.Fatalf("MoveEntry() error = %v", err)
+	}
+
+	wantRoot := filesystemRootForPath(targetDirectoryPath)
+	if adapter.moveRoot.PhysicalRoot != wantRoot {
+		t.Fatalf("move physical root = %q, want %q", adapter.moveRoot.PhysicalRoot, wantRoot)
+	}
+	if adapter.movePath.String() != filepath.ToSlash(filepath.Clean(sourcePath)) {
+		t.Fatalf("move path = %q, want %q", adapter.movePath, filepath.ToSlash(filepath.Clean(sourcePath)))
+	}
+	if adapter.moveTargetDirectory.String() != filepath.ToSlash(filepath.Clean(targetDirectoryPath)) {
+		t.Fatalf("move target = %q, want %q", adapter.moveTargetDirectory, filepath.ToSlash(filepath.Clean(targetDirectoryPath)))
+	}
+}
+
 func TestFileServiceSearchSetsDefaultDeadline(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -103,10 +203,16 @@ func TestFileServiceSearchPreservesExplicitDeadline(t *testing.T) {
 }
 
 type fileSearchDeadlineAdapter struct {
-	input             workspacefiles.SearchInput
-	listIncludeHidden bool
-	listPath          workspacefiles.LogicalPath
-	listRoot          workspacefiles.WorkspaceRoot
+	input               workspacefiles.SearchInput
+	listIncludeHidden   bool
+	listPath            workspacefiles.LogicalPath
+	listRoot            workspacefiles.WorkspaceRoot
+	moveRoot            workspacefiles.WorkspaceRoot
+	movePath            workspacefiles.LogicalPath
+	moveTargetDirectory workspacefiles.LogicalPath
+	renameRoot          workspacefiles.WorkspaceRoot
+	renamePath          workspacefiles.LogicalPath
+	renameName          string
 }
 
 func (a *fileSearchDeadlineAdapter) Search(
@@ -164,22 +270,28 @@ func (*fileSearchDeadlineAdapter) DeleteEntry(
 	return nil
 }
 
-func (*fileSearchDeadlineAdapter) MoveEntry(
-	context.Context,
-	workspacefiles.WorkspaceRoot,
-	workspacefiles.LogicalPath,
-	workspacefiles.LogicalPath,
+func (a *fileSearchDeadlineAdapter) MoveEntry(
+	_ context.Context,
+	workspaceRoot workspacefiles.WorkspaceRoot,
+	logicalPath workspacefiles.LogicalPath,
+	targetDirectoryPath workspacefiles.LogicalPath,
 ) (workspacefiles.FileEntry, error) {
-	return workspacefiles.FileEntry{}, nil
+	a.moveRoot = workspaceRoot
+	a.movePath = logicalPath
+	a.moveTargetDirectory = targetDirectoryPath
+	return workspacefiles.FileEntry{Path: targetDirectoryPath, Kind: workspacefiles.EntryKindFile}, nil
 }
 
-func (*fileSearchDeadlineAdapter) RenameEntry(
-	context.Context,
-	workspacefiles.WorkspaceRoot,
-	workspacefiles.LogicalPath,
-	string,
+func (a *fileSearchDeadlineAdapter) RenameEntry(
+	_ context.Context,
+	workspaceRoot workspacefiles.WorkspaceRoot,
+	logicalPath workspacefiles.LogicalPath,
+	newName string,
 ) (workspacefiles.FileEntry, error) {
-	return workspacefiles.FileEntry{}, nil
+	a.renameRoot = workspaceRoot
+	a.renamePath = logicalPath
+	a.renameName = newName
+	return workspacefiles.FileEntry{Path: logicalPath, Kind: workspacefiles.EntryKindFile}, nil
 }
 
 func (*fileSearchDeadlineAdapter) CopyEntry(

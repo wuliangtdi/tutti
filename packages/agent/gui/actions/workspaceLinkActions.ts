@@ -36,6 +36,13 @@ export interface OpenWorkspaceFileLinkAction {
   prefetchedDirectoryListing?: WorkspaceFileLinkDirectoryListing | null;
 }
 
+export interface OpenLocalAssetPreviewLinkAction {
+  type: "open-local-asset-preview";
+  path: string;
+  name: string;
+  source: WorkspaceLinkActionSource;
+}
+
 export interface WorkspaceFileLinkDirectoryEntry {
   path: string;
   name: string;
@@ -107,12 +114,14 @@ export interface ResolveWorkspaceLinkActionInput {
 
 export type WorkspaceLinkAction =
   | OpenWorkspaceFileLinkAction
+  | OpenLocalAssetPreviewLinkAction
   | OpenWorkspaceUrlLinkAction
   | OpenAgentSessionLinkAction
   | OpenWorkspaceIssueLinkAction
   | OpenWorkspaceAppLinkAction;
 
 const URL_LIKE_LINK_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:|^#/;
+const LOCAL_ASSET_ROOT = "/var/cache/tsh/local-assets";
 
 export function resolveWorkspaceFilePathCandidate({
   path,
@@ -120,11 +129,18 @@ export function resolveWorkspaceFilePathCandidate({
   basePath
 }: ResolveWorkspaceFilePathCandidateInput): ResolvedWorkspaceFilePathCandidate | null {
   const rawPath = decodeWorkspaceLinkPath(path.trim());
-  if (!rawPath || isUrlLikeWorkspaceFilePath(rawPath)) {
+  if (
+    !rawPath ||
+    isUrlLikeWorkspaceFilePath(rawPath) ||
+    isUncWorkspaceFilePath(rawPath)
+  ) {
     return null;
   }
 
   const normalizedPath = normalizeWorkspaceFilePath(rawPath);
+  if (isUnsupportedSpecialWorkspaceFilePath(normalizedPath)) {
+    return null;
+  }
   if (
     isAbsoluteLocalPath(normalizedPath) &&
     (isDirectAgentGeneratedMediaPath(normalizedPath) ||
@@ -142,6 +158,14 @@ export function resolveWorkspaceFilePathCandidate({
   const root = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
   if (!root) {
     return null;
+  }
+  if (isAbsoluteLocalPath(normalizedPath)) {
+    const directoryPath = dirname(normalizedPath);
+    return {
+      path: normalizedPath,
+      directoryPath,
+      workspaceRoot: root
+    };
   }
   const base = normalizeWorkspaceFilePath(basePath?.trim() || root);
   const resolvedPath = isAbsoluteLocalPath(normalizedPath)
@@ -181,6 +205,37 @@ export function resolveWorkspaceFileLinkAction({
     path: candidate.path,
     directoryPath: candidate.directoryPath,
     workspaceRoot: candidate.workspaceRoot,
+    source
+  };
+}
+
+export function resolveLocalAssetPreviewLinkAction({
+  path,
+  source
+}: {
+  path: string;
+  source: WorkspaceLinkActionSource;
+}): OpenLocalAssetPreviewLinkAction | null {
+  const rawPath = decodeWorkspaceLinkPath(path.trim());
+  if (!rawPath || isUrlLikeWorkspaceFilePath(rawPath)) {
+    return null;
+  }
+
+  const resolvedPath = normalizeWorkspaceFilePath(rawPath);
+  if (
+    resolvedPath === LOCAL_ASSET_ROOT ||
+    !isInsideOrEqual(resolvedPath, LOCAL_ASSET_ROOT)
+  ) {
+    return null;
+  }
+  if (resolvedPath.endsWith(".metadata.json")) {
+    return null;
+  }
+
+  return {
+    type: "open-local-asset-preview",
+    path: resolvedPath,
+    name: basename(resolvedPath),
     source
   };
 }
@@ -287,6 +342,10 @@ export function resolveWorkspaceLinkAction({
       basePath,
       source
     }) ??
+    resolveLocalAssetPreviewLinkAction({
+      path: href,
+      source
+    }) ??
     resolveWorkspaceUrlLinkAction({ url: href, source })
   );
 }
@@ -338,6 +397,38 @@ function isWindowsAbsolutePath(path: string): boolean {
   return /^[A-Za-z]:\//.test(path);
 }
 
+function isUncWorkspaceFilePath(path: string): boolean {
+  return /^(?:\\\\|\/\/)[^/\\]+[/\\][^/\\]+/.test(path);
+}
+
+function isUnsupportedSpecialWorkspaceFilePath(path: string): boolean {
+  const comparisonPath = cleanWorkspaceFilePathForComparison(path);
+  return (
+    comparisonPath === "/dev/null" ||
+    comparisonPath.split("/").some((segment) => {
+      const normalized = segment.trim().replace(/[. ]+$/g, "");
+      const deviceName = normalized.split(".", 1)[0]?.toUpperCase();
+      return deviceName === "NUL";
+    })
+  );
+}
+
+function cleanWorkspaceFilePathForComparison(path: string): string {
+  const normalized = path.replace(/\/+/g, "/");
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return normalized.startsWith("/") ? `/${parts.join("/")}` : parts.join("/");
+}
+
 function decodeWorkspaceLinkPath(path: string): string {
   if (!path.includes("%")) {
     return path;
@@ -355,6 +446,10 @@ function dirname(path: string): string {
     return "/";
   }
   return path.slice(0, index);
+}
+
+function basename(path: string): string {
+  return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 function isInsideOrEqual(path: string, root: string): boolean {

@@ -748,9 +748,7 @@ function MessageCenterGroupHeading({
   );
 }
 
-function messageCenterGroupStatusSignal(
-  groupId: string
-): {
+function messageCenterGroupStatusSignal(groupId: string): {
   pulse: boolean;
   tone: Exclude<MessageCenterStatusTone, "neutral">;
 } | null {

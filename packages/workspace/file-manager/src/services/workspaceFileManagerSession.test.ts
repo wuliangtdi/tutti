@@ -1534,6 +1534,58 @@ test("applyRevealIntent opens target directories directly when requested", async
   session.dispose();
 });
 
+test("applyRevealIntent reveals external absolute file paths", async () => {
+  const session = createWorkspaceFileManagerService().createSession({
+    host: {
+      async listDirectory(input) {
+        assert.equal(input.path, "/var/folders/demo/T/codex-presentations");
+        assert.equal(input.includeHidden, false);
+        return {
+          directoryPath: input.path,
+          entries: [
+            {
+              hasChildren: false,
+              kind: "file",
+              mtimeMs: null,
+              name: "slides.pptx",
+              path: "/var/folders/demo/T/codex-presentations/slides.pptx",
+              sizeBytes: 42
+            }
+          ],
+          root: "/",
+          workspaceID: input.workspaceID
+        };
+      }
+    },
+    i18n: createTestI18nRuntime(),
+    persistedState: {
+      currentDirectoryPath: "/Users/demo",
+      navigationBackStack: [],
+      navigationForwardStack: [],
+      selectedLocationId: null,
+      schemaVersion: 3
+    },
+    workspaceID: "workspace-1"
+  });
+  session.store.root = "/Users/demo";
+
+  await session.applyRevealIntent({
+    path: "/var/folders/demo/T/codex-presentations/slides.pptx",
+    requestID: "external-reveal-1"
+  });
+
+  assert.equal(session.store.root, "/");
+  assert.equal(
+    session.store.currentDirectoryPath,
+    "/var/folders/demo/T/codex-presentations"
+  );
+  assert.equal(
+    session.store.selectedPath,
+    "/var/folders/demo/T/codex-presentations/slides.pptx"
+  );
+  session.dispose();
+});
+
 test("initialize preserves directory state already loaded by a reveal intent", async () => {
   const listedPaths: string[] = [];
   const session = createWorkspaceFileManagerService().createSession({

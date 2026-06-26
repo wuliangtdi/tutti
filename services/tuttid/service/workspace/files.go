@@ -3,7 +3,9 @@ package workspace
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -165,6 +167,65 @@ func (FileService) ResolveWorkspaceRoot(
 		LogicalRoot:  physicalRoot,
 		PhysicalRoot: physicalRoot,
 	}, nil
+}
+
+func (s FileService) ResolveWorkspaceRootForPath(
+	ctx context.Context,
+	workspaceID string,
+	path string,
+) (workspacefiles.WorkspaceRoot, error) {
+	root, err := s.ResolveWorkspaceRoot(ctx, workspaceID)
+	if err != nil {
+		return workspacefiles.WorkspaceRoot{}, err
+	}
+	trimmedPath := strings.TrimSpace(path)
+	if isUnsupportedSpecialWorkspaceFilePath(trimmedPath) {
+		return workspacefiles.WorkspaceRoot{}, fmt.Errorf("%w: unsupported special path %q", workspacefiles.ErrInvalidPath, path)
+	}
+	if trimmedPath == "" || !filepath.IsAbs(trimmedPath) {
+		return root, nil
+	}
+	absolutePath, err := filepath.Abs(trimmedPath)
+	if err != nil {
+		return workspacefiles.WorkspaceRoot{}, err
+	}
+	if workspacefiles.IsPhysicalPathWithinRoot(root.PhysicalRoot, absolutePath) {
+		return root, nil
+	}
+
+	physicalRoot := filesystemRootForPath(absolutePath)
+	return workspacefiles.WorkspaceRoot{
+		WorkspaceID:  root.WorkspaceID,
+		LogicalRoot:  filepath.ToSlash(physicalRoot),
+		PhysicalRoot: physicalRoot,
+	}, nil
+}
+
+func filesystemRootForPath(path string) string {
+	volume := filepath.VolumeName(path)
+	if volume != "" {
+		return filepath.Clean(volume + string(filepath.Separator))
+	}
+	return string(filepath.Separator)
+}
+
+func isUnsupportedSpecialWorkspaceFilePath(value string) bool {
+	normalized := strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
+	if normalized == "" {
+		return false
+	}
+	comparisonPath := pathpkg.Clean(normalized)
+	if comparisonPath == "/dev/null" {
+		return true
+	}
+	for _, segment := range strings.Split(comparisonPath, "/") {
+		trimmedSegment := strings.TrimRight(strings.TrimSpace(segment), ". ")
+		deviceName := strings.ToUpper(strings.SplitN(trimmedSegment, ".", 2)[0])
+		if deviceName == "NUL" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s FileService) domainService() workspacefiles.Service {

@@ -63,14 +63,14 @@ func (a *CodexAppServerAdapter) appServerNotificationEvents(
 		// Record the provider turn id (needed for turn/interrupt and
 		// turn/steer) only while a turn context is registered, so stray
 		// turns (for example compaction) cannot block future prompts.
-		if a.sessionActiveTurn(session.AgentSessionID) != nil {
+		if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
 			if turn := payloadObject(params["turn"]); turn != nil {
 				providerTurnID := asString(turn["id"])
 				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
 					a.interruptActiveTurnAsync(&codexAppServerSession{
 						client:   client,
 						threadID: firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),
-					}, session, providerTurnID, "queued cancel")
+					}, session, activeTurn, providerTurnID, "queued cancel")
 				}
 			}
 		}
@@ -631,7 +631,7 @@ func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
 	return quotas
 }
 
-func appServerSystemNoticeEvent(session Session, turnID string, noticeKind string, title string, detail string) activityshared.Event {
+func appServerSystemNoticeEvent(session Session, turnID string, noticeKind string, title string, detail string, metadata ...map[string]any) activityshared.Event {
 	update := map[string]any{
 		"sessionUpdate": "system_notice",
 		"kind":          "agent_system_notice",
@@ -646,6 +646,13 @@ func appServerSystemNoticeEvent(session Session, turnID string, noticeKind strin
 	}
 	if detail != "" {
 		update["detail"] = detail
+	}
+	for _, extra := range metadata {
+		for key, value := range extra {
+			if value != nil {
+				update[key] = value
+			}
+		}
 	}
 	event, _ := acpSystemNoticeEvent(session, turnID, update, "system_notice", true)
 	return event

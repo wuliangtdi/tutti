@@ -2620,7 +2620,9 @@ test("workspace agent read-state write recovers from corrupt localStorage", asyn
     value: localStorageMock
   });
   try {
-    const api = createAgentHostApi() as ReturnType<typeof createAgentHostApi> & {
+    const api = createAgentHostApi() as ReturnType<
+      typeof createAgentHostApi
+    > & {
       persistence: {
         readWorkspaceAgentReadState(input: {
           roomId: string;

@@ -98,7 +98,11 @@ test("runAction tracks provider login initiation and successful status result", 
     reporterNow: () => 1749124800000,
     reporterService: {
       async trackEvents(nextEvents) {
-        events.push(...nextEvents);
+        // These tests focus on the login/ready funnel; the always-on
+        // env_detected event is verified separately.
+        events.push(
+          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+        );
       }
     },
     terminalCommandRunner: {
@@ -120,6 +124,15 @@ test("runAction tracks provider login initiation and successful status result", 
     },
     {
       clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "login",
+        previous_status: "auth_required",
+        provider: "codex"
+      }
+    },
+    {
+      clientTS: 1749124800000,
       name: "agent.provider_login_result",
       params: {
         error_reason: null,
@@ -128,6 +141,213 @@ test("runAction tracks provider login initiation and successful status result", 
       }
     }
   ]);
+});
+
+test("runAction auto-closes the login terminal once login succeeds", async () => {
+  let closed = 0;
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [
+              {
+                command: { cwd: "/workspace", input: "codex login\n" },
+                id: "login",
+                kind: "terminal_command"
+              }
+            ],
+            availability: "auth_required"
+          })
+        ]),
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: { async trackEvents() {} },
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        return {
+          close: () => {
+            closed += 1;
+          }
+        };
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { workspaceId: "workspace-1" });
+  await flushAsyncWork();
+
+  assert.equal(closed, 1);
+});
+
+test("runAction keeps the login terminal open when login never completes", async () => {
+  let closed = 0;
+  const authRequired = createProviderStatus({
+    actions: [
+      {
+        command: { cwd: "/workspace", input: "codex login\n" },
+        id: "login",
+        kind: "terminal_command"
+      }
+    ],
+    availability: "auth_required"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    loginStatusPollScheduler: createManualPollScheduler().scheduler,
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([authRequired]),
+        createStatusResponse([authRequired])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: { async trackEvents() {} },
+    terminalCommandRunner: {
+      async runTerminalCommand() {
+        return {
+          close: () => {
+            closed += 1;
+          }
+        };
+      }
+    }
+  });
+
+  await service.refresh();
+  await service.runAction("codex", "login", { workspaceId: "workspace-1" });
+  await flushAsyncWork();
+
+  assert.equal(closed, 0);
+});
+
+test("requestStatuses reports an already-ready provider as an activation signal", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({
+            actions: [],
+            availability: "ready"
+          })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        // These tests focus on the login/ready funnel; the always-on
+        // env_detected event is verified separately.
+        events.push(
+          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "already_ready",
+        previous_status: "absent",
+        provider: "codex"
+      }
+    }
+  ]);
+});
+
+test("requestStatuses does not re-report a provider that was already ready", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ]),
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        // These tests focus on the login/ready funnel; the always-on
+        // env_detected event is verified separately.
+        events.push(
+          ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.deepEqual(events, [
+    {
+      clientTS: 1749124800000,
+      name: "agent.provider_ready",
+      params: {
+        became_ready_via: "already_ready",
+        previous_status: "absent",
+        provider: "codex"
+      }
+    }
+  ]);
+});
+
+test("requestStatuses fires agent.env_detected once per detection outcome", async () => {
+  const events: ReporterEventInput[] = [];
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ]),
+        createStatusResponse([
+          createProviderStatus({ actions: [], availability: "ready" })
+        ])
+      ]
+    }),
+    reporterNow: () => 1749124800000,
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(
+          ...nextEvents.filter((event) => event.name === "agent.env_detected")
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await service.refresh();
+  await flushAsyncWork();
+
+  // Two identical refreshes resolve to the same outcome → one event.
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.params?.provider, "codex");
+  assert.equal(events[0]?.params?.availability_status, "ready");
 });
 
 test("runAction short-polls login status after sign-in and coalesces repeated login attempts", async () => {
@@ -539,7 +759,9 @@ test("runAction reports login launch failures and clears pending state", async (
       reporterNow: () => 1749124800000,
       reporterService: {
         async trackEvents(nextEvents) {
-          events.push(...nextEvents);
+          events.push(
+            ...nextEvents.filter((event) => event.name !== "agent.env_detected")
+          );
         }
       },
       terminalCommandRunner: {

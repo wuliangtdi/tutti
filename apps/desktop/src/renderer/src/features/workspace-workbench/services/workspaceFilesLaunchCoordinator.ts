@@ -40,10 +40,7 @@ export async function requestWorkspaceFilesLaunch(
   request: WorkspaceFilesLaunchRequest
 ): Promise<boolean> {
   const normalizedWorkspaceId = request.workspaceId.trim();
-  const normalizedPath = normalizeWorkspaceFilesLaunchPath({
-    homeDirectory: request.homeDirectory,
-    path: request.path
-  });
+  const normalizedPath = normalizeWorkspaceFilesLaunchPath(request.path);
   if (!normalizedWorkspaceId || !normalizedPath) {
     return false;
   }
@@ -61,56 +58,52 @@ export async function requestWorkspaceFilesLaunch(
   });
 }
 
-function normalizeWorkspaceFilesLaunchPath(input: {
-  homeDirectory?: string | null;
-  path: string;
-}): string | null {
-  const normalized = normalizeLocalPath(input.path);
-  if (!normalized) {
+function normalizeWorkspaceFilesLaunchPath(path: string): string | null {
+  const trimmed = path.trim();
+  if (isUncLocalPath(trimmed)) {
     return null;
   }
-  const homeRelative = homeRelativeAbsolutePath({
-    homeDirectory: input.homeDirectory,
-    path: normalized
-  });
-  if (homeRelative !== null) {
-    return normalized;
-  }
-  if (isAbsoluteLocalPath(normalized)) {
+  const normalized = normalizeLocalPath(trimmed);
+  if (
+    !normalized ||
+    isUrlLikeLocalPath(normalized) ||
+    isStructuredPayloadPath(normalized) ||
+    isUnsupportedSpecialPath(normalized)
+  ) {
     return null;
   }
   return normalized;
 }
 
-function homeRelativeAbsolutePath(input: {
-  homeDirectory?: string | null;
-  path: string;
-}): string | null {
-  const homeDirectory = normalizeLocalPath(input.homeDirectory ?? "");
-  if (!homeDirectory) {
-    return null;
+function isUrlLikeLocalPath(path: string): boolean {
+  if (path.startsWith("#")) {
+    return true;
   }
-
-  const comparison = isWindowsAbsolutePath(homeDirectory)
-    ? {
-        homeDirectory: homeDirectory.toLowerCase(),
-        path: input.path.toLowerCase()
-      }
-    : {
-        homeDirectory,
-        path: input.path
-      };
-  if (comparison.path === comparison.homeDirectory) {
-    return "";
+  if (isWindowsAbsolutePath(path)) {
+    return false;
   }
-  if (!comparison.path.startsWith(`${comparison.homeDirectory}/`)) {
-    return null;
-  }
-  return input.path.slice(homeDirectory.length + 1);
+  return /^[A-Za-z][A-Za-z\d+.-]*:/.test(path);
 }
 
-function isAbsoluteLocalPath(path: string): boolean {
-  return path.startsWith("/") || isWindowsAbsolutePath(path);
+function isStructuredPayloadPath(path: string): boolean {
+  if (!path.startsWith("{") && !path.startsWith("[")) {
+    return false;
+  }
+  try {
+    JSON.parse(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isUnsupportedSpecialPath(path: string): boolean {
+  const comparisonPath = cleanLocalPathForComparison(path);
+  return comparisonPath === "/dev/null" || hasWindowsNulSegment(comparisonPath);
+}
+
+function isUncLocalPath(path: string): boolean {
+  return /^(?:\\\\|\/\/)[^/\\]+[/\\][^/\\]+/.test(path);
 }
 
 function isWindowsAbsolutePath(path: string): boolean {
@@ -119,6 +112,30 @@ function isWindowsAbsolutePath(path: string): boolean {
 
 function normalizeLocalPath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+function cleanLocalPathForComparison(path: string): string {
+  const normalized = path.replace(/\/+/g, "/");
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  return normalized.startsWith("/") ? `/${parts.join("/")}` : parts.join("/");
+}
+
+function hasWindowsNulSegment(path: string): boolean {
+  return path.split("/").some((segment) => {
+    const normalized = segment.trim().replace(/[. ]+$/g, "");
+    const deviceName = normalized.split(".", 1)[0]?.toUpperCase();
+    return deviceName === "NUL";
+  });
 }
 
 function noop(): void {}

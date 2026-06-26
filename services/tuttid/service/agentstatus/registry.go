@@ -176,13 +176,12 @@ func DefaultRegistry() Registry {
 	return Registry{Specs: specs}
 }
 
-// codexCLIInstallerSpec installs the first-party codex binary via the
-// daemon-managed GitHub-release installer. This runs headlessly (HTTP download
-// + checksum + extract + symlink), unlike the official `curl … | sh` script
-// which aborts with "stdin is not a terminal" when run without a TTY.
+// codexCLIInstallerSpec installs the first-party Codex npm package globally,
+// including its platform-specific optional dependency binary.
 func codexCLIInstallerSpec() InstallerSpec {
 	return InstallerSpec{
-		Kind:     InstallerKindCodexCLILatest,
-		CodexCLI: &CodexCLILatestInstallerSpec{},
+		Kind:           InstallerKindCodexCLILatest,
+		DisplayCommand: "npm install -g @openai/codex --include=optional",
+		CodexCLI:       &CodexCLILatestInstallerSpec{},
 	}
 }

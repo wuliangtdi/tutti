@@ -426,6 +426,7 @@ func forwardSystemNoticeMessageMetadata(payload map[string]any, metadata map[str
 		"title",
 		"detail",
 		"additionalDetails",
+		"code",
 		"noticeCommand",
 		"noticeCommandStatus",
 	} {

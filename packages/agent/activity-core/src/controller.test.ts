@@ -74,6 +74,44 @@ test("controller snapshot reference is stable until data changes", async () => {
   unsubscribe();
 });
 
+test("controller can list session messages without caching them", async () => {
+  const adapter = fakeAdapter({
+    listSessionMessages: () =>
+      Promise.resolve({
+        hasMore: false,
+        latestVersion: 5,
+        messages: [
+          createMessage({
+            messageId: "message-5",
+            version: 5,
+            payload: { text: "latest" }
+          })
+        ]
+      })
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.listSessionMessages({
+    agentSessionId: "session-1",
+    cache: false
+  });
+  assert.equal(
+    controller.getSnapshot().sessionMessagesById["session-1"],
+    undefined
+  );
+
+  await controller.listSessionMessages({ agentSessionId: "session-1" });
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .sessionMessagesById["session-1"]?.map((message) => message.version),
+    [5]
+  );
+});
+
 test("controller does not notify subscribers when loaded sessions are unchanged", async () => {
   let currentSession = createSession();
   const controller = createAgentActivityController({
@@ -248,6 +286,152 @@ test("controller quietly syncs active sessions discovered during load", async ()
       controller.getSnapshot().sessionMessagesById["session-1"]?.[0]?.payload
         .text,
       "restored"
+    );
+  });
+});
+
+test("controller quietly syncs every active session message page", async () => {
+  const messageRequests: number[] = [];
+  const pages = new Map([
+    [
+      0,
+      {
+        hasMore: true,
+        latestVersion: 1,
+        messages: [
+          createMessage({
+            messageId: "message-1",
+            version: 1,
+            payload: { text: "first page" }
+          })
+        ]
+      }
+    ],
+    [
+      1,
+      {
+        hasMore: true,
+        latestVersion: 2,
+        messages: [
+          createMessage({
+            messageId: "message-2",
+            version: 2,
+            payload: { text: "second page" }
+          })
+        ]
+      }
+    ],
+    [
+      2,
+      {
+        hasMore: false,
+        latestVersion: 3,
+        messages: [
+          createMessage({
+            messageId: "message-3",
+            version: 3,
+            payload: { text: "last page" }
+          })
+        ]
+      }
+    ]
+  ]);
+  const adapter = fakeAdapter({
+    listSessions: () =>
+      Promise.resolve({
+        sessions: [
+          createSession({
+            agentSessionId: "session-1",
+            messageVersion: 3,
+            status: "working"
+          })
+        ]
+      }),
+    listSessionMessages: (input) => {
+      const afterVersion = input.afterVersion ?? 0;
+      messageRequests.push(afterVersion);
+      const page = pages.get(afterVersion);
+      assert.ok(page, `unexpected afterVersion ${afterVersion}`);
+      return Promise.resolve(page);
+    },
+    subscribe: () => Promise.resolve(() => {})
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+
+  await waitFor(() => {
+    assert.deepEqual(messageRequests, [0, 1, 2]);
+    assert.deepEqual(
+      controller
+        .getSnapshot()
+        .sessionMessagesById["session-1"]?.map((message) => message.version),
+      [1, 2, 3]
+    );
+  });
+});
+
+test("controller uses latestVersion to continue paged active session sync", async () => {
+  const messageRequests: number[] = [];
+  const adapter = fakeAdapter({
+    listSessions: () =>
+      Promise.resolve({
+        sessions: [
+          createSession({
+            agentSessionId: "session-1",
+            messageVersion: 3,
+            status: "working"
+          })
+        ]
+      }),
+    listSessionMessages: (input) => {
+      const afterVersion = input.afterVersion ?? 0;
+      messageRequests.push(afterVersion);
+      if (afterVersion === 0) {
+        return Promise.resolve({
+          hasMore: true,
+          latestVersion: 2,
+          messages: [
+            createMessage({
+              messageId: "message-1",
+              version: 1,
+              payload: { text: "first page" }
+            })
+          ]
+        });
+      }
+      assert.equal(afterVersion, 2);
+      return Promise.resolve({
+        hasMore: false,
+        latestVersion: 3,
+        messages: [
+          createMessage({
+            messageId: "message-3",
+            version: 3,
+            payload: { text: "last page" }
+          })
+        ]
+      });
+    },
+    subscribe: () => Promise.resolve(() => {})
+  });
+  const controller = createAgentActivityController({
+    adapter,
+    workspaceId: "workspace-1"
+  });
+
+  await controller.load();
+
+  await waitFor(() => {
+    assert.deepEqual(messageRequests, [0, 2]);
+    assert.deepEqual(
+      controller
+        .getSnapshot()
+        .sessionMessagesById["session-1"]?.map((message) => message.version),
+      [1, 3]
     );
   });
 });

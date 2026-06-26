@@ -11,11 +11,18 @@ export interface AgentProviderStatusActionContext {
   workspaceId?: string;
 }
 
+// A closable handle to the terminal a command opened, so the caller can dismiss
+// it once the command's purpose is fulfilled (e.g. close the login terminal after
+// authentication succeeds).
+export interface AgentProviderTerminalCommandHandle {
+  close(): void;
+}
+
 export interface AgentProviderTerminalCommandRunner {
   runTerminalCommand(
     command: AgentProviderTerminalCommand,
     context?: AgentProviderStatusActionContext
-  ): Promise<void>;
+  ): Promise<AgentProviderTerminalCommandHandle | void>;
 }
 
 export interface AgentProviderStatusPendingAction {
@@ -49,6 +56,11 @@ export interface IAgentProviderStatusService {
   ): Promise<void>;
   refresh(providers?: WorkspaceAgentProvider[]): Promise<void>;
   subscribe(listener: () => void): () => void;
+  /** Whether the user agreed to send fuller diagnostics via "report problem". */
+  getDiagnosticsConsent(): boolean;
+  setDiagnosticsConsent(value: boolean): void;
+  /** Send the consent-gated diagnostic report for a provider (no-op without consent). */
+  reportEnvIssue(provider: WorkspaceAgentProvider): Promise<void>;
 }
 
 export const IAgentProviderStatusService =

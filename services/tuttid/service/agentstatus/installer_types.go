@@ -83,7 +83,7 @@ func (s InstallerSpec) displayCommand() string {
 		}
 		return strings.TrimSpace(s.DisplayCommand)
 	case InstallerKindCodexCLILatest:
-		return firstNonBlank(s.DisplayCommand, "Install Codex CLI latest from GitHub releases")
+		return firstNonBlank(s.DisplayCommand, "npm install -g @openai/codex --include=optional")
 	default:
 		return ""
 	}
@@ -143,9 +143,6 @@ func validateInstallerSpec(spec InstallerSpec) error {
 	case InstallerKindCodexCLILatest:
 		if spec.CodexCLI == nil {
 			return fmt.Errorf("codex CLI latest installer config is required")
-		}
-		if _, ok := codexCLIPackageTarget(runtime.GOOS, runtime.GOARCH); !ok {
-			return fmt.Errorf("codex CLI latest installer asset is unavailable for %s", releaseBinaryPlatformKey(runtime.GOOS, runtime.GOARCH))
 		}
 	default:
 		return fmt.Errorf("unsupported installer kind %q", spec.Kind)

@@ -47,8 +47,10 @@ type stubFileService struct {
 	listDirectoryFn        func(context.Context, string, workspacefiles.DirectoryListInput) (workspacefiles.DirectoryListing, error)
 	listRecentFn           func(context.Context, string, workspacefiles.RecentListInput) (workspacefiles.DirectoryListing, error)
 	moveEntryFn            func(context.Context, string, string, string) (workspacefiles.FileEntry, error)
+	renameEntryFn          func(context.Context, string, string, string) (workspacefiles.FileEntry, error)
 	preflightUploadFilesFn func(context.Context, string, workspacefiles.PreflightUploadInput) (workspacefiles.PreflightUploadResult, error)
 	resolveRootFn          func(context.Context, string) (workspacefiles.WorkspaceRoot, error)
+	resolveRootForPathFn   func(context.Context, string, string) (workspacefiles.WorkspaceRoot, error)
 	searchFn               func(context.Context, string, workspacefiles.SearchInput) (workspacefiles.SearchResult, error)
 	uploadFilesFn          func(context.Context, string, workspacefiles.UploadInput) (workspacefiles.UploadResult, error)
 }
@@ -347,6 +349,17 @@ func (s stubFileService) ResolveWorkspaceRoot(
 	return s.resolveRootFn(ctx, workspaceID)
 }
 
+func (s stubFileService) ResolveWorkspaceRootForPath(
+	ctx context.Context,
+	workspaceID string,
+	path string,
+) (workspacefiles.WorkspaceRoot, error) {
+	if s.resolveRootForPathFn == nil {
+		return s.ResolveWorkspaceRoot(ctx, workspaceID)
+	}
+	return s.resolveRootForPathFn(ctx, workspaceID, path)
+}
+
 func (s stubFileService) ListDirectory(
 	ctx context.Context,
 	workspaceID string,
@@ -450,12 +463,15 @@ func (s stubFileService) MoveEntry(
 	return s.moveEntryFn(ctx, workspaceID, path, targetDirectoryPath)
 }
 
-func (stubFileService) RenameEntry(
-	_ context.Context,
-	_ string,
+func (s stubFileService) RenameEntry(
+	ctx context.Context,
+	workspaceID string,
 	path string,
-	_ string,
+	newName string,
 ) (workspacefiles.FileEntry, error) {
+	if s.renameEntryFn != nil {
+		return s.renameEntryFn(ctx, workspaceID, path, newName)
+	}
 	return workspacefiles.FileEntry{Path: workspacefiles.LogicalPath(path)}, nil
 }
 
@@ -2431,6 +2447,67 @@ func TestDaemonAPIGeneratedRoutesReadWorkspaceFilePreview(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesReadWorkspaceFilePreviewUsesPathAwareRoot(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			FileService: stubFileService{
+				readFileFn: func(_ context.Context, workspaceID string, path string, _ int64) (workspacefiles.FileContent, error) {
+					if workspaceID != "ws-1" {
+						t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+					}
+					if path != "/tmp/report.md" {
+						t.Fatalf("path = %q, want /tmp/report.md", path)
+					}
+					return workspacefiles.FileContent{
+						Bytes:     []byte("hello"),
+						Name:      "report.md",
+						Path:      "/tmp/report.md",
+						SizeBytes: 5,
+					}, nil
+				},
+				resolveRootForPathFn: func(_ context.Context, workspaceID string, path string) (workspacefiles.WorkspaceRoot, error) {
+					if workspaceID != "ws-1" {
+						t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+					}
+					if path != "/tmp/report.md" {
+						t.Fatalf("root path = %q, want /tmp/report.md", path)
+					}
+					return workspacefiles.WorkspaceRoot{
+						WorkspaceID:  workspaceID,
+						LogicalRoot:  "/",
+						PhysicalRoot: "/",
+					}, nil
+				},
+			},
+		}),
+	)
+
+	request, err := http.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/ws-1/files/file/preview?path=%2Ftmp%2Freport.md",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewRequest() error = %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceFilePreviewResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Root != "/" {
+		t.Fatalf("root = %q, want /", response.Root)
+	}
+	if response.Path != "/tmp/report.md" {
+		t.Fatalf("path = %q, want /tmp/report.md", response.Path)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesWriteWorkspaceFileText(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(
@@ -2477,6 +2554,66 @@ func TestDaemonAPIGeneratedRoutesWriteWorkspaceFileText(t *testing.T) {
 	}
 	if response.Entry.SizeBytes == nil || *response.Entry.SizeBytes != int64(len("updated")) {
 		t.Fatalf("entry size = %#v", response.Entry.SizeBytes)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRenameWorkspaceFileEntryUsesPathAwareRoot(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(
+		mux,
+		NewRoutes(DaemonAPI{
+			FileService: stubFileService{
+				renameEntryFn: func(_ context.Context, workspaceID string, path string, newName string) (workspacefiles.FileEntry, error) {
+					if workspaceID != "ws-1" {
+						t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+					}
+					if path != "/tmp/report.md" {
+						t.Fatalf("path = %q, want /tmp/report.md", path)
+					}
+					if newName != "renamed.md" {
+						t.Fatalf("newName = %q, want renamed.md", newName)
+					}
+					return workspacefiles.FileEntry{
+						Path: "/tmp/renamed.md",
+						Name: "renamed.md",
+						Kind: workspacefiles.EntryKindFile,
+					}, nil
+				},
+				resolveRootForPathFn: func(_ context.Context, workspaceID string, path string) (workspacefiles.WorkspaceRoot, error) {
+					if workspaceID != "ws-1" {
+						t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
+					}
+					if path != "/tmp/renamed.md" {
+						t.Fatalf("root path = %q, want /tmp/renamed.md", path)
+					}
+					return workspacefiles.WorkspaceRoot{
+						WorkspaceID:  workspaceID,
+						LogicalRoot:  "/",
+						PhysicalRoot: "/",
+					}, nil
+				},
+			},
+		}),
+	)
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/files/entry/rename",
+		map[string]any{"newName": "renamed.md", "path": "/tmp/report.md"},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceFileEntryResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Root != "/" {
+		t.Fatalf("root = %q, want /", response.Root)
+	}
+	if response.Entry.Path != "/tmp/renamed.md" {
+		t.Fatalf("entry path = %q, want /tmp/renamed.md", response.Entry.Path)
 	}
 }
 

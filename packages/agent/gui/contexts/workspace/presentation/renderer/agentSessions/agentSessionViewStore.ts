@@ -21,12 +21,16 @@ export interface AgentSessionView extends Required<
 > {
   sessionKey: string;
   overlayMessages: WorkspaceAgentActivityMessage[];
+  detailMessages: WorkspaceAgentActivityMessage[];
   controlCommands: AgentHostAgentSessionCommand[];
   controlState: AgentHostAgentSessionState | null;
   lastEventAt: number | null;
   isLive: boolean;
   isLoadingControlState: boolean;
   isLoadingMessages: boolean;
+  isLoadingOlderMessages: boolean;
+  hasOlderMessages: boolean;
+  oldestLoadedVersion: number | null;
   error: string | null;
   watcherCount: number;
 }
@@ -243,6 +247,122 @@ export function setAgentSessionViewOverlayMessages(
       overlayMessages
     };
   });
+}
+
+export function setAgentSessionViewDetailMessages(
+  ref: AgentSessionViewRef,
+  nextMessages: readonly WorkspaceAgentActivityMessage[],
+  options: {
+    hasOlderMessages?: boolean;
+    isLoadingOlderMessages?: boolean;
+  } = {}
+): void {
+  const normalized = normalizeAgentSessionViewRef(ref);
+  if (!normalized) {
+    return;
+  }
+  updateAgentSessionView(normalized, (current) => {
+    const detailMessages = mergeMessages([], nextMessages);
+    const oldestLoadedVersion = oldestMessageVersion(detailMessages);
+    if (
+      sameMessages(current.detailMessages, detailMessages) &&
+      current.oldestLoadedVersion === oldestLoadedVersion &&
+      current.hasOlderMessages ===
+        (options.hasOlderMessages ?? current.hasOlderMessages) &&
+      current.isLoadingOlderMessages ===
+        (options.isLoadingOlderMessages ?? current.isLoadingOlderMessages)
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      detailMessages,
+      oldestLoadedVersion,
+      hasOlderMessages: options.hasOlderMessages ?? current.hasOlderMessages,
+      isLoadingOlderMessages:
+        options.isLoadingOlderMessages ?? current.isLoadingOlderMessages
+    };
+  });
+}
+
+export function mergeAgentSessionViewDetailMessages(
+  ref: AgentSessionViewRef,
+  nextMessages: readonly WorkspaceAgentActivityMessage[],
+  options: {
+    hasOlderMessages?: boolean;
+    isLoadingOlderMessages?: boolean;
+  } = {}
+): void {
+  const normalized = normalizeAgentSessionViewRef(ref);
+  if (!normalized) {
+    return;
+  }
+  updateAgentSessionView(normalized, (current) => {
+    const detailMessages = mergeMessages(current.detailMessages, nextMessages);
+    const oldestLoadedVersion = oldestMessageVersion(detailMessages);
+    if (
+      sameMessages(current.detailMessages, detailMessages) &&
+      current.oldestLoadedVersion === oldestLoadedVersion &&
+      current.hasOlderMessages ===
+        (options.hasOlderMessages ?? current.hasOlderMessages) &&
+      current.isLoadingOlderMessages ===
+        (options.isLoadingOlderMessages ?? current.isLoadingOlderMessages)
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      detailMessages,
+      oldestLoadedVersion,
+      hasOlderMessages: options.hasOlderMessages ?? current.hasOlderMessages,
+      isLoadingOlderMessages:
+        options.isLoadingOlderMessages ?? current.isLoadingOlderMessages
+    };
+  });
+}
+
+export function resetAgentSessionViewDetailMessages(
+  ref: AgentSessionViewRef
+): void {
+  const normalized = normalizeAgentSessionViewRef(ref);
+  if (!normalized) {
+    return;
+  }
+  updateAgentSessionView(normalized, (current) => {
+    if (
+      current.detailMessages.length === 0 &&
+      current.oldestLoadedVersion === null &&
+      current.hasOlderMessages === false &&
+      current.isLoadingOlderMessages === false
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      detailMessages: [],
+      oldestLoadedVersion: null,
+      hasOlderMessages: false,
+      isLoadingOlderMessages: false
+    };
+  });
+}
+
+export function setAgentSessionViewOlderMessagesLoading(
+  ref: AgentSessionViewRef,
+  isLoadingOlderMessages: boolean
+): void {
+  const normalized = normalizeAgentSessionViewRef(ref);
+  if (!normalized) {
+    return;
+  }
+  updateAgentSessionView(normalized, (current) =>
+    current.isLoadingOlderMessages === isLoadingOlderMessages
+      ? current
+      : {
+          ...current,
+          isLoadingOlderMessages
+        }
+  );
 }
 
 export function hydrateAgentSessionViewOverlayMessages(
@@ -849,12 +969,16 @@ function createEmptySessionView(
     workspaceId: ref.workspaceId,
     agentSessionId: ref.agentSessionId,
     overlayMessages: [],
+    detailMessages: [],
     controlCommands: [],
     controlState: null,
     lastEventAt: null,
     isLive: false,
     isLoadingControlState: false,
     isLoadingMessages: false,
+    isLoadingOlderMessages: false,
+    hasOlderMessages: false,
+    oldestLoadedVersion: null,
     error: null,
     watcherCount: 0
   };
@@ -877,6 +1001,15 @@ function sameMessages(
   return left.every((item, index) =>
     equivalentMessageValue(item, right[index]!)
   );
+}
+
+function oldestMessageVersion(
+  messages: readonly WorkspaceAgentActivityMessage[]
+): number | null {
+  const versions = messages
+    .map((message) => message.version)
+    .filter((version) => Number.isFinite(version));
+  return versions.length === 0 ? null : Math.min(...versions);
 }
 
 function equivalentMessageValue(left: unknown, right: unknown): boolean {

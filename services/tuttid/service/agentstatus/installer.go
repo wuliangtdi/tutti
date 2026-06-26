@@ -367,25 +367,7 @@ func (s Service) executeInstaller(
 		result, err := s.runReleaseBinaryInstaller(installCtx, spec, installDir)
 		return runResult(result, err)
 	case InstallerKindCodexCLILatest:
-		installDir := ""
-		if spec.CodexCLI != nil {
-			installDir = strings.TrimSpace(spec.CodexCLI.InstallDir)
-		}
-		if runtime != nil && strings.TrimSpace(runtime.InstallDir) != "" {
-			installDir = strings.TrimSpace(runtime.InstallDir)
-		}
-		if installDir == "" {
-			installDir, err = s.selectInstallDir()
-			if err != nil {
-				return command, InstallCommandResult{ExitCode: 1, Stderr: err.Error()}, nil
-			}
-			if runtime != nil {
-				runtime.InstallDir = installDir
-			}
-		} else if runtime != nil {
-			runtime.InstallDir = installDir
-		}
-		result, err := s.runCodexCLILatestInstaller(installCtx, spec, installDir)
+		result, err := s.runCodexCLILatestInstaller(installCtx, spec, "")
 		return runResult(result, err)
 	case InstallerKindExternalAgentRegistryNPM:
 		result, err := s.runExternalAgentRegistryNPMInstaller(installCtx, spec)

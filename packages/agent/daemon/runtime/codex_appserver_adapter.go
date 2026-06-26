@@ -89,6 +89,10 @@ const (
 const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 	"Run `codex login` on the host (or sync Codex credentials), then retry this session."
 
+// defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
+// honor turn/interrupt gracefully before force-closing the app-server process.
+const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
+
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
@@ -97,6 +101,9 @@ type CodexAppServerAdapter struct {
 	commandSink CommandSnapshotSink
 	eventSink   SessionEventSink
 	configSink  ConfigOptionsUpdateSink
+	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
+	// process is force-closed. Zero falls back to the default.
+	cancelGraceWindow time.Duration
 }
 
 type codexAppServerSession struct {
@@ -137,9 +144,17 @@ type codexAppServerActiveTurn struct {
 	emit         func([]activityshared.Event)
 	emitCommands CommandSnapshotSink
 	done         chan map[string]any
+	// terminated is closed exactly once when the Exec goroutine for this turn
+	// returns (turn fully finalized). Cancel waits on it so it only responds
+	// after the turn has actually stopped.
+	terminated chan struct{}
 
 	cancelRequested     bool
 	cancelInterruptSent bool
+	// forceCanceled is set (under the adapter mutex) when Cancel force-closed
+	// the app-server process because codex did not honor turn/interrupt. It
+	// makes the turn's terminal classification surface as canceled, not failed.
+	forceCanceled bool
 }
 
 func NewCodexAppServerAdapter(transport ProcessTransport) *CodexAppServerAdapter {
@@ -148,9 +163,10 @@ func NewCodexAppServerAdapter(transport ProcessTransport) *CodexAppServerAdapter
 
 func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*codexAppServerSession),
+		transport:         transport,
+		host:              host,
+		sessions:          make(map[string]*codexAppServerSession),
+		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
 	}
 }
 
@@ -1087,7 +1103,11 @@ func (a *CodexAppServerAdapter) Exec(
 		emit:         emitEvents,
 		emitCommands: emitCommands,
 		done:         make(chan map[string]any, 1),
+		terminated:   make(chan struct{}),
 	}
+	// Signal turn termination once this goroutine returns (after terminal events
+	// are emitted), so a concurrent Cancel only responds after the turn stopped.
+	defer close(appTurn.terminated)
 	if !a.beginActiveTurn(session.AgentSessionID, appTurn) {
 		return nil, ErrSessionActiveTurn
 	}
@@ -1139,13 +1159,13 @@ func (a *CodexAppServerAdapter) Exec(
 	initialTurn := appServerTurnFromResult(result)
 	if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
 		if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
-			a.interruptActiveTurnAsync(appSession, session, providerTurnID, "queued cancel")
+			a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 		}
 	}
 	finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
 	a.endActiveTurn(session.AgentSessionID, appTurn)
 	if finishErr != nil {
-		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) {
+		if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 			terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
 			terminalEvents = append(terminalEvents, normalizer.FinishInterrupted(session, turnID, "interrupted")...)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
@@ -1288,7 +1308,7 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		// close the turn.
 		_, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, nil)
 		if finishErr != nil {
-			if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) {
+			if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 				emitTerminal(append(
 					normalizer.FinishInterrupted(session, turnID, "interrupted"),
 					newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
@@ -1330,13 +1350,13 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 			initialTurn := appServerTurnFromResult(result)
 			if providerTurnID := asString(initialTurn["id"]); providerTurnID != "" {
 				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
-					a.interruptActiveTurnAsync(appSession, session, providerTurnID, "queued cancel")
+					a.interruptActiveTurnAsync(appSession, session, appTurn, providerTurnID, "queued cancel")
 				}
 			}
 			finalTurn, finishErr := a.awaitTurnCompletion(ctx, appSession, appTurn, initialTurn)
 			a.endActiveTurn(session.AgentSessionID, appTurn)
 			if finishErr != nil {
-				if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) {
+				if errors.Is(finishErr, context.Canceled) || errors.Is(finishErr, errPermissionRequestCanceled) || a.turnForceCanceled(appTurn) {
 					terminalEvents := a.pendingRequestFailureEvents(session, turnID, errPermissionRequestCanceled)
 					terminalEvents = append(terminalEvents, normalizer.FinishInterrupted(session, turnID, "interrupted")...)
 					terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
@@ -1403,19 +1423,81 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 		}
 		return nil, ErrSessionNoActiveTurn
 	}
-	return nil, a.interruptActiveTurn(ctx, appSession, session, activeTurnID, reason)
+	appTurn := a.sessionActiveTurn(session.AgentSessionID)
+	return nil, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
 }
 
+// interruptActiveTurn stops the active turn. It first asks codex to cancel
+// gracefully via turn/interrupt; if the turn has not terminated within the
+// grace window it force-closes the app-server process so the turn can never
+// hang forever. It returns only after the turn has actually terminated
+// (terminate-then-respond), so the caller's UI can clear its stopping state
+// against a real outcome.
 func (a *CodexAppServerAdapter) interruptActiveTurn(
 	ctx context.Context,
 	appSession *codexAppServerSession,
 	session Session,
+	appTurn *codexAppServerActiveTurn,
 	activeTurnID string,
 	reason string,
 ) error {
-	cancelCtx, cancel := context.WithTimeout(ctx, acpPermissionModeTimeout)
+	// Best-effort graceful interrupt, sent asynchronously: a wedged codex may
+	// never answer turn/interrupt, and a synchronous call would burn the whole
+	// acpPermissionModeTimeout before the grace window even starts. Firing it in
+	// the background keeps time-to-force bounded by cancelGraceWindow.
+	go a.sendTurnInterrupt(appSession, session, activeTurnID, reason)
+
+	// Without a turn handle we cannot wait for termination or force-close.
+	if appTurn == nil {
+		return nil
+	}
+
+	grace := a.cancelGraceWindow
+	if grace <= 0 {
+		grace = defaultCodexAppServerCancelGraceWindow
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-appTurn.terminated:
+		// codex honored the interrupt; the turn finished gracefully.
+		return nil
+	case <-timer.C:
+	}
+
+	// codex did not stop in time — force-close the app-server process. The torn
+	// down connection unblocks awaitTurnCompletion via client.Done(), and the
+	// force-canceled flag makes Exec surface the outcome as canceled.
+	a.markTurnForceCanceled(appTurn)
+	slog.Warn("agent session app-server force-closing wedged turn",
+		"event", "agent_session.app_server.interrupt.forced",
+		"agent_session_id", session.AgentSessionID,
+		"provider_session_id", appSession.threadID,
+		"turn_id", activeTurnID,
+		"reason", reason,
+		"grace_ms", grace.Milliseconds(),
+	)
+	_ = appSession.client.Close()
+
+	// Wait for the turn goroutine to finalize so we respond after it stopped.
+	select {
+	case <-appTurn.terminated:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+// sendTurnInterrupt issues a best-effort turn/interrupt. It is called in the
+// background so a hung interrupt RPC cannot delay the force-close grace window.
+func (a *CodexAppServerAdapter) sendTurnInterrupt(
+	appSession *codexAppServerSession,
+	session Session,
+	activeTurnID string,
+	reason string,
+) {
+	interruptCtx, cancel := context.WithTimeout(context.Background(), acpPermissionModeTimeout)
 	defer cancel()
-	if _, err := appSession.client.CallNoHandler(cancelCtx, appServerMethodTurnInterrupt, map[string]any{
+	if _, err := appSession.client.CallNoHandler(interruptCtx, appServerMethodTurnInterrupt, map[string]any{
 		"threadId": appSession.threadID,
 		"turnId":   activeTurnID,
 	}); err != nil {
@@ -1427,19 +1509,36 @@ func (a *CodexAppServerAdapter) interruptActiveTurn(
 			"reason", reason,
 			"error", err.Error(),
 		)
-		return err
 	}
-	return nil
+}
+
+func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActiveTurn) {
+	if a == nil || turn == nil {
+		return
+	}
+	a.mu.Lock()
+	turn.forceCanceled = true
+	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) turnForceCanceled(turn *codexAppServerActiveTurn) bool {
+	if a == nil || turn == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return turn.forceCanceled
 }
 
 func (a *CodexAppServerAdapter) interruptActiveTurnAsync(
 	appSession *codexAppServerSession,
 	session Session,
+	appTurn *codexAppServerActiveTurn,
 	activeTurnID string,
 	reason string,
 ) {
 	go func() {
-		if err := a.interruptActiveTurn(context.Background(), appSession, session, activeTurnID, reason); err != nil {
+		if err := a.interruptActiveTurn(context.Background(), appSession, session, appTurn, activeTurnID, reason); err != nil {
 			slog.Warn("agent session app-server queued interrupt failed",
 				"event", "agent_session.app_server.interrupt.queued_failed",
 				"agent_session_id", session.AgentSessionID,

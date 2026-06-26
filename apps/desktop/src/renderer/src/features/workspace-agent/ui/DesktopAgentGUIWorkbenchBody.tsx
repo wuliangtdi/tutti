@@ -102,6 +102,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
     AgentGUIProps["contextMentionProviders"]
   >;
   runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  trackAgentProviderChatReady?: (input: { provider: string }) => Promise<void>;
   trackWorkspaceFileReferences?: AgentGUIProps["onWorkspaceFileReferencesAdded"];
   workspaceFileReferenceAdapter: NonNullable<
     AgentGUIProps["workspaceFileReferenceAdapter"]
@@ -158,6 +159,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
+    previous.trackAgentProviderChatReady === next.trackAgentProviderChatReady &&
     previous.trackWorkspaceFileReferences ===
       next.trackWorkspaceFileReferences &&
     previous.workspaceFileReferenceAdapter ===
@@ -229,6 +231,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   previewMode = false,
   contextMentionProviders,
   runtimeApi,
+  trackAgentProviderChatReady,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
   onRequestGitBranches,
@@ -307,6 +310,53 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     { ensureLoaded: !previewMode }
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
+  // Activation funnel stage ③ "saw a chattable surface": the agent workbench
+  // body is mounted (not a dock preview) and the active provider is ready, so
+  // the composer is interactive. reportProviderReady (stage ②) can fire while
+  // no agent surface is open; this fires only when the user is actually here.
+  const isActiveAgentProviderChatReady =
+    !previewMode &&
+    agentProviderStatusService?.getStatus(provider)?.availability.status ===
+      "ready";
+  const chatReadyReportedProvidersRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (
+      previewMode ||
+      !isActiveAgentProviderChatReady ||
+      !trackAgentProviderChatReady
+    ) {
+      return;
+    }
+    if (chatReadyReportedProvidersRef.current.has(provider)) {
+      return;
+    }
+    chatReadyReportedProvidersRef.current.add(provider);
+    void trackAgentProviderChatReady({ provider });
+  }, [
+    isActiveAgentProviderChatReady,
+    previewMode,
+    provider,
+    trackAgentProviderChatReady
+  ]);
+  // When a turn fails authentication (a dropped login the daemon now flags), the
+  // status is pull-based, so re-probe immediately to flip the dock/wizard to
+  // "needs login" without the user having to re-detect manually.
+  useEffect(() => {
+    if (previewMode || !agentProviderStatusService) {
+      return;
+    }
+    return agentActivityRuntime.subscribeSessionEvents(workspaceId, (event) => {
+      if (sessionEventLooksLikeAuthFailure(event)) {
+        void agentProviderStatusService.refresh([provider]);
+      }
+    });
+  }, [
+    agentActivityRuntime,
+    agentProviderStatusService,
+    previewMode,
+    provider,
+    workspaceId
+  ]);
   useEffect(() => {
     if (previewMode || !computerUseApi) {
       setComputerUseStatus(null);
@@ -884,73 +934,77 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   );
 
   return (
-    <AgentGUI
-      agentActivityRuntime={agentActivityRuntime}
-      agentHostApi={agentHostApi}
-      i18n={i18n}
-      locale={locale}
-      agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
-      capabilityMenuState={capabilityMenuState}
-      currentUserId="local"
-      desktopSize={desktopSize}
-      embedded
-      height={frame.height}
-      isMaximized={context.displayMode === "fullscreen"}
-      isActive={context.isFocused}
-      composerFocusRequestSequence={composerFocusRequestSequence}
-      newConversationRequestSequence={newConversationRequestSequence}
-      openSessionRequest={openSessionRequest}
-      prefillPromptRequest={prefillPromptRequest}
-      managedAgentsState={managedAgentsState}
-      nodeId={context.node.id}
-      workspaceAgentProbes={workspaceAgentProbes}
-      onAgentProbeDemandChange={
-        previewMode ? undefined : handleAgentProbeDemandChange
-      }
-      onAgentProviderLogin={
-        !previewMode && agentProviderStatusService
-          ? handleAgentProviderLogin
-          : undefined
-      }
-      onCapabilitySettingsRequest={
-        previewMode ? undefined : onCapabilitySettingsRequest
-      }
-      onClose={DESKTOP_AGENT_GUI_NOOP}
-      onLinkAction={previewMode ? undefined : onLinkAction}
-      onResize={DESKTOP_AGENT_GUI_NOOP}
-      onShowMessage={DESKTOP_AGENT_GUI_NOOP}
-      onUpdateNode={handleUpdateNode}
-      onOpenConversationWindow={
-        previewMode || !onOpenAgentConversationWindow
-          ? undefined
-          : handleOpenConversationWindow
-      }
-      onWorkspaceFileReferencesAdded={
-        previewMode ? undefined : trackWorkspaceFileReferences
-      }
-      position={DESKTOP_AGENT_GUI_POSITION}
-      previewMode={previewMode}
-      contextMentionProviders={
-        previewMode ? [] : effectiveContextMentionProviders
-      }
-      state={nodeState}
-      title={context.node.title}
-      width={frame.width}
-      workspaceFileReferenceAdapter={
-        previewMode ? null : workspaceFileReferenceAdapter
-      }
-      onRequestGitBranches={previewMode ? null : onRequestGitBranches}
-      referenceSourceAggregator={previewMode ? null : referenceSourceAggregator}
-      resolveMentionReferenceTarget={
-        previewMode ? undefined : resolveMentionReferenceTarget
-      }
-      resolveWorkspaceReferenceInitialTarget={
-        previewMode ? undefined : resolveWorkspaceReferenceInitialTarget
-      }
-      workspaceAppIcons={workspaceAppIcons}
-      workspaceId={workspaceId}
-      workspacePath="/"
-    />
+    <>
+      <AgentGUI
+        agentActivityRuntime={agentActivityRuntime}
+        agentHostApi={agentHostApi}
+        i18n={i18n}
+        locale={locale}
+        agentSettings={DESKTOP_AGENT_GUI_AGENT_SETTINGS}
+        capabilityMenuState={capabilityMenuState}
+        currentUserId="local"
+        desktopSize={desktopSize}
+        embedded
+        height={frame.height}
+        isMaximized={context.displayMode === "fullscreen"}
+        isActive={context.isFocused}
+        composerFocusRequestSequence={composerFocusRequestSequence}
+        newConversationRequestSequence={newConversationRequestSequence}
+        openSessionRequest={openSessionRequest}
+        prefillPromptRequest={prefillPromptRequest}
+        managedAgentsState={managedAgentsState}
+        nodeId={context.node.id}
+        workspaceAgentProbes={workspaceAgentProbes}
+        onAgentProbeDemandChange={
+          previewMode ? undefined : handleAgentProbeDemandChange
+        }
+        onAgentProviderLogin={
+          !previewMode && agentProviderStatusService
+            ? handleAgentProviderLogin
+            : undefined
+        }
+        onCapabilitySettingsRequest={
+          previewMode ? undefined : onCapabilitySettingsRequest
+        }
+        onClose={DESKTOP_AGENT_GUI_NOOP}
+        onLinkAction={previewMode ? undefined : onLinkAction}
+        onResize={DESKTOP_AGENT_GUI_NOOP}
+        onShowMessage={DESKTOP_AGENT_GUI_NOOP}
+        onUpdateNode={handleUpdateNode}
+        onOpenConversationWindow={
+          previewMode || !onOpenAgentConversationWindow
+            ? undefined
+            : handleOpenConversationWindow
+        }
+        onWorkspaceFileReferencesAdded={
+          previewMode ? undefined : trackWorkspaceFileReferences
+        }
+        position={DESKTOP_AGENT_GUI_POSITION}
+        previewMode={previewMode}
+        contextMentionProviders={
+          previewMode ? [] : effectiveContextMentionProviders
+        }
+        state={nodeState}
+        title={context.node.title}
+        width={frame.width}
+        workspaceFileReferenceAdapter={
+          previewMode ? null : workspaceFileReferenceAdapter
+        }
+        onRequestGitBranches={previewMode ? null : onRequestGitBranches}
+        referenceSourceAggregator={
+          previewMode ? null : referenceSourceAggregator
+        }
+        resolveMentionReferenceTarget={
+          previewMode ? undefined : resolveMentionReferenceTarget
+        }
+        resolveWorkspaceReferenceInitialTarget={
+          previewMode ? undefined : resolveWorkspaceReferenceInitialTarget
+        }
+        workspaceAppIcons={workspaceAppIcons}
+        workspaceId={workspaceId}
+        workspacePath="/"
+      />
+    </>
   );
 }
 
@@ -958,3 +1012,47 @@ export const DesktopAgentGUIWorkbenchBody = memo(
   DesktopAgentGUIWorkbenchBodyImpl,
   areDesktopAgentGUIWorkbenchBodyPropsEqual
 );
+
+const AUTH_FAILURE_MARKERS = [
+  "authentication_failed",
+  "invalid authentication credentials",
+  "401 invalid authentication",
+  "unauthorized",
+  "not logged in",
+  "please run /login",
+  "invalid api key"
+];
+
+// Read defensively: session events arrive as `unknown`, in either the
+// {eventType:"message_update", data:{status,payload}} runtime shape or a flatter
+// {status,payload,content} shape. We only care about a failed turn whose payload
+// looks like an authentication failure (matching the daemon's classification).
+function sessionEventLooksLikeAuthFailure(event: unknown): boolean {
+  if (typeof event !== "object" || event === null) {
+    return false;
+  }
+  const record = event as {
+    status?: unknown;
+    content?: unknown;
+    payload?: Record<string, unknown>;
+    data?: { status?: unknown; payload?: Record<string, unknown> };
+  };
+  const status = record.data?.status ?? record.status;
+  if (status !== "failed") {
+    return false;
+  }
+  const payload = record.data?.payload ?? record.payload ?? {};
+  if (payload["code"] === "auth_required") {
+    return true;
+  }
+  const text = [
+    payload["content"],
+    payload["text"],
+    payload["detail"],
+    record.content
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  return AUTH_FAILURE_MARKERS.some((marker) => text.includes(marker));
+}
