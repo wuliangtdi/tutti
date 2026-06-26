@@ -62,3 +62,35 @@
 - Status: fixed locally
 - Commit: `95b39cc0`
 - Feishu status update: confirmed `修复中`.
+
+## MJHVrTjR2eqvnUcfV4ocT9AKnfe - new session shows previous prompt
+
+- Link: https://ccn53rwonxso.feishu.cn/record/MJHVrTjR2eqvnUcfV4ocT9AKnfe
+- Base record id: `recvnDMstUaTMO`
+- Bug: 有时候新建会话会显示上一个会话的提示词。
+- Evidence: Feishu attachment `image.png` shows the Agent GUI home composer after creating a new conversation, but the prompt input still contains the previous prompt text `AI 文档 打开应用`.
+- Cause: When external node data cleared `lastActiveAgentSessionId`, the controller only moved the routing intent to `home`. It did not clear `activeConversationIdRef` or `activeConversationId`, so the composer could still read the previous session draft while the UI appeared to be on the new-conversation home screen.
+- Fix: Treat an external empty `lastActiveAgentSessionId` as a real home transition: unactivate the previous session, clear the active conversation ref/state, clear loading/detail state, mark the composer as home, and reload draft composer options without echoing another data write.
+- Verification:
+  - `corepack pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx`
+  - `corepack pnpm --filter @tutti-os/agent-gui typecheck`
+  - `corepack pnpm check:agent-activity-runtime-boundaries`
+- Status: fixed locally
+- Commit: pending; final hash recorded in batch summary.
+- Feishu status update: pending verified commit.
+
+## GB7lrt1N0eQmyxcxbvZcVQgEnxc - new session message lands in previous session
+
+- Link: https://ccn53rwonxso.feishu.cn/record/GB7lrt1N0eQmyxcxbvZcVQgEnxc
+- Base record id: `recvng5DWYjznF`
+- Bug: 新建会话发的消息有时候会显示在之前的会话里。
+- Evidence: Feishu attachment `image.png` shows a message typed from a newly created conversation appearing in the old `你好` conversation. The log bundle includes `messages.jsonl` entries where both `你好` and later `hi` share `agentSessionId=48ae216f-cbc5-4db2-8f96-02e9a635196e`, confirming the prompt was sent to the previous session rather than only rendered there.
+- Cause: Same stale active-session state as above. After an external home transition, `submitPrompt` still read the old `activeConversationIdRef`, so it continued the previous session through `sendInput`/`exec` instead of starting a new session.
+- Fix: Same controller synchronization fix. A regression test now clears `lastActiveAgentSessionId` externally, submits from the home composer, and asserts the controller calls activation with `mode: "new"` and never calls backend `exec` for the previous session.
+- Verification:
+  - `corepack pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx`
+  - `corepack pnpm --filter @tutti-os/agent-gui typecheck`
+  - `corepack pnpm check:agent-activity-runtime-boundaries`
+- Status: fixed locally
+- Commit: pending; final hash recorded in batch summary.
+- Feishu status update: pending verified commit.

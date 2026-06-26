@@ -3517,10 +3517,22 @@ export function useAgentGUINodeController({
     // If our activeConversationIdRef already reflects this id, this is either
     // our own write echoing back or we're already here — no work needed.
     if (externalId === (activeConversationIdRef.current ?? "")) return;
-    setIntent((current) => {
-      if (!externalId) {
-        return current.tag !== "home" ? { tag: "home" } : current;
+    if (!externalId) {
+      const previous = activeConversationIdRef.current;
+      if (previous) {
+        void activation.unactivate(previous);
       }
+      setIntent({ tag: "home" });
+      isComposerHomeRef.current = true;
+      setIsComposerHome(true);
+      activeConversationIdRef.current = null;
+      setActiveConversationId(null);
+      setIsLoadingMessages(false);
+      setDetailError(null);
+      loadDraftComposerOptions();
+      return;
+    }
+    setIntent((current) => {
       if (
         (current.tag === "active" || current.tag === "requested") &&
         current.id === externalId

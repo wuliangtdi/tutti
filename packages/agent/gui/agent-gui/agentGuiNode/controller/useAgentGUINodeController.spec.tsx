@@ -2889,6 +2889,77 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
+  it("starts a new session after external data clears the active session", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId),
+        activation: { mode: input.mode, status: "attached" as const }
+      })
+    );
+    const exec = vi.fn(async () => ({ turnId: "turn-1" }));
+    installAgentHostApi({
+      list: vi.fn(async () => snapshotWithSession("session-1")),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      exec
+    });
+
+    const baseProps = {
+      workspaceId: "room-1",
+      currentUserId: "user-1",
+      workspacePath: "/workspace",
+      avoidGroupingEdits: false,
+      onDataChange: vi.fn()
+    };
+    const { result, rerender } = renderHook(
+      (props: {
+        data: AgentGUINodeData;
+        onDataChange: (
+          updater: (current: AgentGUINodeData) => AgentGUINodeData
+        ) => void;
+      }) =>
+        useAgentGUINodeController({
+          ...baseProps,
+          data: props.data,
+          onDataChange: props.onDataChange
+        }),
+      {
+        initialProps: {
+          data: agentGuiData("session-1"),
+          onDataChange: baseProps.onDataChange
+        }
+      }
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    rerender({
+      data: agentGuiData(null),
+      onDataChange: baseProps.onDataChange
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBeNull();
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start outside old chat"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "new",
+          ...initialPromptContent("start outside old chat")
+        })
+      );
+    });
+    expect(exec).not.toHaveBeenCalled();
+  });
+
   it("inherits the current same-provider model when creating a new conversation without a draft model", async () => {
     const activate = vi.fn(
       async (input: AgentHostActivateAgentSessionInput) => ({
