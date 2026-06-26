@@ -122,23 +122,28 @@ func (s Service) probeRegistry(ctx context.Context) NetworkEndpointStatus {
 	}
 }
 
-// providerAPIEndpoints lists the base URL(s) the provider's CLI talks to at
-// run/login time, in priority order. Reachability of ANY of them counts — we
-// only check connectivity, not which account/mode is in use. Empty for providers
-// with no known public endpoint (the API check is skipped for them).
+// providerAPIEndpoints lists the actual base URL(s) the provider's CLI talks to
+// at run/login time, in priority order. Reachability of ANY of them counts — we
+// only check connectivity (DNS/TLS/proxy/region), not which account/mode is in
+// use. Empty for providers with no known public endpoint (the check is skipped).
 //
-// Codex notably has two: a ChatGPT login talks to chatgpt.com, while an API key
-// talks to api.openai.com. Probing only api.openai.com produced a false
-// "unreachable" for ChatGPT-login users (e.g. in regions where api.openai.com is
-// blocked but chatgpt.com — which codex actually uses — is reachable).
+// Codex's base URL depends on auth mode (verified against the codex source,
+// codex-rs/model-provider-info/src/lib.rs `to_api_provider`): a ChatGPT login
+// uses https://chatgpt.com/backend-api/codex, while an API key uses
+// https://api.openai.com/v1. Probing only api.openai.com produced a false
+// "unreachable" for ChatGPT-login users where that host is blocked but
+// chatgpt.com — what codex actually uses — is reachable.
 func providerAPIEndpoints(provider string) []string {
 	switch provider {
 	case agentprovider.Codex:
-		return []string{"https://chatgpt.com", "https://api.openai.com"}
+		return []string{
+			"https://chatgpt.com/backend-api/codex",
+			"https://api.openai.com/v1",
+		}
 	case agentprovider.ClaudeCode:
-		return []string{"https://api.anthropic.com"}
+		return []string{"https://api.anthropic.com/v1/messages"}
 	case agentprovider.Gemini:
-		return []string{"https://generativelanguage.googleapis.com"}
+		return []string{"https://generativelanguage.googleapis.com/v1beta/models"}
 	default:
 		return nil
 	}
