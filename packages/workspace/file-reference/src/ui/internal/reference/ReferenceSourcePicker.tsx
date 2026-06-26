@@ -1212,9 +1212,16 @@ function TreeNodeRow({
   const selectable = view.isSelectable(node);
   const focused = isFocused(view.focusedNode, node);
   const active = selected || (focused && selectable);
+  const focusedRowRef = useRef<HTMLDivElement | null>(null);
 
   const [shouldRenderChildContent, setShouldRenderChildContent] =
     useState(expanded);
+
+  useEffect(() => {
+    if (focused) {
+      focusedRowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [focused]);
 
   useEffect(() => {
     if (expanded) {
@@ -1264,6 +1271,7 @@ function TreeNodeRow({
       {/* 整行可点:点击监听挂在父级行 div 上,使可点热区与 hover 高亮区一致;
           内层箭头/选中按钮 stopPropagation 各管各的,避免冒泡到行点击。 */}
       <div
+        ref={focused ? focusedRowRef : undefined}
         className={cn(
           "flex cursor-pointer items-center gap-2 rounded-[6px] py-1.5 pr-1 transition-colors",
           active ? "bg-transparency-block" : "hover:bg-transparency-block"

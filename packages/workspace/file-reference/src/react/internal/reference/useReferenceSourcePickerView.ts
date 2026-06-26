@@ -384,6 +384,13 @@ export function useReferenceSourcePickerView({
     [controller]
   );
 
+  const shouldRefreshChildrenOnEnter = useCallback(
+    (sourceId: string) =>
+      snapshot.tabs.find((tab) => tab.sourceId === sourceId)?.capabilities
+        .navigable ?? false,
+    [snapshot.tabs]
+  );
+
   const enterFolder = useCallback(
     (node: ReferenceNode) => {
       const sourceId = node.ref.sourceId;
@@ -394,7 +401,11 @@ export function useReferenceSourcePickerView({
       ) {
         return;
       }
-      controller.ensureChildren(node);
+      if (shouldRefreshChildrenOnEnter(sourceId)) {
+        controller.refreshChildren(node);
+      } else {
+        controller.ensureChildren(node);
+      }
       setBreadcrumbBySource((current) => {
         const stack = current[sourceId] ?? [];
         const index = stack.findIndex(
@@ -406,7 +417,7 @@ export function useReferenceSourcePickerView({
       });
       setFocusedNode(null);
     },
-    [controller]
+    [controller, shouldRefreshChildrenOnEnter]
   );
 
   // 进入某源时默认选中它的第一个二级分组,而非停在根列表:
@@ -459,10 +470,19 @@ export function useReferenceSourcePickerView({
         return { ...current, [activeSourceId]: stack.slice(0, index + 1) };
       });
       const target = (breadcrumbBySource[activeSourceId] ?? [])[index] ?? null;
-      controller.ensureChildren(target);
+      if (target && shouldRefreshChildrenOnEnter(target.ref.sourceId)) {
+        controller.refreshChildren(target);
+      } else {
+        controller.ensureChildren(target);
+      }
       setFocusedNode(null);
     },
-    [activeSourceId, breadcrumbBySource, controller]
+    [
+      activeSourceId,
+      breadcrumbBySource,
+      controller,
+      shouldRefreshChildrenOnEnter
+    ]
   );
 
   const navigateToRoot = useCallback(
@@ -501,12 +521,21 @@ export function useReferenceSourcePickerView({
         navigateToRoot(sourceId);
         return;
       }
-      controller.ensureChildren(node);
+      if (shouldRefreshChildrenOnEnter(sourceId)) {
+        controller.refreshChildren(node);
+      } else {
+        controller.ensureChildren(node);
+      }
       controller.setSearchScope(nextScopeNodeId);
       setBreadcrumbBySource((current) => ({ ...current, [sourceId]: [node] }));
       setFocusedNode(null);
     },
-    [controller, snapshot.activeSourceId, navigateToRoot]
+    [
+      controller,
+      snapshot.activeSourceId,
+      navigateToRoot,
+      shouldRefreshChildrenOnEnter
+    ]
   );
 
   const isSelected = useCallback(

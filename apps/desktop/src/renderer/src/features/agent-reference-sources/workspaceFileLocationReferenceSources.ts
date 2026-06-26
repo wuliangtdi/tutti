@@ -30,7 +30,7 @@ export const WORKSPACE_FILE_SOURCE_ID = "workspace-file";
 export const USER_PROJECT_REFERENCE_SOURCE_ID = "user-project";
 
 const RECENT_GROUP_NODE_ID = "__recent__";
-const RECENT_SEARCH_CANDIDATE_LIMIT = 100;
+const RECENT_REFERENCE_LIMIT = 100;
 
 export function createWorkspaceFileLocationReferenceSources(input: {
   adapter: WorkspaceFileReferenceAdapter;
@@ -145,6 +145,7 @@ function createLocationReferenceSource(input: {
         }
         const refs = await adapter.listRecentReferences({
           workspaceId: scope.workspaceId,
+          limit: RECENT_REFERENCE_LIMIT,
           ...(signal ? { signal } : {})
         });
         return {
@@ -204,7 +205,7 @@ function createLocationReferenceSource(input: {
         const normalizedQuery = query.trim().toLowerCase();
         const refs = await adapter.listRecentReferences({
           workspaceId: scope.workspaceId,
-          limit: RECENT_SEARCH_CANDIDATE_LIMIT,
+          limit: RECENT_REFERENCE_LIMIT,
           ...(signal ? { signal } : {})
         });
         const filteredRefs = refs.filter((ref) =>

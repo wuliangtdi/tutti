@@ -171,6 +171,102 @@ test("preview state is stable across repeated selection and same i18n runtime", 
   session.dispose();
 });
 
+test("reselecting the same entry repairs an empty preview state", async () => {
+  const entry: WorkspaceFileEntry = {
+    hasChildren: false,
+    kind: "file",
+    mtimeMs: null,
+    name: "notes.txt",
+    path: "/Users/demo/project/notes.txt",
+    sizeBytes: 5
+  };
+  const session = createWorkspaceFileManagerService().createSession({
+    i18n: createTestI18nRuntime(),
+    host: {
+      async listDirectory(input) {
+        return {
+          directoryPath: input.path,
+          entries: [entry],
+          root: "/Users/demo/project",
+          workspaceID: input.workspaceID
+        };
+      },
+      async readPreviewFile() {
+        return new TextEncoder().encode("hello");
+      }
+    },
+    workspaceID: "workspace-1"
+  });
+
+  await session.initialize();
+  session.store.selectedPath = entry.path;
+  await flushMicrotasks();
+  session.store.previewState = { status: "empty" };
+  await flushMicrotasks();
+
+  session.select(entry.path);
+  await flushMicrotasks();
+  await flushMicrotasks();
+
+  assert.equal(previewStatus(session), "text");
+
+  session.dispose();
+});
+
+test("preview follows selected entries inside expanded directories", async () => {
+  const downloadsEntry: WorkspaceFileEntry = {
+    hasChildren: true,
+    kind: "directory",
+    mtimeMs: null,
+    name: "Downloads",
+    path: "/Users/demo/Downloads",
+    sizeBytes: null
+  };
+  const nestedEntry: WorkspaceFileEntry = {
+    hasChildren: false,
+    kind: "file",
+    mtimeMs: null,
+    name: "notes.txt",
+    path: "/Users/demo/Downloads/notes.txt",
+    sizeBytes: 5
+  };
+  const previewReads: string[] = [];
+  const session = createWorkspaceFileManagerService().createSession({
+    i18n: createTestI18nRuntime(),
+    host: {
+      async listDirectory(input) {
+        const directoryPath = input.path || "/Users/demo";
+        return {
+          directoryPath,
+          entries:
+            directoryPath === downloadsEntry.path
+              ? [nestedEntry]
+              : [downloadsEntry],
+          root: "/Users/demo",
+          workspaceID: input.workspaceID
+        };
+      },
+      async readPreviewFile(_workspaceID, path) {
+        previewReads.push(path);
+        return new TextEncoder().encode("hello");
+      }
+    },
+    workspaceID: "workspace-1"
+  });
+
+  await session.initialize();
+  await session.toggleDirectoryExpanded(downloadsEntry);
+
+  session.select(nestedEntry.path);
+  await flushMicrotasks();
+  await flushMicrotasks();
+
+  assert.equal(previewStatus(session), "text");
+  assert.deepEqual(previewReads, [nestedEntry.path]);
+
+  session.dispose();
+});
+
 test("openEntry enters directories and records navigation history", async () => {
   const srcEntry: WorkspaceFileEntry = {
     hasChildren: true,

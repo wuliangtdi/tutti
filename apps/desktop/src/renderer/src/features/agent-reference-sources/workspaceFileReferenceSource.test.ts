@@ -67,6 +67,29 @@ test("local source searches recent from the recent reference list", async () => 
   );
 });
 
+test("local source lists up to 100 recent references", async () => {
+  let observedRecentLimit: number | undefined;
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async listRecentReferences(input) {
+      observedRecentLimit = input.limit;
+      return [{ kind: "file", path: "/workspace/notes.txt" }];
+    }
+  };
+  const source = createWorkspaceFileReferenceSource({
+    adapter,
+    label: "Local"
+  });
+
+  await source.listChildren?.(scope, {
+    node: {
+      sourceId: "workspace-file",
+      nodeId: "__recent__"
+    }
+  });
+
+  assert.equal(observedRecentLimit, 100);
+});
+
 test("local source recent search only matches file names", async () => {
   const adapter: WorkspaceFileReferenceAdapter = {
     async listRecentReferences() {

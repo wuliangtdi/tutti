@@ -712,6 +712,12 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
       ? normalizeWorkspaceFilePath(path, this.store.root)
       : null;
     if (this.store.selectedPath === nextSelectedPath) {
+      if (
+        nextSelectedPath !== null &&
+        !isPreviewStateForPath(this.store.previewState, nextSelectedPath)
+      ) {
+        void this.previewController.syncPreviewState();
+      }
       return;
     }
     this.store.selectedPath = nextSelectedPath;
@@ -1158,6 +1164,13 @@ export class DefaultWorkspaceFileManagerSession implements WorkspaceFileManagerS
 
     return this.copy.t("unknownErrorMessage");
   }
+}
+
+function isPreviewStateForPath(
+  previewState: WorkspaceFileManagerState["previewState"],
+  path: string
+): boolean {
+  return "entry" in previewState && previewState.entry.path === path;
 }
 
 function serializePersistedState(

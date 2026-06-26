@@ -159,6 +159,52 @@ test("toggleNode 展开 folder 并懒加载子节点", async () => {
   );
 });
 
+test("refreshChildren reloads an already loaded app group", async () => {
+  let appGroupFiles = [file("app-artifact", "old.png")];
+  let appGroupLoadCount = 0;
+  const appGroup = folder("app-artifact", "app:vibe-design", "Vibe Design");
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({
+        tabs: [tabsTwo[1]!],
+        children: {}
+      }),
+      async listChildren(_scope, ref: NodeRef): Promise<ListChildrenResult> {
+        if (ref.nodeId === SOURCE_ROOT_NODE_ID) {
+          return { entries: [appGroup], nextCursor: null };
+        }
+        if (ref.nodeId === appGroup.ref.nodeId) {
+          appGroupLoadCount += 1;
+          return { entries: appGroupFiles, nextCursor: null };
+        }
+        return { entries: [], nextCursor: null };
+      }
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+  controller.ensureChildren(appGroup);
+  await flush();
+  assert.equal(appGroupLoadCount, 1);
+
+  appGroupFiles = [file("app-artifact", "new.png")];
+  controller.refreshChildren(appGroup);
+  await flush();
+
+  const key = nodeRefKey(appGroup.ref);
+  const entries =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[key]
+      ?.entries ?? [];
+  assert.equal(appGroupLoadCount, 2);
+  assert.deepEqual(
+    entries.map((node) => node.ref.nodeId),
+    ["new.png"]
+  );
+});
+
 test("toggleSingleSelectionAndExpand single-selects and expands folders", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({
@@ -920,6 +966,76 @@ test("locatePath follows pagination while resolving the target path", async () =
   assert.deepEqual(
     path.map((node) => node.displayName),
     ["主题一", "目标事项"]
+  );
+});
+
+test("locatePath keeps paged parent children so the located target can render", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({
+        tabs: tabsTwo,
+        children: {
+          [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+            entries: [folder("app-artifact", "topic-1", "主题一")],
+            nextCursor: null
+          },
+          "app-artifact:topic-1": {
+            entries: [folder("app-artifact", "issue-old", "旧事项")],
+            nextCursor: "page-2"
+          }
+        },
+        locate: {
+          "app-artifact": [
+            { sourceId: "app-artifact", nodeId: "topic-1" },
+            { sourceId: "app-artifact", nodeId: "issue-target" }
+          ]
+        }
+      }),
+      async listChildren(_scope, ref, input): Promise<ListChildrenResult> {
+        if (ref.sourceId === "app-artifact" && ref.nodeId === "topic-1") {
+          return input?.cursor === "page-2"
+            ? {
+                entries: [folder("app-artifact", "issue-target", "目标事项")],
+                nextCursor: null
+              }
+            : {
+                entries: [folder("app-artifact", "issue-old", "旧事项")],
+                nextCursor: "page-2"
+              };
+        }
+        return fakeAggregator({
+          tabs: tabsTwo,
+          children: {
+            [`app-artifact:${SOURCE_ROOT_NODE_ID}`]: {
+              entries: [folder("app-artifact", "topic-1", "主题一")],
+              nextCursor: null
+            }
+          }
+        }).listChildren(_scope, ref, input);
+      }
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  await controller.locatePath({
+    sourceId: "app-artifact",
+    params: { issueId: "issue-target", topicId: "topic-1" }
+  });
+
+  const topicKey = nodeRefKey({
+    sourceId: "app-artifact",
+    nodeId: "topic-1"
+  });
+  assert.deepEqual(
+    controller
+      .getSnapshot()
+      .bySource["app-artifact"]?.childrenByKey[topicKey]?.entries.map(
+        (node) => node.ref.nodeId
+      ),
+    ["issue-old", "issue-target"]
   );
 });
 

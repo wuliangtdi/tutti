@@ -9,6 +9,7 @@ import {
 import type { WorkspaceFileManagerI18nRuntime } from "../../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerHost } from "../workspaceFileManagerHost.interface.ts";
 import type { WorkspaceFileManagerState } from "../workspaceFileManagerTypes.ts";
+import { findWorkspaceFileEntry } from "./model/entryLookup.ts";
 
 export interface WorkspaceFileManagerPreviewControllerInput {
   copy: () => WorkspaceFileManagerI18nRuntime;
@@ -51,10 +52,10 @@ export class WorkspaceFileManagerPreviewController {
     this.previewRequestSeq = requestID;
     this.revokePreviewObjectUrl();
 
-    const selectedEntry =
-      this.store.entries.find(
-        (entry) => entry.path === this.store.selectedPath
-      ) ?? null;
+    const selectedEntry = findWorkspaceFileEntry(
+      this.store,
+      this.store.selectedPath
+    );
     const copy = this.copy();
 
     if (!selectedEntry) {

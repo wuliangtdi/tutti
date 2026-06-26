@@ -130,3 +130,15 @@ test("preview group path uses readable hierarchy labels instead of opaque node i
   assert.match(source, /formatReferenceNodePathText\(node, hierarchy\)/);
   assert.match(source, /hierarchy=\{view\.breadcrumb\}/);
 });
+
+test("focused middle tree row scrolls into view after initial target reveal", () => {
+  assert.match(
+    source,
+    /const focusedRowRef = useRef<HTMLDivElement \| null>\(null\);/
+  );
+  assert.match(
+    source,
+    /focusedRowRef\.current\?\.scrollIntoView\(\{ block: "nearest" \}\);/
+  );
+  assert.match(source, /ref=\{focused \? focusedRowRef : undefined\}/);
+});

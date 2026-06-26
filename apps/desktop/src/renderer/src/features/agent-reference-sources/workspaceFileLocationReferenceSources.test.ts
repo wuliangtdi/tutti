@@ -109,6 +109,40 @@ test("location reference source searches recent from recent references", async (
   );
 });
 
+test("location reference source lists up to 100 recent references", async () => {
+  let observedRecentLimit: number | undefined;
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async listRecentReferences(input) {
+      observedRecentLimit = input.limit;
+      return [
+        {
+          displayName: "notes.txt",
+          kind: "file",
+          path: "/Users/local/notes.txt"
+        }
+      ];
+    }
+  };
+  const [, localSource] = createWorkspaceFileLocationReferenceSources({
+    adapter,
+    getLocationSections: () => locationSections,
+    localLabel: "Local",
+    projectLabel: "Project"
+  });
+
+  await localSource?.listChildren?.(
+    { workspaceId: "workspace-1" },
+    {
+      node: {
+        sourceId: WORKSPACE_FILE_SOURCE_ID,
+        nodeId: "__recent__"
+      }
+    }
+  );
+
+  assert.equal(observedRecentLimit, 100);
+});
+
 test("location reference source recent search only matches file names", async () => {
   const adapter: WorkspaceFileReferenceAdapter = {
     async listRecentReferences() {

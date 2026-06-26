@@ -23,7 +23,7 @@ export const WORKSPACE_FILE_SOURCE_ID = "workspace-file";
 
 /** 「最近访问」二级分组的 nodeId 哨兵。listChildren 据此走 recent 取数链路。 */
 const RECENT_GROUP_NODE_ID = "__recent__";
-const RECENT_SEARCH_CANDIDATE_LIMIT = 100;
+const RECENT_REFERENCE_LIMIT = 100;
 
 /**
  * 本地源左栏固定「位置」(顺序即展示顺序),复刻 macOS Finder 边栏收藏:
@@ -119,6 +119,7 @@ export function createWorkspaceFileReferenceSource(input: {
         }
         const refs = await adapter.listRecentReferences({
           workspaceId: scope.workspaceId,
+          limit: RECENT_REFERENCE_LIMIT,
           ...(signal ? { signal } : {})
         });
         return {
@@ -151,7 +152,7 @@ export function createWorkspaceFileReferenceSource(input: {
         const normalizedQuery = query.trim().toLowerCase();
         const refs = await adapter.listRecentReferences({
           workspaceId: scope.workspaceId,
-          limit: RECENT_SEARCH_CANDIDATE_LIMIT,
+          limit: RECENT_REFERENCE_LIMIT,
           ...(signal ? { signal } : {})
         });
         const filteredRefs = refs.filter((ref) =>
