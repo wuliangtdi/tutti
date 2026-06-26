@@ -43,6 +43,39 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Desktop dev GUI exits before opening
+
+- Symptom:
+  `make dev-gui` exits during startup before the desktop window is usable. The
+  early form reports `pnpm <version> installation did not succeed`; the later
+  form reaches `start electron app...` and then `make` exits while desktop logs
+  say `secondary tutti instance detected`.
+- Quick checks:
+  Run `DEV_GUI_SKIP_START=1 make dev-gui` to isolate prerequisite setup from
+  Electron startup. If full startup exits after `start electron app...`, inspect
+  `~/.tutti-dev/logs/tutti-desktop.log` and check whether `/Applications/Tutti.app`
+  or another Tutti instance is already running.
+- Root cause:
+  Shells launched by tools can put another `pnpm` earlier on `PATH` than
+  corepack's shim, so `corepack prepare` succeeds but the script still validates
+  the wrong `pnpm`. Electron's single-instance lock also follows Electron
+  userData; if development and production share userData, a running production
+  app makes the dev app quit as a secondary instance.
+- Fix:
+  Prefer the corepack shim directory before checking or running `pnpm`, and set
+  development Electron userData to an environment-specific path before
+  requesting the single-instance lock.
+- Validation:
+  Run `DEV_GUI_SKIP_START=1 make dev-gui`, then run full `make dev-gui` while
+  the packaged app is open and confirm the renderer dev server and development
+  `tuttid` start. Also run `pnpm --filter @tutti-os/desktop test`,
+  `pnpm --filter @tutti-os/desktop typecheck`, and
+  `pnpm check:electron-runtime-boundaries`.
+- References:
+  [dev-gui.sh](../../tools/scripts/dev-gui.sh)
+  [bootstrap.ts](../../apps/desktop/src/main/bootstrap.ts)
+  [defaults.ts](../../apps/desktop/src/main/defaults.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:
