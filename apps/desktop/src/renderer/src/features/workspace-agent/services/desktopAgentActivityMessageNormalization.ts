@@ -4,11 +4,12 @@ export function normalizedTuttidMessageTurnId(
   message: WorkspaceAgentSessionMessage
 ): string {
   const turnId = message.turnId?.trim() ?? "";
-  if (turnId) {
-    return turnId;
+  if (!turnId) {
+    throw new Error(
+      `workspace agent session message ${message.messageId.trim()} is missing turnId`
+    );
   }
-  const messageId = message.messageId.trim();
-  return messageId ? `message:${messageId}` : `version:${message.version}`;
+  return turnId;
 }
 
 export function normalizedTuttidMessageOccurredAtUnixMs(

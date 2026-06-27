@@ -252,18 +252,29 @@ func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T
 	}
 }
 
-func TestProjectMessageUpdateNormalizesMissingTurnAndOccurredAt(t *testing.T) {
+func TestProjectMessageUpdateRejectsNewMessageWithoutTurn(t *testing.T) {
 	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
 		MessageID: "message-1",
 		Role:      "assistant",
 		Kind:      "text",
 		Payload:   map[string]any{"text": "hello"},
 	}, 1, 150)
+
+	if ok {
+		t.Fatalf("ok = true with message %#v, want false", message)
+	}
+}
+
+func TestProjectMessageUpdateNormalizesMissingOccurredAt(t *testing.T) {
+	message, ok := ProjectMessageUpdate(MessageSnapshot{}, false, MessageUpdate{
+		MessageID: "message-1",
+		TurnID:    "turn-1",
+		Role:      "assistant",
+		Kind:      "text",
+		Payload:   map[string]any{"text": "hello"},
+	}, 1, 150)
 	if !ok {
 		t.Fatal("ok = false, want true")
-	}
-	if message.TurnID != "message:message-1" {
-		t.Fatalf("TurnID = %q, want stable message fallback", message.TurnID)
 	}
 	if message.OccurredAtUnixMS != 150 {
 		t.Fatalf("OccurredAtUnixMS = %d, want now fallback 150", message.OccurredAtUnixMS)

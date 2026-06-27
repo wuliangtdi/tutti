@@ -183,7 +183,7 @@ test("desktop agent activity adapter returns cancel result metadata", async () =
   assert.equal(result.session.status, "created");
 });
 
-test("desktop agent activity adapter normalizes legacy message pages before core", async () => {
+test("desktop agent activity adapter rejects turnless message pages before core", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessionMessages(_workspaceId, agentSessionId) {
@@ -207,13 +207,14 @@ test("desktop agent activity adapter normalizes legacy message pages before core
     runtimeApi: createRuntimeApi()
   });
 
-  const page = await adapter.listSessionMessages({
-    agentSessionId: "agent-session-1",
-    workspaceId
-  });
-
-  assert.equal(page.messages[0]?.turnId, "message:message-without-turn");
-  assert.equal(page.messages[0]?.occurredAtUnixMs, 1717200001000);
+  await assert.rejects(
+    () =>
+      adapter.listSessionMessages({
+        agentSessionId: "agent-session-1",
+        workspaceId
+      }),
+    /message-without-turn.*missing turnId/
+  );
 });
 
 test("desktop agent activity adapter forwards submit diagnostic metadata", async () => {

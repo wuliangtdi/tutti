@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -582,25 +581,12 @@ func generatedAgentSessionMessages(messages []agentservice.SessionMessage) []tut
 			Role:              strings.TrimSpace(message.Role),
 			StartedAtUnixMs:   int64Pointer(message.StartedAtUnixMS),
 			Status:            stringPointer(strings.TrimSpace(message.Status)),
-			TurnId:            normalizedGeneratedMessageTurnID(message),
+			TurnId:            strings.TrimSpace(message.TurnID),
 			UpdatedAtUnixMs:   int64Pointer(message.UpdatedAtUnixMS),
 			Version:           int64(message.Version),
 		})
 	}
 	return result
-}
-
-func normalizedGeneratedMessageTurnID(message agentservice.SessionMessage) string {
-	if turnID := strings.TrimSpace(message.TurnID); turnID != "" {
-		return turnID
-	}
-	if messageID := strings.TrimSpace(message.MessageID); messageID != "" {
-		return "message:" + messageID
-	}
-	if message.Version > 0 {
-		return "version:" + strconv.FormatUint(message.Version, 10)
-	}
-	return "id:" + strconv.FormatUint(message.ID, 10)
 }
 
 func normalizedGeneratedMessageOccurredAtUnixMS(message agentservice.SessionMessage) int64 {

@@ -1221,6 +1221,7 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 							ID:              8,
 							AgentSessionID:  agentSessionID,
 							MessageID:       "msg-1",
+							TurnID:          "turn-1",
 							Role:            "assistant",
 							Kind:            "text",
 							Payload:         map[string]any{"content": "Done."},
@@ -1265,8 +1266,8 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionMessages(t *testing.T) {
 	if response.Messages[0].MessageId != "msg-1" {
 		t.Fatalf("messageId = %q, want msg-1", response.Messages[0].MessageId)
 	}
-	if response.Messages[0].TurnId != "message:msg-1" {
-		t.Fatalf("turnId = %q, want message:msg-1", response.Messages[0].TurnId)
+	if response.Messages[0].TurnId != "turn-1" {
+		t.Fatalf("turnId = %q, want turn-1", response.Messages[0].TurnId)
 	}
 	if response.Messages[0].OccurredAtUnixMs != 1717200001000 {
 		t.Fatalf("occurredAtUnixMs = %d, want startedAt fallback", response.Messages[0].OccurredAtUnixMs)

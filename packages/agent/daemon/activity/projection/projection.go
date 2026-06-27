@@ -237,7 +237,7 @@ func ProjectMessageUpdate(
 		}
 	}
 	if message.TurnID == "" {
-		message.TurnID = stableFallbackTurnID(messageID)
+		return MessageSnapshot{}, false
 	}
 	if message.OccurredAtUnixMS <= 0 {
 		message.OccurredAtUnixMS = firstNonZeroInt64(message.StartedAtUnixMS, message.CompletedAtUnixMS, nowUnixMS)
@@ -252,14 +252,6 @@ func ProjectMessageUpdate(
 		message.Payload = map[string]any{}
 	}
 	return message, true
-}
-
-func stableFallbackTurnID(messageID string) string {
-	messageID = strings.TrimSpace(messageID)
-	if messageID == "" {
-		return ""
-	}
-	return "message:" + messageID
 }
 
 func firstNonZeroInt64(values ...int64) int64 {
