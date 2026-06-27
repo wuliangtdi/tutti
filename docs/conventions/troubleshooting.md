@@ -616,30 +616,46 @@ delimited by ---`, and the composer skill picker may show partial or
 
 - Symptom:
   Claude Agent provider status is not ready, or live ACP options do not match
-  the package version advertised by the ACP External Agent Registry.
+  the package version advertised by the ACP External Agent Registry. Another
+  form is Claude Code context usage briefly showing `0%` during a running
+  session or around compaction, then returning to the prior nonzero value on
+  the next usage update.
 - Quick checks:
   Inspect `<state-dir>/agent-providers/external-agent-registry/cache/registry.json`
   and the package manifest under
   `<state-dir>/agent-providers/external-agent-registry/packages/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/package.json`.
   `which claude-agent-acp` only describes a user/global shim and is no longer
-  the Tutti-owned Claude adapter source.
+  the Tutti-owned Claude adapter source. For usage flicker, inspect that
+  package's `dist/acp-agent.js` for `sessionUpdate: "usage_update"` near
+  `compact_boundary`; it must not publish `used: 0` when the SDK
+  `getContextUsage()` probe fails.
 - Root cause:
   Tutti resolves Claude ACP from the external agent registry and installs the
   npm adapter into a daemon-owned prefix with managed npm. A stale or missing
   prefix package, stale registry cache, or unavailable managed Node runtime can
   make the adapter unavailable even when a global `claude-agent-acp` exists.
+  Usage flicker can also come from the managed bridge bundle itself publishing
+  an invalid zero context usage after a failed compact-boundary usage probe;
+  AgentGUI only displays the normalized runtime context it receives.
 - Fix:
   Run the provider install action so tuttid refreshes the registry, resolves the
   managed Node runtime, and installs the npm package into the per-agent prefix.
   Do not compensate by changing static model catalogs for behavior that should
-  come from the live ACP package.
+  come from the live ACP package. Keep the Tutti claude-agent-acp patch script
+  authoritative for bridge behavior and apply it to the managed package; do not
+  mask invalid usage in AgentGUI.
 - Validation:
   Run `go test ./services/tuttid/service/agentstatus`, then confirm a stale
   global adapter is ignored and the install action uses managed npm with
   `--prefix <state-dir>/agent-providers/external-agent-registry/packages/claude-acp`.
+  For usage flicker, run
+  `node services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs --dist <managed-acp-dist>`
+  twice and confirm the second run reports no changes, then inspect the bundle
+  and confirm `lastAssistantTotalUsage = usedTokens ?? 0` is absent.
 - References:
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
+  [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
 
 ### Published package runtime asset 404 because the consumer bundler never saw the file
 
