@@ -41,7 +41,6 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@tutti-os/agent-activity-core": "workspace:*",
-    "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
@@ -71,6 +70,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
