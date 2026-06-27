@@ -364,8 +364,10 @@ Transcript `message_update` events that reach `AgentActivityRuntime` are a
 normalized runtime contract. Each transcript message must already carry a
 stable `messageId`, positive `version`/`seq`, stable `turnId`, and positive
 `occurredAtUnixMs`. Provider, adapter, desktop, or daemon ingestion layers must
-derive missing turn/time data from the active turn, submit context, stable
-sequence source, or a stable fallback before AgentGUI sees the event. AgentGUI
+derive missing turn/time data from real active-turn, submit-context, lifecycle,
+or storage timestamps before AgentGUI sees the event. If a transcript message
+has no reliable `turnId`, the boundary must reject it instead of synthesizing a
+`message:<messageId>`, `seq:<seq>`, or similar ownership fallback. AgentGUI
 must not retarget optimistic prompts from turnless or untimestamped live
 messages.
 
