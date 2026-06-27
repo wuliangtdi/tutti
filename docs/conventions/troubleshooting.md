@@ -102,6 +102,36 @@ Use this shape for new entries:
   [apps.go](../../services/tuttid/service/workspace/apps.go)
   [apps_test.go](../../services/tuttid/service/workspace/apps_test.go)
 
+### Workspace app update reopens the old dock window
+
+- Symptom:
+  After updating a running workspace app, clicking the app from the dock still
+  shows the old UI or old port until Tutti itself is restarted.
+- Quick checks:
+  Inspect the App Center snapshot for `installed_pending_restart` while a
+  matching `workspace-app-webview` node still exists. Dock debug logs showing
+  `clickResolution.kind = "focus-node"` for that app mean the launch resolver
+  is being bypassed.
+- Root cause:
+  Workbench dock single-instance entries focus a matching node before launching.
+  If a workspace app is waiting for restart and the dock entry still uses the
+  default click behavior, clicking the dock can restore the stale webview
+  instead of entering `resolveWorkspaceAppCenterLaunchRequest` and
+  `restartAndOpenApp`.
+- Fix:
+  Route `installed_pending_restart` workspace app dock clicks through the
+  launch request path even when a stale webview node still matches the dock
+  entry. Keep normal `running` apps on the default focus path so existing app
+  state is preserved.
+- Validation:
+  Run the workspace app-center contribution tests and the workspace workbench
+  surface dock click-resolution tests that cover pending-restart launch
+  routing.
+- References:
+  [workspaceAppCenterContribution.tsx](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterContribution.tsx)
+  [workspaceAppCenterLaunchRequest.ts](../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterLaunchRequest.ts)
+  [dockEntries.ts](../../packages/workbench/surface/src/host/dockEntries.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:

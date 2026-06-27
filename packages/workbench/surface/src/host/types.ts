@@ -250,6 +250,11 @@ export interface WorkbenchHostDockEntry {
   badge?: WorkbenchHostDockEntryBadge;
   capturePopupItemPreview?: WorkbenchHostNodePreviewCapture;
   clickActionId?: string;
+  /**
+   * `launch` keeps clicks on the launch request path even when matching nodes
+   * already exist.
+   */
+  clickBehavior?: "default" | "launch";
   hoverActions?: readonly WorkbenchHostDockEntryAction[];
   icon: ReactNode;
   iconSize?: "default" | "large";
