@@ -11,6 +11,9 @@ export default defineConfig({
     }
   },
   test: {
+    // Vitest owns `.spec.*` files; legacy `.test.ts` files in this package use
+    // the node:test runner, so keep them out of vitest's glob.
+    include: ["src/**/*.spec.{ts,tsx}"],
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"]
   }
