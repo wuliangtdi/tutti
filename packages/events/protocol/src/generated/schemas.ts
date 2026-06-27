@@ -668,8 +668,10 @@ export const agentActivityUpdatedPayloadSchema = {
                   "id",
                   "kind",
                   "messageId",
+                  "occurredAtUnixMs",
                   "payload",
                   "role",
+                  "turnId",
                   "version"
                 ],
                 properties: {
@@ -701,14 +703,15 @@ export const agentActivityUpdatedPayloadSchema = {
                     minimum: 1
                   },
                   turnId: {
-                    type: "string"
+                    type: "string",
+                    minLength: 1
                   },
                   status: {
                     type: "string"
                   },
                   occurredAtUnixMs: {
                     type: "integer",
-                    minimum: 0
+                    minimum: 1
                   },
                   startedAtUnixMs: {
                     type: "integer",

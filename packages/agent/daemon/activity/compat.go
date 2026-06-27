@@ -3,6 +3,7 @@ package agentsessionstore
 
 import (
 	"context"
+	"strconv"
 	"strings"
 )
 
@@ -158,7 +159,7 @@ func SessionMessageUpdateFromActivityUpdate(update WorkspaceAgentMessageUpdate) 
 	}
 	return WorkspaceAgentSessionMessageUpdate{
 		MessageID:         strings.TrimSpace(update.MessageID),
-		TurnID:            strings.TrimSpace(update.TurnID),
+		TurnID:            normalizedActivityMessageUpdateTurnID(update),
 		Role:              strings.TrimSpace(update.Role),
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
@@ -168,6 +169,19 @@ func SessionMessageUpdateFromActivityUpdate(update WorkspaceAgentMessageUpdate) 
 		StartedAtUnixMS:   update.StartedAtUnixMS,
 		CompletedAtUnixMS: update.CompletedAtUnixMS,
 	}
+}
+
+func normalizedActivityMessageUpdateTurnID(update WorkspaceAgentMessageUpdate) string {
+	if turnID := strings.TrimSpace(update.TurnID); turnID != "" {
+		return turnID
+	}
+	if messageID := strings.TrimSpace(update.MessageID); messageID != "" {
+		return "message:" + messageID
+	}
+	if update.Seq > 0 {
+		return "seq:" + strconv.FormatUint(update.Seq, 10)
+	}
+	return ""
 }
 
 func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentSessionStateUpdate {
