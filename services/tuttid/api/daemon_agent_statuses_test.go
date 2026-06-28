@@ -11,24 +11,16 @@ import (
 )
 
 type stubAgentStatusService struct {
-	detectFn    func(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
-	getStatusFn func(agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
+	listFn      func(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
 	probeFn     func(context.Context, agentstatusservice.ProbeInput) (agentstatusservice.ProbeResult, error)
 	runActionFn func(context.Context, agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error)
 }
 
-func (s stubAgentStatusService) Detect(ctx context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
-	if s.detectFn == nil {
+func (s stubAgentStatusService) List(ctx context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+	if s.listFn == nil {
 		return agentstatusservice.Snapshot{}, nil
 	}
-	return s.detectFn(ctx, input)
-}
-
-func (s stubAgentStatusService) GetStatus(input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
-	if s.getStatusFn == nil {
-		return agentstatusservice.Snapshot{}, nil
-	}
-	return s.getStatusFn(input)
+	return s.listFn(ctx, input)
 }
 
 func (s stubAgentStatusService) Probe(ctx context.Context, input agentstatusservice.ProbeInput) (agentstatusservice.ProbeResult, error) {
@@ -50,7 +42,7 @@ func TestDaemonAPIRoutesAgentProviderStatuses(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentStatusService: stubAgentStatusService{
-			getStatusFn: func(input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
 				if len(input.Providers) != 1 || input.Providers[0] != "claude-code" {
 					t.Fatalf("providers = %#v, want [claude-code]", input.Providers)
 				}
@@ -120,7 +112,7 @@ func TestDaemonAPIRoutesUnsupportedAgentProviderStatus(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
 		AgentStatusService: stubAgentStatusService{
-			getStatusFn: func(input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+			listFn: func(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
 				if len(input.Providers) != 1 || input.Providers[0] != "gemini" {
 					t.Fatalf("providers = %#v, want [gemini]", input.Providers)
 				}

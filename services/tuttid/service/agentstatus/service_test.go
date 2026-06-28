@@ -30,7 +30,7 @@ func TestServiceListReportsInstallActionWhenCLIMissing(t *testing.T) {
 		return "", errors.New("not found")
 	}, map[string]bool{})
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -82,7 +82,7 @@ func TestServiceListReturnsLatestActiveActionAfterNetworkProbe(t *testing.T) {
 		return nil, nil
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -118,7 +118,7 @@ func TestServiceListReportsLoginAndRefreshActionsWhenAuthMarkerMissing(t *testin
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{})
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestServiceListReportsInstallActionWhenACPAdapterMissing(t *testing.T) {
 	}, map[string]bool{"/home/test/.codex/auth.json": true})
 	service.Registry = Registry{Specs: []ProviderSpec{specWithSeparateAdapter()}}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -224,7 +224,7 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{"/home/test/.codex/auth.json": true})
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -269,7 +269,7 @@ func TestServiceListUsesCodexLoginStatusCommand(t *testing.T) {
 		return parseCodexAuthStatusOutput([]byte("Logged in using ChatGPT"))
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -294,7 +294,7 @@ func TestServiceListDoesNotUseCodexAuthMarkerAfterConfigError(t *testing.T) {
 		return parseAuthStatusCommandOutput("codex", []byte("Error loading configuration: /home/test/.codex/config.toml:8:16: unknown variant `priority`, expected `fast` or `flex`"))
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -343,7 +343,7 @@ func TestServiceListReportsCodexChecksVersionAndLastError(t *testing.T) {
 		t.Fatalf("test codex platform binary is not complete at %s", platformPath)
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -489,7 +489,7 @@ func TestServiceListReportsInstallActionWhenCodexAdapterCommandFails(t *testing.
 		},
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -549,7 +549,7 @@ func TestServiceListIgnoresStaleGlobalClaudeACPAdapter(t *testing.T) {
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -616,7 +616,7 @@ func TestServiceListReportsInstallActionWhenExternalAdapterCommandFails(t *testi
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -682,7 +682,7 @@ func TestServiceListReportsInstallActionWhenExternalAdapterCommandFailsAfterRead
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -712,7 +712,7 @@ func TestServiceListTreatsUnknownAuthAsAuthRequired(t *testing.T) {
 		LoginArgs:          []string{"login"},
 	}}}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -752,7 +752,7 @@ func TestServiceListTreatsTemporarilyUnsupportedProvidersAsUnsupported(t *testin
 		"/home/test/.config/openclaw/auth.json": true,
 	})
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"gemini", "nexight", "hermes", "openclaw"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"gemini", "nexight", "hermes", "openclaw"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -812,7 +812,7 @@ func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T
 		},
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -1137,7 +1137,7 @@ func TestServiceRunCodexInstallerReportsGlobalNPMActiveAction(t *testing.T) {
 		t.Fatalf("RunAction completed before install started: %#v", result)
 	}
 	defer releaseInstallOnce.Do(func() { close(releaseInstall) })
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"codex"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	case result := <-done:
 		t.Fatalf("RunAction completed before install started: %#v", result)
 	}
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -1233,7 +1233,7 @@ func TestServiceRunActionReportsActiveActionForClaudeInstall(t *testing.T) {
 	if result.Status != RunActionCompleted {
 		t.Fatalf("Status = %q, want completed; result=%#v", result.Status, result)
 	}
-	snapshot, err = service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err = service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() after install error = %v", err)
 	}
@@ -2036,7 +2036,7 @@ func TestServiceListReportsAuthRequiredFromClaudeAuthStatusCommand(t *testing.T)
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -2103,7 +2103,7 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -2171,7 +2171,7 @@ func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecogniz
 		ManagedRuntime:        fakeManagedRuntimeResolver(t, runtimeRoot),
 	}
 
-	snapshot, err := service.Detect(context.Background(), ListInput{Providers: []string{"claude-code"}})
+	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"claude-code"}})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}

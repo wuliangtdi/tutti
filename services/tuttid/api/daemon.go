@@ -46,8 +46,7 @@ type DaemonAPI struct {
 }
 
 type AgentProviderStatusService interface {
-	Detect(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
-	GetStatus(agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
+	List(context.Context, agentstatusservice.ListInput) (agentstatusservice.Snapshot, error)
 	Probe(context.Context, agentstatusservice.ProbeInput) (agentstatusservice.ProbeResult, error)
 	RunAction(context.Context, agentstatusservice.RunActionInput) (agentstatusservice.RunActionResult, error)
 }

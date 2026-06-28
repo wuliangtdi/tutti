@@ -1777,44 +1777,6 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/agent-providers/detect:
-    post:
-      operationId: detectAgentProviders
-      tags:
-        - agent-session
-      summary: Probe agent provider environments fresh and refresh the status model
-      description: >-
-        Side-effectful command: probes each provider's environment (network,
-        CLI, adapter, auth) and updates the daemon's status model, then returns
-        the fresh snapshot. Steady-state callers should use the read-only
-        getAgentProviderStatuses instead, which never probes.
-      parameters:
-        - name: providers
-          in: query
-          required: false
-          style: form
-          explode: true
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/WorkspaceAgentProvider"
-      responses:
-        "200":
-          description: Fresh agent provider status snapshot
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentProviderStatusListResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "400":
-          $ref: "#/components/responses/InvalidRequestError"
-        "405":
-          $ref: "#/components/responses/MethodNotAllowedError"
-        "502":
-          $ref: "#/components/responses/WorkspaceOperationError"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"

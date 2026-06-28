@@ -19,9 +19,6 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Probe agent provider environments fresh and refresh the status model
-	// (POST /v1/agent-providers/detect)
-	DetectAgentProviders(w http.ResponseWriter, r *http.Request, params DetectAgentProvidersParams)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(w http.ResponseWriter, r *http.Request, params GetAgentProviderStatusesParams)
@@ -398,45 +395,6 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
-
-// DetectAgentProviders operation middleware
-func (siw *ServerInterfaceWrapper) DetectAgentProviders(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DetectAgentProvidersParams
-
-	// ------------- Optional query parameter "providers" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "providers", r.URL.Query(), &params.Providers, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "providers"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "providers", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DetectAgentProviders(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
 
 // GetAgentProviderStatuses operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWriter, r *http.Request) {
@@ -5587,7 +5545,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/detect", wrapper.DetectAgentProviders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
@@ -5737,106 +5694,6 @@ type WorkspaceNotFoundErrorJSONResponse ApiErrorResponse
 type WorkspaceOperationErrorJSONResponse ApiErrorResponse
 
 type WorkspaceTerminalNotFoundErrorJSONResponse ApiErrorResponse
-
-type DetectAgentProvidersRequestObject struct {
-	Params DetectAgentProvidersParams
-}
-
-type DetectAgentProvidersResponseObject interface {
-	VisitDetectAgentProvidersResponse(w http.ResponseWriter) error
-}
-
-type DetectAgentProviders200JSONResponse AgentProviderStatusListResponse
-
-func (response DetectAgentProviders200JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DetectAgentProviders400JSONResponse struct {
-	InvalidRequestErrorJSONResponse
-}
-
-func (response DetectAgentProviders400JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DetectAgentProviders401JSONResponse struct{ UnauthorizedErrorJSONResponse }
-
-func (response DetectAgentProviders401JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DetectAgentProviders405JSONResponse struct {
-	MethodNotAllowedErrorJSONResponse
-}
-
-func (response DetectAgentProviders405JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(405)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DetectAgentProviders502JSONResponse struct {
-	WorkspaceOperationErrorJSONResponse
-}
-
-func (response DetectAgentProviders502JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(502)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DetectAgentProviders503JSONResponse struct {
-	ServiceUnavailableErrorJSONResponse
-}
-
-func (response DetectAgentProviders503JSONResponse) VisitDetectAgentProvidersResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(503)
-	_, err := buf.WriteTo(w)
-	return err
-}
 
 type GetAgentProviderStatusesRequestObject struct {
 	Params GetAgentProviderStatusesParams
@@ -19755,9 +19612,6 @@ func (response PutWorkspaceWorkbench503JSONResponse) VisitPutWorkspaceWorkbenchR
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// Probe agent provider environments fresh and refresh the status model
-	// (POST /v1/agent-providers/detect)
-	DetectAgentProviders(ctx context.Context, request DetectAgentProvidersRequestObject) (DetectAgentProvidersResponseObject, error)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(ctx context.Context, request GetAgentProviderStatusesRequestObject) (GetAgentProviderStatusesResponseObject, error)
@@ -20153,32 +20007,6 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
-}
-
-// DetectAgentProviders operation middleware
-func (sh *strictHandler) DetectAgentProviders(w http.ResponseWriter, r *http.Request, params DetectAgentProvidersParams) {
-	var request DetectAgentProvidersRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DetectAgentProviders(ctx, request.(DetectAgentProvidersRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DetectAgentProviders")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DetectAgentProvidersResponseObject); ok {
-		if err := validResponse.VisitDetectAgentProvidersResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
 }
 
 // GetAgentProviderStatuses operation middleware

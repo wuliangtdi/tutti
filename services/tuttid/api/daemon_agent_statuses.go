@@ -29,10 +29,7 @@ func (api DaemonAPI) GetAgentProviderStatuses(ctx context.Context, request tutti
 		}, nil
 	}
 
-	// Read-only: returns the daemon's maintained status model (no probing), so
-	// high-frequency callers (e.g. the install-progress poll) never trigger a
-	// full re-detection. Detection happens via DetectAgentProviders.
-	snapshot, err := api.AgentStatusService.GetStatus(agentstatusservice.ListInput{
+	snapshot, err := api.AgentStatusService.List(ctx, agentstatusservice.ListInput{
 		Providers: generatedAgentStatusProviders(request.Params.Providers),
 	})
 	if err != nil {
@@ -41,52 +38,6 @@ func (api DaemonAPI) GetAgentProviderStatuses(ctx context.Context, request tutti
 	return tuttigenerated.GetAgentProviderStatuses200JSONResponse(
 		generatedAgentProviderStatusList(snapshot, api.defaultAgentProvider(ctx)),
 	), nil
-}
-
-func (api DaemonAPI) DetectAgentProviders(ctx context.Context, request tuttigenerated.DetectAgentProvidersRequestObject) (tuttigenerated.DetectAgentProvidersResponseObject, error) {
-	if api.AgentStatusService == nil {
-		return tuttigenerated.DetectAgentProviders503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: agentStatusServiceUnavailableError(),
-		}, nil
-	}
-
-	// Side-effectful command: probe each provider fresh and refresh the daemon's
-	// status model, then return the fresh snapshot. Steady-state callers use the
-	// read-only getAgentProviderStatuses instead.
-	snapshot, err := api.AgentStatusService.Detect(ctx, agentstatusservice.ListInput{
-		Providers: generatedAgentStatusProviders(request.Params.Providers),
-	})
-	if err != nil {
-		return writeDetectAgentProvidersError(err), nil
-	}
-	return tuttigenerated.DetectAgentProviders200JSONResponse(
-		generatedAgentProviderStatusList(snapshot, api.defaultAgentProvider(ctx)),
-	), nil
-}
-
-func writeDetectAgentProvidersError(err error) tuttigenerated.DetectAgentProvidersResponseObject {
-	if errors.Is(err, agentstatusservice.ErrInvalidProvider) {
-		return tuttigenerated.DetectAgentProviders400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(
-				apierrors.MalformedRequest(apierrors.WithCause(err)),
-			),
-		}
-	}
-	protocolErr := apierrors.Classify(err)
-	switch protocolErr.Code {
-	case tuttigenerated.InvalidRequest:
-		return tuttigenerated.DetectAgentProviders400JSONResponse{
-			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
-		}
-	case tuttigenerated.ServiceUnavailable:
-		return tuttigenerated.DetectAgentProviders503JSONResponse{
-			ServiceUnavailableErrorJSONResponse: serviceUnavailableError(protocolErr),
-		}
-	default:
-		return tuttigenerated.DetectAgentProviders502JSONResponse{
-			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
-		}
-	}
 }
 
 func (api DaemonAPI) ProbeAgentProvider(ctx context.Context, request tuttigenerated.ProbeAgentProviderRequestObject) (tuttigenerated.ProbeAgentProviderResponseObject, error) {

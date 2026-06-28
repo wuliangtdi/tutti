@@ -16,7 +16,7 @@ type fakeAgentProviderStatusLister struct {
 	callCount int
 }
 
-func (f *fakeAgentProviderStatusLister) Detect(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
+func (f *fakeAgentProviderStatusLister) List(_ context.Context, input agentstatusservice.ListInput) (agentstatusservice.Snapshot, error) {
 	f.callCount++
 	f.input = input
 	if f.err != nil {

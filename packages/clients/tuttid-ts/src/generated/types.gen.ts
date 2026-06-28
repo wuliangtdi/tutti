@@ -4763,51 +4763,6 @@ export type GetAgentProviderStatusesResponses = {
 export type GetAgentProviderStatusesResponse =
   GetAgentProviderStatusesResponses[keyof GetAgentProviderStatusesResponses];
 
-export type DetectAgentProvidersData = {
-  body?: never;
-  path?: never;
-  query?: {
-    providers?: Array<WorkspaceAgentProvider>;
-  };
-  url: "/v1/agent-providers/detect";
-};
-
-export type DetectAgentProvidersErrors = {
-  /**
-   * Request payload or parameters are invalid
-   */
-  400: ApiErrorResponse;
-  /**
-   * Bearer token is missing or invalid
-   */
-  401: ApiErrorResponse;
-  /**
-   * HTTP method is not supported on this route
-   */
-  405: ApiErrorResponse;
-  /**
-   * Workspace operation failed in an upstream adapter or command
-   */
-  502: ApiErrorResponse;
-  /**
-   * Required daemon service dependency is unavailable
-   */
-  503: ApiErrorResponse;
-};
-
-export type DetectAgentProvidersError =
-  DetectAgentProvidersErrors[keyof DetectAgentProvidersErrors];
-
-export type DetectAgentProvidersResponses = {
-  /**
-   * Fresh agent provider status snapshot
-   */
-  200: AgentProviderStatusListResponse;
-};
-
-export type DetectAgentProvidersResponse =
-  DetectAgentProvidersResponses[keyof DetectAgentProvidersResponses];
-
 export type DeleteWorkspaceAgentSessionData = {
   body?: never;
   path: {

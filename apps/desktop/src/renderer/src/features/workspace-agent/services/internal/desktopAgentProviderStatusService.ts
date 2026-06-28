@@ -188,10 +188,8 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
     const requestId = this.requestSequence + 1;
     this.requestSequence = requestId;
-    // Detect is the side-effectful command: it probes the environment fresh
-    // (network + CLI/adapter/auth) and refreshes the daemon's status model.
     const request = withTimeout(
-      this.dependencies.tuttidClient.detectAgentProviders(input),
+      this.dependencies.tuttidClient.getAgentProviderStatuses(input),
       this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
     )
       .then((response) => {
@@ -241,39 +239,6 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
 
     this.inflightRequest = request;
     return request;
-  }
-
-  // Cheap read of the daemon's maintained status model — no probing. Used for
-  // high-frequency polling (install progress): it returns the cached, stable
-  // status (network does not flicker) plus the live active-action. It must NOT
-  // set isLoading: a background poll is not a detection, and flipping isLoading
-  // would make the wizard's re-detect spinner/button flicker every second.
-  private async readStatus(
-    providers?: WorkspaceAgentProvider[]
-  ): Promise<void> {
-    try {
-      const response = await withTimeout(
-        this.dependencies.tuttidClient.getAgentProviderStatuses({ providers }),
-        this.dependencies.requestTimeoutMs ?? defaultRequestTimeoutMs
-      );
-      // A detection in flight is the source of truth; don't let a stale read
-      // clobber its result.
-      if (this.inflightRequest) {
-        return;
-      }
-      const reconciledStatuses = this.reconcileProviderStatuses(
-        this.snapshot.statuses,
-        response.providers,
-        providers
-      );
-      this.setSnapshot({
-        ...this.snapshot,
-        capturedAt: response.capturedAt,
-        statuses: reconciledStatuses
-      });
-    } catch {
-      // Background poll: keep the last snapshot on a transient read failure.
-    }
   }
 
   async runAction(
@@ -647,9 +612,7 @@ export class DesktopAgentProviderStatusService implements IAgentProviderStatusSe
     if (!this.isActionPending(provider, actionId)) {
       return;
     }
-    // Poll the cheap read (status model + live progress), NOT a full detect —
-    // so install progress updates every second without re-probing the network.
-    await this.readStatus([provider]);
+    await this.refresh([provider]);
     this.schedulePendingActionStatusPoll(provider, actionId);
   }
 

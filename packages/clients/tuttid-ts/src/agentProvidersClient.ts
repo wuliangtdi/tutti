@@ -1,5 +1,4 @@
 import {
-  detectAgentProviders,
   getAgentProviderComposerOptions,
   getAgentProviderStatuses,
   probeAgentProvider,
@@ -11,7 +10,6 @@ import type { TuttidClient } from "./tuttidClientTypes.ts";
 
 type AgentProvidersClient = Pick<
   TuttidClient,
-  | "detectAgentProviders"
   | "getAgentProviderComposerOptions"
   | "getAgentProviderStatuses"
   | "probeAgentProvider"
@@ -47,13 +45,6 @@ export function createAgentProvidersClient(
         response,
         "Get agent provider statuses request failed."
       );
-    },
-    async detectAgentProviders(request = {}) {
-      const response = await detectAgentProviders({
-        client,
-        query: request
-      });
-      return unwrapData(response, "Detect agent providers request failed.");
     },
     async probeAgentProvider(provider) {
       const response = await probeAgentProvider({ client, path: { provider } });

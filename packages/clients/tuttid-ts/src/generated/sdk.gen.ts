@@ -106,9 +106,6 @@ import type {
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
   DeleteWorkspaceResponses,
-  DetectAgentProvidersData,
-  DetectAgentProvidersErrors,
-  DetectAgentProvidersResponses,
   ExportWorkspaceAppData,
   ExportWorkspaceAppErrors,
   ExportWorkspaceAppResponses,
@@ -1498,24 +1495,6 @@ export const getAgentProviderStatuses = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/agent-providers/status",
-    ...options
-  });
-
-/**
- * Probe agent provider environments fresh and refresh the status model
- *
- * Side-effectful command: probes each provider's environment (network, CLI, adapter, auth) and updates the daemon's status model, then returns the fresh snapshot. Steady-state callers should use the read-only getAgentProviderStatuses instead, which never probes.
- */
-export const detectAgentProviders = <ThrowOnError extends boolean = false>(
-  options?: Options<DetectAgentProvidersData, ThrowOnError>
-) =>
-  (options?.client ?? client).post<
-    DetectAgentProvidersResponses,
-    DetectAgentProvidersErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/agent-providers/detect",
     ...options
   });
 

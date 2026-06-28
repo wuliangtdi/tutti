@@ -3611,11 +3611,6 @@ type WorkspaceTerminalNotFoundError = ApiErrorResponse
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
-// DetectAgentProvidersParams defines parameters for DetectAgentProviders.
-type DetectAgentProvidersParams struct {
-	Providers *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`
-}
-
 // GetAgentProviderStatusesParams defines parameters for GetAgentProviderStatuses.
 type GetAgentProviderStatusesParams struct {
 	Providers *[]WorkspaceAgentProvider `form:"providers,omitempty" json:"providers,omitempty"`

@@ -235,13 +235,7 @@ const defaultProbeTimeout = 3 * time.Second
 const defaultProbeWaitDelay = 500 * time.Millisecond
 const externalRegistryNPMProbeTimeoutPadding = 100 * time.Millisecond
 
-// Detect probes each requested provider's environment fresh (network + CLI/
-// adapter/auth) and writes the result into the daemon's status model
-// (statusStore), then returns it. It is the explicit, side-effectful "command":
-// call it on panel open, "重新检测", a provider-action's completion, and internal
-// availability checks. Steady-state reads should use GetStatus, which never
-// probes.
-func (s Service) Detect(ctx context.Context, input ListInput) (Snapshot, error) {
+func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 	now := s.now()
 	specs, err := s.selectProviderSpecs(ctx, input.Providers, false)
 	if err != nil {
@@ -272,26 +266,12 @@ func (s Service) Detect(ctx context.Context, input ListInput) (Snapshot, error) 
 	}
 	for i := range statuses {
 		statuses[i].ActiveAction = activeActionForProvider(statuses[i].Provider)
-		putDetectedStatus(statuses[i].Provider, statuses[i], now)
 	}
 
 	return Snapshot{
 		CapturedAt: now,
 		Providers:  statuses,
 	}, nil
-}
-
-// GetStatus returns each requested provider's last detected status from the
-// daemon's status model, with the live active-action overlaid. It performs NO
-// probing — it is the cheap, high-frequency "read" counterpart to Detect, used
-// e.g. by the install-progress poll so polling never re-runs network detection.
-// A provider never detected yet is omitted (cold model → empty Providers).
-func (s Service) GetStatus(input ListInput) (Snapshot, error) {
-	statuses, capturedAt := readStatuses(input.Providers)
-	if len(statuses) == 0 {
-		return Snapshot{CapturedAt: s.now(), Providers: nil}, nil
-	}
-	return Snapshot{CapturedAt: capturedAt, Providers: statuses}, nil
 }
 
 func (s Service) Probe(ctx context.Context, input ProbeInput) (ProbeResult, error) {

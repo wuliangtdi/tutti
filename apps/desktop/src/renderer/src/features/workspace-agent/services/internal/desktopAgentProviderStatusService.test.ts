@@ -517,10 +517,7 @@ test("runAction installs providers silently and refreshes the status", async () 
 });
 
 test("runAction short-polls install status while daemon action is pending", async () => {
-  // Detect (full probe) vs read (cheap status model) are tracked separately so
-  // the test pins the design: refresh detects, the install poll only reads.
-  const detectCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
-  const readCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
+  const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
   const pollScheduler = createManualPollScheduler();
   const installRun = createDeferred<AgentProviderActionRunResponse>();
   const installingStatus = createProviderStatus({
@@ -531,12 +528,8 @@ test("runAction short-polls install status while daemon action is pending", asyn
   const service = new DesktopAgentProviderStatusService({
     loginStatusPollScheduler: pollScheduler.scheduler,
     tuttidClient: {
-      async detectAgentProviders(request) {
-        detectCalls.push(request?.providers);
-        return createStatusResponse([installingStatus]);
-      },
       async getAgentProviderStatuses(request) {
-        readCalls.push(request?.providers);
+        statusCalls.push(request?.providers);
         return createStatusResponse([installingStatus]);
       },
       async runAgentProviderAction(provider, actionID) {
@@ -555,11 +548,9 @@ test("runAction short-polls install status while daemon action is pending", asyn
   await waitFor(() => pollScheduler.pendingTimerCount() === 1);
 
   pollScheduler.runNext();
-  await waitFor(() => readCalls.length >= 1);
+  await waitFor(() => statusCalls.length >= 2);
 
-  // refresh() detected once; the poll used the cheap read (never detect).
-  assert.deepEqual(detectCalls, [["claude-code"]]);
-  assert.deepEqual(readCalls, [["claude-code"]]);
+  assert.deepEqual(statusCalls, [["claude-code"], ["claude-code"]]);
 
   installRun.resolve(
     createActionRunResponse("claude-code", "install", "completed")
@@ -976,7 +967,7 @@ test("ensureLoaded waits for unrelated in-flight loads before loading missing pr
   const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: {
-      async detectAgentProviders(request) {
+      async getAgentProviderStatuses(request) {
         calls.push(request?.providers);
         return calls.length === 1
           ? firstStatusRequest.promise
@@ -1027,7 +1018,7 @@ test("refresh waits for an in-flight load and then requests a fresh status", asy
   const secondStatusRequest = createDeferred<AgentProviderStatusListResponse>();
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: {
-      async detectAgentProviders(request) {
+      async getAgentProviderStatuses(request) {
         calls.push(request?.providers);
         return calls.length === 1
           ? firstStatusRequest.promise
@@ -1345,7 +1336,7 @@ test("runAction reports missing login actions after refresh", async () => {
 test("refresh times out and releases the loading state when the status request hangs", async () => {
   const service = new DesktopAgentProviderStatusService({
     tuttidClient: {
-      detectAgentProviders: async () =>
+      getAgentProviderStatuses: async () =>
         new Promise<AgentProviderStatusListResponse>(() => {})
     } as Partial<TuttidClient> as TuttidClient,
     requestTimeoutMs: 1,
@@ -1376,22 +1367,16 @@ function createTuttidClient(input: {
   let index = 0;
   let actionRunIndex = 0;
   let probeIndex = 0;
-  const serveSnapshot = async (request?: {
-    providers?: WorkspaceAgentProvider[];
-  }): Promise<AgentProviderStatusListResponse> => {
-    input.onStatusRequest?.(request?.providers);
-    const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
-    index += 1;
-    if (!snapshot) {
-      throw new Error("missing snapshot");
-    }
-    return snapshot;
-  };
   return {
-    // Detect (the command, used by refresh/ensureLoaded) and the cheap read
-    // (used by progress polling) both serve the next stub snapshot.
-    getAgentProviderStatuses: serveSnapshot,
-    detectAgentProviders: serveSnapshot,
+    async getAgentProviderStatuses(request) {
+      input.onStatusRequest?.(request?.providers);
+      const snapshot = input.snapshots[index] ?? input.snapshots.at(-1);
+      index += 1;
+      if (!snapshot) {
+        throw new Error("missing snapshot");
+      }
+      return snapshot;
+    },
     async probeAgentProvider(provider) {
       input.onProbeRequest?.(provider);
       const probe =

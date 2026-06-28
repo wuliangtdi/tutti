@@ -319,9 +319,6 @@ export function createDesktopTuttidClient(
     async getAgentProviderStatuses(request) {
       return (await resolveClient()).getAgentProviderStatuses(request);
     },
-    async detectAgentProviders(request) {
-      return (await resolveClient()).detectAgentProviders(request);
-    },
     async probeAgentProvider(provider) {
       return (await resolveClient()).probeAgentProvider(provider);
     },
