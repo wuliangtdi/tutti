@@ -6,7 +6,7 @@ import {
   within
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StrictMode, act, type ReactNode } from "react";
+import { StrictMode, act } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
@@ -662,25 +662,6 @@ vi.mock("../../i18n/index", () => ({
     }
   }),
   translateInUiLanguage: (_language: string, key: string) => key
-}));
-
-vi.mock("../../app/renderer/components/WarningDialog", () => ({
-  WarningDialog: ({
-    dataTestId,
-    title,
-    lead,
-    actions
-  }: {
-    dataTestId: string;
-    title: string;
-    lead?: string;
-    actions: ReactNode;
-  }) => (
-    <section role="dialog" aria-label={title} data-testid={dataTestId}>
-      {lead ? <p>{lead}</p> : null}
-      {actions}
-    </section>
-  )
 }));
 
 vi.mock("./controller/useAgentGUINodeController", () => ({
