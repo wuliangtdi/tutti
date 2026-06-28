@@ -482,6 +482,25 @@ function AgentUsageChip({
   const showTokens = usedTokens !== null && totalTokens !== null;
   const usageLevel = agentUsageChipLevel(clampedPercent);
   const ringColor = agentUsageRingColor(usageLevel);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const usageCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelUsageClose = useCallback(() => {
+    if (usageCloseTimerRef.current) {
+      clearTimeout(usageCloseTimerRef.current);
+      usageCloseTimerRef.current = null;
+    }
+  }, []);
+  const openUsage = useCallback(() => {
+    cancelUsageClose();
+    setUsageOpen(true);
+  }, [cancelUsageClose]);
+  // Delay close so the pointer can travel from the chip into the popover
+  // (to reach the compact button) without it dismissing.
+  const scheduleUsageClose = useCallback(() => {
+    cancelUsageClose();
+    usageCloseTimerRef.current = setTimeout(() => setUsageOpen(false), 140);
+  }, [cancelUsageClose]);
+  useEffect(() => cancelUsageClose, [cancelUsageClose]);
   const trigger = (
     <button
       type="button"
@@ -490,6 +509,8 @@ function AgentUsageChip({
       data-testid="agent-gui-usage-chip"
       data-usage-level={usageLevel}
       title={chipLabel}
+      onMouseEnter={openUsage}
+      onMouseLeave={scheduleUsageClose}
       style={{
         background: `conic-gradient(${ringColor} ${clampedPercent}%, color-mix(in srgb, ${ringColor} 16%, transparent) 0)`
       }}
@@ -506,20 +527,16 @@ function AgentUsageChip({
   }
 
   return (
-    <Popover>
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <PopoverTrigger asChild>
-            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-          </PopoverTrigger>
-          <TooltipContent side="top">{labels.usageTooltipLabel}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+    <Popover open={usageOpen} onOpenChange={setUsageOpen}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         side="bottom"
         align="end"
         className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
         data-testid="agent-gui-usage-popover"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onMouseEnter={openUsage}
+        onMouseLeave={scheduleUsageClose}
       >
         <div className="flex min-w-0 flex-col gap-3">
           <span className="text-[13px] font-semibold leading-4">

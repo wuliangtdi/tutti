@@ -1773,10 +1773,8 @@ describe("AgentComposer", () => {
     expect(usageChip).toHaveClass("mr-2");
     expect(usageChip).not.toHaveAttribute("data-slot", "badge");
 
-    fireEvent.pointerMove(usageChip, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("上下文用量");
-
-    fireEvent.click(usageChip);
+    // The usage popover opens on hover (not just click).
+    fireEvent.mouseEnter(usageChip);
     await waitFor(() =>
       expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible()
     );
