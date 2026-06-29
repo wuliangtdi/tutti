@@ -3446,7 +3446,7 @@ function localizedSlashCommandLabel(
 }
 
 function goalDraftObjectiveFromPrompt(prompt: string): string | null {
-  const match = /^\s*\/goal(?:\s+(.*))?\s*$/u.exec(prompt);
+  const match = /^\s*\/goal(?:\s+([\s\S]*))?\s*$/u.exec(prompt);
   if (!match) {
     return null;
   }

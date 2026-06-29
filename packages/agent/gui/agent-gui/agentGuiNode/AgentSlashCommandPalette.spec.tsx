@@ -169,7 +169,7 @@ describe("AgentSlashCommandPalette", () => {
     expect(icon).toBeTruthy();
     expect(icon?.parentElement).toHaveClass(
       "flex",
-      "w-4",
+      "w-3.5",
       "shrink-0",
       "items-center",
       "justify-center",
