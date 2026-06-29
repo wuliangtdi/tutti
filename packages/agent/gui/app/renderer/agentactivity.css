@@ -4310,6 +4310,12 @@ aside.workspace-agents-status-panel
   height: 18px;
 }
 
+.agent-gui-node__composer-reference-trigger {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
 .agent-gui-node__composer-reference-trigger svg:first-child {
   width: 14px;
   height: 14px;
