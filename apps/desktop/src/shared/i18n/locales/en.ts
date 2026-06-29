@@ -156,7 +156,6 @@ export const en = {
       actionRelogin: "Sign in again",
       actionLogin: "Sign in",
       actionRetry: "Retry",
-      actionClose: "Close",
       stepCli: "{{provider}} CLI",
       stepVersion: "Supported version",
       stepAuth: "Signed in",

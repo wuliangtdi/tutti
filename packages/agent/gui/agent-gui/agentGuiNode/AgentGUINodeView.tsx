@@ -13,13 +13,7 @@ import {
 } from "react";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
-import {
-  ChevronRight,
-  ExternalLink,
-  Info,
-  Settings,
-  Wrench
-} from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Wrench } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -69,6 +63,7 @@ import {
 import { PinFilledIcon } from "../../app/renderer/components/icons/PinFilledIcon";
 import { PinLinedIcon } from "../../app/renderer/components/icons/PinLinedIcon";
 import { UnavailableChatIcon } from "../../app/renderer/components/icons/UnavailableChatIcon";
+import { EnvironmentLinedIcon } from "../../app/renderer/components/icons/EnvironmentLinedIcon";
 import {
   StatusDot,
   type StatusDotTone
@@ -3497,7 +3492,11 @@ const AgentGUIConversationRailPane = memo(
                 title={labels.agentConfig}
                 disabled={previewMode}
               >
-                <Settings aria-hidden="true" size={16} strokeWidth={1.8} />
+                <EnvironmentLinedIcon
+                  aria-hidden="true"
+                  width={16}
+                  height={16}
+                />
                 <span>{labels.agentConfig}</span>
               </Button>
             </PopoverTrigger>

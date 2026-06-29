@@ -1127,6 +1127,10 @@ export function AgentComposer({
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
+  const composerControlsHardDisabled =
+    isSelectedProjectMissing ||
+    isSubmittingPrompt ||
+    (disabled && !isSendingTurn && !showStopButton);
 
   const closeReviewPicker = useCallback((): void => {
     setIsReviewPickerOpen(false);
@@ -2957,11 +2961,8 @@ export function AgentComposer({
                   open={false}
                   value={workspaceReferenceSelectValue}
                   disabled={
-                    isSelectedProjectMissing ||
-                    isSendingTurn ||
-                    isSubmittingPrompt ||
                     !onRequestWorkspaceReferences ||
-                    (disabled && !canQueueWhileBusy)
+                    composerControlsHardDisabled
                   }
                   onOpenChange={(isOpen) => {
                     if (isOpen) {
@@ -3025,9 +3026,7 @@ export function AgentComposer({
                   tooltipsEnabled={!previewMode}
                   compactSupported={compactSupported ?? false}
                   compactDisabled={
-                    !hasCompactableContext ||
-                    settingsControlsDisabled ||
-                    inputDisabled
+                    !hasCompactableContext || composerControlsHardDisabled
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{

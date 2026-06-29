@@ -153,7 +153,6 @@ export const zhCN = {
       actionRelogin: "重新登录",
       actionLogin: "登录",
       actionRetry: "重试",
-      actionClose: "关闭",
       stepCli: "{{provider}} CLI",
       stepVersion: "受支持的版本",
       stepAuth: "已登录",

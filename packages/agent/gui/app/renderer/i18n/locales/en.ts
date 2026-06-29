@@ -602,7 +602,7 @@ export const en = {
       conversations: "Sessions",
       newConversation: "New session",
       agentConfig: "Settings",
-      agentEnvSetup: "Environment check",
+      agentEnvSetup: "Usage & Environment Check",
       noConversations: "No sessions yet",
       emptyProjectConversations: "No chats yet",
       batchRunnerStandaloneTitle: "Agent GUI batch runner",

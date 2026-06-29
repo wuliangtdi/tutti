@@ -2046,6 +2046,45 @@ describe("AgentComposer", () => {
     expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
   });
 
+  it("keeps the workspace reference action enabled while a session is running", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "引用空间文件" })
+    ).not.toBeDisabled();
+  });
+
   it.each([
     [85, "warning"],
     [97, "critical"]
@@ -2178,7 +2217,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the compact context button disabled while busy (showStopButton=true)", () => {
+  it("keeps the compact context button enabled while a session is running", () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2218,9 +2257,9 @@ describe("AgentComposer", () => {
     fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toBeDisabled();
+    expect(compactButton).not.toBeDisabled();
     fireEvent.click(compactButton);
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
   it("shows the compact context button disabled when no user message has been sent", () => {
