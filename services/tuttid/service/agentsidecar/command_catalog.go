@@ -239,6 +239,8 @@ func commandRank(id string) int {
 		return 50
 	case "issue-manager.issue.task.create":
 		return 55
+	case "issue-manager.issue.task.create-batch":
+		return 56
 	case "issue-manager.issue.task.update":
 		return 60
 	case "issue-manager.issue.task.delete":
@@ -272,6 +274,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- Get issue detail: `%s issue get --issue-id <issue-id> --json`", cliName),
 		fmt.Sprintf("- Update issue status: `%s issue update --issue-id <issue-id> --status completed --json`", cliName),
 		fmt.Sprintf("- List issue tasks: `%s issue task list --issue-id <issue-id>`", cliName),
+		fmt.Sprintf("- Create ordered issue tasks for breakdown: `%s issue task create-batch --issue-id <issue-id> --tasks-json '[{\"title\":\"<title>\",\"content\":\"<content>\"}]' --json` - Prefer this for multiple child tasks; it persists tasks in array order without creating runs.", cliName),
 		fmt.Sprintf("- Create issue task for breakdown: `%s issue task create --issue-id <issue-id> --title <title> --content <content> --json` - Use this to persist child tasks without creating a run.", cliName),
 		fmt.Sprintf("- Update issue task status: `%s issue task update --issue-id <issue-id> --task-id <task-id> --status completed --json`", cliName),
 		fmt.Sprintf("- Create an issue run: `%s issue run create --issue-id <issue-id> --agent-provider <provider> --agent-session-id <session-id> --json` - Execution mode only; do not use for breakdown-only work.", cliName),

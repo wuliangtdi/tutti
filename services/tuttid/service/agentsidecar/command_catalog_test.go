@@ -58,6 +58,13 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			InputSchema: map[string]any{"required": []any{"issue-id", "title"}},
 		},
 		{
+			ID:          "issue-manager.issue.task.create-batch",
+			Path:        []string{"issue", "task", "create-batch"},
+			Summary:     "Create ordered issue tasks",
+			Description: "Create multiple breakdown child tasks in array order without creating a run.",
+			InputSchema: map[string]any{"required": []any{"issue-id", "tasks-json"}},
+		},
+		{
 			ID:          "issue-manager.issue.task.run.complete",
 			Path:        []string{"issue", "task", "run", "complete"},
 			Summary:     "Complete an issue task run",
@@ -132,6 +139,10 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 	if !strings.Contains(guide, "tutti issue task create --issue-id <issue-id> --title <title>") ||
 		!strings.Contains(guide, "without creating a run") {
 		t.Fatalf("guide missing breakdown task create guidance: %q", guide)
+	}
+	if !strings.Contains(guide, "tutti issue task create-batch --issue-id <issue-id> --tasks-json") ||
+		!strings.Contains(guide, "array order") {
+		t.Fatalf("guide missing breakdown task create-batch guidance: %q", guide)
 	}
 	if !strings.Contains(guide, "tutti issue task run create --agent-provider <agent-provider> --agent-session-id <agent-session-id> --issue-id <issue-id> --task-id <task-id> --json") {
 		t.Fatalf("guide missing issue task run create: %q", guide)
@@ -250,6 +261,10 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	if !strings.Contains(guide, "tutti-dev issue task create --issue-id <issue-id> --title <title> --content <content> --json") ||
 		!strings.Contains(guide, "persist child tasks without creating a run") {
 		t.Fatalf("guide = %q, want tutti-dev breakdown task create fallback command", guide)
+	}
+	if !strings.Contains(guide, "tutti-dev issue task create-batch --issue-id <issue-id> --tasks-json") ||
+		!strings.Contains(guide, "Prefer this for multiple child tasks") {
+		t.Fatalf("guide = %q, want tutti-dev breakdown task create-batch fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev issue task run complete --issue-id <issue-id> --task-id <task-id> --run-id <run-id> --status completed") {
 		t.Fatalf("guide = %q, want tutti-dev issue task run complete fallback command", guide)
