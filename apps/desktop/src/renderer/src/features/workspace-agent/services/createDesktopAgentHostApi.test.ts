@@ -228,6 +228,24 @@ interface DesktopAgentHostApiUnderTest {
     }>;
   };
   workspace: {
+    applyGitPatch(input: {
+      allowBinary?: boolean;
+      atomic?: boolean;
+      cwd: string;
+      diff: string;
+      revert?: boolean;
+      target?: "unstaged" | "staged" | "staged-and-unstaged";
+    }): Promise<{
+      appliedPaths: string[];
+      conflictedPaths: string[];
+      skippedPaths: string[];
+      status: "success" | "partial-success" | "error";
+    }>;
+    resolveGitPatchSupport(input: { cwd: string }): Promise<{
+      errorCode?: string;
+      root?: string;
+      supported: boolean;
+    }>;
     getPathForFile(file: File): string;
     readFile(input: {
       path: string;
@@ -2488,6 +2506,15 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     path: string;
     workspaceId: string;
   }> = [];
+  const appliedPatches: Array<{
+    diff: string;
+    revert?: boolean;
+    workspaceId: string;
+  }> = [];
+  const resolvedPatchSupport: Array<{
+    cwd: string;
+    workspaceId: string;
+  }> = [];
   const selectedUploadFileInputs: unknown[] = [];
   const api = createAgentHostApi({
     hostFilesApi: createHostFilesApi({
@@ -2554,6 +2581,29 @@ test("desktop agent host api reuses desktop host file operations", async () => {
           root: "/workspace",
           workspaceId: requestWorkspaceId
         };
+      },
+      async applyWorkspaceGitPatch(requestWorkspaceId, request) {
+        appliedPatches.push({
+          diff: request.diff,
+          revert: request.revert,
+          workspaceId: requestWorkspaceId
+        });
+        return {
+          appliedPaths: ["src/app.ts"],
+          conflictedPaths: [],
+          skippedPaths: [],
+          status: "success"
+        };
+      },
+      async resolveWorkspaceGitPatchSupport(requestWorkspaceId, cwd) {
+        resolvedPatchSupport.push({
+          cwd,
+          workspaceId: requestWorkspaceId
+        });
+        return {
+          root: cwd,
+          supported: true
+        };
       }
     }),
     platformApi: {
@@ -2612,10 +2662,43 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     content: "updated",
     path: "/workspace/file.txt"
   });
+  assert.deepEqual(
+    await api.workspace.applyGitPatch({
+      cwd: "/workspace",
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      revert: true
+    }),
+    {
+      appliedPaths: ["src/app.ts"],
+      conflictedPaths: [],
+      skippedPaths: [],
+      status: "success"
+    }
+  );
+  assert.deepEqual(
+    await api.workspace.resolveGitPatchSupport({ cwd: "/workspace" }),
+    {
+      root: "/workspace",
+      supported: true
+    }
+  );
   assert.deepEqual(writtenFiles, [
     {
       content: "updated",
       path: "/workspace/file.txt",
+      workspaceId
+    }
+  ]);
+  assert.deepEqual(appliedPatches, [
+    {
+      diff: "diff --git a/src/app.ts b/src/app.ts\n",
+      revert: true,
+      workspaceId
+    }
+  ]);
+  assert.deepEqual(resolvedPatchSupport, [
+    {
+      cwd: "/workspace",
       workspaceId
     }
   ]);
@@ -3058,6 +3141,12 @@ function createTuttidClient(
         },
         root: "/workspace",
         workspaceId
+      };
+    },
+    async resolveWorkspaceGitPatchSupport(_workspaceId: string, cwd: string) {
+      return {
+        root: cwd,
+        supported: true
       };
     },
     ...overrides

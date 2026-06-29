@@ -792,6 +792,14 @@ export const en = {
       turnSummaryAfter: "After",
       turnSummaryEmpty: "Empty",
       turnSummaryOpenFile: "Open",
+      turnSummaryUndo: "Undo",
+      turnSummaryReapply: "Reapply",
+      turnSummaryCheckingGit: "Checking Git repository...",
+      turnSummaryGitRequired: "This directory is not a Git repository",
+      turnSummaryPatchUnavailable:
+        "No reversible patch data is available for this change",
+      turnSummaryUndoFailed: "Failed to undo changes",
+      turnSummaryReapplyFailed: "Failed to reapply changes",
       turnSummaryShowMoreFiles: "Show {{count}} more file",
       turnSummaryShowFewerFiles: "Show fewer files",
       planLead:

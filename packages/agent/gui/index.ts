@@ -62,6 +62,7 @@ export type {
 } from "./agentActivityRuntime";
 export type {
   AgentHostApi,
+  AgentHostApplyWorkspaceGitPatchInput,
   AgentHostInputApi,
   AgentHostSelectFilesInput,
   AgentHostRuntimeApi,

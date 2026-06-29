@@ -298,7 +298,11 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		if len(locations) > 0 {
 			update["locations"] = locations
 		}
-		update["rawInput"] = map[string]any{"changes": item["changes"]}
+		rawInput := map[string]any{"changes": item["changes"]}
+		if cwd := asString(item["cwd"]); cwd != "" {
+			rawInput["cwd"] = cwd
+		}
+		update["rawInput"] = rawInput
 	case "mcpToolCall":
 		server := asString(item["server"])
 		tool := asString(item["tool"])

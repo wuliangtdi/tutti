@@ -177,6 +177,87 @@ scope the selected detail window. Do not promote them into durable/detail
 message bases: their local timestamp-derived versions can outrank lower
 authoritative daemon versions and suppress the durable user prompt during merge.
 
+### Turn Summary Undo/Reapply
+
+The changed-files turn summary follows Codex-style patch semantics, but keeps
+the implementation split across the existing Tutti ownership boundaries:
+
+```text
+agent fileChange/tool output
+  -> AgentGUI turn summary projection stores executable patchBatches
+  -> AgentTurnSummaryRow builds per-batch unified diffs
+  -> AgentHost workspace.resolveGitPatchSupport
+  -> tuttid GET /v1/workspaces/{workspaceID}/git-patch-support
+  -> AgentHost workspace.applyGitPatch with cwd + diff + revert
+  -> desktop tuttid client
+  -> tuttid POST /v1/workspaces/{workspaceID}/git-patch
+  -> services/tuttid Git patch service
+  -> git apply / git apply -R against the Git repository resolved from cwd
+```
+
+The durable activity data is the original turn summary input:
+
+- `patchBatches` with the tool call id, cwd, path, change type, and patch
+  payload needed to reconstruct per-batch diffs.
+- file-level unified diffs as a fallback for older or less structured activity.
+  This fallback also applies when recorded `patchBatches` exist but reconstruct
+  zero executable diffs; for absolute file paths with a synthetic `/` workspace
+  root, use the file's containing directory as the Git cwd.
+
+Do not persist the UI button state. A successful Undo only flips the local
+button to Reapply for the current render. If the page reloads, the source of
+truth is still the recorded diff plus the current worktree state; `git apply`
+decides whether the operation can still apply cleanly.
+
+The Undo/Reapply control uses an icon plus visible text. Before enabling the
+control, AgentGUI resolves Git patch support for every cwd in the pending
+batches. If any cwd is outside a Git repository, the control stays disabled and
+uses an explanatory tooltip instead of letting the user click into a
+`not-git-repo` failure. If the row cannot reconstruct executable patch data,
+AgentGUI still renders the control disabled with a tooltip.
+
+Patch batch cwd values may be runtime-projected paths such as `/workspace`.
+AgentGUI must use those values to construct cwd-relative unified diffs, but map
+them back to the host workspace root before calling Git support/apply APIs.
+Although the daemon transport route is under `/v1/workspaces/{workspaceID}`,
+turn-summary patch apply follows Codex App's host operation semantics: the
+request supplies `cwd`, `diff`, and `revert`, and the daemon applies the patch
+to the Git repository resolved from `cwd`. `workspaceID` is the desktop/tuttid
+context for transport, eventing, and host integration; it is not a filesystem
+boundary for this operation. The daemon Git patch service also treats a supplied
+file path or not-yet-created target path as a path inside the candidate
+repository by resolving from the nearest existing parent directory.
+
+The Git mutation belongs in `services/tuttid`, not `apps/desktop` or
+`@tutti-os/agent-gui`. The daemon creates a temporary `tutti-apply-*`
+directory, writes `patch.diff`, optionally copies the Git index into that
+directory for non-atomic unstaged `--3way` operations, executes `git apply` or
+`git apply -R`, and removes the temporary directory on every exit path.
+When reversing an added-file patch, the daemon has one narrow fallback for
+less-structured summary diffs: if Git rejects the patch, the target is still
+untracked, and the current file content only differs from the patch by trailing
+newlines, it removes the file directly. Real content drift must continue to
+fail instead of being deleted.
+
+Undo uses reverse batch order. Reapply uses original batch order. A non-success
+batch stops the remaining batches and is not automatically rolled back. This is
+intentional: summary undo is a reverse patch against the current worktree, not a
+snapshot restore.
+
+Patch failures are surfaced through the host-provided short toast capability.
+The desktop host wires that capability to the existing `Toast.Error` facade;
+AgentGUI shared components should not call the sonner `toast.error` entrypoint
+directly except as a last-resort fallback when no host toast capability exists.
+The summary card does not keep an inline failure row or durable error state
+because the source of truth remains the recorded diff plus the current worktree
+state.
+
+Codex invalidates Git query caches after this operation. Tutti currently has no
+equivalent renderer Git cache group. The AgentGUI row emits a lightweight
+`tutti-agent-git-patch-applied` browser event after a result that changed files
+so desktop surfaces can attach targeted refresh behavior later, but this event
+is not durable state and should not become the source of truth.
+
 ## User-Facing Data Flows
 
 Use these flows when debugging AgentGUI behavior. They are intentionally written

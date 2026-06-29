@@ -1,6 +1,7 @@
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
   AgentHostInputApi,
+  AgentHostApplyWorkspaceGitPatchInput,
   AgentHostSelectFilesInput,
   AgentProviderProbeListInput,
   PersistWriteResult,
@@ -213,6 +214,10 @@ export function createDesktopAgentHostApi({
       setTheme: async () => {}
     },
     workspace: {
+      applyGitPatch: async (payload: AgentHostApplyWorkspaceGitPatchInput) =>
+        tuttidClient.applyWorkspaceGitPatch(workspaceId, payload),
+      resolveGitPatchSupport: async (payload: { cwd: string }) =>
+        tuttidClient.resolveWorkspaceGitPatchSupport(workspaceId, payload.cwd),
       copyPath: async (payload: { path: string }) => {
         await navigator.clipboard.writeText(payload.path);
       },
