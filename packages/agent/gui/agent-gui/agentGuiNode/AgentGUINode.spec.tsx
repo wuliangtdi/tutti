@@ -35,6 +35,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import type { AgentGUINodeData } from "../../types";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 import { writeWorkspaceFileDropData } from "../terminalNode/workspaceFileDrop";
 
 const mockCreateConversation = vi.fn();
@@ -1449,7 +1450,33 @@ describe("AgentGUINode", () => {
     fireEvent.click(getChromeNewConversationButton());
 
     expect(mockCreateConversation).toHaveBeenCalledTimes(1);
-    expect(mockCreateConversation).toHaveBeenCalledWith();
+    expect(mockCreateConversation).toHaveBeenCalledWith({
+      source: "rail_toolbar"
+    });
+  });
+
+  it("clears stale active conversation chrome state before creating a new conversation", () => {
+    const state: AgentGUINodeData = {
+      provider: "codex",
+      lastActiveAgentSessionId: "session-1",
+      lastActiveConversationTitle: "Existing session",
+      conversationRailWidthPx: null
+    };
+    const onUpdateNode =
+      vi.fn<
+        (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
+      >();
+    renderAgentGUINode({ onUpdateNode, state });
+
+    fireEvent.click(getChromeNewConversationButton());
+
+    expect(mockCreateConversation).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode).toHaveBeenCalledTimes(1);
+    expect(onUpdateNode.mock.calls[0]?.[0](state)).toEqual({
+      ...state,
+      lastActiveAgentSessionId: null,
+      lastActiveConversationTitle: null
+    });
   });
 
   it("renders a single new-conversation button in the chrome", () => {
@@ -7291,6 +7318,7 @@ function createViewModel(
       lastActiveAgentSessionId: null,
       conversationRailWidthPx: null
     },
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     conversations: [],
     userProjects: [],
     activeConversation: null,

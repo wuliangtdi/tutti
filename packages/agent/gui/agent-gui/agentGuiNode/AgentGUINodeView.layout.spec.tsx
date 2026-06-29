@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../shared/workspaceAgentSessionDetailViewModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
 import { AgentGUINodeView, type AgentGUIViewLabels } from "./AgentGUINodeView";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 
 const conversationFlowMock = vi.hoisted(() => ({
   calls: [] as Array<{ conversation: unknown; labels: unknown }>
@@ -354,7 +355,8 @@ describe("AgentGUINodeView layout persistence", () => {
     fireEvent.click(screen.getByLabelText("New session"));
 
     expect(actions.createConversation).toHaveBeenCalledWith({
-      projectPath: "/workspace/app"
+      projectPath: "/workspace/app",
+      source: "project_section"
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
@@ -387,7 +389,8 @@ describe("AgentGUINodeView layout persistence", () => {
     );
 
     expect(actions.createConversation).toHaveBeenCalledWith({
-      projectPath: null
+      projectPath: null,
+      source: "unscoped_section"
     });
     await waitFor(() => {
       expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
@@ -431,7 +434,8 @@ describe("AgentGUINodeView layout persistence", () => {
     );
 
     expect(actions.createConversation).toHaveBeenCalledWith({
-      projectPath: null
+      projectPath: null,
+      source: "unscoped_section"
     });
   });
 
@@ -470,7 +474,8 @@ describe("AgentGUINodeView layout persistence", () => {
     fireEvent.click(newConversationButton);
 
     expect(actions.createConversation).toHaveBeenCalledWith({
-      projectPath: "/workspace/app"
+      projectPath: "/workspace/app",
+      source: "selected_project"
     });
     expect(composerMock.calls.at(-1)?.composerFocusRequestSequence).toBe(1);
   });
@@ -1595,6 +1600,7 @@ function createViewModel(): AgentGUINodeViewModel {
       lastActiveAgentSessionId: null,
       conversationRailWidthPx: null
     },
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     conversations: [],
     userProjects: [],
     activeConversation: null,
