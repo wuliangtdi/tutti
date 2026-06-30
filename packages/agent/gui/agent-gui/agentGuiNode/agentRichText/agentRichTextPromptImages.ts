@@ -29,6 +29,31 @@ export function imageFilesFromDataTransfer(
   return files;
 }
 
+export function nonImageFilesFromDataTransfer(
+  dataTransfer: DataTransfer | null
+): File[] {
+  if (!dataTransfer) {
+    return [];
+  }
+  const files: File[] = [];
+  const items = (dataTransfer as { items?: DataTransferItemList | null }).items;
+  if (!items) {
+    return Array.from(dataTransfer.files ?? []).filter(
+      (file) => !supportedPromptImageMimeType(file.type)
+    );
+  }
+  for (const item of Array.from(items)) {
+    if (item.kind !== "file" || supportedPromptImageMimeType(item.type)) {
+      continue;
+    }
+    const file = item.getAsFile();
+    if (file) {
+      files.push(file);
+    }
+  }
+  return files;
+}
+
 export function supportedPromptImageMimeType(
   value: string
 ): value is AgentRichTextPromptImage["mimeType"] {

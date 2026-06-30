@@ -30,6 +30,7 @@ type localProcessConnection struct {
 	closeOnce sync.Once
 	sendMu    sync.Mutex
 	inputOnce sync.Once
+	closeErr  error
 }
 
 func NewLocalProcessTransport() ProcessTransport {
@@ -228,9 +229,20 @@ func (c *localProcessConnection) Close() error {
 			_ = c.Terminate()
 		}
 		if !c.waitDone(750 * time.Millisecond) {
-			_ = c.Kill()
+			killErr := c.Kill()
+			if !c.waitDone(2 * time.Second) {
+				if killErr != nil {
+					c.closeErr = killErr
+					return
+				}
+				c.closeErr = errors.New("process did not exit after kill")
+				return
+			}
 		}
 	})
+	if c.closeErr != nil {
+		return c.closeErr
+	}
 	<-c.done
 	return nil
 }

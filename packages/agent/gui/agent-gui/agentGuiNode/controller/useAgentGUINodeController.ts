@@ -1604,6 +1604,30 @@ function retargetOptimisticPromptMessages(
   return { changed, messages: retargeted };
 }
 
+function removeOptimisticPromptMessagesByClientSubmitId(
+  messages: readonly WorkspaceAgentActivityMessage[],
+  clientSubmitId: string
+): { changed: boolean; messages: WorkspaceAgentActivityMessage[] } {
+  const normalizedClientSubmitId = clientSubmitId.trim();
+  if (!normalizedClientSubmitId || messages.length === 0) {
+    return { changed: false, messages: [...messages] };
+  }
+  const filtered = messages.filter((message) => {
+    if (!isWorkspaceAgentActivityOptimisticMessage(message)) {
+      return true;
+    }
+    const messageClientSubmitId = message.payload?.clientSubmitId;
+    return (
+      typeof messageClientSubmitId !== "string" ||
+      messageClientSubmitId.trim() !== normalizedClientSubmitId
+    );
+  });
+  return {
+    changed: filtered.length !== messages.length,
+    messages: filtered
+  };
+}
+
 function shouldRetargetOptimisticPromptFromMessage(
   message: WorkspaceAgentActivityMessage,
   trace: AgentSubmitTraceState
@@ -6048,6 +6072,42 @@ export function useAgentGUINodeController({
     [sessionViewRef]
   );
 
+  const removeOptimisticPrompt = useCallback(
+    (agentSessionId: string, clientSubmitId: string) => {
+      const normalizedAgentSessionId = agentSessionId.trim();
+      if (!normalizedAgentSessionId || !clientSubmitId.trim()) {
+        return;
+      }
+      const sessionView = getAgentSessionView(
+        sessionViewRef(normalizedAgentSessionId)
+      );
+      if (!sessionView) {
+        return;
+      }
+      const detail = removeOptimisticPromptMessagesByClientSubmitId(
+        sessionView.detailMessages,
+        clientSubmitId
+      );
+      if (detail.changed) {
+        setAgentSessionViewDetailMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          detail.messages
+        );
+      }
+      const overlay = removeOptimisticPromptMessagesByClientSubmitId(
+        sessionView.overlayMessages,
+        clientSubmitId
+      );
+      if (overlay.changed) {
+        setAgentSessionViewOverlayMessages(
+          sessionViewRef(normalizedAgentSessionId),
+          overlay.messages
+        );
+      }
+    },
+    [sessionViewRef]
+  );
+
   const applyStatePatch = useCallback(
     (patch: WorkspaceAgentActivityStatePatch) => {
       const agentSessionId = patch.agentSessionId.trim();
@@ -7246,6 +7306,13 @@ export function useAgentGUINodeController({
             }
           : current
       );
+      const pendingOptimisticTurnId = createPendingOptimisticTurnId(
+        submitTrace.clientSubmitId
+      );
+      pendingTurnIdBySessionIdRef.current = {
+        ...pendingTurnIdBySessionIdRef.current,
+        [agentSessionId]: pendingOptimisticTurnId
+      };
       applyStatePatch({
         agentSessionId,
         currentPhase: "working",
@@ -7258,11 +7325,29 @@ export function useAgentGUINodeController({
         workspaceId
       });
       let queuedPromptClaimCompleted = false;
+      const shouldRecordPendingOptimisticPrompt = queuedPromptId === undefined;
+      if (shouldRecordPendingOptimisticPrompt) {
+        recordLocalMessages(agentSessionId, [
+          createOptimisticPromptMessage({
+            workspaceId,
+            agentSessionId,
+            turnId: pendingOptimisticTurnId,
+            clientSubmitId: submitTrace.clientSubmitId,
+            userId: currentUserId?.trim() || "user",
+            prompt: submittedPromptText,
+            content: normalizedContent,
+            occurredAtUnixMs: submittedAtUnixMs
+          })
+        ]);
+        reportAgentSubmitTraceDiagnostic({
+          event: "optimistic_user_message_recorded",
+          runtime: agentActivityRuntime,
+          trace: submitTrace,
+          workspaceId
+        });
+      }
       void Promise.resolve()
         .then(() => {
-          if (!isCurrentConversation(agentSessionId)) {
-            return null;
-          }
           reportAgentSubmitTraceDiagnostic({
             event: "send_input.requested",
             runtime: agentActivityRuntime,
@@ -7279,7 +7364,7 @@ export function useAgentGUINodeController({
           });
         })
         .then((result) => {
-          if (!result || !isCurrentConversation(agentSessionId)) {
+          if (!result) {
             return;
           }
           submitTrace.turnId = result.turnId.trim() || null;
@@ -7360,24 +7445,32 @@ export function useAgentGUINodeController({
               ...pendingTurnIdBySessionIdRef.current,
               [agentSessionId]: submittedTurnId
             };
-            recordLocalMessages(agentSessionId, [
-              createOptimisticPromptMessage({
-                workspaceId,
+            if (shouldRecordPendingOptimisticPrompt) {
+              retargetOptimisticPromptTurn(
                 agentSessionId,
-                turnId: submittedTurnId,
-                clientSubmitId: submitTrace.clientSubmitId,
-                userId: currentUserId?.trim() || "user",
-                prompt: submittedPromptText,
-                content: normalizedContent,
-                occurredAtUnixMs: Date.now()
-              })
-            ]);
-            reportAgentSubmitTraceDiagnostic({
-              event: "optimistic_user_message_recorded",
-              runtime: agentActivityRuntime,
-              trace: submitTrace,
-              workspaceId
-            });
+                submitTrace.clientSubmitId,
+                submittedTurnId
+              );
+            } else {
+              recordLocalMessages(agentSessionId, [
+                createOptimisticPromptMessage({
+                  workspaceId,
+                  agentSessionId,
+                  turnId: submittedTurnId,
+                  clientSubmitId: submitTrace.clientSubmitId,
+                  userId: currentUserId?.trim() || "user",
+                  prompt: submittedPromptText,
+                  content: normalizedContent,
+                  occurredAtUnixMs: Date.now()
+                })
+              ]);
+              reportAgentSubmitTraceDiagnostic({
+                event: "optimistic_user_message_recorded",
+                runtime: agentActivityRuntime,
+                trace: submitTrace,
+                workspaceId
+              });
+            }
             scheduleAgentSubmitTracePaint({
               runtime: agentActivityRuntime,
               trace: submitTrace,
@@ -7398,6 +7491,12 @@ export function useAgentGUINodeController({
           const nextTraces = { ...submitTraceBySessionIdRef.current };
           delete nextTraces[agentSessionId];
           submitTraceBySessionIdRef.current = nextTraces;
+          if (shouldRecordPendingOptimisticPrompt) {
+            removeOptimisticPrompt(agentSessionId, submitTrace.clientSubmitId);
+          }
+          const nextPendingTurns = { ...pendingTurnIdBySessionIdRef.current };
+          delete nextPendingTurns[agentSessionId];
+          pendingTurnIdBySessionIdRef.current = nextPendingTurns;
           reportAgentSubmitTraceDiagnostic({
             event: "submit.failed",
             runtime: agentActivityRuntime,
@@ -7513,6 +7612,8 @@ export function useAgentGUINodeController({
       loadSessionState,
       refreshMessagesFromSnapshot,
       recordLocalMessages,
+      removeOptimisticPrompt,
+      retargetOptimisticPromptTurn,
       sessionViewRef,
       setTransientConversation,
       patchConversation,

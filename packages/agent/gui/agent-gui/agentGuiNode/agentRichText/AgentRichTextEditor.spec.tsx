@@ -139,6 +139,39 @@ describe("AgentRichTextEditor", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("hello\nworld"));
   });
 
+  it("pastes non-image files as file mention chips", async () => {
+    const onChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        getPathForFile={(file) => `/workspace/docs/${file.name}`}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    fireEvent.paste(editor, {
+      clipboardData: createDataTransferStub([
+        new File(["readme"], "README.md", { type: "text/markdown" })
+      ])
+    });
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        "[@README.md](/workspace/docs/README.md) "
+      )
+    );
+    const mention = editor.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "file");
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-href",
+      "/workspace/docs/README.md"
+    );
+  });
+
   it("pastes plain text after an existing reference mention", async () => {
     const onChange = vi.fn();
     render(

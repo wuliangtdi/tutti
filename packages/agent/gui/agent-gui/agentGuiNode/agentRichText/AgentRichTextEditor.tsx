@@ -49,6 +49,7 @@ import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import type { AgentCapabilityTokenOption } from "./agentCapabilityTokenExtension";
 import {
   imageFilesFromDataTransfer,
+  nonImageFilesFromDataTransfer,
   readAgentRichTextPromptImages,
   type AgentRichTextPromptImage
 } from "./agentRichTextPromptImages";
@@ -75,6 +76,7 @@ export interface AgentRichTextEditorProps {
   promptImagesSupported?: boolean;
   onPromptImagesUnsupported?: () => void;
   onPasteImages?: (images: AgentRichTextPastedImage[]) => void;
+  getPathForFile?: (file: File) => string;
 }
 
 export interface AgentRichTextEditorHandle {
@@ -455,7 +457,8 @@ export const AgentRichTextEditor = forwardRef<
     onLinkClick,
     promptImagesSupported = true,
     onPromptImagesUnsupported,
-    onPasteImages
+    onPasteImages,
+    getPathForFile
   },
   ref
 ): React.JSX.Element {
@@ -477,6 +480,7 @@ export const AgentRichTextEditor = forwardRef<
   const onPromptImagesUnsupportedRef = useRef(onPromptImagesUnsupported);
   const onPasteImagesRef = useRef(onPasteImages);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
+  const getPathForFileRef = useRef(getPathForFile);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
   const availableSkillsRef = useRef(availableSkills);
@@ -618,6 +622,7 @@ export const AgentRichTextEditor = forwardRef<
   onPromptImagesUnsupportedRef.current = onPromptImagesUnsupported;
   onPasteImagesRef.current = onPasteImages;
   promptImagesSupportedRef.current = promptImagesSupported;
+  getPathForFileRef.current = getPathForFile;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
   availableSkillsRef.current = availableSkills;
@@ -743,6 +748,50 @@ export const AgentRichTextEditor = forwardRef<
               }
             });
             return true;
+          }
+          const getPathForFileFn = getPathForFileRef.current;
+          if (getPathForFileFn) {
+            const nonImageFiles = nonImageFilesFromDataTransfer(
+              event.clipboardData
+            );
+            if (nonImageFiles.length > 0) {
+              const paths = nonImageFiles
+                .map((file) => {
+                  try {
+                    return getPathForFileFn(file);
+                  } catch {
+                    return null;
+                  }
+                })
+                .filter((p): p is string => Boolean(p));
+              if (paths.length > 0) {
+                event.preventDefault();
+                const currentEditor = editorRef.current;
+                if (!currentEditor) {
+                  return true;
+                }
+                if (!currentEditor.isFocused) {
+                  currentEditor.commands.setTextSelection(
+                    currentEditor.state.doc.content.size
+                  );
+                }
+                currentEditor.commands.insertContent(
+                  createAgentFileMentionContent(
+                    paths.map((path) => ({
+                      path,
+                      kind: "file"
+                    })),
+                    {
+                      prefixCaretAnchor: isPromptVisualLineStart(
+                        currentEditor,
+                        currentEditor.state.selection.from
+                      )
+                    }
+                  )
+                );
+                return true;
+              }
+            }
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
           if (html.includes("data-agent-file-mention")) {

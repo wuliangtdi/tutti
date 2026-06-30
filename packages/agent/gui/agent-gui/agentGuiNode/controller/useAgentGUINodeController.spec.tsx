@@ -1484,6 +1484,104 @@ describe("useAgentGUINodeController", () => {
     ]);
   });
 
+  it("keeps an existing-session submitted prompt visible after switching away before send resolves", async () => {
+    let resolveExec:
+      | ((value: { sessionStatus: string; turnId: string }) => void)
+      | undefined;
+    const exec = vi.fn(
+      () =>
+        new Promise<{ sessionStatus: string; turnId: string }>((resolve) => {
+          resolveExec = resolve;
+        })
+    );
+    installAgentHostApi({
+      exec,
+      list: vi.fn(async () => ({
+        presences: [],
+        sessions: [
+          workspaceAgentSession("session-1", { effectiveStatus: "ready" }),
+          workspaceAgentSession("session-2", { effectiveStatus: "ready" })
+        ]
+      })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn())
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData("session-1"),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-1");
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("A1"));
+    });
+
+    await waitFor(() => {
+      expect(exec).toHaveBeenCalledWith({
+        workspaceId: "room-1",
+        agentSessionId: "session-1",
+        content: promptBlocks("A1")
+      });
+      expect(
+        getAgentSessionView({
+          workspaceId: "room-1",
+          agentSessionId: "session-1"
+        })?.overlayMessages
+      ).toEqual([
+        expect.objectContaining({
+          role: "user",
+          payload: expect.objectContaining({ text: "A1" })
+        })
+      ]);
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-2");
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversationId).toBe("session-2");
+    });
+
+    await act(async () => {
+      resolveExec?.({ sessionStatus: "working", turnId: "turn-a1" });
+    });
+    act(() => {
+      emitRuntimeSessionEventForTests?.(
+        streamMessage({
+          agentSessionId: "session-1",
+          id: 2,
+          eventId: "session-1-assistant-a2",
+          role: "assistant",
+          content: "A2",
+          turnId: "turn-a1",
+          occurredAtUnixMs: 2
+        })
+      );
+    });
+
+    act(() => {
+      result.current.actions.selectConversation("session-1");
+    });
+
+    await waitFor(() => {
+      expect(conversationBodies(result.current.viewModel)).toEqual([
+        "A1",
+        "A2"
+      ]);
+    });
+  });
+
   it("keeps each window selection independent when another window creates a new session", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)

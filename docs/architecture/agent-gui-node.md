@@ -176,6 +176,10 @@ Optimistic prompt messages must stay overlay-owned even when they are used to
 scope the selected detail window. Do not promote them into durable/detail
 message bases: their local timestamp-derived versions can outrank lower
 authoritative daemon versions and suppress the durable user prompt during merge.
+Existing-session submit must record the optimistic user prompt before the
+`sendInput` acknowledgement returns, then retarget or remove that prompt by
+`clientSubmitId`; otherwise switching away during submit can leave only later
+assistant stream events visible when the user returns.
 
 ### Turn Summary Undo/Reapply
 
@@ -458,6 +462,11 @@ The provider/runtime reports are the durable return path. AgentGUI should not
 parse provider stdout, terminal text, or runtime internals directly. It consumes
 normalized sessions, messages, state patches, and message pages through
 `AgentActivityRuntime`.
+If a provider exposes final assistant text through a side-channel such as a
+Claude SDK message rather than an ACP `agent_message_chunk`, the daemon adapter
+must normalize that text into the same persisted message projection. AgentGUI
+must not read provider transcript files or SDK-specific logs to recover missing
+final output.
 
 ### Event Reconcile And UI Refresh
 
@@ -692,20 +701,25 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                             | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                     | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | controller local create state    | home `startConversation` begins                         | new-session activation succeeds, fails, or is abandoned as stale               |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`            | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                      | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins               | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing | options/settings resolve or fallback state is applied                          |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                    | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                    | Starts when                                                    | Clears when                                                                    |
+| ------------------------------ | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                       | list load resolves or errors                                                   |
+| Selected detail skeleton       | session view store/controller    | active session messages load starts                            | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | controller local create state    | home `startConversation` begins                                | new-session activation succeeds, fails, or is abandoned as stale               |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                   | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                             | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                      | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing        | options/settings resolve or fallback state is applied                          |
+| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready | captured status says provider is ready or user fixes setup                     |
+| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                           | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
 between surfaces to hide a state-source mismatch.
+Desktop restore must not project "not ready" from an uncaptured provider-status
+snapshot. Until the first captured provider status exists, pass unknown provider
+readiness into AgentGUI so startup does not flash a false "configure provider"
+notice before local Codex or other provider detection returns.
 
 ### Error, Retry, And Recovery
 

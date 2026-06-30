@@ -1901,7 +1901,32 @@ func (a *standardACPAdapter) handleACPMessage(
 		return acpPermissionResolvedEvents(session, turnID, pending, selection, nil), nil
 	case claudeSDKMessageMethod:
 		a.logClaudeSDKMessage(session, turnID, message.Params)
+		projection := claudeSDKAssistantTextProjection(message.Params)
 		events := a.mirrorClaudeSDKGoalStatus(session, message.Params)
+		textEvents := claudeSDKAssistantTextEvents(session, turnID, projection, normalizer)
+		if len(textEvents) > 0 {
+			events = append(events, textEvents...)
+		}
+		if projection.shouldLog() {
+			slog.Info("agent session Claude SDK assistant text projection",
+				"event", "agent_session.claude_sdk.assistant_text_projection",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"turn_id", turnID,
+				"message_id", projection.messageID,
+				"message_type", projection.messageType,
+				"message_role", projection.role,
+				"stop_reason", projection.stopReason,
+				"content_types", projection.contentTypes,
+				"has_tool_use", projection.hasToolUse,
+				"text_len", len(projection.text),
+				"projected", len(textEvents) > 0,
+				"skip_reason", projection.skipReason,
+			)
+		}
 		if len(events) > 0 && emit == nil {
 			a.emitSessionEvents(session.AgentSessionID, events)
 		}
@@ -2097,6 +2122,114 @@ func (a *standardACPAdapter) logClaudeSDKMessage(session Session, turnID string,
 			"detail", detail,
 		)
 	}
+}
+
+type claudeSDKAssistantTextProjectionResult struct {
+	messageID    string
+	messageType  string
+	role         string
+	stopReason   string
+	contentTypes []string
+	hasToolUse   bool
+	text         string
+	skipReason   string
+}
+
+func (p claudeSDKAssistantTextProjectionResult) shouldLog() bool {
+	return p.text != "" || p.role == "assistant" || p.skipReason == "decode_failed"
+}
+
+func claudeSDKAssistantTextProjection(raw json.RawMessage) claudeSDKAssistantTextProjectionResult {
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return claudeSDKAssistantTextProjectionResult{skipReason: "decode_failed"}
+	}
+	root := payloadObject(decoded)
+	if len(root) == 0 {
+		return claudeSDKAssistantTextProjectionResult{skipReason: "empty_payload"}
+	}
+	envelope := payloadObject(root["message"])
+	if len(envelope) == 0 {
+		envelope = root
+	}
+	message := envelope
+	if inner := payloadObject(envelope["message"]); strings.TrimSpace(asString(inner["role"])) == "assistant" {
+		message = inner
+	}
+	result := claudeSDKAssistantTextProjectionResult{
+		messageID:   strings.TrimSpace(asString(message["id"])),
+		messageType: firstNonEmpty(strings.TrimSpace(asString(envelope["type"])), strings.TrimSpace(asString(message["type"]))),
+		role:        strings.TrimSpace(asString(message["role"])),
+		stopReason:  firstNonEmpty(strings.TrimSpace(asString(envelope["stop_reason"])), strings.TrimSpace(asString(message["stop_reason"]))),
+	}
+	if result.role != "assistant" {
+		result.skipReason = "not_assistant"
+		return result
+	}
+	result.text, result.contentTypes, result.hasToolUse = claudeSDKAssistantTextFromContent(message["content"])
+	if result.text == "" {
+		result.skipReason = "no_text_content"
+	}
+	return result
+}
+
+func claudeSDKAssistantTextFromContent(content any) (string, []string, bool) {
+	switch typed := content.(type) {
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return "", nil, false
+		}
+		return text, []string{"string"}, false
+	case []any:
+		parts := make([]string, 0, len(typed))
+		contentTypes := make([]string, 0, len(typed))
+		hasToolUse := false
+		for _, item := range typed {
+			block := payloadObject(item)
+			if len(block) == 0 {
+				continue
+			}
+			blockType := strings.TrimSpace(asString(block["type"]))
+			if blockType != "" {
+				contentTypes = append(contentTypes, blockType)
+			}
+			if blockType == "tool_use" {
+				hasToolUse = true
+				continue
+			}
+			if blockType != "" && blockType != "text" {
+				continue
+			}
+			if text := strings.TrimSpace(asString(block["text"])); text != "" {
+				parts = append(parts, text)
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n")), contentTypes, hasToolUse
+	default:
+		return "", nil, false
+	}
+}
+
+func claudeSDKAssistantTextEvents(
+	session Session,
+	turnID string,
+	projection claudeSDKAssistantTextProjectionResult,
+	normalizer *acpTurnNormalizer,
+) []activityshared.Event {
+	if strings.TrimSpace(projection.text) == "" {
+		return nil
+	}
+	if normalizer != nil {
+		return normalizer.AppendAssistantSnapshot(session, turnID, projection.text, projection.messageID)
+	}
+	messageID := firstNonEmpty(strings.TrimSpace(projection.messageID), newID())
+	return []activityshared.Event{newTurnActivityEventWithID(session, messageID, EventMessage, turnID, messageStreamStateCompleted, RoleAssistant, projection.text, map[string]any{
+		"messageId":   messageID,
+		"contentMode": messageContentModeSnapshot,
+		"streamState": messageStreamStateCompleted,
+		"source":      "claude_sdk",
+	})}
 }
 
 func (a *standardACPAdapter) mirrorClaudeSDKGoalStatus(session Session, raw json.RawMessage) []activityshared.Event {

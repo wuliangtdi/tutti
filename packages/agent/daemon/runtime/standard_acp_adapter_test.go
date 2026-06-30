@@ -2367,6 +2367,100 @@ func TestClaudeCodeAdapterMirrorsSDKGoalStatusIntoRuntimeContext(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeAdapterProjectsSDKAssistantTextMessage(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeAdapter(newStandardACPTransport("Claude Agent", "claude-session-sdk-text"))
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-sdk-text"
+	raw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type": "assistant",
+			"message": map[string]any{
+				"id":          "msg-final",
+				"type":        "message",
+				"role":        "assistant",
+				"stop_reason": "end_turn",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": "final answer",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal sdk assistant text: %v", err)
+	}
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-final", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: raw,
+	}, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("handle sdk assistant text: %v", err)
+	}
+	messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(messages) != 1 {
+		t.Fatalf("assistant messages = %#v, want one", messages)
+	}
+	if got := messages[0].Payload.Content; got != "final answer" {
+		t.Fatalf("content = %q, want final answer", got)
+	}
+	if got := messages[0].Payload.Metadata["messageId"]; got != "msg-final" {
+		t.Fatalf("messageId = %#v, want msg-final", got)
+	}
+	if got := messages[0].Payload.Metadata["source"]; got != "claude_sdk" {
+		t.Fatalf("source = %#v, want claude_sdk", got)
+	}
+}
+
+func TestClaudeCodeAdapterSkipsDuplicateSDKAssistantText(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeAdapter(newStandardACPTransport("Claude Agent", "claude-session-sdk-text"))
+	session := standardTestSession(ProviderClaudeCode)
+	session.ProviderSessionID = "claude-session-sdk-text"
+	normalizer := newACPTurnNormalizer()
+	normalizer.ApplyAssistantFinalText("already projected")
+	completed := normalizer.FinishCompleted(session, "turn-final")
+	if len(activityMessagesWithRole(completed, activityshared.MessageRoleAssistant)) != 1 {
+		t.Fatalf("completed events = %#v, want baseline assistant message", completed)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"message": map[string]any{
+			"type": "assistant",
+			"message": map[string]any{
+				"id":          "msg-final",
+				"type":        "message",
+				"role":        "assistant",
+				"stop_reason": "end_turn",
+				"content": []any{
+					map[string]any{
+						"type": "text",
+						"text": "already projected",
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal sdk assistant text: %v", err)
+	}
+
+	events, err := adapter.handleACPMessage(context.Background(), nil, session, "turn-final", acpMessage{
+		Method: claudeSDKMessageMethod,
+		Params: raw,
+	}, normalizer, nil, nil)
+	if err != nil {
+		t.Fatalf("handle duplicate sdk assistant text: %v", err)
+	}
+	if messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant); len(messages) != 0 {
+		t.Fatalf("assistant messages = %#v, want duplicate skipped", messages)
+	}
+}
+
 func firstPromptText(t *testing.T, params map[string]any) string {
 	t.Helper()
 	texts := promptTexts(t, params)
