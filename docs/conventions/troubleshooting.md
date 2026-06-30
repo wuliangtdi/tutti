@@ -1086,6 +1086,33 @@ information is not available yet`, but `ps` or `lsof` still shows an older
   [main.tsx](../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
 
+### AgentGUI freezes when session history is large
+
+- Symptom:
+  The workspace renderer freezes, tears visually in screen recordings, or feels
+  stuck while opening AgentGUI or submitting an agent prompt in a workspace with
+  a long agent history.
+- Quick checks:
+  Inspect developer logs for `agent.gui.runtime.snapshot_changed` diagnostics.
+  If `sessionCount` is in the hundreds or thousands, check whether the desktop
+  adapter is calling `listWorkspaceAgentSessions` without a `limit`.
+- Root cause:
+  Unbounded session-list loads push every historical agent session into
+  `AgentActivityRuntime`, and each live event can make AgentGuiNode rebuild
+  conversation projections for history the visible rail does not need.
+- Fix:
+  Keep broad runtime session-list requests bounded at the desktop adapter or
+  daemon API boundary. Use targeted message/session fetches for the selected
+  detail rather than widening the runtime snapshot.
+- Validation:
+  Reproduce with a large session table and confirm runtime diagnostics report a
+  bounded `sessionCount`. Run the desktop adapter tests and `pnpm check:changed`
+  for mixed AgentGUI/desktop changes.
+- References:
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [createDesktopAgentActivityRuntime.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
+
 ### Browser Node focus pings miss iframe-hosted editors
 
 - Symptom:

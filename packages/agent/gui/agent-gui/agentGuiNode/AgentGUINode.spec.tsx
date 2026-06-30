@@ -639,6 +639,15 @@ vi.mock("../../i18n/index", () => ({
           "Context usage unavailable",
         "agentHost.agentGui.slashStatusLimitsUnavailable":
           "Rate limits unavailable",
+        "agentHost.agentGui.slashCommandCompactLabel": "compact",
+        "agentHost.agentGui.slashCommandContextLabel": "context",
+        "agentHost.agentGui.slashCommandFastLabel": "fast",
+        "agentHost.agentGui.slashCommandGoalLabel": "goal",
+        "agentHost.agentGui.slashCommandInitLabel": "init",
+        "agentHost.agentGui.slashCommandPlanLabel": "plan",
+        "agentHost.agentGui.slashCommandReviewLabel": "review",
+        "agentHost.agentGui.slashCommandStatusLabel": "status",
+        "agentHost.agentGui.slashCommandUsageLabel": "usage",
         "agentHost.agentGui.collaboratorSessionReadOnlyPlaceholder":
           "非当前用户会话，不可直接对话",
         "agentHost.agentGui.promptTipsPrefix": "Tips：",
@@ -6392,6 +6401,33 @@ describe("AgentGUINode", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-node__bottom-dock\s*>\s*\.agent-gui-chrome__session-chrome,[\s\S]*?\.agent-gui-node__composer-input-shell\s*{[^}]*pointer-events:\s*auto/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea\s*{[^}]*scrollbar-width:\s*thin/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*display:\s*block[^}]*width:\s*0[^}]*height:\s*0/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer\[data-layout="dock"\]\s+\.agent-gui-node__composer-prompt-input-area:hover\s+textarea::-webkit-scrollbar,[\s\S]*?\.agent-gui-node__composer-prompt-input-area:focus-within\s+\.agent-gui-node__composer-textarea::-webkit-scrollbar\s*{[^}]*width:\s*4px[^}]*height:\s*4px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*line-height:\s*24px[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\[data-agent-file-mention="true"\]\.tsh-agent-object-token,[\s\S]*?\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*display:\s*inline-flex[^}]*align-items:\s*center[^}]*top:\s*0[^}]*height:\s*24px[^}]*min-height:\s*24px[^}]*padding-top:\s*0[^}]*padding-bottom:\s*0[^}]*line-height:\s*24px[^}]*transform:\s*none[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\s+\[data-slot="mention-pill"\]\s*{[^}]*height:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token--file\s*{[^}]*vertical-align:\s*middle/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-placeholder-node:first-child::before\s*{[^}]*font-size:\s*13px[^}]*line-height:\s*24px/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__composer textarea::placeholder,[\s\S]*?\.agent-gui-node__composer-textarea::placeholder\s*{[^}]*line-height:\s*24px/s
     );
   });
 

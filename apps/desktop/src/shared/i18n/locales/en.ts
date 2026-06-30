@@ -596,7 +596,7 @@ export const en = {
       developer: {
         actionsLabel: "Actions",
         analyticsDebugDescription:
-          "Shows a floating panel with local analytics events in development builds",
+          "Shows a floating panel with local analytics events",
         analyticsDebugLabel: "Analytics event panel",
         clearConversationHistory: "Clear all conversations",
         clearConversationHistoryConfirm:

@@ -143,15 +143,22 @@ import {
   USAGE_WARN_PERCENT
 } from "./model/agentUsageThresholds";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
+import { useOptionalAgentHostApi } from "../../agentActivityHost";
 
 export { formatSlashStatusTokenCount };
 
 const USAGE_POPOVER_HOVER_DELAY_MS = 120;
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
-const DOCK_COMPOSER_INPUT_MAX_HEIGHT = 120;
+const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
+const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
+const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
+const DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT =
+  DOCK_COMPOSER_TEXT_LINE_HEIGHT * DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES;
+const DOCK_COMPOSER_INPUT_MAX_HEIGHT =
+  DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT +
+  DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT;
 const DOCK_COMPOSER_INPUT_BORDER_HEIGHT = 2;
 const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
-const DOCK_COMPOSER_INPUT_TEXT_CHROME_HEIGHT = 26;
 
 /**
  * 引用 picker 的确认结果:松散文件按 file mention 插入;mentionItems(如文件夹 bundle)
@@ -807,6 +814,8 @@ export function AgentComposer({
   const draftImages = draftContent.images;
   const draftFiles = draftContent.files ?? [];
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
+  const agentHostApi = useOptionalAgentHostApi();
+  const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -2544,7 +2553,10 @@ export function AgentComposer({
             "--agent-gui-composer-attachment-height": `${dockComposerAttachmentHeight}px`,
             "--agent-gui-composer-input-height": `${dockComposerInputHeight}px`,
             "--agent-gui-composer-input-max-height": `${dockComposerInputMaxHeight}px`,
-            "--agent-gui-composer-text-height": `${dockComposerTextHeight}px`
+            "--agent-gui-composer-text-height": `${dockComposerTextHeight}px`,
+            "--agent-gui-composer-text-line-height": `${DOCK_COMPOSER_TEXT_LINE_HEIGHT}px`,
+            "--agent-gui-composer-text-max-visible-lines": `${DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES}`,
+            "--agent-gui-composer-text-viewport-height": `${DOCK_COMPOSER_TEXT_VIEWPORT_MAX_HEIGHT}px`
           } as CSSProperties),
     [
       dockComposerAttachmentHeight,
@@ -2914,6 +2926,7 @@ export function AgentComposer({
                     promptImagesSupported={promptImagesSupported}
                     onPromptImagesUnsupported={onPromptImagesUnsupported}
                     onPasteImages={handlePastedImages}
+                    getReferenceForFile={getReferenceForFile}
                   />
                   {!isHeroLayout ? composerActionButton : null}
                 </div>

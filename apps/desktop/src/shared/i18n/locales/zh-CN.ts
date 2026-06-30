@@ -570,7 +570,7 @@ export const zhCN = {
       },
       developer: {
         actionsLabel: "操作",
-        analyticsDebugDescription: "在开发版本中显示本地埋点事件悬浮面板",
+        analyticsDebugDescription: "显示本地埋点事件悬浮面板",
         analyticsDebugLabel: "埋点事件面板",
         clearConversationHistory: "清除全部对话历史",
         clearConversationHistoryConfirm:
