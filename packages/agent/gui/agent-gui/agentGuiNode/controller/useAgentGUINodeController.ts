@@ -8895,6 +8895,76 @@ export function useAgentGUINodeController({
     removeConversations
   ]);
 
+  // Shared local-state cleanup after a batch of conversations has been deleted
+  // on the daemon. Used by both the per-project and per-conversations-section
+  // batch delete so they stay behaviourally identical.
+  const finalizeConversationBatchDeletion = useCallback(
+    (targetIds: Set<string>) => {
+      for (const id of targetIds) {
+        activatedConversationIdsRef.current.delete(id);
+        deleteAgentSessionView(sessionViewRef(id));
+      }
+      if (conversationListQuery) {
+        for (const id of targetIds) {
+          markLocalDeletedAgentGUIConversation({
+            query: conversationListQuery,
+            agentSessionId: id
+          });
+        }
+        scheduleAgentGUIConversationListProjection(
+          conversationListQuery,
+          "local-delete"
+        );
+      }
+      setTransientConversation((current) =>
+        current && targetIds.has(current.id) ? null : current
+      );
+      setDraftBySessionId((current) =>
+        omitConversationLocalState(current, targetIds)
+      );
+      setQueuedPromptsBySessionId((current) =>
+        omitConversationLocalState(current, targetIds)
+      );
+      setSendNextQueuedPromptIdBySessionId((current) =>
+        omitConversationLocalState(current, targetIds)
+      );
+      setFailedQueuedPromptIdBySessionId((current) =>
+        omitConversationLocalState(current, targetIds)
+      );
+      setQueuedPromptRetryBlockBySessionId((current) =>
+        omitConversationLocalState(current, targetIds)
+      );
+      const nextConversations = conversationsRef.current.filter(
+        (conversation) => !targetIds.has(conversation.id)
+      );
+      const currentActiveId = activeConversationIdRef.current;
+      if (currentActiveId && targetIds.has(currentActiveId)) {
+        const nextActive = nextConversations[0]?.id ?? null;
+        if (nextActive) {
+          markSelectedConversationDetailPending(nextActive);
+          setIntent({ tag: "active", id: nextActive });
+        } else {
+          clearSelectedConversationNotFoundRetry();
+          setIsLoadingMessages(false);
+          setIntent({ tag: "home" });
+        }
+        activeConversationIdRef.current = nextActive;
+        setActiveConversationId(nextActive);
+        persistActiveConversation(nextActive);
+      }
+      removeConversations([...targetIds]);
+    },
+    [
+      conversationListQuery,
+      clearSelectedConversationNotFoundRetry,
+      markSelectedConversationDetailPending,
+      persistActiveConversation,
+      sessionViewRef,
+      setTransientConversation,
+      removeConversations
+    ]
+  );
+
   const confirmDeleteProjectConversations = useCallback(
     (path?: string) => {
       const normalizedPath = normalizeProjectConversationPath(path);
@@ -8967,59 +9037,7 @@ export function useAgentGUINodeController({
         })
       )
         .then(() => {
-          for (const id of targetIds) {
-            activatedConversationIdsRef.current.delete(id);
-            deleteAgentSessionView(sessionViewRef(id));
-          }
-          if (conversationListQuery) {
-            for (const id of targetIds) {
-              markLocalDeletedAgentGUIConversation({
-                query: conversationListQuery,
-                agentSessionId: id
-              });
-            }
-            scheduleAgentGUIConversationListProjection(
-              conversationListQuery,
-              "local-delete"
-            );
-          }
-          setTransientConversation((current) =>
-            current && targetIds.has(current.id) ? null : current
-          );
-          setDraftBySessionId((current) =>
-            omitConversationLocalState(current, targetIds)
-          );
-          setQueuedPromptsBySessionId((current) =>
-            omitConversationLocalState(current, targetIds)
-          );
-          setSendNextQueuedPromptIdBySessionId((current) =>
-            omitConversationLocalState(current, targetIds)
-          );
-          setFailedQueuedPromptIdBySessionId((current) =>
-            omitConversationLocalState(current, targetIds)
-          );
-          setQueuedPromptRetryBlockBySessionId((current) =>
-            omitConversationLocalState(current, targetIds)
-          );
-          const nextConversations = conversationsRef.current.filter(
-            (conversation) => !targetIds.has(conversation.id)
-          );
-          const currentActiveId = activeConversationIdRef.current;
-          if (currentActiveId && targetIds.has(currentActiveId)) {
-            const nextActive = nextConversations[0]?.id ?? null;
-            if (nextActive) {
-              markSelectedConversationDetailPending(nextActive);
-              setIntent({ tag: "active", id: nextActive });
-            } else {
-              clearSelectedConversationNotFoundRetry();
-              setIsLoadingMessages(false);
-              setIntent({ tag: "home" });
-            }
-            activeConversationIdRef.current = nextActive;
-            setActiveConversationId(nextActive);
-            persistActiveConversation(nextActive);
-          }
-          removeConversations([...targetIds]);
+          finalizeConversationBatchDeletion(targetIds);
           setPendingDeleteProjectConversations(null);
         })
         .catch((error) => {
@@ -9058,6 +9076,7 @@ export function useAgentGUINodeController({
       agentActivityRuntime,
       conversationListQuery,
       clearSelectedConversationNotFoundRetry,
+      finalizeConversationBatchDeletion,
       isDeletingProjectConversations,
       markSelectedConversationDetailPending,
       pendingDeleteProjectConversations,
@@ -9065,6 +9084,92 @@ export function useAgentGUINodeController({
       sessionViewRef,
       setTransientConversation,
       removeConversations,
+      workspaceId
+    ]
+  );
+
+  // Batch-delete every conversation in the ungrouped "conversations" section,
+  // mirroring the per-project batch delete. The view passes the section's
+  // conversation ids; we map them to live conversation records, delete each on
+  // the daemon, then reuse the shared local cleanup.
+  const confirmDeleteConversations = useCallback(
+    (agentSessionIds: string[]) => {
+      if (isDeletingProjectConversations) {
+        return;
+      }
+      const targetIds = new Set(
+        agentSessionIds.map((id) => id.trim()).filter((id) => id !== "")
+      );
+      const targetConversations = conversationsRef.current.filter(
+        (conversation) => targetIds.has(conversation.id)
+      );
+      if (targetConversations.length === 0) {
+        return;
+      }
+      setIsDeletingProjectConversations(true);
+      setDetailError(null);
+      setListError(null);
+      const activeDeletedConversationId = activeConversationIdRef.current;
+      if (
+        activeDeletedConversationId &&
+        targetIds.has(activeDeletedConversationId)
+      ) {
+        clearSelectedConversationNotFoundRetry();
+        setIsLoadingMessages(true);
+        setAgentSessionViewMessagesLoading(
+          sessionViewRef(activeDeletedConversationId),
+          true
+        );
+      }
+      void Promise.all(
+        targetConversations.map(async (conversation) => {
+          await activation.unactivate(conversation.id);
+          await agentActivityRuntime.deleteSession({
+            workspaceId,
+            agentSessionId: conversation.id
+          });
+        })
+      )
+        .then(() => {
+          finalizeConversationBatchDeletion(targetIds);
+        })
+        .catch((error) => {
+          const message = getAgentGUIErrorMessage(error);
+          reportAgentGUIRuntimeError({
+            error,
+            phase: "delete_conversation",
+            provider: dataRef.current.provider,
+            runtime: agentActivityRuntime,
+            workspaceId,
+            context: {
+              conversationCount: targetConversations.length
+            }
+          });
+          setListError(message);
+          toast.error(message);
+          setDetailError(message);
+          if (
+            activeDeletedConversationId &&
+            activeConversationIdRef.current === activeDeletedConversationId
+          ) {
+            setIsLoadingMessages(false);
+            setAgentSessionViewMessagesLoading(
+              sessionViewRef(activeDeletedConversationId),
+              false
+            );
+          }
+        })
+        .finally(() => {
+          setIsDeletingProjectConversations(false);
+        });
+    },
+    [
+      activation,
+      agentActivityRuntime,
+      clearSelectedConversationNotFoundRetry,
+      finalizeConversationBatchDeletion,
+      isDeletingProjectConversations,
+      sessionViewRef,
       workspaceId
     ]
   );
@@ -10016,6 +10121,9 @@ export function useAgentGUINodeController({
     useStableControllerEventCallback(cancelDeleteProjectConversations);
   const stableConfirmDeleteProjectConversations =
     useStableControllerEventCallback(confirmDeleteProjectConversations);
+  const stableConfirmDeleteConversations = useStableControllerEventCallback(
+    confirmDeleteConversations
+  );
   const stableToggleConversationPinned = useStableControllerEventCallback(
     toggleConversationPinned
   );
@@ -10062,6 +10170,7 @@ export function useAgentGUINodeController({
       cancelDeleteProjectConversations: stableCancelDeleteProjectConversations,
       confirmDeleteProjectConversations:
         stableConfirmDeleteProjectConversations,
+      confirmDeleteConversations: stableConfirmDeleteConversations,
       toggleConversationPinned: stableToggleConversationPinned,
       requestDeleteConversation: stableRequestDeleteConversation,
       retryActivation: stableRetryActivation,
@@ -10074,6 +10183,7 @@ export function useAgentGUINodeController({
       stableCancelDeleteConversation,
       stableCancelDeleteProjectConversations,
       stableConfirmDeleteConversation,
+      stableConfirmDeleteConversations,
       stableConfirmDeleteProjectConversations,
       stableContinueInNewConversation,
       stableCreateConversation,

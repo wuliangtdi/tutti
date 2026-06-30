@@ -1179,6 +1179,10 @@ export type WorkspaceAgentSessionListResponse = {
 
 export type ExternalAgentImportScanRequest = {
   providers?: Array<WorkspaceAgentProvider>;
+  /**
+   * Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
+   */
+  days?: number;
 };
 
 export type ExternalAgentImportProvider = {

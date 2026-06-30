@@ -2403,6 +2403,8 @@ type ExternalAgentImportResultResponse struct {
 
 // ExternalAgentImportScanRequest defines model for ExternalAgentImportScanRequest.
 type ExternalAgentImportScanRequest struct {
+	// Days Limit the scan to conversations updated within the last N days. Omit or 0 for the default 30-day window; a negative value scans all available history.
+	Days      *int                      `json:"days,omitempty"`
 	Providers *[]WorkspaceAgentProvider `json:"providers,omitempty"`
 }
 

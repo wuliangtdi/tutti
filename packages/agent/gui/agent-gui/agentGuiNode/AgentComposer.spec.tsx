@@ -178,7 +178,7 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
               value={value}
               placeholder={placeholder}
               disabled={disabled}
-              readOnly
+              onChange={(event) => onChange(event.currentTarget.value)}
               onKeyDown={(event) => {
                 if (onKeyDownForPalette?.(event.nativeEvent)) {
                   event.preventDefault();
@@ -344,7 +344,8 @@ vi.mock("./AgentSlashCommandPalette", () => ({
               }
             }}
           >
-            {entry.label}
+            {entry.primaryLabel ?? entry.label}
+            {entry.secondaryLabel ? ` ${entry.secondaryLabel}` : ""}
           </button>
           {entry.type === "capability" && entry.settingsLabel ? (
             <button
@@ -702,6 +703,226 @@ describe("AgentComposer", () => {
     expect(onCapabilitySettingsRequest).toHaveBeenCalledWith("browserUse");
     expect(onDraftContentChange).not.toHaveBeenCalled();
     expect(onSettingsChange).not.toHaveBeenCalled();
+  });
+
+  it("shows localized descriptions for built-in slash commands", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("查看会话状态和上下文用量。");
+    expect(palette).toHaveTextContent("切换快速响应模式。");
+    expect(palette).toHaveTextContent("设置、查看或清除当前目标。");
+    expect(palette).toHaveTextContent("发起代码审查。");
+    expect(palette).toHaveTextContent("切换计划模式。");
+  });
+
+  it("shows Chinese slash command labels with English aliases in zh-CN", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("/")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        uiLanguage="zh-CN"
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("状态 status");
+    expect(palette).toHaveTextContent("快速 fast");
+    expect(palette).toHaveTextContent("目标 goal");
+  });
+
+  it("activates goal mode as a footer badge from the slash palette", async () => {
+    let draftContent = createDraft("/");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+      rerender(renderComposer());
+    });
+    const onSubmit = vi.fn();
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsPlanMode: true
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={onSubmit}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByRole("button", { name: "目标" }));
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
+    const goalBadge = screen.getByRole("button", { name: "目标" });
+    expect(goalBadge).toBeInTheDocument();
+    // Hovering the badge reveals a cancel affordance hinting it is clickable.
+    expect(goalBadge).toHaveClass("group");
+    expect(
+      goalBadge.querySelector(".group-hover\\:opacity-100")
+    ).toBeTruthy();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "ship the review picker" }
+    });
+
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("/goal ship the review picker")
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("ship the review picker");
+
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+
+    expect(onSubmit).toHaveBeenCalledWith([
+      { type: "text", text: "/goal ship the review picker" }
+    ]);
+  });
+
+  it("turns a typed /goal command into a footer badge and keeps plain text when cleared", () => {
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+      rerender(renderComposer());
+    });
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "/goal" }
+    });
+
+    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft("/goal"));
+    expect(screen.getByRole("button", { name: "目标" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("");
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "stabilize renderer sync" }
+    });
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("/goal stabilize renderer sync")
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "目标" }));
+
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      createDraft("stabilize renderer sync")
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("stabilize renderer sync");
+    expect(
+      screen.queryByRole("button", { name: "目标" })
+    ).not.toBeInTheDocument();
   });
 
   it("opens computer-use setup from Enter when the capability is not installed", async () => {
@@ -2046,6 +2267,45 @@ describe("AgentComposer", () => {
     expect(screen.queryByTestId("agent-gui-usage-popover")).toBeNull();
   });
 
+  it("keeps the workspace reference action enabled while a session is running", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={true}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={true}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+        onRequestWorkspaceReferences={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("combobox", { name: "引用空间文件" })
+    ).not.toBeDisabled();
+  });
+
   it.each([
     [85, "warning"],
     [97, "critical"]
@@ -2178,7 +2438,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows the compact context button disabled while busy (showStopButton=true)", () => {
+  it("keeps the compact context button enabled while a session is running", () => {
     const onSubmit = vi.fn();
     render(
       <AgentComposer
@@ -2218,9 +2478,9 @@ describe("AgentComposer", () => {
     fireEvent.click(screen.getByTestId("agent-gui-usage-chip"));
     const compactButton = screen.getByTestId("agent-gui-compact-button");
     expect(compactButton).toBeInTheDocument();
-    expect(compactButton).toBeDisabled();
+    expect(compactButton).not.toBeDisabled();
     fireEvent.click(compactButton);
-    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSubmit).toHaveBeenCalledWith(textPromptContent("/compact"));
   });
 
   it("shows the compact context button disabled when no user message has been sent", () => {
@@ -3914,6 +4174,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     planModeOnLabel: "开启",
     planModeOffLabel: "关闭",
     planUnavailable: "计划不可用",
+    goalLabel: "目标",
     browserUseCapabilityLabel: "浏览器",
     browserUseCapabilityDescription: "让 Agent 使用浏览器。",
     browserUseCapabilityDescriptionAutoConnect:
@@ -3947,6 +4208,24 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     slashPalettePluginsGroup: "插件",
     slashPaletteConnectorsGroup: "连接器",
     slashPaletteMcpGroup: "MCP",
+    slashCommandCompactLabel: "压缩",
+    slashCommandContextLabel: "上下文",
+    slashCommandFastLabel: "快速",
+    slashCommandGoalLabel: "目标",
+    slashCommandInitLabel: "初始化",
+    slashCommandPlanLabel: "计划",
+    slashCommandReviewLabel: "审查",
+    slashCommandStatusLabel: "状态",
+    slashCommandUsageLabel: "用量",
+    slashCommandCompactDescription: "压缩当前对话上下文。",
+    slashCommandContextDescription: "查看当前上下文快照。",
+    slashCommandFastDescription: "切换快速响应模式。",
+    slashCommandGoalDescription: "设置、查看或清除当前目标。",
+    slashCommandInitDescription: "初始化仓库说明文件。",
+    slashCommandPlanDescription: "切换计划模式。",
+    slashCommandReviewDescription: "发起代码审查。",
+    slashCommandStatusDescription: "查看会话状态和上下文用量。",
+    slashCommandUsageDescription: "查看上下文和额度用量。",
     slashStatusTitle: "Status",
     slashStatusSession: "Session",
     slashStatusBaseUrl: "Base URL",

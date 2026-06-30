@@ -44,6 +44,10 @@ const MESSAGE_COPY_FEEDBACK_MS = 1400;
 const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
+const SYSTEM_NOTICE_WARNING_CLASS_NAME =
+  "border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)]";
+const SYSTEM_NOTICE_ERROR_CLASS_NAME =
+  "border-[color-mix(in_srgb,var(--state-danger)_20%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-danger)_8%)]";
 
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
@@ -504,12 +508,12 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
-  const isWarning =
-    notice?.severity === "warning" || notice?.severity === "error";
+  const isStatusNotice = systemNoticeIsStatus(notice);
+  const noticeToneClassName = systemNoticeToneClassName(notice);
   return (
     <section
-      role={isWarning ? "status" : undefined}
-      className="box-border w-full min-w-0 rounded-[8px] border border-[color-mix(in_srgb,var(--state-warning)_14%,transparent)] bg-[color-mix(in_srgb,var(--background-fronted)_100%,var(--state-warning)_6%)] p-3 text-[13px] leading-5 text-[var(--text-primary)]"
+      role={isStatusNotice ? "status" : undefined}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${noticeToneClassName}`}
     >
       <div className="min-w-0">
         <div className="font-medium text-[var(--text-primary)]">{title}</div>
@@ -518,6 +522,31 @@ function AgentSystemNoticeMessage({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function systemNoticeToneClassName(
+  notice: AgentMessageContentVM["systemNotice"] | null | undefined
+): string {
+  if (
+    notice?.severity === "error" ||
+    notice?.noticeKind === "transport_fallback"
+  ) {
+    return SYSTEM_NOTICE_ERROR_CLASS_NAME;
+  }
+  if (notice?.severity === "warning") {
+    return SYSTEM_NOTICE_WARNING_CLASS_NAME;
+  }
+  return SYSTEM_NOTICE_WARNING_CLASS_NAME;
+}
+
+function systemNoticeIsStatus(
+  notice: AgentMessageContentVM["systemNotice"] | null | undefined
+): boolean {
+  return (
+    notice?.severity === "warning" ||
+    notice?.severity === "error" ||
+    notice?.noticeKind === "transport_fallback"
   );
 }
 

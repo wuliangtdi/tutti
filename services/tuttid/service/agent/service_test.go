@@ -607,24 +607,22 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 		if session.Cwd != projectA {
 			t.Fatalf("session cwd = %q, want %q", session.Cwd, projectA)
 		}
-		if session.Resumable {
-			t.Fatalf("imported session %s resumable = true", session.ID)
+		if !session.Resumable {
+			t.Fatalf("imported session %s resumable = false, want continuable in place", session.ID)
 		}
 	}
-	if _, err := service.SendInput(ctx, "ws-1", sessions[0].ID, SendInput{Content: TextPromptContent("resume")}); !errors.Is(err, ErrSessionNotFound) {
-		t.Fatalf("SendInput imported error = %v, want ErrSessionNotFound", err)
-	}
-	if len(runtime.resumeCalls) != 0 {
-		t.Fatalf("runtime resume calls = %d, want 0", len(runtime.resumeCalls))
-	}
 
+	// Importing the whole project (no explicit session ids) now covers all
+	// available history rather than only the discovery window, so an explicitly
+	// imported project also pulls the 45-day-old codex-old session that the
+	// 30-day scan deliberately hides. claude-a (2 messages) + codex-old (1).
 	rerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},
 	})
 	if err != nil {
 		t.Fatalf("ImportExternalSessions rerun error = %v", err)
 	}
-	if rerun.ImportedSessions != 1 || rerun.ImportedMessages != 2 {
+	if rerun.ImportedSessions != 2 || rerun.ImportedMessages != 3 {
 		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
 	}
 	finalRerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
@@ -3135,6 +3133,39 @@ func TestServiceResumesPersistedSessionBeforeInput(t *testing.T) {
 	session := result.Session
 	if session.ID != "session-1" {
 		t.Fatalf("session id = %q", session.ID)
+	}
+	if len(runtime.resumeCalls) != 1 {
+		t.Fatalf("resume calls = %d, want 1", len(runtime.resumeCalls))
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+}
+
+func TestServiceSendInputContinuesImportedSession(t *testing.T) {
+	// Imported conversations must continue in place: sending resumes (or, when
+	// the provider session is missing locally, recreates) the provider session
+	// rather than rejecting with ErrSessionNotFound and forcing a new chat.
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:session-imported": {
+				ID:                "session-imported",
+				WorkspaceID:       "ws-1",
+				Provider:          "codex",
+				ProviderSessionID: "imported-thread-1",
+				Origin:            WorkspaceAgentSessionOriginImported,
+				Status:            "completed",
+				Title:             "Imported chat",
+				CreatedAtUnixMS:   1000,
+				UpdatedAtUnixMS:   2000,
+			},
+		},
+	}
+
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-imported", SendInput{Content: TextPromptContent("continue")}); err != nil {
+		t.Fatalf("SendInput imported error = %v, want continue in place", err)
 	}
 	if len(runtime.resumeCalls) != 1 {
 		t.Fatalf("resume calls = %d, want 1", len(runtime.resumeCalls))
