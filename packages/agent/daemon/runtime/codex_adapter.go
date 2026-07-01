@@ -2231,7 +2231,11 @@ func acpToolName(callID string, title string, kind string, rawInput any) string 
 		return "Write"
 	case "execute":
 		if input != nil {
-			if strings.TrimSpace(asString(input["agentName"])) != "" {
+			agentName := asString(input["agentName"])
+			if controlToolName := appServerAgentControlToolName(agentName); controlToolName != "" {
+				return controlToolName
+			}
+			if strings.TrimSpace(agentName) != "" {
 				return "Agent"
 			}
 			if strings.TrimSpace(asString(input["task"])) != "" {
@@ -2274,6 +2278,10 @@ func acpSyntheticToolName(normalizedTitle string) string {
 		return "ToolSearch"
 	case "skill":
 		return "Skill"
+	case "closeagent":
+		return "CloseAgent"
+	case "wait":
+		return "Wait"
 	default:
 		return ""
 	}

@@ -740,6 +740,36 @@ delimited by ---`, and the composer skill picker may show partial or
   Add or update `agentstatus` tests for the Codex status/login command shape,
   then run `cd services/tuttid && go test ./service/agentstatus`.
 
+### Codex app-server subagent output appears as the parent reply
+
+- Symptom:
+  A parent Codex AgentGUI turn that spawned subagents ends with a subagent-only
+  answer such as `{"n":7}`, or a failed Agent/subagent tool detail shows the
+  prompt again under Output even though the tool never returned a result.
+- Quick checks:
+  Compare `workspace_agent_sessions.provider_session_id` with app-server
+  notification `threadId` values in `tuttid.log`/run traces. Inspect
+  `workspace_agent_messages.payload` for the suspect tool call: if it has
+  `input.prompt`/`input.task` but no `output` or `error`, the GUI must not
+  synthesize an Output section from the summary or prompt.
+- Root cause:
+  Codex app-server streams parent and child-thread notifications over the same
+  connection. Transcript, tool, and `turn/completed` notifications must be
+  scoped to the active provider thread before they update the parent turn. On
+  the renderer side, task-like tools use the summary/title for compact labels,
+  but missing result payloads are not tool output.
+- Fix:
+  Drop notifications that carry a non-empty `threadId` different from the
+  session `provider_session_id`, with debug logging that records expected
+  thread, event thread, turn, item id/type/status, and method. Keep notifications
+  without `threadId` compatible. For Agent/task cards, render Output only from
+  actual `output`/`error` payload text, not from the prompt or summary.
+- Validation:
+  Add a Codex app-server test that injects foreign-thread `agentMessage` and
+  `turn/completed` notifications during a parent turn, plus AgentGUI projection
+  tests for failed Agent calls with prompt-only payloads. Run the focused Go and
+  GUI specs for those paths.
+
 ### Concurrent agent CLI installs corrupt shared npm global state
 
 - Symptom:

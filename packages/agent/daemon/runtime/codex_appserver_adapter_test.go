@@ -76,6 +76,7 @@ type scriptedAppServerConnection struct {
 	reviewInline                 bool          // stream review output as inline reasoning/command items
 	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
 	reviewHang                   bool          // respond to review/start but never complete the turn
+	foreignThreadNoise           bool          // emit subagent/foreign thread notifications during a parent turn
 	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
 	goal                         map[string]any
@@ -296,6 +297,7 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			approval := c.commandApproval
 			userInput := c.userInputRequest
 			emitPlan := c.emitPlanItem
+			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
 			c.mu.Unlock()
@@ -317,6 +319,28 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 			})
+			if foreignThreadNoise {
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1", "itemId": "foreign-msg",
+					"delta": `{"n":7}`,
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1",
+					"item": map[string]any{
+						"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`,
+					},
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "foreign-thread-1",
+					"turn": map[string]any{
+						"id":     "foreign-turn-1",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`},
+						},
+					},
+				})
+			}
 			if approval {
 				c.sendJSON(map[string]any{
 					"id":     "approval-1",
@@ -1072,6 +1096,33 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
+	}
+}
+
+func TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.foreignThreadNoise = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "spawn subagents",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+	}
+	if assistantText != "I'll check the repo." {
+		t.Fatalf("assistant content = %q, want parent thread message", assistantText)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", events), `{"n":7}`) {
+		t.Fatalf("foreign thread payload leaked into parent events: %#v", events)
 	}
 }
 
