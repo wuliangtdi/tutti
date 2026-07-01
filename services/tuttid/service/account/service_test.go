@@ -15,6 +15,7 @@ import (
 func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
 	t.Setenv("TUTTI_ACCOUNT_BASE_URL", "http://127.0.0.1:1/api/account")
 	t.Setenv("TUTTI_AUTH_LOGIN_URL", "http://127.0.0.1:1/auth/login")
+	t.Setenv("TUTTI_ENV", "development")
 
 	service := NewService("")
 	if service.AccountBaseURL != "http://127.0.0.1:1/api/account" {
@@ -22,6 +23,9 @@ func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
 	}
 	if service.AuthLoginURL != "http://127.0.0.1:1/auth/login" {
 		t.Fatalf("AuthLoginURL = %q", service.AuthLoginURL)
+	}
+	if service.AppCallbackURL != "tutti-dev://login/callback" {
+		t.Fatalf("AppCallbackURL = %q", service.AppCallbackURL)
 	}
 }
 

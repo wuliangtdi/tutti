@@ -66,6 +66,14 @@ export function resolveDesktopDevelopmentAppName(
   return `${safeAppName} Dev`;
 }
 
+export function resolveDesktopLoginProtocolScheme(): "tutti" | "tutti-dev" {
+  return resolveTuttiEnv() === "development" ? "tutti-dev" : "tutti";
+}
+
+export function resolveDesktopLoginCallbackUrl(): string {
+  return `${resolveDesktopLoginProtocolScheme()}://login/callback`;
+}
+
 export function resolveDesktopDefaultsFromEnv(): DesktopResolvedDefaults {
   const env = resolveTuttiEnv();
   const stateRootDir = resolveStateRootDir(env);

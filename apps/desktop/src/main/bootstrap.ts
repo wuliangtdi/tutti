@@ -4,6 +4,8 @@ import { app, BrowserWindow } from "electron";
 import {
   initializeDesktopEnvironment,
   resolveDesktopDevelopmentAppName,
+  resolveDesktopLoginCallbackUrl,
+  resolveDesktopLoginProtocolScheme,
   resolveDesktopUserDataPath
 } from "./defaults";
 import { registerDesktopAppLifecycle } from "./desktopAppLifecycle";
@@ -73,18 +75,19 @@ function focusPrimaryDesktopWindow(): void {
 
 export async function bootstrapDesktopApp(): Promise<void> {
   applyElectronDiagnosticSwitches();
-  registerTuttiAssetProtocolScheme();
-  registerWorkspaceFileIconProtocolScheme();
-  app.setAsDefaultProtocolClient("tutti");
-  app.on("open-url", (event, url) => {
-    if (url.startsWith("tutti://login/callback")) {
-      event.preventDefault();
-      focusPrimaryDesktopWindow();
-    }
-  });
   initializeDesktopEnvironment({
     appVersion: app.getVersion(),
     isPackaged: app.isPackaged
+  });
+  registerTuttiAssetProtocolScheme();
+  registerWorkspaceFileIconProtocolScheme();
+  const loginCallbackUrl = resolveDesktopLoginCallbackUrl();
+  app.setAsDefaultProtocolClient(resolveDesktopLoginProtocolScheme());
+  app.on("open-url", (event, url) => {
+    if (url.startsWith(loginCallbackUrl)) {
+      event.preventDefault();
+      focusPrimaryDesktopWindow();
+    }
   });
   const appName = app.getName();
   const userDataPath = resolveDesktopUserDataPath({

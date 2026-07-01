@@ -35,7 +35,7 @@ func NewService(authJSONPath string) *Service {
 	return &Service{
 		AuthJSONPath:   firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
 		AccountBaseURL: os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
-		AppCallbackURL: "tutti://login/callback",
+		AppCallbackURL: tuttitypes.DesktopLoginCallbackURL(),
 		AuthLoginURL:   os.Getenv("TUTTI_AUTH_LOGIN_URL"),
 		attempts:       map[string]*authbridge.LoginAttempt{},
 	}
@@ -101,7 +101,7 @@ func (s *Service) authClient() (*authbridge.Client, error) {
 	client, err := authbridge.NewClient(authbridge.Config{
 		AccountBaseURL: s.AccountBaseURL,
 		AuthJSONPath:   firstNonEmpty(s.AuthJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
-		AppCallbackURL: firstNonEmpty(s.AppCallbackURL, "tutti://login/callback"),
+		AppCallbackURL: firstNonEmpty(s.AppCallbackURL, tuttitypes.DesktopLoginCallbackURL()),
 		AuthLoginURL:   s.AuthLoginURL,
 	})
 	if err != nil {

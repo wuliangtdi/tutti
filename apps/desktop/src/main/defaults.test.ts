@@ -4,6 +4,8 @@ import {
   initializeDesktopEnvironment,
   resolveDesktopDefaultsFromEnv,
   resolveDesktopDevelopmentAppName,
+  resolveDesktopLoginCallbackUrl,
+  resolveDesktopLoginProtocolScheme,
   resolveDesktopUserDataPath,
   resolveTuttiEnv
 } from "./defaults.ts";
@@ -174,6 +176,25 @@ test("resolveDesktopDevelopmentAppName isolates development single-instance iden
 
     process.env.TUTTI_ENV = "production";
     assert.equal(resolveDesktopDevelopmentAppName("Tutti"), null);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveDesktopLoginCallbackUrl isolates development protocol scheme", () => {
+  const previousEnv = { ...process.env };
+
+  try {
+    process.env.TUTTI_ENV = "development";
+    assert.equal(resolveDesktopLoginProtocolScheme(), "tutti-dev");
+    assert.equal(
+      resolveDesktopLoginCallbackUrl(),
+      "tutti-dev://login/callback"
+    );
+
+    process.env.TUTTI_ENV = "production";
+    assert.equal(resolveDesktopLoginProtocolScheme(), "tutti");
+    assert.equal(resolveDesktopLoginCallbackUrl(), "tutti://login/callback");
   } finally {
     restoreEnv(previousEnv);
   }
