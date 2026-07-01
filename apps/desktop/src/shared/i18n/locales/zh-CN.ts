@@ -421,15 +421,14 @@ export const zhCN = {
           "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
         defaultAgentProviderSaveFailed: "暂时无法更新默认 Provider。",
-        agentConversationDetailModeLabel: "对话详细模式",
+        agentConversationDetailModeLabel: "工作模式",
         agentConversationDetailModeOptions: {
           codingTitle: "适用于编程",
           codingDescription: "更具技术性的回复和控制。",
           generalTitle: "适用于日常工作",
           generalDescription: "同样强大，技术细节更少。"
         },
-        agentConversationDetailModeSaveFailed:
-          "暂时无法更新 Agent 对话详细模式。",
+        agentConversationDetailModeSaveFailed: "暂时无法更新工作模式。",
         computerUseLabel: "电脑控制",
         computerUseDescription:
           "让 Agent 控制你的 Mac 桌面——截图、点击、键盘输入等",

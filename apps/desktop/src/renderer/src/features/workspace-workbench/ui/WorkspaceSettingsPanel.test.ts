@@ -43,7 +43,7 @@ test("workspace settings backdrop preserves titlebar dragging", () => {
 test("workspace settings agent panel lists agent controls", () => {
   assert.match(
     source,
-    /function WorkspaceAgentSettingsSection[\s\S]*workspace\.externalImport\.settingsLabel[\s\S]*workspace\.settings\.general\.agentConversationDetailModeLabel[\s\S]*workspace\.settings\.general\.defaultAgentProviderLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*<ComputerUseSetupRow/
+    /function WorkspaceAgentSettingsSection[\s\S]*workspace\.settings\.general\.agentConversationDetailModeLabel[\s\S]*workspace\.externalImport\.settingsLabel[\s\S]*workspace\.settings\.general\.defaultAgentProviderLabel[\s\S]*workspace\.settings\.general\.browserUseConnectionModeLabel[\s\S]*<ComputerUseSetupRow/
   );
   assert.match(source, /role="radiogroup"/);
   assert.match(source, /role="radio"/);

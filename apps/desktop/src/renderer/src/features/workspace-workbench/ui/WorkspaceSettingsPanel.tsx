@@ -2362,32 +2362,8 @@ function WorkspaceAgentSettingsSection({
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.externalImport.settingsLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.externalImport.settingsDescription")}
-          </p>
-        </div>
-        <div
-          className={cn(
-            "flex justify-end max-[560px]:justify-start",
-            workspaceSettingsControlColumnClass
-          )}
-        >
-          <WorkspaceSettingsActionButton
-            icon={<ImportLinedIcon className="size-3.5" />}
-            label={t("workspace.externalImport.settingsAction")}
-            type="button"
-            onClick={onOpenExternalAgentImport}
-          />
-        </div>
-      </div>
-
-      <div className="flex w-full items-start justify-between gap-4 max-[700px]:flex-col max-[700px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[700px]:w-full">
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
             {t("workspace.settings.general.agentConversationDetailModeLabel")}
           </strong>
@@ -2396,7 +2372,7 @@ function WorkspaceAgentSettingsSection({
           aria-label={t(
             "workspace.settings.general.agentConversationDetailModeLabel"
           )}
-          className="grid w-[360px] min-w-[360px] grid-cols-2 gap-2 max-[700px]:w-full max-[700px]:min-w-0 max-[430px]:grid-cols-1"
+          className="grid w-full grid-cols-2 gap-2 max-[430px]:grid-cols-1"
           role="radiogroup"
         >
           {desktopAgentConversationDetailModes.map((mode) => {
@@ -2437,6 +2413,30 @@ function WorkspaceAgentSettingsSection({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.externalImport.settingsLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.externalImport.settingsDescription")}
+          </p>
+        </div>
+        <div
+          className={cn(
+            "flex justify-end max-[560px]:justify-start",
+            workspaceSettingsControlColumnClass
+          )}
+        >
+          <WorkspaceSettingsActionButton
+            icon={<ImportLinedIcon className="size-3.5" />}
+            label={t("workspace.externalImport.settingsAction")}
+            type="button"
+            onClick={onOpenExternalAgentImport}
+          />
         </div>
       </div>
 
