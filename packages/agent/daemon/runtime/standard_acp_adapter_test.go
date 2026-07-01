@@ -1521,33 +1521,6 @@ func TestStandardACPSystemNoticeChunkProjectsAssistantNotice(t *testing.T) {
 	}
 }
 
-func TestStandardACPTransportFallbackTextProjectsAssistantNotice(t *testing.T) {
-	t.Parallel()
-
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
-
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
-		"update": {
-			"sessionUpdate": "agent_message_chunk",
-			"content": {
-				"type": "text",
-				"text": "Falling back from WebSockets to HTTPS transport."
-			}
-		}
-	}`), newACPTurnNormalizer())
-
-	if len(events) != 1 {
-		t.Fatalf("events = %#v, want one system notice message", events)
-	}
-	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
-		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
-	}
-	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_fallback" {
-		t.Fatalf("noticeKind = %#v, want transport_fallback", got)
-	}
-}
-
 func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	t.Parallel()
 
@@ -1572,33 +1545,6 @@ func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	}
 	if got := events[0].Payload.Content; got != "Falling back from WebSockets to HTTPS transport." {
 		t.Fatalf("content = %q, want ordinary assistant content", got)
-	}
-}
-
-func TestStandardACPReconnectThoughtChunkProjectsAssistantNotice(t *testing.T) {
-	t.Parallel()
-
-	session := standardTestSession(ProviderCodex)
-	session.ProviderSessionID = "codex-session-1"
-
-	events := standardACPUpdateEvents(standardACPConfig{provider: ProviderCodex}, session, "turn-1", json.RawMessage(`{
-		"update": {
-			"sessionUpdate": "agent_thought_chunk",
-			"content": {
-				"type": "text",
-				"text": "Reconnecting... 1/5 Some(ResponseStreamDisconnected { http_status_code: None })"
-			}
-		}
-	}`), newACPTurnNormalizer())
-
-	if len(events) != 1 {
-		t.Fatalf("events = %#v, want one system notice message", events)
-	}
-	if got := events[0].Payload.Metadata["kind"]; got != "agent_system_notice" {
-		t.Fatalf("notice kind marker = %#v, want agent_system_notice", got)
-	}
-	if got := events[0].Payload.Metadata["noticeKind"]; got != "transport_retry" {
-		t.Fatalf("noticeKind = %#v, want transport_retry", got)
 	}
 }
 

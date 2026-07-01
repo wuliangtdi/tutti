@@ -2785,8 +2785,8 @@ func TestCodexAppServerAdapterDefaultControllerUsesAppServerForCodex(t *testing.
 	}
 	if nexight := controller.adapter(ProviderNexight); nexight == nil {
 		t.Fatalf("nexight adapter missing")
-	} else if _, ok := nexight.(*CodexAdapter); !ok {
-		t.Fatalf("nexight adapter = %T, want ACP family adapter", nexight)
+	} else if _, ok := nexight.(*standardACPAdapter); !ok {
+		t.Fatalf("nexight adapter = %T, want standard ACP adapter", nexight)
 	}
 }
 

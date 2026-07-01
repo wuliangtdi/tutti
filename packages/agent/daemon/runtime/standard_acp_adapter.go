@@ -106,6 +106,29 @@ func claudeCodeLegacyACPModelCandidates(model string) []string {
 	}
 }
 
+func NewNexightAdapter(transport ProcessTransport) *standardACPAdapter {
+	return NewNexightAdapterWithHostMetadata(transport, LegacyHostMetadata())
+}
+
+func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
+	return &standardACPAdapter{
+		config: standardACPConfig{
+			provider:            ProviderNexight,
+			adapterName:         "nexight-acp",
+			command:             []string{nexightACPCommand},
+			defaultTitle:        "Nexight",
+			defaultTitleAliases: []string{"", ProviderNexight, "tutti"},
+			authRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
+			permissionModeID:    codexACPModeID,
+			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                 func(session Session) []string { return standardACPEnv(session, host) },
+		},
+		transport: transport,
+		host:      host,
+		sessions:  make(map[string]*standardACPSession),
+	}
+}
+
 func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
 	return NewGeminiAdapterWithHostMetadata(transport, LegacyHostMetadata())
 }
@@ -812,7 +835,7 @@ func (a *standardACPAdapter) startInitializedClient(
 		"agent_session_id": session.AgentSessionID,
 		"elapsed_ms":       time.Since(processStartedAt).Milliseconds(),
 	})
-	client := newACPClientWithStderrMessageMapper(conn, standardACPStderrMessageMapper(a.config.provider))
+	client := newACPClientWithStderrMessageMapper(conn, nil)
 	client.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
 		turnSession := session
 		turnID := a.sessionRecentTurnID(session.AgentSessionID)
@@ -2866,7 +2889,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 	case "user_message_chunk":
 		return nil
 	case "agent_message_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_message_chunk", false); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2875,7 +2898,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return normalizer.AppendAssistantChunk(session, turnID, content)
 	case "agent_thought_chunk":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, "agent_thought_chunk", false); ok {
 			return events
 		}
 		content := acpTextContent(params.Update["content"])
@@ -2913,7 +2936,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "stream_error", "warning", "system_notice":
-		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, config.provider == ProviderCodex); ok {
+		if events, ok := acpSystemNoticeEvents(session, turnID, params.Update, normalizer, updateType, false); ok {
 			return events
 		}
 		return nil
@@ -2958,13 +2981,6 @@ func logACPGoalUpdate(config standardACPConfig, session Session, turnID string, 
 		"goal_objective_len", len(strings.TrimSpace(asString(goal["objective"]))),
 		"goal_has_reason", strings.TrimSpace(asString(goal["reason"])) != "",
 	)
-}
-
-func standardACPStderrMessageMapper(provider string) acpStderrMessageMapper {
-	if strings.TrimSpace(provider) == ProviderCodex {
-		return codexACPSystemNoticeMessageFromStderr
-	}
-	return nil
 }
 
 func standardACPInterruptEvents(
