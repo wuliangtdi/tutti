@@ -129,7 +129,7 @@ Initialize two system targets during repository/workspace setup:
 
 ```json
 {
-  "id": "local-codex",
+  "id": "local:codex",
   "provider": "codex",
   "launch_ref_json": {
     "type": "local_cli",
@@ -145,7 +145,7 @@ Initialize two system targets during repository/workspace setup:
 
 ```json
 {
-  "id": "local-claude-code",
+  "id": "local:claude-code",
   "provider": "claude-code",
   "launch_ref_json": {
     "type": "local_cli",

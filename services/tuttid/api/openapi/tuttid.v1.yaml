@@ -5915,6 +5915,10 @@ components:
         id:
           type: string
           minLength: 1
+        agentTargetId:
+          type: string
+          nullable: true
+          description: Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         providerSessionId:
@@ -6457,6 +6461,10 @@ components:
           type: string
           format: uuid
           minLength: 1
+        agentTargetId:
+          type: string
+          nullable: true
+          description: Preferred target-first session launch authority. When present, the daemon derives provider from the stored agent target launchRef and rejects mismatched provider values.
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         initialContent:
@@ -6797,6 +6805,9 @@ components:
         agentSessionId:
           type: string
           minLength: 1
+        agentTargetId:
+          type: string
+          nullable: true
         type:
           type: string
           minLength: 1

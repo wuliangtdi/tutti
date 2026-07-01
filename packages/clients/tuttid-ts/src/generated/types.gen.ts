@@ -1100,6 +1100,10 @@ export type AgentProviderStatusListResponse = {
 
 export type WorkspaceAgentSession = {
   id: string;
+  /**
+   * Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
+   */
+  agentTargetId?: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId?: string | null;
   cwd: string | null;
@@ -1300,6 +1304,10 @@ export type UpdateWorkspaceAgentSessionVisibilityRequest = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   agentSessionId: string;
+  /**
+   * Preferred target-first session launch authority. When present, the daemon derives provider from the stored agent target launchRef and rejects mismatched provider values.
+   */
+  agentTargetId?: string | null;
   provider: WorkspaceAgentProvider;
   initialContent: Array<AgentPromptContentBlock>;
   /**
@@ -1450,6 +1458,7 @@ export type SubmitWorkspaceAgentInteractiveRequest = {
 export type WorkspaceAgentSessionEventEnvelope = {
   seq: number;
   agentSessionId: string;
+  agentTargetId?: string | null;
   type: string;
   occurredAt: string;
   payload: {

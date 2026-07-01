@@ -61,6 +61,7 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
 
   await service.activateSession({
     agentSessionId: "11111111-1111-4111-8111-111111111111",
+    agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
     mode: "new",
@@ -80,6 +81,7 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
     workspaceId: "ws-1",
     request: {
       agentSessionId: "11111111-1111-4111-8111-111111111111",
+      agentTargetId: "local:codex",
       cwd: "/workspace",
       initialContent: [{ type: "text", text: "hello" }],
       initialDisplayPrompt: null,
@@ -98,6 +100,75 @@ test("WorkspaceAgentActivityService.activateSession forwards provider target ref
       visible: true
     }
   });
+});
+
+test("WorkspaceAgentActivityService composer options cache is agent target keyed", async () => {
+  const composerOptionCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getAgentProviderComposerOptions: async (
+        provider: string,
+        request: unknown
+      ) => {
+        composerOptionCalls.push({ provider, request });
+        return {
+          provider,
+          modelConfig: {
+            configurable: true,
+            options: [{ value: `model-${composerOptionCalls.length}` }]
+          },
+          runtimeContext: {}
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const first = await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+  const second = await service.getComposerOptions({
+    agentTargetId: "shared-codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+  const firstCached = await service.getComposerOptions({
+    agentTargetId: "local:codex",
+    provider: "codex",
+    workspaceId: "ws-1"
+  });
+
+  assert.equal(composerOptionCalls.length, 2);
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["local:codex"]
+      ?.models[0]?.value,
+    "model-1"
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByAgentTargetId?.["shared-codex"]
+      ?.models[0]?.value,
+    "model-2"
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").composerOptionsByProvider?.codex,
+    undefined
+  );
+  assert.equal(
+    (first as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-1"
+  );
+  assert.equal(
+    (second as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-2"
+  );
+  assert.equal(
+    (firstCached as { models?: Array<{ value: string }> }).models?.[0]?.value,
+    "model-1"
+  );
 });
 
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {

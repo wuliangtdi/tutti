@@ -10,6 +10,7 @@ import {
 import { agentGUIProviderTargetRefsEqual } from "../providerTargets.ts";
 import type {
   AgentGuiWorkbenchComposerOverrides,
+  AgentGuiWorkbenchComposerOverridesByAgentTargetId,
   AgentGuiWorkbenchComposerOverridesByProvider,
   AgentGuiWorkbenchNodeState,
   AgentGuiWorkbenchProvider,
@@ -29,6 +30,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
 ): AgentGuiWorkbenchNodeState {
   return {
     composerOverrides: null,
+    composerOverridesByAgentTargetId: null,
     composerOverridesByProvider: null,
     conversationCount: null,
     conversationRailCollapsed: false,
@@ -36,6 +38,7 @@ export function createDefaultAgentGuiWorkbenchNodeState(
     lastActiveAgentSessionId: null,
     lastActiveConversationTitle: null,
     provider,
+    agentTargetId: null,
     providerTargetId: null,
     providerTargetRef: null
   };
@@ -50,6 +53,7 @@ export function normalizeAgentGuiWorkbenchState(
   const providerTargetId = normalizeOptionalNonEmptyString(
     state.providerTargetId
   );
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   const providerTargetRef = normalizeAgentGuiProviderTargetRef(
     state.providerTargetRef
   );
@@ -57,6 +61,10 @@ export function normalizeAgentGuiWorkbenchState(
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state.composerOverrides
     ),
+    composerOverridesByAgentTargetId:
+      normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
+        state.composerOverridesByAgentTargetId
+      ),
     composerOverridesByProvider:
       normalizeAgentGuiWorkbenchComposerOverridesByProvider(
         state.composerOverridesByProvider
@@ -69,6 +77,7 @@ export function normalizeAgentGuiWorkbenchState(
       typeof state.lastActiveAgentSessionId === "string"
         ? state.lastActiveAgentSessionId
         : null,
+    ...(agentTargetId ? { agentTargetId } : {}),
     ...(providerTargetId ? { providerTargetId } : {}),
     ...(providerTargetRef ? { providerTargetRef } : {})
   };
@@ -80,6 +89,7 @@ export function projectAgentGuiWorkbenchState(
   const providerTargetId = normalizeOptionalNonEmptyString(
     state.providerTargetId
   );
+  const agentTargetId = normalizeOptionalNonEmptyString(state.agentTargetId);
   const providerTargetRef = normalizeAgentGuiProviderTargetRef(
     state.providerTargetRef,
     state.provider
@@ -88,6 +98,10 @@ export function projectAgentGuiWorkbenchState(
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state.composerOverrides
     ),
+    composerOverridesByAgentTargetId:
+      normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
+        state.composerOverridesByAgentTargetId
+      ),
     composerOverridesByProvider:
       normalizeAgentGuiWorkbenchComposerOverridesByProvider(
         state.composerOverridesByProvider
@@ -97,6 +111,7 @@ export function projectAgentGuiWorkbenchState(
       state.conversationRailWidthPx
     ),
     lastActiveAgentSessionId: state.lastActiveAgentSessionId ?? null,
+    ...(agentTargetId ? { agentTargetId } : {}),
     ...(providerTargetId ? { providerTargetId } : {}),
     ...(providerTargetRef ? { providerTargetRef } : {})
   };
@@ -108,6 +123,10 @@ export function areAgentGuiWorkbenchStatesEqual(
 ): boolean {
   return (
     composerOverridesEqual(left.composerOverrides, right.composerOverrides) &&
+    composerOverridesByAgentTargetIdEqual(
+      left.composerOverridesByAgentTargetId,
+      right.composerOverridesByAgentTargetId
+    ) &&
     composerOverridesByProviderEqual(
       left.composerOverridesByProvider,
       right.composerOverridesByProvider
@@ -115,6 +134,7 @@ export function areAgentGuiWorkbenchStatesEqual(
     left.conversationRailCollapsed === right.conversationRailCollapsed &&
     left.conversationRailWidthPx === right.conversationRailWidthPx &&
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
+    (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
     (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
     agentGUIProviderTargetRefsEqual(
       left.providerTargetRef,
@@ -136,6 +156,10 @@ export function normalizeAgentGuiWorkbenchNodeState(
     composerOverrides: normalizeAgentGuiWorkbenchComposerOverrides(
       state?.composerOverrides
     ),
+    composerOverridesByAgentTargetId:
+      normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
+        state?.composerOverridesByAgentTargetId
+      ),
     composerOverridesByProvider:
       normalizeAgentGuiWorkbenchComposerOverridesByProvider(
         state?.composerOverridesByProvider
@@ -156,6 +180,9 @@ export function normalizeAgentGuiWorkbenchNodeState(
         ? state.lastActiveConversationTitle
         : null,
     provider,
+    agentTargetId:
+      normalizeOptionalNonEmptyString(state?.agentTargetId) ??
+      normalizeOptionalNonEmptyString(state?.providerTargetId),
     providerTargetId: normalizeOptionalNonEmptyString(state?.providerTargetId),
     providerTargetRef: normalizeAgentGuiProviderTargetRef(
       state?.providerTargetRef,
@@ -170,6 +197,10 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
 ): boolean {
   return (
     composerOverridesEqual(left.composerOverrides, right.composerOverrides) &&
+    composerOverridesByAgentTargetIdEqual(
+      left.composerOverridesByAgentTargetId,
+      right.composerOverridesByAgentTargetId
+    ) &&
     composerOverridesByProviderEqual(
       left.composerOverridesByProvider,
       right.composerOverridesByProvider
@@ -180,6 +211,7 @@ export function areAgentGuiWorkbenchNodeStatesEqual(
     left.lastActiveAgentSessionId === right.lastActiveAgentSessionId &&
     left.lastActiveConversationTitle === right.lastActiveConversationTitle &&
     left.provider === right.provider &&
+    (left.agentTargetId ?? null) === (right.agentTargetId ?? null) &&
     (left.providerTargetId ?? null) === (right.providerTargetId ?? null) &&
     agentGUIProviderTargetRefsEqual(
       left.providerTargetRef,
@@ -354,6 +386,7 @@ function agentGuiWorkbenchInstanceStateKey(
 function createDefaultAgentGuiWorkbenchState(): AgentGuiWorkbenchState {
   return {
     composerOverrides: null,
+    composerOverridesByAgentTargetId: null,
     composerOverridesByProvider: null,
     conversationRailCollapsed: false,
     conversationRailWidthPx: null,
@@ -433,6 +466,26 @@ function normalizeAgentGuiWorkbenchComposerOverridesByProvider(
   return Object.keys(result).length > 0 ? result : null;
 }
 
+function normalizeAgentGuiWorkbenchComposerOverridesByAgentTargetId(
+  value: unknown
+): AgentGuiWorkbenchComposerOverridesByAgentTargetId | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const result: AgentGuiWorkbenchComposerOverridesByAgentTargetId = {};
+  for (const [rawAgentTargetId, rawOverrides] of Object.entries(value)) {
+    const agentTargetId = normalizeOptionalNonEmptyString(rawAgentTargetId);
+    if (!agentTargetId) {
+      continue;
+    }
+    const overrides = normalizeAgentGuiWorkbenchComposerOverrides(rawOverrides);
+    if (overrides) {
+      result[agentTargetId] = overrides;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function normalizeOptionalPositiveNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
@@ -467,6 +520,22 @@ function composerOverridesByProviderEqual(
     }
   }
   return true;
+}
+
+function composerOverridesByAgentTargetIdEqual(
+  left: AgentGuiWorkbenchComposerOverridesByAgentTargetId | null | undefined,
+  right: AgentGuiWorkbenchComposerOverridesByAgentTargetId | null | undefined
+): boolean {
+  const leftKeys = Object.keys(left ?? {}).sort();
+  const rightKeys = Object.keys(right ?? {}).sort();
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every(
+    (key, index) =>
+      key === rightKeys[index] &&
+      composerOverridesEqual(left?.[key], right?.[key])
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

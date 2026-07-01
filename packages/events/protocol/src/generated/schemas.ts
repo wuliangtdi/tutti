@@ -606,6 +606,9 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "string",
               minLength: 1
             },
+            agentTargetId: {
+              type: "string"
+            },
             eventType: {
               const: "session_update"
             },
@@ -835,6 +838,9 @@ export const agentActivityUpdatedPayloadSchema = {
             provider: {
               type: "string"
             },
+            agentTargetId: {
+              type: "string"
+            },
             providerSessionId: {
               type: "string"
             },
@@ -903,6 +909,9 @@ export const agentActivityUpdatedPayloadSchema = {
     agentSessionId: {
       type: "string",
       minLength: 1
+    },
+    agentTargetId: {
+      type: "string"
     },
     eventType: {
       type: "string",

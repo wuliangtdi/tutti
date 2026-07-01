@@ -276,6 +276,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	)
 	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentSessionService.ModelCatalog = agentservice.NewAgentModelCatalog()
+	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo

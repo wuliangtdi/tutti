@@ -24,6 +24,7 @@ export function mapAgentTargetsToAgentGuiProviderTargets(
     };
     return {
       targetId: target.id,
+      agentTargetId: target.id,
       provider,
       ref,
       label: target.name,

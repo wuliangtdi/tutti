@@ -6,13 +6,13 @@ import { mapAgentTargetsToAgentGuiProviderTargets } from "./workspaceAgentGuiPro
 test("maps daemon Agent Targets into AgentGUI provider targets in sort order", () => {
   const targets = mapAgentTargetsToAgentGuiProviderTargets([
     createAgentTarget({
-      id: "local-claude-code",
+      id: "local:claude-code",
       name: "Claude Code",
       provider: "claude-code",
       sortOrder: 20
     }),
     createAgentTarget({
-      id: "local-codex",
+      id: "local:codex",
       name: "Codex",
       provider: "codex",
       sortOrder: 10
@@ -38,13 +38,13 @@ test("maps daemon Agent Targets into AgentGUI provider targets in sort order", (
         disabled: false,
         kind: "local_cli",
         provider: "codex",
-        targetId: "local-codex"
+        targetId: "local:codex"
       },
       {
         disabled: false,
         kind: "local_cli",
         provider: "claude-code",
-        targetId: "local-claude-code"
+        targetId: "local:claude-code"
       },
       {
         disabled: true,

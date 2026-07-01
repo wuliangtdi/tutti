@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	IDLocalCodex      = "local-codex"
-	IDLocalClaudeCode = "local-claude-code"
+	IDLocalCodex      = "local:codex"
+	IDLocalClaudeCode = "local:claude-code"
 
 	LaunchRefTypeLocalCLI = "local_cli"
 

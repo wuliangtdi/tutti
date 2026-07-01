@@ -125,7 +125,7 @@ test("shared tuttid client unwraps agent target responses", async () => {
         JSON.stringify({
           targets: [
             {
-              id: "local-codex",
+              id: "local:codex",
               provider: "codex",
               launchRef: {
                 type: "local_cli",
@@ -152,7 +152,7 @@ test("shared tuttid client unwraps agent target responses", async () => {
   assert.deepEqual(await client.listAgentTargets(), {
     targets: [
       {
-        id: "local-codex",
+        id: "local:codex",
         provider: "codex",
         launchRef: {
           type: "local_cli",

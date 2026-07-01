@@ -25,8 +25,11 @@ export const agentGUIDefaultTargetProviders = [
 export function createLocalAgentGUIProviderTarget(
   provider: AgentGUIProvider
 ): AgentGUIProviderTarget {
+  const targetId = localAgentGUIProviderTargetId(provider);
+  const agentTargetId = localAgentGUIAgentTargetId(provider);
   return {
-    targetId: localAgentGUIProviderTargetId(provider),
+    targetId,
+    ...(agentTargetId ? { agentTargetId } : {}),
     provider,
     ref: {
       kind: "local",
@@ -48,6 +51,19 @@ export function localAgentGUIProviderTargetId(
   provider: AgentGUIProvider
 ): string {
   return `local:${provider}`;
+}
+
+export function localAgentGUIAgentTargetId(
+  provider: AgentGUIProvider
+): string | null {
+  switch (provider) {
+    case "codex":
+      return "local:codex";
+    case "claude-code":
+      return "local:claude-code";
+    default:
+      return null;
+  }
 }
 
 export function normalizeAgentGUIProviderTargets(
@@ -76,6 +92,7 @@ export function normalizeAgentGUIProviderTargets(
 }
 
 export function resolveAgentGUIProviderTarget(input: {
+  agentTargetId?: string | null;
   defaultProviderTargetId?: string | null;
   provider: AgentGUIProvider;
   providerTargetId?: string | null;
@@ -87,7 +104,13 @@ export function resolveAgentGUIProviderTarget(input: {
   const targetById = new Map(
     providerTargets.map((target) => [target.targetId, target])
   );
+  const targetByAgentTargetId = new Map(
+    providerTargets.flatMap((target) =>
+      target.agentTargetId ? [[target.agentTargetId, target] as const] : []
+    )
+  );
   return (
+    targetByAgentTargetId.get(input.agentTargetId?.trim() ?? "") ??
     targetById.get(input.providerTargetId?.trim() ?? "") ??
     targetById.get(input.defaultProviderTargetId?.trim() ?? "") ??
     targetById.get(localAgentGUIProviderTargetId(input.provider)) ??
@@ -117,6 +140,7 @@ function normalizeAgentGUIProviderTarget(
   target: AgentGUIProviderTarget
 ): AgentGUIProviderTarget | null {
   const targetId = target.targetId.trim();
+  const agentTargetId = target.agentTargetId?.trim();
   const label = target.label.trim();
   const kind =
     typeof target.ref.kind === "string" ? target.ref.kind.trim() : "";
@@ -126,6 +150,7 @@ function normalizeAgentGUIProviderTarget(
   return {
     ...target,
     targetId,
+    ...(agentTargetId ? { agentTargetId } : {}),
     provider: target.provider,
     ref: {
       ...target.ref,

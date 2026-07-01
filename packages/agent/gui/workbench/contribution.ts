@@ -389,6 +389,9 @@ export function createAgentGuiWorkbenchContribution(
             ...(targetAgentSessionId
               ? { lastActiveAgentSessionId: targetAgentSessionId }
               : {}),
+            ...(providerTarget.agentTargetId
+              ? { agentTargetId: providerTarget.agentTargetId }
+              : {}),
             ...(providerTarget.providerTargetId
               ? { providerTargetId: providerTarget.providerTargetId }
               : {}),
@@ -399,6 +402,7 @@ export function createAgentGuiWorkbenchContribution(
           typeId: agentGuiWorkbenchTypeId
         });
       } else if (
+        providerTarget.agentTargetId ||
         providerTarget.providerTargetId ||
         providerTarget.providerTargetRef
       ) {
@@ -410,6 +414,9 @@ export function createAgentGuiWorkbenchContribution(
           instanceId,
           state: {
             ...normalizeAgentGuiWorkbenchState(previousState),
+            ...(providerTarget.agentTargetId
+              ? { agentTargetId: providerTarget.agentTargetId }
+              : {}),
             ...(providerTarget.providerTargetId
               ? { providerTargetId: providerTarget.providerTargetId }
               : {}),
@@ -522,6 +529,7 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
   >
 ): {
   provider: AgentGuiWorkbenchProvider;
+  agentTargetId?: string;
   providerTargetId?: string;
   providerTargetRef?: AgentGUIProviderTargetRef;
 } {
@@ -529,6 +537,7 @@ export function resolveAgentGuiUnifiedDockLaunchPayload(
   if (target) {
     return {
       provider: target.provider,
+      ...(target.agentTargetId ? { agentTargetId: target.agentTargetId } : {}),
       providerTargetId: target.targetId,
       providerTargetRef: target.ref
     };
@@ -833,20 +842,27 @@ function providerTargetLaunchPayloadFromRequest(
   payload: unknown,
   expectedProvider: AgentGuiWorkbenchProvider
 ): {
+  agentTargetId: string | null;
   providerTargetId: string | null;
   providerTargetRef: AgentGUIProviderTargetRef | null;
 } {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {
+      agentTargetId: null,
       providerTargetId: null,
       providerTargetRef: null
     };
   }
+  const agentTargetId = (payload as { agentTargetId?: unknown }).agentTargetId;
   const providerTargetId = (payload as { providerTargetId?: unknown })
     .providerTargetId;
   const providerTargetRef = (payload as { providerTargetRef?: unknown })
     .providerTargetRef;
   return {
+    agentTargetId:
+      typeof agentTargetId === "string" && agentTargetId.trim()
+        ? agentTargetId.trim()
+        : null,
     providerTargetId:
       typeof providerTargetId === "string" && providerTargetId.trim()
         ? providerTargetId.trim()

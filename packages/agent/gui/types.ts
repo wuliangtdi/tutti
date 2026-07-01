@@ -44,6 +44,7 @@ export interface AgentNodeData {
 
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
+  agentTargetId?: string | null;
   providerTargetId?: string | null;
   providerTargetRef?: AgentGUIProviderTargetRef | null;
   lastActiveAgentSessionId: string | null;
@@ -52,6 +53,10 @@ export interface AgentGUINodeData {
   conversationRailWidthPx?: number | null;
   conversationRailCollapsed?: boolean | null;
   composerOverrides?: AgentHostAgentSessionComposerSettings | null;
+  composerOverridesByAgentTargetId?: Record<
+    string,
+    AgentHostAgentSessionComposerSettings | null
+  > | null;
   composerOverridesByProvider?: Partial<
     Record<AgentGUIProvider, AgentHostAgentSessionComposerSettings | null>
   > | null;
@@ -70,6 +75,7 @@ export interface AgentGUIProviderTargetRef {
 
 export interface AgentGUIProviderTarget {
   targetId: string;
+  agentTargetId?: string | null;
   provider: AgentGUIProvider;
   ref: AgentGUIProviderTargetRef;
   label: string;

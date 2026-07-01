@@ -106,6 +106,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(entries[0]?.id).toBe(agentGuiWorkbenchUnifiedDockEntryId());
     expect(entries[0]?.label).toBe("Agent");
     expect(entries[0]?.launchPayload).toEqual({
+      agentTargetId: "local:claude-code",
       provider: "claude-code",
       providerTargetId: "local:claude-code",
       providerTargetRef: claudeTarget.ref
@@ -115,11 +116,13 @@ describe("agent GUI workbench contribution copy", () => {
   it("uses the first enabled target in host order after an unavailable default provider", () => {
     const disabledClaudeTarget = {
       ...createLocalAgentGUIProviderTarget("claude-code"),
+      agentTargetId: "disabled-claude",
       disabled: true,
       targetId: "disabled-claude"
     };
     const enabledClaudeTarget = {
       ...createLocalAgentGUIProviderTarget("claude-code"),
+      agentTargetId: "daemon-claude",
       targetId: "daemon-claude"
     };
     const entries = buildAgentGuiDockEntries({
@@ -138,6 +141,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries[0]?.launchPayload).toEqual({
+      agentTargetId: "daemon-claude",
       provider: "claude-code",
       providerTargetId: "daemon-claude",
       providerTargetRef: enabledClaudeTarget.ref
@@ -147,6 +151,7 @@ describe("agent GUI workbench contribution copy", () => {
   it("uses host target order for an available default provider", () => {
     const daemonCodexTarget = {
       ...createLocalAgentGUIProviderTarget("codex"),
+      agentTargetId: "daemon-codex",
       targetId: "daemon-codex"
     };
     const localCodexTarget = createLocalAgentGUIProviderTarget("codex");
@@ -161,6 +166,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     expect(entries[0]?.launchPayload).toEqual({
+      agentTargetId: "daemon-codex",
       provider: "codex",
       providerTargetId: "daemon-codex",
       providerTargetRef: daemonCodexTarget.ref
@@ -259,6 +265,7 @@ describe("agent GUI workbench contribution copy", () => {
       ],
       renderBody: () => null,
       resolveDockLaunchPayload: () => ({
+        agentTargetId: claudeTarget.agentTargetId,
         provider: "claude-code",
         providerTargetId: claudeTarget.targetId,
         providerTargetRef: claudeTarget.ref
@@ -290,13 +297,16 @@ describe("agent GUI workbench contribution copy", () => {
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
       title: "Claude Code"
     });
-    expect(launchResult?.instanceId).toContain("agent-gui:claude-code:panel:");
+    expect(launchResult?.instanceId).toBe(
+      "agent-gui:claude-code:target:local%3Aclaude-code"
+    );
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
     ).toMatchObject({
+      agentTargetId: "local:claude-code",
       providerTargetId: "local:claude-code",
       providerTargetRef: claudeTarget.ref
     });
@@ -335,14 +345,18 @@ describe("agent GUI workbench contribution copy", () => {
       dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
       title: "Claude Code"
     });
-    expect(launchResult?.instanceId).toContain("agent-gui:claude-code:panel:");
+    expect(launchResult?.instanceId).toBe(
+      "agent-gui:claude-code:target:local%3Aclaude-code"
+    );
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: launchResult?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
     ).toEqual({
+      agentTargetId: "local:claude-code",
       composerOverrides: null,
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: null,
       conversationRailCollapsed: false,
       conversationRailWidthPx: null,

@@ -1087,6 +1087,7 @@ describe("useAgentGUINodeController", () => {
         providerTargets: [
           {
             targetId: "shared-agent:agent-1",
+            agentTargetId: "agent-target-1",
             provider: "codex",
             ref: providerTargetRef,
             label: "Alice's Codex"
@@ -1105,6 +1106,7 @@ describe("useAgentGUINodeController", () => {
       expect(activate).toHaveBeenCalledWith(
         expect.objectContaining({
           mode: "new",
+          agentTargetId: "agent-target-1",
           provider: "codex",
           providerTargetRef
         })
@@ -1122,6 +1124,7 @@ describe("useAgentGUINodeController", () => {
     })?.[0];
     expect(persistTargetUpdate?.(agentGuiData(null))).toMatchObject({
       provider: "codex",
+      agentTargetId: "agent-target-1",
       providerTargetId: "shared-agent:agent-1",
       providerTargetRef
     });
@@ -1174,7 +1177,8 @@ describe("useAgentGUINodeController", () => {
       .filter(
         (next) =>
           next !== initialData &&
-          ("providerTargetId" in next || "providerTargetRef" in next)
+          ((next.providerTargetId ?? null) !== null ||
+            (next.providerTargetRef ?? null) !== null)
       );
     expect(providerTargetUpdates).toEqual([]);
   });
@@ -1238,7 +1242,8 @@ describe("useAgentGUINodeController", () => {
       .filter(
         (next) =>
           next !== initialData &&
-          ("providerTargetId" in next || "providerTargetRef" in next)
+          ((next.providerTargetId ?? null) !== null ||
+            (next.providerTargetRef ?? null) !== null)
       );
     expect(providerTargetUpdates).toEqual([]);
   });
@@ -14923,6 +14928,7 @@ function installAgentActivityRuntimeForHostMocks({
         ...(input.mode === "new"
           ? {
               provider: input.provider,
+              agentTargetId: input.agentTargetId,
               providerTargetRef: input.providerTargetRef,
               cwd: input.cwd,
               initialContent: input.initialContent,
@@ -14968,6 +14974,7 @@ function installAgentActivityRuntimeForHostMocks({
         workspaceId: input.workspaceId,
         agentSessionId: input.agentSessionId ?? createTestAgentSessionId(),
         provider: input.provider,
+        agentTargetId: input.agentTargetId,
         cwd: input.cwd ?? undefined,
         title: input.title ?? undefined,
         settings: {
@@ -15025,12 +15032,25 @@ function installAgentActivityRuntimeForHostMocks({
           input.provider ?? "codex",
           result
         );
+        const agentTargetId =
+          typeof input.agentTargetId === "string" && input.agentTargetId.trim()
+            ? input.agentTargetId.trim()
+            : null;
         setSnapshot(input.workspaceId, (current) => ({
           ...current,
-          composerOptionsByProvider: {
-            ...(current.composerOptionsByProvider ?? {}),
-            [options.provider]: options
-          }
+          ...(agentTargetId
+            ? {
+                composerOptionsByAgentTargetId: {
+                  ...(current.composerOptionsByAgentTargetId ?? {}),
+                  [agentTargetId]: options
+                }
+              }
+            : {
+                composerOptionsByProvider: {
+                  ...(current.composerOptionsByProvider ?? {}),
+                  [options.provider]: options
+                }
+              })
         }));
         return options;
       }
@@ -15075,6 +15095,10 @@ function installAgentActivityRuntimeForHostMocks({
         composerOptionsByProvider:
           current.composerOptionsByProvider ??
           next.composerOptionsByProvider ??
+          {},
+        composerOptionsByAgentTargetId:
+          current.composerOptionsByAgentTargetId ??
+          next.composerOptionsByAgentTargetId ??
           {},
         sessionMessagesById: {
           ...next.sessionMessagesById,
@@ -15332,6 +15356,7 @@ function emptyAgentActivitySnapshot(
     presences: [],
     sessions: [],
     sessionMessagesById: {},
+    composerOptionsByAgentTargetId: {},
     composerOptionsByProvider: {}
   };
 }
@@ -15485,30 +15510,19 @@ function cloneAgentActivitySnapshot(
     workspaceId: snapshot.workspaceId,
     presences: snapshot.presences.map((presence) => ({ ...presence })),
     sessions: snapshot.sessions.map((session) => ({ ...session })),
+    composerOptionsByAgentTargetId: Object.fromEntries(
+      Object.entries(snapshot.composerOptionsByAgentTargetId ?? {}).map(
+        ([agentTargetId, options]) => [
+          agentTargetId,
+          cloneComposerOptionsForTest(options)
+        ]
+      )
+    ),
     composerOptionsByProvider: Object.fromEntries(
       Object.entries(snapshot.composerOptionsByProvider ?? {}).map(
         ([provider, options]) => [
           provider,
-          {
-            ...options,
-            models: options.models.map((option) => ({ ...option })),
-            reasoningEfforts: options.reasoningEfforts.map((option) => ({
-              ...option
-            })),
-            permissionConfig: options.permissionConfig
-              ? {
-                  configurable: options.permissionConfig.configurable,
-                  defaultValue: options.permissionConfig.defaultValue ?? null,
-                  modes: options.permissionConfig.modes.map((mode) => ({
-                    ...mode
-                  }))
-                }
-              : (options.permissionConfig ?? null),
-            runtimeContext: options.runtimeContext
-              ? { ...options.runtimeContext }
-              : options.runtimeContext,
-            skills: options.skills.map((skill) => ({ ...skill }))
-          }
+          cloneComposerOptionsForTest(options)
         ]
       )
     ),
@@ -15523,6 +15537,35 @@ function cloneAgentActivitySnapshot(
         ]
       )
     )
+  };
+}
+
+function cloneComposerOptionsForTest(
+  options: AgentActivityComposerOptions
+): AgentActivityComposerOptions {
+  return {
+    ...options,
+    models: options.models.map((option) => ({ ...option })),
+    reasoningEfforts: options.reasoningEfforts.map((option) => ({
+      ...option
+    })),
+    speeds: (options.speeds ?? []).map((option) => ({ ...option })),
+    permissionConfig: options.permissionConfig
+      ? {
+          configurable: options.permissionConfig.configurable,
+          defaultValue: options.permissionConfig.defaultValue ?? null,
+          modes: options.permissionConfig.modes.map((mode) => ({
+            ...mode
+          }))
+        }
+      : (options.permissionConfig ?? null),
+    runtimeContext: options.runtimeContext
+      ? { ...options.runtimeContext }
+      : options.runtimeContext,
+    skills: options.skills.map((skill) => ({ ...skill })),
+    capabilityCatalog: options.capabilityCatalog?.map((capability) => ({
+      ...capability
+    }))
   };
 }
 
@@ -15554,6 +15597,12 @@ function agentActivitySnapshotFromHostSnapshot(
       agentActivitySessionFromWorkspaceAgentSession(session, workspaceId)
     ),
     sessionMessagesById,
+    composerOptionsByAgentTargetId:
+      (
+        snapshot as {
+          composerOptionsByAgentTargetId?: AgentActivitySnapshot["composerOptionsByAgentTargetId"];
+        }
+      ).composerOptionsByAgentTargetId ?? {},
     composerOptionsByProvider:
       (
         snapshot as {

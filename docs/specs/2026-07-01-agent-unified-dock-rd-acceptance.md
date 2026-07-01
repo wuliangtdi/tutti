@@ -122,8 +122,8 @@ agent_targets (
 
 第一阶段系统 rows:
 
-- `local-codex`: provider `codex`，launch ref `{ "type": "local_cli", "provider": "codex" }`。
-- `local-claude-code`: provider `claude-code`，launch ref `{ "type": "local_cli", "provider": "claude-code" }`。
+- `local:codex`: provider `codex`，launch ref `{ "type": "local_cli", "provider": "codex" }`。
+- `local:claude-code`: provider `claude-code`，launch ref `{ "type": "local_cli", "provider": "claude-code" }`。
 
 ### Launch Ref Union
 
@@ -394,7 +394,7 @@ pnpm check:full
 
 ### Data
 
-- Fresh workspace 自动存在 `local-codex` 与 `local-claude-code` system targets。
+- Fresh workspace 自动存在 `local:codex` 与 `local:claude-code` system targets。
 - `launch_ref_json` strict decode；unknown `type`、provider mismatch、extra config blob 被拒绝或安全忽略。
 - system targets 不会被普通 user edit/delete 删除。
 

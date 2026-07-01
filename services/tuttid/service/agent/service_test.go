@@ -13,6 +13,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -59,6 +60,119 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 	if got.ID != session.ID {
 		t.Fatalf("got session ID = %q, want %q", got.ID, session.ID)
+	}
+}
+
+func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{
+		targets: map[string]agenttargetbiz.Target{
+			agenttargetbiz.IDLocalClaudeCode: {
+				ID:            agenttargetbiz.IDLocalClaudeCode,
+				Provider:      "claude-code",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("claude-code"),
+				Name:          "Claude Code",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		Provider:       "claude-code",
+		InitialContent: TextPromptContent("hello target"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Provider != "claude-code" || session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("session provider/target = %q/%q, want claude-code/%s", session.Provider, session.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].Provider; got != "claude-code" {
+		t.Fatalf("runtime provider = %q, want claude-code", got)
+	}
+	if got := runtime.startCalls[0].AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargetInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		input       CreateSessionInput
+		targets     map[string]agenttargetbiz.Target
+		errContains string
+	}{
+		{
+			name: "missing target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-missing",
+				AgentTargetID:  "missing-target",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target not found",
+		},
+		{
+			name: "disabled target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-disabled",
+				AgentTargetID:  "disabled-codex",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				"disabled-codex": {
+					ID:            "disabled-codex",
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Disabled Codex",
+					Enabled:       false,
+					Source:        agenttargetbiz.SourceUser,
+				},
+			},
+			errContains: "agent target is disabled",
+		},
+		{
+			name: "provider mismatch",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-mismatch",
+				AgentTargetID:  agenttargetbiz.IDLocalCodex,
+				Provider:       "claude-code",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				agenttargetbiz.IDLocalCodex: {
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				},
+			},
+			errContains: "provider does not match agent target",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := NewService(runtime)
+			service.AgentTargetStore = fakeAgentTargetStore{targets: tc.targets}
+
+			_, err := service.Create(context.Background(), "ws-1", tc.input)
+			if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument containing %q", err, tc.errContains)
+			}
+			if len(runtime.startCalls) != 0 {
+				t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+			}
+		})
 	}
 }
 
@@ -3961,6 +4075,22 @@ type fakeRuntime struct {
 	validateCalls          []RuntimeExecInput
 }
 
+type fakeAgentTargetStore struct {
+	err     error
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	if f.err != nil {
+		return agenttargetbiz.Target{}, f.err
+	}
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
+}
+
 type fakeRuntimePreparer struct {
 	result       agentsidecarservice.PreparedRuntime
 	err          error
@@ -4172,6 +4302,7 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Runti
 	f.resumeCalls = append(f.resumeCalls, input)
 	session := RuntimeSession{
 		ID:                input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		Cwd:               input.Cwd,
@@ -4276,9 +4407,10 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	session := RuntimeSession{
-		ID:       id,
-		Provider: input.Provider,
-		Cwd:      input.Cwd,
+		ID:            id,
+		AgentTargetID: input.AgentTargetID,
+		Provider:      input.Provider,
+		Cwd:           input.Cwd,
 		Settings: &ComposerSettings{
 			Model:                  input.Model,
 			PermissionModeID:       input.PermissionModeID,

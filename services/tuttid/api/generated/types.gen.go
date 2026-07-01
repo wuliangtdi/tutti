@@ -2305,7 +2305,10 @@ type CreateIssueManagerTopicRequest struct {
 
 // CreateWorkspaceAgentSessionRequest defines model for CreateWorkspaceAgentSessionRequest.
 type CreateWorkspaceAgentSessionRequest struct {
-	AgentSessionId openapi_types.UUID        `json:"agentSessionId"`
+	AgentSessionId openapi_types.UUID `json:"agentSessionId"`
+
+	// AgentTargetId Preferred target-first session launch authority. When present, the daemon derives provider from the stored agent target launchRef and rejects mismatched provider values.
+	AgentTargetId  *string                   `json:"agentTargetId,omitempty"`
 	BrowserUse     *bool                     `json:"browserUse,omitempty"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
@@ -3225,6 +3228,8 @@ type WorkspaceAgentProvider string
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
+	// AgentTargetId Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
+	AgentTargetId      *string                          `json:"agentTargetId,omitempty"`
 	CreatedAt          time.Time                        `json:"createdAt"`
 	Cwd                *string                          `json:"cwd"`
 	EndedAt            *time.Time                       `json:"endedAt,omitempty"`
@@ -3274,6 +3279,7 @@ type WorkspaceAgentSessionCancelResultReason string
 // WorkspaceAgentSessionEventEnvelope defines model for WorkspaceAgentSessionEventEnvelope.
 type WorkspaceAgentSessionEventEnvelope struct {
 	AgentSessionId string                 `json:"agentSessionId"`
+	AgentTargetId  *string                `json:"agentTargetId,omitempty"`
 	OccurredAt     time.Time              `json:"occurredAt"`
 	Payload        map[string]interface{} `json:"payload"`
 	Seq            int64                  `json:"seq"`

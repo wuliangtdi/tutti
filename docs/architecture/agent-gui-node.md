@@ -676,6 +676,10 @@ User-visible rules:
 - User composer defaults are owned by desktop preferences. AgentGUI may request
   a defaults write only from the home/new composer path, through an explicit host
   callback.
+- Target-backed home/new composer defaults and draft settings must be keyed by
+  `agentTargetId` first. Provider-keyed defaults are legacy fallback only, so two
+  targets under the same provider cannot share model, permission, reasoning,
+  speed, or draft state by accident.
 - Active session settings are session state. Opening, restoring, or editing an
   active session must not promote that session's model, permission mode, or
   reasoning setting into user defaults.
@@ -925,30 +929,42 @@ activity data source:
 
 ### Provider Targets
 
-AgentGUI distinguishes real provider identity from launch targets. `provider`
-continues to mean the concrete provider family (`codex`, `claude-code`,
-`nexight`, and so on) and remains the key for composer options, settings,
-icons, probes, provider status, and adapter policy.
+AgentGUI distinguishes launch authority, real provider identity, and legacy
+provider-target compatibility. `agentTargetId` is the authority for new
+session launches, workbench target selection, and AgentGUI node state. The
+daemon resolves that id against `agent_targets` and derives the execution
+provider from the trusted target `launchRef`. `provider` continues to mean the
+concrete provider family (`codex`, `claude-code`, `nexight`, and so on) and
+remains the key for display labels/icons, probes, provider status, historical
+conversation filters, telemetry, and provider execution policy.
 
 `providerTargets` lets a host expose multiple targets under that same provider.
 AgentGUI owns only target display and passthrough:
 
 - show `target.label` for new-session surfaces
 - keep provider behavior keyed by `target.provider`
-- persist `providerTargetId` / `providerTargetRef` in workbench node state
-- pass `providerTargetRef` through `AgentActivityRuntime.activateSession`
+- persist `agentTargetId` in new workbench node state when the host target has
+  one
+- read legacy `providerTargetId` / `providerTargetRef` from old workbench node
+  state to recover the selected target
+- pass `agentTargetId` through `AgentActivityRuntime.activateSession`
+- pass `providerTargetRef` only as a legacy opaque compatibility hint
 
-`providerTargetRef` is an opaque host reference, not authority. AgentGUI must
-not interpret `ref.kind`, mint invocation-control tokens, resolve invocation
-plans, contact command gateways, or handle raw credentials. Host/trusted code
-must re-authenticate the current user and workspace and resolve any invocation
-plan before launching. A target may identify shared, local, remote, or other
-host-owned launch mechanisms, but those meanings stay outside AgentGUI.
+`providerTargetId` and `providerTargetRef` are transition fields, not daemon
+authority. AgentGUI must not interpret `ref.kind`, mint invocation-control
+tokens, resolve invocation plans, contact command gateways, or handle raw
+credentials. Host/trusted code must re-authenticate the current user and
+workspace and resolve any invocation plan before launching. A target may
+identify shared, local, remote, or other host-owned launch mechanisms, but those
+meanings stay outside AgentGUI.
 
 When `providerTargets` is omitted or empty, AgentGUI may synthesize local
 targets from the static provider catalog for picker/display compatibility. Those
 fallback targets do not change the legacy activation contract: AgentGUI does not
-persist or send their `providerTargetRef`.
+persist or send their `providerTargetRef`. For system local Codex and Claude
+Code targets, the synthesized targets may expose `local:codex` and
+`local:claude-code` as `agentTargetId`, matching the legacy local
+`providerTargetId` format so old node state can fall back without remapping.
 
 ### Conversation Projection
 

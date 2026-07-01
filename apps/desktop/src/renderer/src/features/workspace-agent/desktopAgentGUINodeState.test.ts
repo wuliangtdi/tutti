@@ -10,6 +10,7 @@ import {
   projectDesktopAgentGUIWorkbenchState,
   type DesktopAgentGUINodeState
 } from "./desktopAgentGUINodeState.ts";
+import { withDesktopAgentGUIProviderComposerDefaults } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
 test("desktop agent gui node state preserves supported providers and falls back to codex", () => {
   assert.equal(
@@ -37,6 +38,7 @@ test("desktop agent gui workbench state only preserves whitelisted data", () => 
 
   assert.deepEqual(workbenchState, {
     composerOverrides: { permissionModeId: "full-access" },
+    composerOverridesByAgentTargetId: null,
     composerOverridesByProvider: null,
     conversationRailCollapsed: true,
     conversationRailWidthPx: null,
@@ -57,6 +59,7 @@ test("desktop agent gui workbench projection preserves rail state and permission
     }),
     {
       composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: null,
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
@@ -143,6 +146,51 @@ test("desktop agent gui workbench state preserves composer overrides by provider
   });
 });
 
+test("desktop agent gui workbench state preserves composer overrides by agent target", () => {
+  const workbenchState = normalizeDesktopAgentGUIWorkbenchState({
+    composerOverridesByAgentTargetId: {
+      "local:codex": {
+        model: "gpt-5",
+        permissionModeId: "auto",
+        reasoningEffort: "high"
+      }
+    }
+  });
+
+  assert.deepEqual(workbenchState.composerOverridesByAgentTargetId, {
+    "local:codex": {
+      model: "gpt-5",
+      permissionModeId: "auto",
+      reasoningEffort: "high"
+    }
+  });
+});
+
+test("desktop agent gui composer defaults are agent target keyed", () => {
+  const state = withDesktopAgentGUIProviderComposerDefaults(
+    {
+      ...createDefaultDesktopAgentGUINodeState("codex"),
+      agentTargetId: "local:codex"
+    },
+    "codex",
+    {
+      model: "gpt-5",
+      permissionModeId: "auto",
+      reasoningEffort: "high"
+    }
+  );
+
+  assert.deepEqual(state.composerOverridesByAgentTargetId, {
+    "local:codex": {
+      model: "gpt-5",
+      permissionModeId: "auto",
+      reasoningEffort: "high"
+    }
+  });
+  assert.equal(state.composerOverridesByProvider, null);
+  assert.equal(state.composerOverrides, null);
+});
+
 test("desktop agent gui node state normalizes partial runtime data", () => {
   assert.deepEqual(
     normalizeDesktopAgentGUINodeState({
@@ -223,6 +271,7 @@ test("desktop agent gui node state source consumes instance launch state after n
     }),
     {
       composerOverrides: { permissionModeId: "full-access" },
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: null,
       conversationRailCollapsed: true,
       conversationRailWidthPx: 360,
@@ -253,6 +302,7 @@ test("desktop agent gui node state source consumes instance launch state after n
     }),
     {
       composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: null,
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,

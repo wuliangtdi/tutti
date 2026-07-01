@@ -2853,15 +2853,21 @@ function areAgentComposerDraftsEqual(
 }
 
 function nodeDefaultDraftKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
+  const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+  if (normalizedAgentTargetId) {
+    return `${NODE_DEFAULT_DRAFT_KEY}:target:${normalizedAgentTargetId}`;
+  }
   return `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}`;
 }
 
 function nodeDefaultDraftContentKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
-  return nodeDefaultDraftKey(agentProvider);
+  return nodeDefaultDraftKey(agentProvider, agentTargetId);
 }
 
 function normalizeProjectDraftPath(
@@ -2876,6 +2882,9 @@ function readNodeDefaultDraftContent(input: {
   drafts: Record<string, AgentComposerDraft>;
 }): AgentComposerDraft {
   return (
+    input.drafts[
+      nodeDefaultDraftContentKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftContentKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     EMPTY_AGENT_COMPOSER_DRAFT
@@ -2888,6 +2897,9 @@ function readNodeDefaultDraftSettings(input: {
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
   return (
+    input.drafts[
+      nodeDefaultDraftKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     buildNodeDefaultComposerSettings(input.data, {
@@ -3319,6 +3331,7 @@ export function useAgentGUINodeController({
   const selectedProviderTarget = useMemo(
     () =>
       resolveAgentGUIProviderTarget({
+        agentTargetId: data.agentTargetId,
         defaultProviderTargetId,
         provider: data.provider,
         providerTargetId: data.providerTargetId,
@@ -3326,6 +3339,7 @@ export function useAgentGUINodeController({
       }),
     [
       data.provider,
+      data.agentTargetId,
       data.providerTargetId,
       defaultProviderTargetId,
       normalizedProviderTargets
@@ -3520,7 +3534,13 @@ export function useAgentGUINodeController({
   );
   const activeSessionState = activeSessionView?.controlState ?? null;
   const providerComposerOptions =
-    agentActivitySnapshot.composerOptionsByProvider?.[data.provider] ?? null;
+    (data.agentTargetId
+      ? agentActivitySnapshot.composerOptionsByAgentTargetId?.[
+          data.agentTargetId
+        ]
+      : null) ??
+    agentActivitySnapshot.composerOptionsByProvider?.[data.provider] ??
+    null;
   const resolvedPromptImagesSupported = resolveAgentActivityCapability(
     "imageInput",
     {
@@ -5678,6 +5698,7 @@ export function useAgentGUINodeController({
       // Composer options are loaded for every provider: besides settings they
       // carry the capabilities fallback and the skills list.
       const provider = dataRef.current.provider;
+      const agentTargetId = dataRef.current.agentTargetId ?? null;
       if (isCreatingConversationRef.current) {
         return;
       }
@@ -5694,6 +5715,7 @@ export function useAgentGUINodeController({
           cwd: composerOptionsCwd,
           force: options?.force,
           provider,
+          agentTargetId,
           settings
         })
       ).catch(() => undefined);
@@ -5708,7 +5730,7 @@ export function useAgentGUINodeController({
     if (!supports.model && !supports.reasoning && !supports.permission) {
       return;
     }
-    const projectKey = `${data.provider}\0${selectedProjectPath ?? ""}`;
+    const projectKey = `${data.agentTargetId ?? data.provider}\0${selectedProjectPath ?? ""}`;
     const previousProjectKey = composerOptionsProjectKeyRef.current;
     composerOptionsProjectKeyRef.current = projectKey;
     if (previousProjectKey === null || previousProjectKey === projectKey) {
@@ -6530,8 +6552,10 @@ export function useAgentGUINodeController({
         const provider = target.provider;
         const shouldUseProviderTargetRef =
           selectedProviderTargetIsExplicitRef.current;
+        const agentTargetId = target.agentTargetId ?? null;
         onDataChangeRef.current((current) =>
           current.provider === provider &&
+          (current.agentTargetId ?? null) === agentTargetId &&
           (current.providerTargetId ?? null) ===
             (shouldUseProviderTargetRef ? target.targetId : null) &&
           agentGUIProviderTargetRefsEqual(
@@ -6542,6 +6566,7 @@ export function useAgentGUINodeController({
             : {
                 ...current,
                 provider,
+                agentTargetId,
                 providerTargetId: shouldUseProviderTargetRef
                   ? target.targetId
                   : null,
@@ -6588,8 +6613,13 @@ export function useAgentGUINodeController({
             ? initialSettings
             : { ...initialSettings, model: inheritedModel };
         const snapshotComposerOptions =
+          (agentTargetId
+            ? agentActivityRuntime.getSnapshot(workspaceId)
+                .composerOptionsByAgentTargetId?.[agentTargetId]
+            : null) ??
           agentActivityRuntime.getSnapshot(workspaceId)
-            .composerOptionsByProvider?.[provider] ?? null;
+            .composerOptionsByProvider?.[provider] ??
+          null;
         const snapshotDraftAgentSessionId =
           normalizedInitialContent.length > 0 && provider === "claude-code"
             ? draftAgentSessionIdFromComposerOptions(snapshotComposerOptions)
@@ -6703,6 +6733,7 @@ export function useAgentGUINodeController({
         return activation.activate({
           mode: "new",
           agentSessionId,
+          agentTargetId,
           provider,
           providerTargetRef: shouldUseProviderTargetRef ? target.ref : null,
           cwd: selectedProjectPath ?? "",
@@ -8173,7 +8204,10 @@ export function useAgentGUINodeController({
       };
       const agentSessionId = activeConversationIdRef.current;
       if (!agentSessionId) {
-        const defaultDraftKey = nodeDefaultDraftKey(dataRef.current.provider);
+        const defaultDraftKey = nodeDefaultDraftKey(
+          dataRef.current.provider,
+          dataRef.current.agentTargetId
+        );
         const storedDefaults = readNodeDefaultDraftSettings({
           data: dataRef.current,
           defaultReasoningEffort,

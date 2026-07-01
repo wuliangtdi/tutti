@@ -32,6 +32,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	logCreateAgentSubmitTrace("api.create.received", string(request.WorkspaceID), agentSessionID, metadata, string(request.Body.Provider), "", nil)
 	session, err := api.AgentSessionService.Create(ctx, string(request.WorkspaceID), agentservice.CreateSessionInput{
 		AgentSessionID:         agentSessionID,
+		AgentTargetID:          stringPtrValue(request.Body.AgentTargetId),
 		Cwd:                    request.Body.Cwd,
 		InitialContent:         agentPromptContentFromGenerated(request.Body.InitialContent),
 		InitialDisplayPrompt:   stringPtrValue(request.Body.InitialDisplayPrompt),

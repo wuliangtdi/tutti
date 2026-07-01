@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:143671a4b35668c2"
+	BusinessEventCatalogRevision = "sha256:00e7c0e227c0387c"
 )
 
 type Topic string
@@ -190,10 +190,11 @@ type WorkspaceWorkspaceApp struct {
 }
 
 type AgentActivityUpdatedPayload struct {
-	WorkspaceId    string `json:"workspaceId"`
-	AgentSessionId string `json:"agentSessionId"`
-	EventType      string `json:"eventType"`
-	Data           any    `json:"data"`
+	WorkspaceId    string  `json:"workspaceId"`
+	AgentSessionId string  `json:"agentSessionId"`
+	AgentTargetId  *string `json:"agentTargetId,omitempty"`
+	EventType      string  `json:"eventType"`
+	Data           any     `json:"data"`
 }
 
 type AnalyticsDebugReportedPayload struct {

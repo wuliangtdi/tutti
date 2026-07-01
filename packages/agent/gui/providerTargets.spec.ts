@@ -11,6 +11,7 @@ describe("agent gui provider targets", () => {
   it("creates local targets for the default provider catalog", () => {
     expect(createLocalAgentGUIProviderTarget("codex")).toEqual({
       targetId: "local:codex",
+      agentTargetId: "local:codex",
       provider: "codex",
       ref: {
         kind: "local",

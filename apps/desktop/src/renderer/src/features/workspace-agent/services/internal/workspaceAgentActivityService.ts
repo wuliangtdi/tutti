@@ -262,7 +262,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       event: "activity_service.create.entered",
       metadata: input.metadata,
       provider: input.provider,
-      workspaceId: input.workspaceId
+      workspaceId: input.workspaceId,
+      fields: { agentTargetId: input.agentTargetId ?? null }
     });
     const entry = this.controllerEntry(input.workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -270,7 +271,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       event: "activity_service.create.adapter_requested",
       metadata: input.metadata,
       provider: input.provider,
-      workspaceId: input.workspaceId
+      workspaceId: input.workspaceId,
+      fields: { agentTargetId: input.agentTargetId ?? null }
     });
     const session = await entry.adapter.createSession(input);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -306,7 +308,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       metadata: input.metadata,
       provider,
       workspaceId,
-      fields: { mode: input.mode }
+      fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
     });
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -332,7 +334,10 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         metadata: input.metadata,
         provider,
         workspaceId,
-        fields: { cwd: resolvedCwd?.cwd ?? null }
+        fields: {
+          agentTargetId: input.agentTargetId ?? null,
+          cwd: resolvedCwd?.cwd ?? null
+        }
       });
     }
     let session: AgentActivitySession;
@@ -344,11 +349,13 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         event: "activity_service.activate.create_requested",
         metadata: input.metadata,
         provider,
-        workspaceId
+        workspaceId,
+        fields: { agentTargetId: input.agentTargetId ?? null }
       });
       session = await this.createSession({
         workspaceId,
         agentSessionId: requestedAgentSessionId,
+        ...(input.agentTargetId ? { agentTargetId: input.agentTargetId } : {}),
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
@@ -587,6 +594,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   }
 
   async getComposerOptions(input: {
+    agentTargetId?: string | null;
     cwd?: string | null;
     force?: boolean;
     provider?: string;
@@ -598,6 +606,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     return this.controllerEntry(
       input.workspaceId
     ).controller.loadComposerOptions({
+      agentTargetId: input.agentTargetId,
       provider,
       cwd: input.cwd,
       force: input.force,

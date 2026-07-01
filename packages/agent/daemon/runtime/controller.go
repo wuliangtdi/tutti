@@ -181,7 +181,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	)
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
-		if existing, ok := c.findStartSession(roomID, provider, input.CWD, input.Title, settings, input.ProviderTargetRef); ok {
+		if existing, ok := c.findStartSession(roomID, strings.TrimSpace(input.AgentTargetID), provider, input.CWD, input.Title, settings, input.ProviderTargetRef); ok {
 			return StartResult{Session: existing}, nil
 		}
 		agentSessionID = newID()
@@ -192,6 +192,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	session := Session{
 		RoomID:               roomID,
 		AgentSessionID:       agentSessionID,
+		AgentTargetID:        strings.TrimSpace(input.AgentTargetID),
 		Provider:             provider,
 		ProviderSessionID:    "",
 		CWD:                  strings.TrimSpace(input.CWD),
@@ -286,6 +287,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	session := Session{
 		RoomID:            roomID,
 		AgentSessionID:    agentSessionID,
+		AgentTargetID:     strings.TrimSpace(input.AgentTargetID),
 		Provider:          provider,
 		ProviderSessionID: providerSessionID,
 		CWD:               strings.TrimSpace(input.CWD),
@@ -1343,6 +1345,7 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 	snapshot := SessionStateSnapshot{
 		RoomID:             session.RoomID,
 		AgentSessionID:     session.AgentSessionID,
+		AgentTargetID:      session.AgentTargetID,
 		Provider:           session.Provider,
 		ProviderSessionID:  session.ProviderSessionID,
 		Status:             session.Status,
@@ -1371,6 +1374,9 @@ func (c *Controller) State(roomID, agentSessionID string) (SessionStateSnapshot,
 		}
 		if override.AgentSessionID != "" {
 			snapshot.AgentSessionID = override.AgentSessionID
+		}
+		if override.AgentTargetID != "" {
+			snapshot.AgentTargetID = override.AgentTargetID
 		}
 		if override.Provider != "" {
 			snapshot.Provider = override.Provider
@@ -1432,6 +1438,7 @@ func (c *Controller) sessionStateSnapshot(session Session) SessionStateSnapshot 
 	return SessionStateSnapshot{
 		RoomID:            session.RoomID,
 		AgentSessionID:    session.AgentSessionID,
+		AgentTargetID:     session.AgentTargetID,
 		Provider:          session.Provider,
 		ProviderSessionID: session.ProviderSessionID,
 		Status:            session.Status,
@@ -1675,6 +1682,7 @@ func sessionStateSnapshotStreamEvent(session Session) StreamEvent {
 		EventType: StreamEventStatePatch,
 		Data: agentsessionstore.WorkspaceAgentStatePatch{
 			AgentSessionID:    strings.TrimSpace(session.AgentSessionID),
+			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 			Provider:          strings.TrimSpace(session.Provider),
 			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 			CWD:               strings.TrimSpace(session.CWD),
@@ -1690,6 +1698,7 @@ func statePatchFromSessionStateSnapshot(snapshot SessionStateSnapshot) agentsess
 	runtimeContext := clonePayload(snapshot.RuntimeContext)
 	return agentsessionstore.WorkspaceAgentStatePatch{
 		AgentSessionID:    strings.TrimSpace(snapshot.AgentSessionID),
+		AgentTargetID:     strings.TrimSpace(snapshot.AgentTargetID),
 		Provider:          strings.TrimSpace(snapshot.Provider),
 		ProviderSessionID: strings.TrimSpace(snapshot.ProviderSessionID),
 		Model:             strings.TrimSpace(runtimeContextString(runtimeContext, "model")),
@@ -1968,6 +1977,7 @@ func (c *Controller) acquireLifecycleLock(roomID, agentSessionID string) func() 
 
 func (c *Controller) findStartSession(
 	roomID,
+	agentTargetID,
 	provider,
 	cwd,
 	title string,
@@ -1978,6 +1988,7 @@ func (c *Controller) findStartSession(
 		return Session{}, false
 	}
 	roomID = strings.TrimSpace(roomID)
+	agentTargetID = strings.TrimSpace(agentTargetID)
 	provider = strings.TrimSpace(provider)
 	cwd = strings.TrimSpace(cwd)
 	title = strings.TrimSpace(title)
@@ -1991,10 +2002,17 @@ func (c *Controller) findStartSession(
 		if strings.TrimSpace(session.Provider) != provider {
 			continue
 		}
+		if agentTargetID != "" {
+			if strings.TrimSpace(session.AgentTargetID) != agentTargetID {
+				continue
+			}
+		} else if strings.TrimSpace(session.AgentTargetID) != "" {
+			continue
+		}
 		if strings.TrimSpace(session.CWD) != cwd {
 			continue
 		}
-		if !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
+		if agentTargetID == "" && !providerTargetRefsEqual(session.ProviderTargetRef, providerTargetRef) {
 			continue
 		}
 		if title != "" && strings.TrimSpace(session.Title) != title {

@@ -22,6 +22,9 @@ describe("agent gui workbench state", () => {
     expect(
       normalizeAgentGuiWorkbenchNodeState({
         composerOverrides: { model: "gpt-5" },
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "target-model" }
+        },
         composerOverridesByProvider: {
           gemini: { permissionModeId: "read-only" },
           unsupported: { model: "ignored" }
@@ -32,6 +35,9 @@ describe("agent gui workbench state", () => {
     ).toEqual({
       ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
       composerOverrides: { model: "gpt-5" },
+      composerOverridesByAgentTargetId: {
+        "target-a": { model: "target-model" }
+      },
       composerOverridesByProvider: {
         gemini: { permissionModeId: "read-only" }
       },
@@ -44,6 +50,9 @@ describe("agent gui workbench state", () => {
       projectAgentGuiWorkbenchState({
         ...createDefaultAgentGuiWorkbenchNodeState("gemini"),
         composerOverrides: { permissionModeId: "read-only" },
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "target-model" }
+        },
         composerOverridesByProvider: {
           gemini: { model: "gemini-2.5-pro" }
         },
@@ -55,6 +64,9 @@ describe("agent gui workbench state", () => {
       })
     ).toEqual({
       composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByAgentTargetId: {
+        "target-a": { model: "target-model" }
+      },
       composerOverridesByProvider: {
         gemini: { model: "gemini-2.5-pro" }
       },
@@ -115,6 +127,9 @@ describe("agent gui workbench state", () => {
       areAgentGuiWorkbenchStatesEqual(
         normalizeAgentGuiWorkbenchState({
           composerOverrides: { permissionModeId: "auto" },
+          composerOverridesByAgentTargetId: {
+            "target-a": { model: "target-model" }
+          },
           composerOverridesByProvider: {
             codex: { model: "gpt-5" }
           },
@@ -123,6 +138,9 @@ describe("agent gui workbench state", () => {
         }),
         normalizeAgentGuiWorkbenchState({
           composerOverrides: { permissionModeId: "auto" },
+          composerOverridesByAgentTargetId: {
+            "target-a": { model: "target-model" }
+          },
           composerOverridesByProvider: {
             codex: { model: "gpt-5" }
           },
@@ -193,6 +211,7 @@ describe("agent gui workbench state", () => {
       })
     ).toEqual({
       composerOverrides: { permissionModeId: "full-access" },
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: {
         gemini: { model: "gemini-2.5-pro" }
       },
@@ -225,6 +244,7 @@ describe("agent gui workbench state", () => {
       })
     ).toEqual({
       composerOverrides: { permissionModeId: "read-only" },
+      composerOverridesByAgentTargetId: null,
       composerOverridesByProvider: null,
       conversationRailCollapsed: false,
       conversationRailWidthPx: 420,

@@ -15,6 +15,7 @@ const schemaMigrationWorkspacesV4 = "workspaces_v4"
 const schemaMigrationWorkspaceAgentActivityV1 = "workspace_agent_activity_v1"
 const schemaMigrationWorkspaceAgentActivityV2 = "workspace_agent_activity_v2"
 const schemaMigrationWorkspaceAgentActivityV3 = "workspace_agent_activity_v3"
+const schemaMigrationWorkspaceAgentActivityV4 = "workspace_agent_activity_v4"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationWorkspaceIssuesV1 = "workspace_issues_v1"
 const schemaMigrationWorkspaceIssuesV2 = "workspace_issues_v2"
@@ -109,6 +110,10 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	}
 
 	if err := s.applyWorkspaceAgentActivityV3(ctx); err != nil {
+		return err
+	}
+
+	if err := s.applyWorkspaceAgentActivityV4(ctx); err != nil {
 		return err
 	}
 
@@ -578,6 +583,7 @@ CREATE TABLE IF NOT EXISTS workspace_agent_sessions (
   workspace_id TEXT NOT NULL,
   agent_session_id TEXT NOT NULL,
   origin TEXT NOT NULL DEFAULT '',
+  agent_target_id TEXT,
   provider TEXT NOT NULL DEFAULT '',
   provider_session_id TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
@@ -704,6 +710,35 @@ INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
   VALUES (?, ?);
 `, schemaMigrationWorkspaceAgentActivityV3, now); err != nil {
 		return fmt.Errorf("record workspace agent activity v3 migration: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) applyWorkspaceAgentActivityV4(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV4)
+	if err != nil {
+		return err
+	}
+
+	hasAgentTargetID, err := s.hasColumn(ctx, "workspace_agent_sessions", "agent_target_id")
+	if err != nil {
+		return err
+	}
+
+	now := unixMs(time.Now().UTC())
+	if !hasAgentTargetID {
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE workspace_agent_sessions ADD COLUMN agent_target_id TEXT;`); err != nil {
+			return fmt.Errorf("migrate workspace agent activity to v4 agent target id: %w", err)
+		}
+	}
+	if applied {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO tuttid_schema_migrations (id, applied_at_unix_ms)
+  VALUES (?, ?);
+`, schemaMigrationWorkspaceAgentActivityV4, now); err != nil {
+		return fmt.Errorf("record workspace agent activity v4 migration: %w", err)
 	}
 	return nil
 }
