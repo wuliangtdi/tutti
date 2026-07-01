@@ -145,7 +145,7 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	return NewController(
 		[]Adapter{
-			newClaudeCodeAdapterWithHostMetadata(transport, host, options.ProviderCommandResolver),
+			newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
 			NewCodexAppServerAdapterWithHostMetadata(transport, host),
 			NewNexightAdapterWithHostMetadata(transport, host),
 			NewGeminiAdapterWithHostMetadata(transport, host),
@@ -154,6 +154,17 @@ func NewDefaultControllerWithOptions(
 		},
 		reporter,
 	)
+}
+
+func newDefaultClaudeCodeAdapter(
+	transport ProcessTransport,
+	host HostMetadata,
+	commandResolver ProviderCommandResolver,
+) Adapter {
+	if claudeCodeSDKRuntimeEnabled() {
+		return NewClaudeCodeSDKAdapter(transport)
+	}
+	return newClaudeCodeAdapterWithHostMetadata(transport, host, commandResolver)
 }
 
 func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, error) {
