@@ -14,7 +14,7 @@ tutti 已經接入 Codex **App Server**——`packages/agent/daemon/runtime/code
 
    | 檔案 | 行數 | 混在一起的職責 |
    |---|---|---|
-   | `codex_adapter.go`（ACP，legacy） | 3443 | initialize / prompt / lifecycle |
+   | `codex_adapter.go`（Codex-over-ACP，legacy） | 3443 | initialize / prompt / lifecycle |
    | `codex_appserver_adapter.go` | 2182 | lifecycle + 方法字串 + payload 組裝 |
    | `codex_appserver_events.go` | 1726 | event reduce / 映射 |
    | `codex_appserver_review.go` | 140 | review |
@@ -29,7 +29,7 @@ tutti 已經接入 Codex **App Server**——`packages/agent/daemon/runtime/code
 **範圍內**
 - 把 App-Server 接入重構成分層、單一職責的單元，底下墊一層 typed protocol 邊界。
 - 每一步 behavior-preserving（既有 app-server 測試保持綠）。
-- 把 legacy **ACP** 路徑作為最後的清掃里程碑退場。
+- 把 legacy **Codex-over-ACP** adapter（`codex_adapter.go`）作為最後的清掃里程碑退場——**不動**其他 agent 在用的通用 ACP 棧。
 
 **明確不在範圍（延後）**
 - 新增協議能力（fork / compact / realtime / inject_items 的產品化 surface 等）。codegen 層會**讓它們可用**，但把它們接進產品是另一件事。
@@ -40,11 +40,25 @@ tutti 已經接入 Codex **App Server**——`packages/agent/daemon/runtime/code
 
 | # | 決策 | 理由 |
 |---|---|---|
-| D1 | **app-server 是唯一未來傳輸路徑；ACP 是 legacy，本次一併退場。** | 產品方向。讓重構聚焦 app-server，並把 ACP 移除當成乾淨的刪除里程碑。 |
+| D1 | **只退場 *Codex-over-ACP* 路徑（`codex_adapter.go`）。** app-server 是 Codex 唯一未來路徑。**通用 ACP 棧保留**——其他 agent 透過它接入。 | 產品方向。`standard_acp_adapter.go`（Gemini / Hermes / Claude / 未來 agent）與共用 ACP 基礎設施留著；只有 Codex 對 ACP 的使用退場。 |
 | D2 | **typed protocol 邊界來自「錨定官方上游 schema 的 codegen」**，不是手寫 struct，也不是 vendor 外部 SDK。 | 官方 `codex-rs/app-server-protocol` 帶 `src/bin/export.rs`，吐 JSON Schema + TS（型別 `derive(JsonSchema, TS)`）。上游是唯一 source of truth，漂移自動可見。 |
 | D3 | **codegen 一步到位**——不做手寫過渡 struct。 | 避免「先建一層 typed 之後又拆掉」的返工；pipeline 很小且下游已驗證。 |
-| D4 | **傳輸合一：一個 `Transport` + typed `Client` 同時承接 ACP 與 app-server（過渡期）；** 新 client 落地時 `acp_client.go` 退役（Step 2），ACP 高階邏輯本體之後再刪（Step 6）。 | 過渡期不維護兩套 JSON-RPC client。 |
+| D4 | **JSON-RPC 傳輸本來就共用,且維持共用。** `acp_client.go` 是通用的 JSON-RPC-over-stdio client(已同時提供 `newACPClient` 和 `newAppServerJSONRPCClient`),當通用基礎設施**保留**。重構是在它**之上**為 Codex app-server 路徑加一層 typed `Client` façade;通用 ACP adapter 繼續用共用 client。 | 不引入第二套 client,也不刪共用的那套——目標是在其上做 typed 邊界,不是合併/移除傳輸。 |
 | D5 | **不把 `codex-sdk-go` 整包 vendor 進 daemon 內核。** 它當 pipeline 模板 + 骨架參考 + 校準基準。 | daemon 內核的供應鏈信任；它的 facade 語意是它自己的產品取捨，未必貼 tutti。 |
+
+## ACP surface:保留 vs 移除
+
+`packages/agent/daemon/runtime` 裡的 ACP 程式碼是一個**通用多 agent 棧**,上面疊了一層 Codex 專屬 adapter。只移除 Codex 專屬那層。
+
+| 檔案 | 處置 | 原因 |
+|---|---|---|
+| `standard_acp_adapter.go` | **保留** | 通用 ACP adapter,服務 Gemini / Hermes / Claude / 未來 agent(`NewGeminiAdapter`、`NewHermesAdapter`…)。這是可複用路徑。 |
+| `acp_client.go` | **保留** | 通用 JSON-RPC-over-stdio client,本來就雙用途(`newACPClient` + `newAppServerJSONRPCClient`)。通用 ACP adapter *與* Codex app-server 路徑共用。 |
+| `acp_live_state.go`、`acp_restore_errors.go`、`acp_turn_normalizer.go` | **保留** | 共用 helper,通用 ACP adapter 與 Codex app-server 檔案都用。是通用的 turn/state 正規化,非 Codex 專屬。 |
+| `codex_adapter.go`(3443) | **移除(Step 6)** | Codex-over-ACP adapter——legacy 路徑。 |
+| `codex_appserver_*.go` | **重構** | 本次工作的主體。 |
+
+**刪除的不變量(Step 6):** 移除 `codex_adapter.go` 後必須讓通用 ACP 棧完全正常;其測試(`standard_acp_adapter_test.go`、`acp_*_test.go`)保持綠。共用 `acp_*` helper 裡任何 Codex-only 分支就地剪除,不是靠刪 helper。
 
 ## 參考對照（按 concern 分別借鑑，絕不 mono-copy）
 
@@ -73,7 +87,10 @@ Transport ──→ typed Client ┤   （app-server notifications）
            codexproto 包（codegen；錨官方 export；
                            版本戳；CI 漂移檢查）
                   ▲
-      ACP 高階邏輯（過渡期暫掛同一個 Client；Step 6 刪除）
+       共用 JSON-RPC client（acp_client.go）── 同時服務 ──▶ 通用 ACP 棧
+                  ▲                                         (standard_acp_adapter.go：
+       Codex-over-ACP adapter（codex_adapter.go）           Gemini / Hermes / Claude …)
+       — legacy，Step 6 刪除                                 — 保留
 ```
 
 ## 多步對齊計畫
@@ -92,11 +109,11 @@ Transport ──→ typed Client ┤   （app-server notifications）
 - **純加法**——還沒人消費它。
 - **出口：** 生成的 typed 層可 build；CI 跑漂移檢查。
 
-### Step 2 — 統一 Transport + typed Client（ACP/app-server 合一）
-- 定義一個 `Transport`（stdio）+ typed `Client`（pending requests、server-request 處理、notification 訂閱），對齊 `codex-sdk-go` `rpc/`。
-- 把 **ACP 和 app-server** 兩邊呼叫端都遷過來；`acp_client.go` 退役。
-- app-server adapter 改用 typed stub 呼叫，而非字串 + `map[string]any`。
-- **出口：** 單一 JSON-RPC client；`acp_client.go` 消失；測試綠。
+### Step 2 — 在共用傳輸之上加 typed Client façade
+- 為 Codex app-server 路徑加一層 typed `Client`（pending requests、server-request 處理、notification 訂閱），對齊 `codex-sdk-go` `rpc/`,**包住既有共用的 `acp_client.go`**(通用 JSON-RPC-over-stdio client),而非取代它。
+- app-server adapter 改用 typed stub(`codexproto`)呼叫,而非字串 + `map[string]any`。
+- **不要**刪除或重構 `acp_client.go` 或通用 ACP adapter——它們照舊用共用 client。
+- **出口：** Codex app-server 路徑透過 typed `Client` 說話;通用 ACP 棧不動;測試綠。
 
 ### Step 3 — 抽出 Event Reducer
 - 把事件處理從 1726 行檔案抽成專職 reducer：app-server notification → tutti typed activity event。
@@ -112,9 +129,10 @@ Transport ──→ typed Client ┤   （app-server notifications）
 - `codex_appserver_adapter.go` 剩下的部分塌到 Thread/Turn lifecycle 編排（facade 形狀依 `codex-sdk-go`）。
 - **出口：** adapter 只做編排；不再有協議字串或 inline reduction。
 
-### Step 6 — 退場 ACP 高階邏輯
-- 刪 `codex_adapter.go`（3443）與 ACP-only 輔助；傳輸層已於 Step 2 合一。
-- **出口：** app-server facade 成為唯一路徑；legacy 移除；整個 runtime 包測試綠。
+### Step 6 — 退場 Codex-over-ACP
+- 刪 `codex_adapter.go`（3443）與任何 Codex-only helper/分支;共用 `acp_*` helper 裡的 Codex-only 分支就地剪除。
+- **明確保留** `standard_acp_adapter.go`、`acp_client.go` 與共用 `acp_*` helper——給其他 agent 的通用 ACP 棧。
+- **出口：** Codex 只走 app-server;`codex_adapter.go` 消失;通用 ACP 棧綠(`standard_acp_adapter_test.go`、`acp_*_test.go`);整個 runtime 包測試綠。
 
 ## 測試策略
 
@@ -130,7 +148,7 @@ Transport ──→ typed Client ┤   （app-server notifications）
 | codegen 工具鏈依賴 Rust `export` bin / `go-jsonschema` | vendor/pin schema 產物或 export 步驟；文檔化重生成指令；CI 漂移檢查抓偏差。 |
 | 重構中途上游 schema 變動 | Step 0 pin baseline 版本；版本升級當成獨立、可 review 的 diff。 |
 | 抽取過程行為回歸 | behavior-preserving 步驟由 Step 0 契約把關；一步一層。 |
-| 「幫快死的 ACP 合傳輸」像白工 | 嚴格來說比過渡期維護兩套 client 更省；不影響 Step 6 的 ACP 本體刪除。 |
+| Step 6 刪除誤傷通用 ACP 棧(共用 client/helper) | Keep/Remove 表 + 刪除不變量把邊界講明;通用 ACP 測試把關刪除;Codex-only 分支就地剪除,絕不刪共用 helper。 |
 | 步驟合批導致爆炸半徑大 | 每步獨立可 ship、可 review；不要合併。 |
 
 ## 待議問題（供 spec 審查）

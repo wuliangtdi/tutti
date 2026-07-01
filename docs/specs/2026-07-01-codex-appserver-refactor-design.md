@@ -13,7 +13,7 @@ tutti already integrates the Codex **App Server** — `packages/agent/daemon/run
 
    | File | Lines | Concerns mixed in |
    |---|---|---|
-   | `codex_adapter.go` (ACP, legacy) | 3443 | initialize / prompt / lifecycle |
+   | `codex_adapter.go` (Codex-over-ACP, legacy) | 3443 | initialize / prompt / lifecycle |
    | `codex_appserver_adapter.go` | 2182 | lifecycle + method strings + payload assembly |
    | `codex_appserver_events.go` | 1726 | event reduce / mapping |
    | `codex_appserver_review.go` | 140 | review |
@@ -28,7 +28,7 @@ This refactor is **shape-first** (option C): converge the existing integration i
 **In scope**
 - Refactor the App-Server integration into layered, single-responsibility units backed by a typed protocol boundary.
 - Behavior-preserving at every step (existing app-server tests stay green).
-- Retire the legacy **ACP** path as the final cleanup milestone.
+- Retire the legacy **Codex-over-ACP** adapter (`codex_adapter.go`) as the final cleanup milestone — **without** touching the generic ACP stack that other agents use.
 
 **Out of scope (explicitly deferred)**
 - Adding new protocol capabilities (fork / compact / realtime / inject_items surfacing, etc.). The codegen layer *makes them available* but wiring them into the product is separate work.
@@ -39,11 +39,25 @@ This refactor is **shape-first** (option C): converge the existing integration i
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | **App-server is the only future transport path; ACP is legacy and retired in this effort.** | Product direction. Lets the refactor center on app-server and treat ACP removal as a clean deletion milestone. |
+| D1 | **Only the *Codex-over-ACP* path (`codex_adapter.go`) is retired.** App-server is Codex's only future path. The **generic ACP stack is retained** — other agents integrate through it. | Product direction. `standard_acp_adapter.go` (Gemini / Hermes / Claude / future agents) and the shared ACP infra stay; only Codex's use of ACP goes away. |
 | D2 | **The typed protocol boundary comes from codegen anchored on the official upstream schema**, not hand-written structs and not vendoring an external SDK. | Official `codex-rs/app-server-protocol` ships `src/bin/export.rs` emitting JSON Schema + TS (types `derive(JsonSchema, TS)`). Upstream is the single source of truth; drift becomes automatically visible. |
 | D3 | **Codegen in one step** — no interim hand-written structs. | Avoids building a typed layer only to throw it away; the pipeline is small and already proven downstream. |
-| D4 | **Unify transport: one `Transport` + typed `Client` serves both ACP and app-server during transition;** `acp_client.go` retires when the new client lands (Step 2), before the ACP adapter body is deleted (Step 6). | Do not maintain two JSON-RPC clients during the transition. |
+| D4 | **The JSON-RPC transport is already shared and stays shared.** `acp_client.go` is a generic JSON-RPC-over-stdio client (it already exposes both `newACPClient` and `newAppServerJSONRPCClient`); it is **retained** as generic infra. The refactor adds a typed `Client` façade *on top of it* for the Codex app-server path; generic ACP adapters keep using the shared client. | Do not introduce a second client and do not delete the shared one — the goal is a typed boundary above it, not a transport merge/removal. |
 | D5 | **Do not vendor `codex-sdk-go` wholesale into the daemon core.** Use it as pipeline template + skeleton reference + calibration baseline. | Supply-chain trust for daemon core; its facade semantics are its own product opinions, not necessarily tutti's. |
+
+## ACP Surface: Keep vs Remove
+
+The ACP code in `packages/agent/daemon/runtime` is a **generic multi-agent stack** with a Codex-specific adapter layered on it. Only the Codex-specific adapter is removed.
+
+| File | Disposition | Why |
+|---|---|---|
+| `standard_acp_adapter.go` | **Keep** | Generic ACP adapter serving Gemini / Hermes / Claude / future agents (`NewGeminiAdapter`, `NewHermesAdapter`, …). This is the reusable path. |
+| `acp_client.go` | **Keep** | Generic JSON-RPC-over-stdio client, already dual-purpose (`newACPClient` + `newAppServerJSONRPCClient`). Shared by generic ACP adapters *and* the Codex app-server path. |
+| `acp_live_state.go`, `acp_restore_errors.go`, `acp_turn_normalizer.go` | **Keep** | Shared helpers used by both the generic ACP adapters and the Codex app-server files. Generic turn/state normalization, not Codex-specific. |
+| `codex_adapter.go` (3443) | **Remove (Step 6)** | Codex-over-ACP adapter — the legacy path. |
+| `codex_appserver_*.go` | **Refactor** | The subject of this effort. |
+
+**Invariant for the deletion (Step 6):** removing `codex_adapter.go` must leave the generic ACP stack fully functional; its tests (`standard_acp_adapter_test.go`, `acp_*_test.go`) stay green. Any Codex-only branch inside a shared `acp_*` helper is pruned in place, not by deleting the helper.
 
 ## Reference Mapping (borrow per-concern, never mono-copy)
 
@@ -72,7 +86,10 @@ Transport ──→ typed Client ┤   (app-server notifications)
            codexproto pkg (codegen; anchored on official export;
                            version-stamped; CI drift check)
                   ▲
-      ACP high-level logic (temporarily rides the same Client; deleted in Step 6)
+       shared JSON-RPC client (acp_client.go) ── also serves ──▶ generic ACP stack
+                  ▲                                              (standard_acp_adapter.go:
+       Codex-over-ACP adapter (codex_adapter.go)                 Gemini / Hermes / Claude …)
+       — legacy, deleted in Step 6                                — RETAINED
 ```
 
 ## Multi-Step Alignment Plan
@@ -91,11 +108,11 @@ Each step aligns exactly one layer to the codegen-anchored target, is independen
 - **Purely additive** — nothing consumes it yet.
 - **Exit:** generated typed layer builds; drift check runs in CI.
 
-### Step 2 — Unified Transport + typed Client (ACP/app-server merged)
-- Define one `Transport` (stdio) + typed `Client` (pending requests, server-request handling, notification subscriptions), aligned to `codex-sdk-go` `rpc/`.
-- Migrate **both** ACP and app-server call sites onto it; retire `acp_client.go`.
-- App-server adapter now calls via typed stubs instead of string + `map[string]any`.
-- **Exit:** single JSON-RPC client; `acp_client.go` gone; tests green.
+### Step 2 — Typed Client façade over the shared transport
+- Add a typed `Client` (pending requests, server-request handling, notification subscriptions) for the Codex app-server path, aligned to `codex-sdk-go` `rpc/`, **wrapping the existing shared `acp_client.go`** (the generic JSON-RPC-over-stdio client) rather than replacing it.
+- App-server adapter now calls via typed stubs (`codexproto`) instead of string + `map[string]any`.
+- **Do not** delete or restructure `acp_client.go` or the generic ACP adapters — they keep using the shared client as-is.
+- **Exit:** Codex app-server path speaks through the typed `Client`; generic ACP stack untouched; tests green.
 
 ### Step 3 — Extract Event Reducer
 - Pull event handling out of the 1726-line file into a focused reducer: app-server notification → tutti typed activity event.
@@ -111,9 +128,10 @@ Each step aligns exactly one layer to the codegen-anchored target, is independen
 - What remains of `codex_appserver_adapter.go` collapses onto Thread/Turn lifecycle orchestration over the new layers (facade shape per `codex-sdk-go`).
 - **Exit:** adapter is orchestration only; no protocol strings or inline reduction remain.
 
-### Step 6 — Retire ACP high-level logic
-- Delete `codex_adapter.go` (3443) and ACP-only helpers; transport was already merged in Step 2.
-- **Exit:** app-server facade is the sole path; legacy removed; full runtime package tests green.
+### Step 6 — Retire Codex-over-ACP
+- Delete `codex_adapter.go` (3443) and any Codex-only helpers/branches; prune Codex-only branches inside shared `acp_*` helpers in place.
+- **Explicitly preserve** `standard_acp_adapter.go`, `acp_client.go`, and the shared `acp_*` helpers — the generic ACP stack for other agents.
+- **Exit:** Codex speaks only app-server; `codex_adapter.go` gone; generic ACP stack green (`standard_acp_adapter_test.go`, `acp_*_test.go`); full runtime package tests green.
 
 ## Testing Strategy
 
@@ -129,7 +147,7 @@ Each step aligns exactly one layer to the codegen-anchored target, is independen
 | Codegen toolchain depends on the Rust `export` bin / `go-jsonschema` | Vendor/pin the schema output or the export step; document the regen command; CI drift check catches skew. |
 | Upstream schema churn mid-refactor | Pin a baseline version (Step 0); treat version bumps as isolated, reviewable diffs. |
 | Behavior regressions during extraction | Behavior-preserving steps gated by the Step 0 contract; one layer per step. |
-| Merging transport with a dying ACP path feels like wasted work | It is strictly less work than maintaining two clients through the transition; ACP body deletion (Step 6) is unaffected. |
+| Step 6 deletion accidentally breaks the generic ACP stack (shared client/helpers) | Keep/Remove table + deletion invariant make the boundary explicit; generic ACP tests gate the deletion; prune Codex-only branches in place, never delete shared helpers. |
 | Large blast radius if steps are batched | Each step is independently shippable and reviewable; do not combine. |
 
 ## Open Questions (for spec review)
