@@ -75,6 +75,7 @@ func TestRunCodexCLILatestInstallerRepairsInPlace(t *testing.T) {
 	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
 	service.Environ = func() []string { return []string{"PATH=" + binDir} }
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
 
@@ -117,6 +118,7 @@ func TestRunCodexCLILatestInstallerFallsBackToLocalBin(t *testing.T) {
 	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 
 	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
 	service.Environ = func() []string { return []string{"PATH=" + binDir} }
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
 
@@ -150,6 +152,7 @@ func TestRunCodexCLILatestInstallerUsesManagedRuntimeNPMWhenUserNPMMissing(t *te
 	managedNodeBinDir := filepath.Dir(managedNode)
 
 	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
 	service.Environ = func() []string {
 		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
 	}

@@ -78,7 +78,7 @@ func (s Service) runCodexCLILatestInstaller(
 	// which on some machines holds root-owned files that make every user-mode npm
 	// install fail with EACCES before any registry is hit.
 	baseEnv = withAgentNPMCache(baseEnv, filepath.Join(installPrefix, agentNPMCacheDirName))
-	registries := s.agentNPMRegistries()
+	registries := s.rankedAgentNPMRegistries(ctx, "@openai/codex")
 	var result InstallCommandResult
 	for i, registry := range registries {
 		registryDisplay := displayNPMRegistry(registry)

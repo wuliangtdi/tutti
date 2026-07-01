@@ -262,10 +262,11 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 	// callers only need local availability (CLI/adapter/auth), never Network. Only
 	// the wizard, which renders the network diagnostic, opts in.
 	//
-	// Registry reachability (install path) and proxy detection are provider-
-	// independent, so probe them once; the API endpoint (run/login path) differs
-	// per provider, so probe that per status. All are reported separately on each
-	// provider's Network.
+	// Proxy detection is provider-independent, so probe it once. Registry
+	// reachability is checked per provider package so the wizard displays the same
+	// ranked npm source the install path will try first. The API endpoint
+	// (run/login path) also differs per provider, so probe that per status. All
+	// are reported separately on each provider's Network.
 	//
 	// Even when opted in, skip the probe for any provider that is mid-install: the
 	// network doesn't change during an install, and the per-second install-progress
@@ -282,16 +283,15 @@ func (s Service) List(ctx context.Context, input ListInput) (Snapshot, error) {
 				anyNeedsNetwork = true
 			}
 		}
-		var registry NetworkEndpointStatus
 		var proxy *NetworkProxyStatus
 		if anyNeedsNetwork {
-			registry = s.probeRegistry(ctx)
 			proxy = s.probeProxy(ctx)
 		}
 		for i := range statuses {
 			if installing[i] {
 				continue
 			}
+			registry := s.probeRegistry(ctx, agentNPMRegistryProbePackage(specs[i]))
 			api := s.probeProviderAPI(ctx, statuses[i].Provider)
 			statuses[i].Network = &NetworkStatus{
 				Registry:    registry,
@@ -690,6 +690,25 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 		return externalRegistryNPMProbeReadyAfter(s.probeTimeout())
 	}
 	return s.probeReadyAfter()
+}
+
+func agentNPMRegistryProbePackage(spec ProviderSpec) string {
+	if spec.Provider == agentprovider.Codex {
+		return "@openai/codex"
+	}
+	if spec.AdapterInstall.RegistryNPM != nil {
+		packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)
+		if strings.TrimSpace(packageName) != "" {
+			return packageName
+		}
+	}
+	if spec.Install.RegistryNPM != nil {
+		packageName, _ := splitNPMPackageSpec(spec.Install.RegistryNPM.Package)
+		if strings.TrimSpace(packageName) != "" {
+			return packageName
+		}
+	}
+	return "@openai/codex"
 }
 
 func externalRegistryNPMProbeReadyAfter(timeout time.Duration) time.Duration {

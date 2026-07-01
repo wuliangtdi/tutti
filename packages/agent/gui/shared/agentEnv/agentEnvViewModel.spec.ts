@@ -204,6 +204,13 @@ describe("buildAgentEnvWizardViewModel", () => {
     );
   });
 
+  it("exposes the daemon-matching manual install command for claude code", () => {
+    expect(
+      buildAgentEnvWizardViewModel(input({ provider: "claude-code" }))
+        .manualCommand
+    ).toBe("curl -fsSL https://claude.ai/install.sh | bash");
+  });
+
   it("flags the install stage pending with a platform-incomplete problem when the launcher is present but the platform subpackage is missing", () => {
     const vm = buildAgentEnvWizardViewModel(
       input({

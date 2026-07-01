@@ -51,9 +51,14 @@ func (s Service) ResolveProviderCommand(ctx context.Context, provider string) (P
 		reason := firstNonBlank(spec.AdapterUnavailableReasonCode, "acp_adapter_not_found")
 		return ProviderCommandResolution{}, fmt.Errorf("%s", reason)
 	}
+	env := cloneStrings(spec.AdapterEnv)
+	if spec.AdapterInstall.RegistryNPM != nil && adapterCommandUsesNPMExecFallback(spec.AdapterCommand) {
+		packageName, _ := splitNPMPackageSpec(spec.AdapterInstall.RegistryNPM.Package)
+		env = withAgentNPMRegistry(env, s.preferredAgentNPMRegistry(ctx, packageName))
+	}
 	return ProviderCommandResolution{
 		Command: cloneStrings(spec.AdapterCommand),
-		Env:     cloneStrings(spec.AdapterEnv),
+		Env:     env,
 	}, nil
 }
 
@@ -144,6 +149,15 @@ func (s Service) resolveExternalRegistryNPMSpec(
 	// a root-owned global ~/.npm. Harmless when running the installed bin directly.
 	spec.AdapterEnv = withAgentNPMCache(spec.AdapterEnv, filepath.Join(prefixDir, agentNPMCacheDirName))
 	return spec
+}
+
+func adapterCommandUsesNPMExecFallback(command []string) bool {
+	for _, arg := range command {
+		if strings.TrimSpace(arg) == "exec" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s Service) resolveExternalRegistryBinarySpec(spec ProviderSpec, agent externalagentregistry.Agent) ProviderSpec {

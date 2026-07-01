@@ -43,6 +43,42 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### Codex npm install misses the platform package
+
+- Symptom:
+  The Codex environment dialog says the CLI is installed, but the adapter or
+  `codex app-server` probe is still missing. Logs may show
+  `Missing optional dependency @openai/codex-darwin-arm64`, a long wait on an
+  npm registry, or a later repair failure such as `ENOTEMPTY` while moving an
+  existing `@openai/codex` directory.
+- Quick checks:
+  Inspect the npm debug log under the install cache for
+  `reify failed optional dependency`, then check whether the matching platform
+  package directory contains both `package.json` and the vendor `codex`
+  executable. Compare the selected registry with a temporary prefix/cache
+  install before changing the user's real install.
+- Root cause:
+  `@openai/codex` installs a JavaScript launcher plus a per-platform optional
+  package such as `@openai/codex-darwin-arm64`. npm can exit successfully even
+  when an optional dependency fetch failed, which leaves the launcher installed
+  but unable to start. A registry can also be reachable but too slow for the
+  platform tarball, so retrying the same source burns the install timeout before
+  mirrors are tried.
+- Fix:
+  Keep Codex installs on the Tutti-managed Node/npm runtime, install with
+  optional dependencies included, and rank configured npm registries with a
+  lightweight package metadata probe before attempting the install. Preserve
+  `TUTTI_AGENT_NPM_REGISTRY` as an explicit single-registry pin with no mirror
+  fallback.
+- Validation:
+  Reproduce in a temporary prefix/cache using the Tutti-managed npm. Confirm
+  `codex --version`, the platform package metadata and vendor binary, and a
+  short `codex app-server` probe before touching the user's real install.
+- References:
+  [npm_registry.go](../../services/tuttid/service/agentstatus/npm_registry.go)
+  [installer_codex_cli.go](../../services/tuttid/service/agentstatus/installer_codex_cli.go)
+  [codex_platform.go](../../services/tuttid/service/agentstatus/codex_platform.go)
+
 ### Dynamic CLI input rejects plausible flags
 
 - Symptom:

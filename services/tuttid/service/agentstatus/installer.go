@@ -584,7 +584,8 @@ func (s Service) runExternalAgentRegistryNPMInstaller(ctx context.Context, provi
 	// CN-available mirrors when it is slow or blocked. Each attempt is bounded so a
 	// blocked registry fails over quickly instead of consuming the whole budget;
 	// the npm_config_registry value selects the source.
-	registries := s.agentNPMRegistries()
+	packageName, _ := splitNPMPackageSpec(npmSpec.Package)
+	registries := s.rankedAgentNPMRegistries(ctx, packageName)
 	var result InstallCommandResult
 	for i, registry := range registries {
 		setActiveAction(ctx, provider, ActiveAction{

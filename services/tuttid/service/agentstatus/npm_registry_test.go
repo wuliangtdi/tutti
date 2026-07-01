@@ -2,8 +2,12 @@ package agentstatus
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +40,7 @@ func TestRunExternalAgentRegistryNPMInstallerUsesOfficialWhenItSucceeds(t *testi
 	service := Service{
 		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
 		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HTTPClient:     agentNPMRegistryProbeHTTPClient(nil),
 	}
 	var registriesTried []string
 	service.InstallCommand = func(_ context.Context, in InstallCommandInput) (InstallCommandResult, error) {
@@ -57,6 +62,7 @@ func TestRunExternalAgentRegistryNPMInstallerFallsBackToMirror(t *testing.T) {
 	service := Service{
 		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
 		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HTTPClient:     agentNPMRegistryProbeHTTPClient(nil),
 	}
 	var registriesTried []string
 	service.InstallCommand = func(_ context.Context, in InstallCommandInput) (InstallCommandResult, error) {
@@ -82,6 +88,7 @@ func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *test
 	service := Service{
 		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
 		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HTTPClient:     agentNPMRegistryProbeHTTPClient(nil),
 	}
 	spec := npmInstallerSpec(t)
 	spec.RegistryNPM.Env = map[string]string{
@@ -101,7 +108,7 @@ func TestRunExternalAgentRegistryNPMInstallerReplacesExistingRegistryEnv(t *test
 	}
 }
 
-func TestResolveExternalRegistryNPMSpecExecEnvInjectsPrimaryRegistry(t *testing.T) {
+func TestResolveExternalRegistryNPMSpecExecEnvUsesRankedRegistry(t *testing.T) {
 	home := t.TempDir()
 	registryStore, prefixDir := fakeClaudeExternalRegistry(t)
 	runtimeRoot := fakeManagedRuntimeRoot(t)
@@ -109,6 +116,9 @@ func TestResolveExternalRegistryNPMSpecExecEnvInjectsPrimaryRegistry(t *testing.
 	service := probeTestService(home)
 	service.ExternalAgentRegistry = registryStore
 	service.ManagedRuntime = fakeManagedRuntimeResolver(t, runtimeRoot)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(map[string]bool{
+		"registry.npmjs.org": true,
+	})
 
 	result, err := service.ResolveProviderCommand(context.Background(), "claude-code")
 	if err != nil {
@@ -117,8 +127,8 @@ func TestResolveExternalRegistryNPMSpecExecEnvInjectsPrimaryRegistry(t *testing.
 	if !slices.Contains(result.Command, "exec") || !slices.Contains(result.Command, prefixDir) {
 		t.Fatalf("Command = %#v, want npm exec fallback under %q", result.Command, prefixDir)
 	}
-	if !slices.Contains(result.Env, "npm_config_registry=https://registry.npmjs.org") {
-		t.Fatalf("adapter env = %#v, want primary (official) registry", result.Env)
+	if !slices.Contains(result.Env, "npm_config_registry=https://registry.npmmirror.com") {
+		t.Fatalf("adapter env = %#v, want ranked mirror registry", result.Env)
 	}
 }
 
@@ -146,6 +156,7 @@ func TestRunExternalAgentRegistryNPMInstallerPinsDedicatedCache(t *testing.T) {
 	service := Service{
 		ManagedRuntime: fakeManagedRuntimeResolver(t, runtimeRoot),
 		Environ:        func() []string { return []string{"PATH=/usr/bin:/bin"} },
+		HTTPClient:     agentNPMRegistryProbeHTTPClient(nil),
 	}
 	spec := InstallerSpec{
 		Kind: InstallerKindExternalAgentRegistryNPM,
@@ -194,6 +205,7 @@ func TestRunCodexCLILatestInstallerPinsDedicatedCache(t *testing.T) {
 	writeExecutable(t, filepath.Join(binDir, npmBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	writeExecutable(t, filepath.Join(binDir, nodeBinaryNameForTest()), "#!/bin/sh\nexit 0\n")
 	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
 	service.Environ = func() []string { return []string{"PATH=" + binDir} }
 	service.IsExecutableFile = isTestExecutableUnderHome(home)
 
@@ -211,6 +223,20 @@ func TestRunCodexCLILatestInstallerPinsDedicatedCache(t *testing.T) {
 	}
 	if gotCache == "" || filepath.Base(gotCache) != agentNPMCacheDirName {
 		t.Fatalf("npm_config_cache = %q, want a dedicated cache dir (must not depend on global ~/.npm)", gotCache)
+	}
+}
+
+func TestRankedAgentNPMRegistriesMovesUnreachableOfficialBehindReachableMirror(t *testing.T) {
+	service := Service{
+		Environ: func() []string { return []string{"PATH=/usr/bin"} },
+		HTTPClient: agentNPMRegistryProbeHTTPClient(map[string]bool{
+			"registry.npmjs.org": true,
+		}),
+	}
+
+	got := service.rankedAgentNPMRegistries(context.Background(), "@openai/codex")
+	if len(got) == 0 || got[0] != "https://registry.npmmirror.com" {
+		t.Fatalf("rankedAgentNPMRegistries()[0] = %q, want first reachable mirror; full order=%#v", got[0], got)
 	}
 }
 
@@ -234,6 +260,19 @@ func registryFromEnv(env []string) string {
 		}
 	}
 	return ""
+}
+
+func agentNPMRegistryProbeHTTPClient(unreachableHosts map[string]bool) *http.Client {
+	return &http.Client{Transport: networkRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if unreachableHosts[request.URL.Host] {
+			return nil, errors.New("network unreachable")
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Header:     make(http.Header),
+		}, nil
+	})}
 }
 
 func npmInstallerSpec(t *testing.T) InstallerSpec {

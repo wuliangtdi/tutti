@@ -574,7 +574,7 @@ test("runAction installs providers silently and refreshes the status", async () 
               {
                 command: {
                   cwd: "/workspace",
-                  input: "npm install -g @anthropic-ai/claude-code\n"
+                  input: "curl -fsSL https://claude.ai/install.sh | bash\n"
                 },
                 id: "install",
                 kind: "terminal_command"
@@ -841,7 +841,7 @@ test("runAction summarizes Claude regional availability install failures", async
                 {
                   command: {
                     cwd: "/workspace",
-                    input: "npm install -g @anthropic-ai/claude-code\n"
+                    input: "curl -fsSL https://claude.ai/install.sh | bash\n"
                   },
                   id: "install",
                   kind: "terminal_command"
