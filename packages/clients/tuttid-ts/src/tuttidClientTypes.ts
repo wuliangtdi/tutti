@@ -1,5 +1,8 @@
 import type {
   AddIssueManagerContextRefsRequest,
+  AccountLoginStartResponse,
+  AccountLoginStatusResponse,
+  AccountUserInfo,
   AgentProviderComposerOptionsResponse,
   AgentProviderProbeResponse,
   AgentProviderActionId,
@@ -129,6 +132,10 @@ export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
+  startAccountLogin(): Promise<AccountLoginStartResponse>;
+  getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
+  getAccountUserInfo(): Promise<AccountUserInfo | null>;
+  logoutAccount(): Promise<void>;
   listCliCapabilities(
     workspaceID?: string,
     options?: { includeHidden?: boolean; includeIntegration?: boolean }

@@ -118,6 +118,12 @@ import type {
   FixWorkspaceAppFactoryJobData,
   FixWorkspaceAppFactoryJobErrors,
   FixWorkspaceAppFactoryJobResponses,
+  GetAccountLoginStatusData,
+  GetAccountLoginStatusErrors,
+  GetAccountLoginStatusResponses,
+  GetAccountUserInfoData,
+  GetAccountUserInfoErrors,
+  GetAccountUserInfoResponses,
   GetAgentProviderComposerOptionsData,
   GetAgentProviderComposerOptionsErrors,
   GetAgentProviderComposerOptionsResponses,
@@ -247,6 +253,9 @@ import type {
   LoadLocalWorkspaceAppData,
   LoadLocalWorkspaceAppErrors,
   LoadLocalWorkspaceAppResponses,
+  LogoutAccountData,
+  LogoutAccountErrors,
+  LogoutAccountResponses,
   MoveWorkspaceFileEntryData,
   MoveWorkspaceFileEntryErrors,
   MoveWorkspaceFileEntryResponses,
@@ -334,6 +343,9 @@ import type {
   SendWorkspaceAgentSessionInputData,
   SendWorkspaceAgentSessionInputErrors,
   SendWorkspaceAgentSessionInputResponses,
+  StartAccountLoginData,
+  StartAccountLoginErrors,
+  StartAccountLoginResponses,
   StartEnabledWorkspaceAppsData,
   StartEnabledWorkspaceAppsErrors,
   StartEnabledWorkspaceAppsResponses,
@@ -438,6 +450,70 @@ export const trackEvents = <ThrowOnError extends boolean = false>(
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Start desktop account login
+ */
+export const startAccountLogin = <ThrowOnError extends boolean = false>(
+  options?: Options<StartAccountLoginData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    StartAccountLoginResponses,
+    StartAccountLoginErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/login/start",
+    ...options
+  });
+
+/**
+ * Get desktop account login status
+ */
+export const getAccountLoginStatus = <ThrowOnError extends boolean = false>(
+  options: Options<GetAccountLoginStatusData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAccountLoginStatusResponses,
+    GetAccountLoginStatusErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/login/status",
+    ...options
+  });
+
+/**
+ * Get current desktop account user
+ */
+export const getAccountUserInfo = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAccountUserInfoData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetAccountUserInfoResponses,
+    GetAccountUserInfoErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user_info",
+    ...options
+  });
+
+/**
+ * Sign out current desktop account
+ */
+export const logoutAccount = <ThrowOnError extends boolean = false>(
+  options?: Options<LogoutAccountData, ThrowOnError>
+) =>
+  (options?.client ?? client).post<
+    LogoutAccountResponses,
+    LogoutAccountErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/logout",
+    ...options
   });
 
 /**

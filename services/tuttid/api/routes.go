@@ -52,6 +52,38 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.TrackEvents(w, r)
 	})
 
+	mux.HandleFunc("/v1/account/login/start", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.StartAccountLogin(w, r)
+	})
+
+	mux.HandleFunc("/v1/account/login/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetAccountLoginStatus(w, r)
+	})
+
+	mux.HandleFunc("/v1/account/user_info", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetAccountUserInfo(w, r)
+	})
+
+	mux.HandleFunc("/v1/account/logout", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.LogoutAccount(w, r)
+	})
+
 	mux.HandleFunc("/v1/cli/capabilities", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

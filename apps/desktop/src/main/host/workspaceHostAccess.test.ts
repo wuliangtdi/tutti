@@ -23,6 +23,18 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   return {
+    async startAccountLogin() {
+      throw new Error("not used");
+    },
+    async getAccountLoginStatus() {
+      throw new Error("not used");
+    },
+    async getAccountUserInfo() {
+      throw new Error("not used");
+    },
+    async logoutAccount() {
+      throw new Error("not used");
+    },
     async applyWorkspaceGitPatch() {
       throw new Error("not used");
     },

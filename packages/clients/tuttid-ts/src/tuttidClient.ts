@@ -26,6 +26,8 @@ import {
   deleteWorkspace,
   deleteWorkspaceFileEntry,
   getDesktopPreferences,
+  getAccountLoginStatus,
+  getAccountUserInfo,
   getHealth,
   getStartupWorkspace,
   getWorkspaceFileTreeSnapshot,
@@ -54,6 +56,7 @@ import {
   listWorkspaceFileDirectory,
   listWorkspaceRecentFiles,
   listWorkspaces,
+  logoutAccount,
   copyWorkspaceFileEntry,
   moveWorkspaceFileEntry,
   renameWorkspaceFileEntry,
@@ -74,6 +77,7 @@ import {
   searchWorkspaceFiles,
   searchWorkspaceIssueReferences,
   sendWorkspaceAgentSessionInput,
+  startAccountLogin,
   submitWorkspaceAgentInteractive,
   terminateWorkspaceTerminal,
   trackEvents,
@@ -117,6 +121,25 @@ export function createTuttidClient(
   });
 
   return {
+    async startAccountLogin() {
+      const response = await startAccountLogin({ client });
+      return unwrapData(response, "Start account login request failed.");
+    },
+    async getAccountLoginStatus(attemptID) {
+      const response = await getAccountLoginStatus({
+        client,
+        query: { attempt_id: attemptID }
+      });
+      return unwrapData(response, "Account login status request failed.");
+    },
+    async getAccountUserInfo() {
+      const response = await getAccountUserInfo({ client });
+      return unwrapData(response, "Account user info request failed.").user;
+    },
+    async logoutAccount() {
+      const response = await logoutAccount({ client });
+      unwrapAccepted(response, "Account logout request failed.");
+    },
     async listCliCapabilities(workspaceID, options) {
       const response = await listCliCapabilities({
         client,

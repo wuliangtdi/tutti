@@ -22,6 +22,18 @@ export function createDesktopTuttidClient(
   };
 
   return {
+    async startAccountLogin() {
+      return (await resolveClient()).startAccountLogin();
+    },
+    async getAccountLoginStatus(attemptID) {
+      return (await resolveClient()).getAccountLoginStatus(attemptID);
+    },
+    async getAccountUserInfo() {
+      return (await resolveClient()).getAccountUserInfo();
+    },
+    async logoutAccount() {
+      return (await resolveClient()).logoutAccount();
+    },
     async applyWorkspaceGitPatch(workspaceID, request) {
       return (await resolveClient()).applyWorkspaceGitPatch(
         workspaceID,

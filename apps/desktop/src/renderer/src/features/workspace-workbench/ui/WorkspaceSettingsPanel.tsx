@@ -90,6 +90,7 @@ import {
 } from "../../../../../shared/theme/index.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import { useAccountService } from "./useAccountService";
 import {
   WorkspaceSettingsActionButton,
   workspaceSettingsControlColumnClass
@@ -245,6 +246,14 @@ export function WorkspaceSettingsPanel({
               id: "apps" as const,
               label: t("workspace.settings.nav.apps")
             },
+            ...(settingsState.tuttiAgentSwitchEnabled
+              ? [
+                  {
+                    id: "account" as const,
+                    label: t("workspace.settings.nav.account")
+                  }
+                ]
+              : []),
             {
               id: "about" as const,
               label: t("workspace.settings.nav.about")
@@ -410,6 +419,8 @@ export function WorkspaceSettingsPanel({
                   );
                 }}
               />
+            ) : settingsState.activeSection === "account" ? (
+              <WorkspaceAccountSettingsSection />
             ) : settingsState.activeSection === "about" ? (
               <WorkspaceAboutSettingsSection
                 developerLogs={settingsState.developerLogs}
@@ -433,6 +444,7 @@ export function WorkspaceSettingsPanel({
                 showAppDeveloperSources={
                   desktopPreferencesState.showAppDeveloperSources
                 }
+                tuttiAgentSwitchEnabled={settingsState.tuttiAgentSwitchEnabled}
                 onAppCatalogChannelChange={(channel) => {
                   void settingsService.changeAppCatalogChannel(channel);
                 }}
@@ -455,6 +467,9 @@ export function WorkspaceSettingsPanel({
                 }}
                 onDeveloperPanelVisibleChange={(visible) => {
                   settingsService.setDeveloperPanelVisible(visible);
+                }}
+                onTuttiAgentSwitchEnabledChange={(enabled) => {
+                  settingsService.setTuttiAgentSwitchEnabled(enabled);
                 }}
                 onShowAppDeveloperSourcesChange={(show) => {
                   void settingsService.changeShowAppDeveloperSources(show);
@@ -1473,6 +1488,7 @@ function WorkspaceDeveloperSettingsSection({
   developerPanelVisible,
   fileDefaultOpenersByExtension,
   showAppDeveloperSources,
+  tuttiAgentSwitchEnabled,
   onAnalyticsDebugEnabledChange,
   onAppCatalogChannelChange,
   onClearConversationHistory,
@@ -1480,7 +1496,8 @@ function WorkspaceDeveloperSettingsSection({
   onDeveloperPanelVisibleChange,
   onExportLogs,
   onFileDefaultOpenersChange,
-  onShowAppDeveloperSourcesChange
+  onShowAppDeveloperSourcesChange,
+  onTuttiAgentSwitchEnabledChange
 }: {
   analyticsDebugAvailable: boolean;
   analyticsDebugEnabled: boolean;
@@ -1490,6 +1507,7 @@ function WorkspaceDeveloperSettingsSection({
   developerPanelVisible: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   showAppDeveloperSources: boolean;
+  tuttiAgentSwitchEnabled: boolean;
   onAnalyticsDebugEnabledChange: (enabled: boolean) => void;
   onAppCatalogChannelChange: (channel: DesktopAppCatalogChannel) => void;
   onClearConversationHistory: () => void;
@@ -1500,6 +1518,7 @@ function WorkspaceDeveloperSettingsSection({
     openersByExtension: DesktopFileDefaultOpenersByExtension
   ) => void;
   onShowAppDeveloperSourcesChange: (show: boolean) => void;
+  onTuttiAgentSwitchEnabledChange: (enabled: boolean) => void;
 }) {
   const { t } = useTranslation();
   const logs = developerLogs.logs;
@@ -1537,6 +1556,22 @@ function WorkspaceDeveloperSettingsSection({
         changingAppCatalogChannel={changingAppCatalogChannel}
         onAppCatalogChannelChange={onAppCatalogChannelChange}
       />
+
+      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.developer.tuttiAgentSwitchLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.developer.tuttiAgentSwitchDescription")}
+          </p>
+        </div>
+        <Switch
+          aria-label={t("workspace.settings.developer.tuttiAgentSwitchLabel")}
+          checked={tuttiAgentSwitchEnabled}
+          onCheckedChange={onTuttiAgentSwitchEnabledChange}
+        />
+      </div>
 
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
@@ -2685,6 +2720,109 @@ function WorkspaceGeneralSettingsSection({
           checked={agentDiagnosticsReporting}
           onCheckedChange={setAgentDiagnosticsConsent}
         />
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceAccountSettingsSection() {
+  const { t } = useTranslation();
+  const { service: accountService, state: accountState } = useAccountService();
+
+  useEffect(() => {
+    void accountService.refreshUserInfo();
+  }, [accountService]);
+
+  const handleLogin = async () => {
+    if (accountState.signingIn || accountState.signingOut) {
+      return;
+    }
+    await accountService.startLogin();
+  };
+
+  const handleLogout = async () => {
+    if (accountState.signingIn || accountState.signingOut) {
+      return;
+    }
+    await accountService.logout();
+  };
+
+  const user = accountState.user;
+  const displayName = user?.name || user?.email || user?.user_id || "Tutti";
+
+  return (
+    <div className="flex flex-col gap-6 pb-[22px] pt-5">
+      <div className="flex min-w-0 items-center gap-3">
+        {user?.avatar ? (
+          <img
+            alt=""
+            className="size-12 shrink-0 rounded-full object-cover"
+            draggable={false}
+            src={user.avatar}
+          />
+        ) : (
+          <div className="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--transparency-block)] text-[18px] font-semibold text-[var(--text-primary)]">
+            {displayName.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div className="min-w-0">
+          <strong className="block truncate text-[16px] font-semibold leading-6 text-[var(--text-primary)]">
+            {accountState.loading
+              ? t("common.loading")
+              : user
+                ? displayName
+                : t("workspace.settings.account.signedOutTitle")}
+          </strong>
+          <p className="m-0 truncate text-[13px] text-[var(--text-secondary)]">
+            {user?.email || t("workspace.settings.account.description")}
+          </p>
+        </div>
+      </div>
+
+      {accountState.error ? (
+        <p className="m-0 rounded-[6px] bg-[color-mix(in_srgb,var(--state-warning)_16%,transparent)] px-3 py-2 text-[13px] text-[var(--text-primary)]">
+          {accountState.error}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        {user ? (
+          <>
+            <WorkspaceSettingsActionButton
+              disabled={accountState.signingIn || accountState.signingOut}
+              label={
+                accountState.signingOut
+                  ? t("workspace.settings.account.signingOut")
+                  : t("workspace.settings.account.logout")
+              }
+              onClick={handleLogout}
+            />
+            <WorkspaceSettingsActionButton
+              disabled={accountState.signingIn || accountState.signingOut}
+              label={t("workspace.settings.account.refresh")}
+              onClick={() => void accountService.refreshUserInfo()}
+            />
+          </>
+        ) : (
+          <WorkspaceSettingsActionButton
+            disabled={
+              accountState.loading ||
+              accountState.signingIn ||
+              accountState.signingOut
+            }
+            icon={
+              accountState.signingIn ? (
+                <LoadingIcon className="size-3.5" />
+              ) : null
+            }
+            label={
+              accountState.signingIn
+                ? t("workspace.settings.account.signingIn")
+                : t("workspace.settings.account.login")
+            }
+            onClick={handleLogin}
+          />
+        )}
       </div>
     </div>
   );

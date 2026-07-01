@@ -51,6 +51,7 @@ import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspace
 import { formatWorkspaceSettingsBytes } from "../workspaceSettingsFormat.ts";
 import { createWorkspaceSettingsStore } from "./workspaceSettingsStore.ts";
 import { writeDeveloperPanelVisible } from "./developerPanelVisibility.ts";
+import { writeTuttiAgentSwitchEnabled } from "./tuttiAgentSwitchPreference.ts";
 import type {
   WorkspaceManagedModel,
   WorkspaceManagedModelProviderConfig,
@@ -190,6 +191,18 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     this.store.developerPanelVisible = visible;
     writeDeveloperPanelVisible(visible);
     if (!visible && this.store.activeSection === "developer") {
+      this.store.activeSection = "general";
+    }
+  }
+
+  setTuttiAgentSwitchEnabled(enabled: boolean): void {
+    if (this.store.tuttiAgentSwitchEnabled === enabled) {
+      return;
+    }
+
+    this.store.tuttiAgentSwitchEnabled = enabled;
+    writeTuttiAgentSwitchEnabled(enabled);
+    if (!enabled && this.store.activeSection === "account") {
       this.store.activeSection = "general";
     }
   }

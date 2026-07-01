@@ -19,6 +19,18 @@ import (
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Start desktop account login
+	// (POST /v1/account/login/start)
+	StartAccountLogin(w http.ResponseWriter, r *http.Request)
+	// Get desktop account login status
+	// (GET /v1/account/login/status)
+	GetAccountLoginStatus(w http.ResponseWriter, r *http.Request, params GetAccountLoginStatusParams)
+	// Sign out current desktop account
+	// (POST /v1/account/logout)
+	LogoutAccount(w http.ResponseWriter, r *http.Request)
+	// Get current desktop account user
+	// (GET /v1/account/user_info)
+	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(w http.ResponseWriter, r *http.Request, params GetAgentProviderStatusesParams)
@@ -407,6 +419,105 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// StartAccountLogin operation middleware
+func (siw *ServerInterfaceWrapper) StartAccountLogin(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartAccountLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountLoginStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountLoginStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAccountLoginStatusParams
+
+	// ------------- Required query parameter "attempt_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "attempt_id", r.URL.Query(), &params.AttemptId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "attempt_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attempt_id", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountLoginStatus(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LogoutAccount operation middleware
+func (siw *ServerInterfaceWrapper) LogoutAccount(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogoutAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountUserInfo operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountUserInfo(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountUserInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetAgentProviderStatuses operation middleware
 func (siw *ServerInterfaceWrapper) GetAgentProviderStatuses(w http.ResponseWriter, r *http.Request) {
@@ -5732,6 +5843,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/login/start", wrapper.StartAccountLogin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/login/status", wrapper.GetAccountLoginStatus)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/logout", wrapper.LogoutAccount)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/actions/{actionID}/run", wrapper.RunAgentProviderAction)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-providers/{provider}/composer-options", wrapper.GetAgentProviderComposerOptions)
@@ -5885,6 +6000,285 @@ type WorkspaceNotFoundErrorJSONResponse ApiErrorResponse
 type WorkspaceOperationErrorJSONResponse ApiErrorResponse
 
 type WorkspaceTerminalNotFoundErrorJSONResponse ApiErrorResponse
+
+type StartAccountLoginRequestObject struct {
+}
+
+type StartAccountLoginResponseObject interface {
+	VisitStartAccountLoginResponse(w http.ResponseWriter) error
+}
+
+type StartAccountLogin200JSONResponse AccountLoginStartResponse
+
+func (response StartAccountLogin200JSONResponse) VisitStartAccountLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartAccountLogin401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response StartAccountLogin401JSONResponse) VisitStartAccountLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartAccountLogin405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response StartAccountLogin405JSONResponse) VisitStartAccountLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartAccountLogin503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response StartAccountLogin503JSONResponse) VisitStartAccountLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountLoginStatusRequestObject struct {
+	Params GetAccountLoginStatusParams
+}
+
+type GetAccountLoginStatusResponseObject interface {
+	VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error
+}
+
+type GetAccountLoginStatus200JSONResponse AccountLoginStatusResponse
+
+func (response GetAccountLoginStatus200JSONResponse) VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountLoginStatus400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response GetAccountLoginStatus400JSONResponse) VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountLoginStatus401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAccountLoginStatus401JSONResponse) VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountLoginStatus405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAccountLoginStatus405JSONResponse) VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountLoginStatus503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAccountLoginStatus503JSONResponse) VisitGetAccountLoginStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutAccountRequestObject struct {
+}
+
+type LogoutAccountResponseObject interface {
+	VisitLogoutAccountResponse(w http.ResponseWriter) error
+}
+
+type LogoutAccount204Response struct {
+}
+
+func (response LogoutAccount204Response) VisitLogoutAccountResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type LogoutAccount401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response LogoutAccount401JSONResponse) VisitLogoutAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutAccount405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response LogoutAccount405JSONResponse) VisitLogoutAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutAccount503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response LogoutAccount503JSONResponse) VisitLogoutAccountResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserInfoRequestObject struct {
+}
+
+type GetAccountUserInfoResponseObject interface {
+	VisitGetAccountUserInfoResponse(w http.ResponseWriter) error
+}
+
+type GetAccountUserInfo200JSONResponse AccountUserInfoResponse
+
+func (response GetAccountUserInfo200JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserInfo401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAccountUserInfo401JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserInfo405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAccountUserInfo405JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserInfo503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAccountUserInfo503JSONResponse) VisitGetAccountUserInfoResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type GetAgentProviderStatusesRequestObject struct {
 	Params GetAgentProviderStatusesParams
@@ -20289,6 +20683,18 @@ func (response PutWorkspaceWorkbench503JSONResponse) VisitPutWorkspaceWorkbenchR
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Start desktop account login
+	// (POST /v1/account/login/start)
+	StartAccountLogin(ctx context.Context, request StartAccountLoginRequestObject) (StartAccountLoginResponseObject, error)
+	// Get desktop account login status
+	// (GET /v1/account/login/status)
+	GetAccountLoginStatus(ctx context.Context, request GetAccountLoginStatusRequestObject) (GetAccountLoginStatusResponseObject, error)
+	// Sign out current desktop account
+	// (POST /v1/account/logout)
+	LogoutAccount(ctx context.Context, request LogoutAccountRequestObject) (LogoutAccountResponseObject, error)
+	// Get current desktop account user
+	// (GET /v1/account/user_info)
+	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
 	// Get local agent provider availability and action status
 	// (GET /v1/agent-providers/status)
 	GetAgentProviderStatuses(ctx context.Context, request GetAgentProviderStatusesRequestObject) (GetAgentProviderStatusesResponseObject, error)
@@ -20696,6 +21102,104 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// StartAccountLogin operation middleware
+func (sh *strictHandler) StartAccountLogin(w http.ResponseWriter, r *http.Request) {
+	var request StartAccountLoginRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartAccountLogin(ctx, request.(StartAccountLoginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartAccountLogin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartAccountLoginResponseObject); ok {
+		if err := validResponse.VisitStartAccountLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountLoginStatus operation middleware
+func (sh *strictHandler) GetAccountLoginStatus(w http.ResponseWriter, r *http.Request, params GetAccountLoginStatusParams) {
+	var request GetAccountLoginStatusRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountLoginStatus(ctx, request.(GetAccountLoginStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountLoginStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountLoginStatusResponseObject); ok {
+		if err := validResponse.VisitGetAccountLoginStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LogoutAccount operation middleware
+func (sh *strictHandler) LogoutAccount(w http.ResponseWriter, r *http.Request) {
+	var request LogoutAccountRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogoutAccount(ctx, request.(LogoutAccountRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogoutAccount")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutAccountResponseObject); ok {
+		if err := validResponse.VisitLogoutAccountResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountUserInfo operation middleware
+func (sh *strictHandler) GetAccountUserInfo(w http.ResponseWriter, r *http.Request) {
+	var request GetAccountUserInfoRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountUserInfo(ctx, request.(GetAccountUserInfoRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountUserInfo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountUserInfoResponseObject); ok {
+		if err := validResponse.VisitGetAccountUserInfoResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GetAgentProviderStatuses operation middleware
