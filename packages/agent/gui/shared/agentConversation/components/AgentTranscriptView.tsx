@@ -2,10 +2,13 @@ import {
   Fragment,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type FocusEvent,
   type JSX
 } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -20,6 +23,7 @@ const AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN = 6;
 const AGENT_TRANSCRIPT_ESTIMATED_TURN_HEIGHT_PX = 280;
 const AGENT_TRANSCRIPT_TURN_GAP_PX = 12;
 const AGENT_TRANSCRIPT_FALLBACK_TURN_COUNT = 3;
+const AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS = 160;
 
 interface AgentTranscriptTurnGroup {
   key: string;
@@ -44,7 +48,16 @@ interface AgentTranscriptViewProps {
     processing: string;
     turnSummary: string;
     rawTimelineJson?: string;
+    userMessageLocator?: string;
   };
+}
+
+interface AgentMessageLocatorItem {
+  key: string;
+  rowKey: string;
+  turnGroupIndex: number;
+  rowIndex: number;
+  summary: string;
 }
 
 function transcriptLabelsEqual(
@@ -57,6 +70,7 @@ function transcriptLabelsEqual(
       previous.processing === next.processing &&
       previous.turnSummary === next.turnSummary &&
       previous.rawTimelineJson === next.rawTimelineJson &&
+      previous.userMessageLocator === next.userMessageLocator &&
       previous.toolCallsLabel === next.toolCallsLabel)
   );
 }
@@ -132,6 +146,19 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     () => buildAgentTranscriptTurnGroups(conversation.rows, rowKeys),
     [conversation.rows, rowKeys]
   );
+  const turnGroupIndexByRowIndex = useMemo(
+    () => buildTurnGroupIndexByRowIndex(turnGroups),
+    [turnGroups]
+  );
+  const userMessageLocatorItems = useMemo(
+    () =>
+      buildUserMessageLocatorItems(
+        conversation.rows,
+        rowKeys,
+        turnGroupIndexByRowIndex
+      ),
+    [conversation.rows, rowKeys, turnGroupIndexByRowIndex]
+  );
   const enteringRowKeys = useEnteringTranscriptRows(rowKeys);
   const handleToolGroupExpandedChange = useCallback(
     (key: string, expanded: boolean) => {
@@ -172,6 +199,37 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
     getScrollElement: () => virtualScrollElement,
     overscan: AGENT_TRANSCRIPT_VIRTUALIZATION_OVERSCAN
   });
+  const handleLocateUserMessage = useCallback(
+    (item: AgentMessageLocatorItem) => {
+      const scrollParent = virtualizerHostRef.current?.parentElement ?? null;
+      const scrollToRenderedRow = (): boolean => {
+        const renderedRow = (
+          scrollParent ?? document
+        ).querySelector<HTMLElement>(
+          `[data-agent-transcript-row="${escapeCssString(item.rowKey)}"]`
+        );
+        if (!renderedRow) {
+          return false;
+        }
+        renderedRow.scrollIntoView({
+          block: "center",
+          behavior: "smooth"
+        });
+        return true;
+      };
+
+      if (scrollToRenderedRow()) {
+        return;
+      }
+      if (shouldVirtualize) {
+        rowVirtualizer.scrollToIndex(item.turnGroupIndex, {
+          align: "center"
+        });
+        window.setTimeout(scrollToRenderedRow, 0);
+      }
+    },
+    [rowVirtualizer, shouldVirtualize]
+  );
 
   useLayoutEffect(() => {
     if (!shouldVirtualize) {
@@ -203,6 +261,7 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
           className="agent-gui-transcript-row"
           data-agent-transcript-row={rowKey}
           data-agent-transcript-row-kind={row.kind}
+          data-agent-transcript-row-index={rowIndex}
           data-agent-transcript-row-enter={
             shouldAnimateEnter ? "true" : undefined
           }
@@ -259,39 +318,356 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
             }))
         : rowVirtualizer.getVirtualItems();
     return (
-      <div
-        ref={virtualizerHostRef}
-        className="agent-gui-transcript-virtual"
-        data-agent-transcript-virtualized="true"
-        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-      >
-        {virtualItems.map((virtualTurn) => {
-          const group = turnGroups[virtualTurn.index];
-          if (!group) {
-            return null;
-          }
-          return (
-            <div
-              key={virtualTurn.key}
-              ref={rowVirtualizer.measureElement}
-              className="agent-gui-transcript-virtual-item"
-              data-index={virtualTurn.index}
-              data-agent-transcript-virtual-turn={group.key}
-              style={{
-                paddingBottom: `${AGENT_TRANSCRIPT_TURN_GAP_PX}px`,
-                transform: `translateY(${virtualTurn.start}px)`
-              }}
-            >
-              {group.rows.map(({ row, rowIndex }) => renderRow(row, rowIndex))}
-            </div>
-          );
-        })}
-      </div>
+      <>
+        <AgentMessageLocatorRail
+          items={userMessageLocatorItems}
+          label={labels.userMessageLocator}
+          onLocate={handleLocateUserMessage}
+        />
+        <div
+          ref={virtualizerHostRef}
+          className="agent-gui-transcript-virtual"
+          data-agent-transcript-virtualized="true"
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+        >
+          {virtualItems.map((virtualTurn) => {
+            const group = turnGroups[virtualTurn.index];
+            if (!group) {
+              return null;
+            }
+            return (
+              <div
+                key={virtualTurn.key}
+                ref={rowVirtualizer.measureElement}
+                className="agent-gui-transcript-virtual-item"
+                data-index={virtualTurn.index}
+                data-agent-transcript-virtual-turn={group.key}
+                style={{
+                  paddingBottom: `${AGENT_TRANSCRIPT_TURN_GAP_PX}px`,
+                  transform: `translateY(${virtualTurn.start}px)`
+                }}
+              >
+                {group.rows.map(({ row, rowIndex }) =>
+                  renderRow(row, rowIndex)
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </>
     );
   }
 
-  return <>{conversation.rows.map(renderRow)}</>;
+  return (
+    <>
+      <AgentMessageLocatorRail
+        items={userMessageLocatorItems}
+        label={labels.userMessageLocator}
+        onLocate={handleLocateUserMessage}
+      />
+      {conversation.rows.map(renderRow)}
+    </>
+  );
 }, areAgentTranscriptViewPropsEqual);
+
+function AgentMessageLocatorRail({
+  items,
+  label,
+  onLocate
+}: {
+  items: readonly AgentMessageLocatorItem[];
+  label?: string;
+  onLocate: (item: AgentMessageLocatorItem) => void;
+}): JSX.Element | null {
+  const locatorRef = useRef<HTMLElement | null>(null);
+  const closePanelTimeoutRef = useRef<number | null>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [visibleHeightPx, setVisibleHeightPx] = useState<number | null>(null);
+  useEffect(() => {
+    if (isPanelOpen) {
+      setShouldRenderPanel(true);
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setShouldRenderPanel(false),
+      AGENT_MESSAGE_LOCATOR_PANEL_FADE_MS
+    );
+    return () => window.clearTimeout(timeout);
+  }, [isPanelOpen]);
+  useEffect(
+    () => () => {
+      if (closePanelTimeoutRef.current !== null) {
+        window.clearTimeout(closePanelTimeoutRef.current);
+      }
+    },
+    []
+  );
+  useEffect(() => {
+    if (selectedKey && !items.some((item) => item.key === selectedKey)) {
+      setSelectedKey(null);
+    }
+  }, [items, selectedKey]);
+  useLayoutEffect(() => {
+    const locator = locatorRef.current;
+    const scrollParent = locator
+      ? findMessageLocatorScrollParent(locator)
+      : null;
+    if (!scrollParent) {
+      return;
+    }
+
+    let animationFrame: number | null = null;
+    const updateVisibleHeight = (): void => {
+      animationFrame = null;
+      const nextHeight = scrollParent.clientHeight;
+      setVisibleHeightPx((current) =>
+        current === nextHeight ? current : nextHeight
+      );
+    };
+    const scheduleUpdate = (): void => {
+      if (animationFrame !== null) {
+        return;
+      }
+      animationFrame = window.requestAnimationFrame(updateVisibleHeight);
+    };
+
+    scheduleUpdate();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleUpdate);
+    resizeObserver?.observe(scrollParent);
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleUpdate);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [items.length]);
+  useEffect(() => {
+    const locator = locatorRef.current;
+    const scrollParent = locator
+      ? findMessageLocatorScrollParent(locator)
+      : null;
+    if (!scrollParent) {
+      return;
+    }
+
+    let animationFrame: number | null = null;
+    const updateSelectedFromScroll = (): void => {
+      animationFrame = null;
+      const nextSelectedKey = selectMessageLocatorItemAtViewportCenter(
+        scrollParent,
+        items
+      );
+      if (nextSelectedKey) {
+        setSelectedKey(nextSelectedKey);
+      }
+    };
+    const scheduleUpdate = (): void => {
+      if (animationFrame !== null) {
+        return;
+      }
+      animationFrame = window.requestAnimationFrame(updateSelectedFromScroll);
+    };
+
+    scheduleUpdate();
+    scrollParent.addEventListener("scroll", scheduleUpdate, { passive: true });
+    return () => {
+      scrollParent.removeEventListener("scroll", scheduleUpdate);
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [items]);
+
+  if (items.length < 2) {
+    return null;
+  }
+
+  const railHeight = (items.length - 1) * 30 + 18;
+  const activeOrSelectedKey = activeKey ?? selectedKey;
+  const handleLocateItem = (item: AgentMessageLocatorItem): void => {
+    setSelectedKey(item.key);
+    setActiveKey(item.key);
+    onLocate(item);
+  };
+  const openPanel = (): void => {
+    if (closePanelTimeoutRef.current !== null) {
+      window.clearTimeout(closePanelTimeoutRef.current);
+      closePanelTimeoutRef.current = null;
+    }
+    setIsPanelOpen(true);
+  };
+  const closePanelSoon = (): void => {
+    if (closePanelTimeoutRef.current !== null) {
+      window.clearTimeout(closePanelTimeoutRef.current);
+    }
+    closePanelTimeoutRef.current = window.setTimeout(() => {
+      closePanelTimeoutRef.current = null;
+      setIsPanelOpen(false);
+      setActiveKey(null);
+    }, 120);
+  };
+  const closePanelNow = (): void => {
+    if (closePanelTimeoutRef.current !== null) {
+      window.clearTimeout(closePanelTimeoutRef.current);
+      closePanelTimeoutRef.current = null;
+    }
+    setIsPanelOpen(false);
+    setActiveKey(null);
+  };
+  const handleBlurCapture = (event: FocusEvent<HTMLElement>): void => {
+    const nextTarget = event.relatedTarget;
+    if (
+      nextTarget instanceof Node &&
+      event.currentTarget.contains(nextTarget)
+    ) {
+      return;
+    }
+    closePanelNow();
+  };
+
+  return (
+    <nav
+      ref={locatorRef}
+      className="agent-gui-message-locator"
+      aria-label={label ?? items[0]?.summary}
+      data-testid="agent-message-locator"
+      onBlurCapture={handleBlurCapture}
+      onFocusCapture={openPanel}
+      onMouseEnter={openPanel}
+      onMouseLeave={closePanelSoon}
+      style={
+        {
+          "--agent-message-locator-height": `${railHeight}px`,
+          ...(visibleHeightPx !== null
+            ? {
+                "--agent-message-locator-visible-height": `${visibleHeightPx}px`
+              }
+            : {})
+        } as CSSProperties
+      }
+    >
+      {items.slice(0, -1).map((item, index) => (
+        <div
+          key={`segment:${item.key}`}
+          className="agent-gui-message-locator__track-segment"
+          style={
+            {
+              "--agent-message-locator-segment-position": `${index * 30 + 18}px`
+            } as CSSProperties
+          }
+          aria-hidden="true"
+        />
+      ))}
+      {items.map((item, index) => (
+        <button
+          key={item.key}
+          type="button"
+          className="agent-gui-message-locator__tick nodrag tsh-desktop-no-drag"
+          style={
+            {
+              "--agent-message-locator-position": `${index * 30 + 9}px`
+            } as CSSProperties
+          }
+          aria-label={item.summary}
+          title={item.summary}
+          data-selected={item.key === selectedKey ? "true" : undefined}
+          onClick={() => handleLocateItem(item)}
+          onFocus={() => setActiveKey(item.key)}
+          onMouseEnter={() => setActiveKey(item.key)}
+        >
+          <span className="agent-gui-message-locator__dot" aria-hidden="true" />
+        </button>
+      ))}
+      {shouldRenderPanel ? (
+        <div
+          className="agent-gui-message-locator__panel"
+          role="tooltip"
+          data-open={isPanelOpen ? "true" : undefined}
+          data-testid="agent-message-locator-panel"
+          onMouseEnter={openPanel}
+          onMouseLeave={closePanelSoon}
+        >
+          {items.map((item) => (
+            <button
+              key={`panel:${item.key}`}
+              type="button"
+              className="agent-gui-message-locator__panel-item nodrag tsh-desktop-no-drag"
+              data-active={
+                item.key === activeOrSelectedKey ? "true" : undefined
+              }
+              onClick={() => handleLocateItem(item)}
+              onFocus={() => setActiveKey(item.key)}
+              onMouseEnter={() => setActiveKey(item.key)}
+            >
+              <span className="agent-gui-message-locator__panel-item-text">
+                {item.summary}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </nav>
+  );
+}
+
+function findMessageLocatorScrollParent(
+  locator: HTMLElement
+): HTMLElement | null {
+  const timeline = locator.closest<HTMLElement>(
+    '[data-testid="agent-gui-timeline"]'
+  );
+  if (timeline) {
+    return timeline;
+  }
+
+  let current = locator.parentElement;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY;
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      current.scrollHeight > current.clientHeight
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+function selectMessageLocatorItemAtViewportCenter(
+  scrollParent: HTMLElement,
+  items: readonly AgentMessageLocatorItem[]
+): string | null {
+  const viewportRect = scrollParent.getBoundingClientRect();
+  const viewportCenterY = viewportRect.top + viewportRect.height / 2;
+  let nearest: { key: string; distance: number } | null = null;
+
+  for (const item of items) {
+    const row = scrollParent.querySelector<HTMLElement>(
+      `[data-agent-transcript-row="${escapeCssString(item.rowKey)}"]`
+    );
+    if (!row) {
+      continue;
+    }
+    const rowRect = row.getBoundingClientRect();
+    const rowCenterY = rowRect.top + rowRect.height / 2;
+    const distance = Math.abs(rowCenterY - viewportCenterY);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { key: item.key, distance };
+    }
+  }
+
+  return nearest?.key ?? null;
+}
 
 function useEnteringTranscriptRows(rowKeys: string[]): ReadonlySet<string> {
   const previousKeysRef = useRef<Set<string> | null>(null);
@@ -342,6 +718,60 @@ function buildAgentTranscriptTurnGroups(
   });
 
   return groups;
+}
+
+function buildTurnGroupIndexByRowIndex(
+  turnGroups: readonly AgentTranscriptTurnGroup[]
+): ReadonlyMap<number, number> {
+  const rowIndexToTurnGroupIndex = new Map<number, number>();
+  turnGroups.forEach((group, groupIndex) => {
+    group.rows.forEach(({ rowIndex }) => {
+      rowIndexToTurnGroupIndex.set(rowIndex, groupIndex);
+    });
+  });
+  return rowIndexToTurnGroupIndex;
+}
+
+function buildUserMessageLocatorItems(
+  rows: ReadonlyArray<AgentConversationVM["rows"][number]>,
+  rowKeys: ReadonlyArray<string>,
+  turnGroupIndexByRowIndex: ReadonlyMap<number, number>
+): AgentMessageLocatorItem[] {
+  const items: AgentMessageLocatorItem[] = [];
+  rows.forEach((row, rowIndex) => {
+    if (row.kind !== "message" || row.speaker !== "user") {
+      return;
+    }
+    const summary = summarizeUserMessageRow(row);
+    if (!summary) {
+      return;
+    }
+    const rowKey = rowKeys[rowIndex] ?? transcriptRowKey(row);
+    items.push({
+      key: `user-message:${rowKey}`,
+      rowKey,
+      turnGroupIndex: turnGroupIndexByRowIndex.get(rowIndex) ?? rowIndex,
+      rowIndex,
+      summary
+    });
+  });
+  return items;
+}
+
+function summarizeUserMessageRow(
+  row: Extract<AgentConversationVM["rows"][number], { kind: "message" }>
+): string {
+  return normalizeLocatorSummary(
+    row.messages.map((message) => message.copyText ?? message.body).join(" ")
+  );
+}
+
+function normalizeLocatorSummary(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function escapeCssString(value: string): string {
+  return value.replace(/["\\]/g, "\\$&");
 }
 
 function findTurnDividerRowIndexes(

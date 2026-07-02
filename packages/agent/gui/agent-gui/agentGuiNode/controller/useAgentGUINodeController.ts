@@ -3370,6 +3370,19 @@ export function useAgentGUINodeController({
     normalizedProviderTargets,
     shouldFallbackToLocalProviderTargets
   ]);
+  const selectedProviderTargetIsExplicit = useMemo(
+    () =>
+      normalizedExplicitProviderTargets.some(
+        (target) =>
+          target.provider === selectedProviderTarget.provider &&
+          target.targetId === selectedProviderTarget.targetId &&
+          agentGUIProviderTargetRefsEqual(
+            target.ref,
+            selectedProviderTarget.ref
+          )
+      ),
+    [normalizedExplicitProviderTargets, selectedProviderTarget]
+  );
   const agentActivityDisplayStatusesRef = useRef<Map<
     string,
     AgentActivityDisplayStatus
@@ -3828,6 +3841,11 @@ export function useAgentGUINodeController({
   const dataRef = useRef(data);
   const selectedProviderTargetRef = useRef(selectedProviderTarget);
   selectedProviderTargetRef.current = selectedProviderTarget;
+  const selectedProviderTargetIsExplicitRef = useRef(
+    selectedProviderTargetIsExplicit
+  );
+  selectedProviderTargetIsExplicitRef.current =
+    selectedProviderTargetIsExplicit;
   const draftSettingsBySessionIdRef = useRef(draftSettingsBySessionId);
   const onDataChangeRef = useRef(onDataChange);
   const onRememberComposerDefaultsRef = useRef(onRememberComposerDefaults);
@@ -6540,7 +6558,7 @@ export function useAgentGUINodeController({
         return;
       }
       const agentTargetId = target.agentTargetId?.trim() ?? "";
-      if (!agentTargetId) {
+      if (!agentTargetId && selectedProviderTargetIsExplicitRef.current) {
         setDetailError(translate("agentHost.agentGui.agentTargetRequired"));
         return;
       }
@@ -6568,17 +6586,31 @@ export function useAgentGUINodeController({
       let pendingOptimisticConversation: AgentGUIConversationSummary | null =
         null;
       void (async () => {
+        const target = selectedProviderTargetRef.current;
         const provider = target.provider;
+        const agentTargetId = target.agentTargetId?.trim() ?? "";
+        const shouldUseProviderTargetRef =
+          !agentTargetId && selectedProviderTargetIsExplicitRef.current;
         onDataChangeRef.current((current) =>
           current.provider === provider &&
-          (current.agentTargetId ?? null) === agentTargetId
+          (current.agentTargetId ?? null) === (agentTargetId || null) &&
+          (current.providerTargetId ?? null) ===
+            (shouldUseProviderTargetRef ? target.targetId : null) &&
+          agentGUIProviderTargetRefsEqual(
+            current.providerTargetRef,
+            shouldUseProviderTargetRef ? target.ref : null
+          )
             ? current
             : {
                 ...current,
                 provider,
-                agentTargetId,
-                providerTargetId: null,
-                providerTargetRef: null
+                agentTargetId: agentTargetId || null,
+                providerTargetId: shouldUseProviderTargetRef
+                  ? target.targetId
+                  : null,
+                providerTargetRef: shouldUseProviderTargetRef
+                  ? target.ref
+                  : null
               }
         );
         const currentData =
@@ -6739,9 +6771,9 @@ export function useAgentGUINodeController({
         return activation.activate({
           mode: "new",
           agentSessionId,
-          agentTargetId,
+          agentTargetId: agentTargetId || null,
           provider,
-          providerTargetRef: null,
+          providerTargetRef: shouldUseProviderTargetRef ? target.ref : null,
           cwd: selectedProjectPath ?? "",
           initialContent: normalizedInitialContent,
           initialDisplayPrompt,

@@ -3,7 +3,8 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor
+  waitFor,
+  within
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../workspaceAgentSessionDetailViewModel";
@@ -210,6 +211,96 @@ describe("AgentTranscriptView", () => {
     expect(dividers[0]!.className).toContain(
       "bg-[var(--line-2,var(--tutti-line-2))]"
     );
+  });
+
+  it("renders user message locator ticks and scrolls to the selected message", () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const base = detailViewModel();
+
+    try {
+      render(
+        <AgentTranscriptView
+          conversation={projectAgentConversationVM(
+            detailViewModel({
+              turns: [
+                base.turns[0]!,
+                {
+                  id: "turn-2",
+                  userMessage: { id: "user-2", body: "Follow-up request" },
+                  userMessages: [{ id: "user-2", body: "Follow-up request" }],
+                  agentMessages: [
+                    { id: "assistant-2", body: "Follow-up answer" }
+                  ],
+                  toolCalls: [],
+                  toolCallCount: 0,
+                  hasFailedToolCall: false,
+                  agentItems: [
+                    {
+                      kind: "message",
+                      message: {
+                        id: "assistant-2",
+                        body: "Follow-up answer"
+                      }
+                    }
+                  ]
+                }
+              ]
+            })
+          )}
+          labels={{
+            thinkingLabel: "Thought process",
+            toolCallsLabel: (count) => `Tool calls (${count})`,
+            processing: "Planning next moves",
+            turnSummary: "Changed files",
+            userMessageLocator: "User messages"
+          }}
+        />
+      );
+
+      const locator = screen.getByTestId("agent-message-locator");
+      expect(locator).toBeTruthy();
+      fireEvent.mouseEnter(locator);
+      const panel = screen.getByTestId("agent-message-locator-panel");
+      expect(within(panel).getByText("User asks for a fix")).toBeTruthy();
+      expect(within(panel).getByText("Follow-up request")).toBeTruthy();
+      vi.useFakeTimers();
+      fireEvent.mouseLeave(locator);
+      fireEvent.mouseEnter(panel);
+      act(() => {
+        vi.advanceTimersByTime(160);
+      });
+      expect(screen.getByTestId("agent-message-locator-panel")).toBeTruthy();
+      vi.useRealTimers();
+
+      fireEvent.mouseEnter(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      );
+      expect(
+        within(panel)
+          .getByRole("button", { name: "User asks for a fix" })
+          .getAttribute("data-active")
+      ).toBeNull();
+      expect(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      ).toHaveAttribute("data-active", "true");
+
+      fireEvent.click(
+        within(panel).getByRole("button", { name: "Follow-up request" })
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        behavior: "smooth"
+      });
+      expect(
+        locator.querySelectorAll(".agent-gui-message-locator__tick")[1]
+      ).toHaveAttribute("data-selected", "true");
+    } finally {
+      vi.useRealTimers();
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("renders attached thinking before assistant message content within the same row", () => {
