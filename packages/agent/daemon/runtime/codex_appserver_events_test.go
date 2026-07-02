@@ -359,6 +359,72 @@ func TestCodexAppServerChildThreadErrorDoesNotFailParentTurn(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerStrayTurnStartedDoesNotHijackActiveTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewCodexAppServerAdapter(nil)
+	session := Session{
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "parent-thread-1",
+		CWD:               "/workspace",
+	}
+	activeTurn := &codexAppServerActiveTurn{
+		turnID:   "local-turn-1",
+		phase:    codexAppServerTurnPhaseRunning,
+		terminal: make(chan codexAppServerTurnTerminal, 1),
+	}
+	adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+		threadID:   session.ProviderSessionID,
+		activeTurn: activeTurn,
+	})
+	reducer := newCodexAppServerReducer(adapter)
+	normalizer := newACPTurnNormalizer()
+
+	// The user's turn records its provider turn id.
+	reducer.ReduceNotification(nil, session, "local-turn-1", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-real", "status": "inProgress"},
+		}),
+	}, normalizer, nil)
+	if got := adapter.sessionActiveTurnID(session.AgentSessionID); got != "turn-real" {
+		t.Fatalf("activeTurnID = %q, want turn-real", got)
+	}
+
+	// A stray server-initiated turn starts on the same thread mid-task
+	// (e.g. auto-compaction). It must not steal the live turn's identity.
+	reducer.ReduceNotification(nil, session, "local-turn-1", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-stray", "status": "inProgress"},
+		}),
+	}, normalizer, nil)
+
+	// The real turn completes; the waiting Exec must receive its payload.
+	reducer.ReduceNotification(nil, session, "local-turn-1", acpMessage{
+		Method: appServerNotifyTurnCompleted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-real", "status": "completed"},
+		}),
+	}, normalizer, nil)
+
+	select {
+	case terminal := <-activeTurn.terminal:
+		if asString(terminal.turn["id"]) != "turn-real" || terminal.phase != codexAppServerTurnPhaseCompleted {
+			t.Fatalf("terminal = %#v, want completed turn-real payload", terminal)
+		}
+	default:
+		t.Fatalf(
+			"real turn/completed was dropped: stray turn/started hijacked activeTurnID (now %q); awaitTurnCompletion would block forever",
+			adapter.sessionActiveTurnID(session.AgentSessionID),
+		)
+	}
+}
+
 // TestCodexAppServerAdapterApplyTokenUsagePrefersLastRequest verifies that
 // usedTokens reflects the most-recent request's context size ("last"), not the
 // running sum across all requests in the thread ("total").  The two diverge

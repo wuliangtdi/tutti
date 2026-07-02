@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
@@ -52,9 +53,18 @@ func (r codexAppServerReducer) ReduceNotification(
 		// Record the provider turn id (needed for turn/interrupt and
 		// turn/steer) only while a turn context is registered, so stray
 		// turns (for example compaction) cannot block future prompts.
+		// First-wins: once the live turn's id is recorded, a stray
+		// server-initiated turn/started on the same thread must not overwrite
+		// it — the strict completion match would then drop the real
+		// turn/completed and awaitTurnCompletion would never settle. After
+		// completion clears the id, the next turn/started (for example a goal
+		// continuation) records normally.
 		if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
 			if turn := payloadObject(params["turn"]); turn != nil {
-				providerTurnID := asString(turn["id"])
+				providerTurnID := strings.TrimSpace(asString(turn["id"]))
+				if recorded := a.sessionActiveTurnID(session.AgentSessionID); recorded != "" && recorded != providerTurnID {
+					return codexAppServerReduction{}
+				}
 				if a.setSessionActiveTurnID(session.AgentSessionID, providerTurnID) {
 					a.interruptActiveTurnAsync(&codexAppServerSession{
 						client:   client,
