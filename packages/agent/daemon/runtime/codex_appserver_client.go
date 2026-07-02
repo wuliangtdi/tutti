@@ -518,6 +518,19 @@ func (c *codexAppServerClient) ReviewStart(
 	return caller.rawResult, nil
 }
 
+func (c *codexAppServerClient) ThreadReadNoHandler(ctx context.Context, timeout time.Duration, params map[string]any) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadReadParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, nil, true)
+	_, err = client.ThreadRead(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
 func (c *codexAppServerClient) TurnInterruptNoHandler(ctx context.Context, timeout time.Duration, params map[string]any) (json.RawMessage, error) {
 	typedParams, err := codexProtoParams[codexproto.TurnInterruptParams](params)
 	if err != nil {

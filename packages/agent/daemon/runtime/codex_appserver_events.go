@@ -422,7 +422,9 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	parentThreadID := strings.TrimSpace(session.ProviderSessionID)
 	eventThreadID := strings.TrimSpace(asString(params["threadId"]))
 	if parentThreadID == "" || eventThreadID == "" || eventThreadID == parentThreadID {
-		a.rememberAppServerChildThreads(session.AgentSessionID, parentThreadID, payloadObject(params["item"]))
+		if added := a.rememberAppServerChildThreads(session.AgentSessionID, parentThreadID, payloadObject(params["item"])); len(added) > 0 {
+			a.scheduleChildNicknameFetches(session, added)
+		}
 		return appServerNotificationRoute{}
 	}
 
@@ -453,13 +455,13 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	}
 }
 
-func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID string, parentThreadID string, item map[string]any) {
+func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID string, parentThreadID string, item map[string]any) []string {
 	if asString(item["type"]) != "collabAgentToolCall" {
-		return
+		return nil
 	}
 	childThreadIDs := appServerReceiverThreadIDs(item["receiverThreadIds"])
 	if len(childThreadIDs) == 0 {
-		return
+		return nil
 	}
 	parentThreadID = strings.TrimSpace(parentThreadID)
 	parentItemID := strings.TrimSpace(asString(item["id"]))
@@ -467,11 +469,12 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID str
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession == nil {
-		return
+		return nil
 	}
 	if appSession.childThreads == nil {
 		appSession.childThreads = make(map[string]*codexAppServerThreadContext)
 	}
+	added := make([]string, 0, len(childThreadIDs))
 	for _, childThreadID := range childThreadIDs {
 		if childThreadID == "" || childThreadID == parentThreadID {
 			continue
@@ -490,7 +493,9 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID str
 			parentItemID:   parentItemID,
 			normalizer:     newACPTurnNormalizer(),
 		}
+		added = append(added, childThreadID)
 	}
+	return added
 }
 
 func (a *CodexAppServerAdapter) appServerChildThread(agentSessionID string, childThreadID string) (*codexAppServerThreadContext, bool) {

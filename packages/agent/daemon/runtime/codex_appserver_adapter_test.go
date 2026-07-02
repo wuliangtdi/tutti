@@ -70,6 +70,7 @@ type scriptedAppServerConnection struct {
 	holdTurn                     bool // do not finish the turn until released
 	ignoreInterrupt              bool // ack turn/interrupt but never complete the turn (wedged codex)
 	hangInterrupt                bool // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
 	commandApproval              bool
@@ -451,6 +452,15 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				continue
 			}
 			c.completePendingTurn()
+		case appServerMethodThreadRead:
+			c.mu.Lock()
+			nickname := c.childNicknames[asString(message.Params["threadId"])]
+			c.mu.Unlock()
+			thread := map[string]any{"id": message.Params["threadId"]}
+			if nickname != "" {
+				thread["agentNickname"] = nickname
+			}
+			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:
 			c.mu.Lock()
 			c.turnStatus = "interrupted"
@@ -1395,6 +1405,56 @@ func TestCodexAppServerAdapterCancelInterruptsActiveTurn(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("Exec did not finish after interrupt")
 	}
+}
+
+func TestCodexAppServerAdapterFetchesChildThreadNickname(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.childNicknames = map[string]string{"child-thread-1": "Euclid"}
+	transport.conn.mu.Unlock()
+	var mu sync.Mutex
+	var markers []activityshared.Event
+	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		markers = append(markers, events...)
+	})
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-1")
+
+	// Registering a child (parent collab item/started) must trigger an async
+	// thread/read: codex assigns spawned agents an agentNickname on the Thread
+	// object but never pushes it (no thread/name/updated for children).
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "turn-1", acpMessage{
+		Method: appServerNotifyItemStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "turn-1",
+			"item": map[string]any{
+				"type":              "collabAgentToolCall",
+				"id":                "spawn-child-1",
+				"tool":              "spawnAgent",
+				"status":            "inProgress",
+				"receiverThreadIds": []any{"child-thread-1"},
+			},
+		}),
+	}, newACPTurnNormalizer(), nil)
+
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, event := range markers {
+			if event.Payload.Metadata["messageKind"] == "subAgentName" &&
+				event.Payload.Metadata["subAgentName"] == "Euclid" &&
+				event.OwnerThreadID == "child-thread-1" &&
+				event.Payload.TurnID != "" {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {

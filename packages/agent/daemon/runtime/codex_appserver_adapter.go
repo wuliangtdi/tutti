@@ -35,6 +35,7 @@ const (
 	appServerMethodThreadResume          = "thread/resume"
 	appServerMethodThreadFork            = "thread/fork"
 	appServerMethodThreadRollback        = "thread/rollback"
+	appServerMethodThreadRead            = "thread/read"
 	appServerMethodThreadCompact         = "thread/compact/start"
 	appServerMethodThreadGoalSet         = "thread/goal/set"
 	appServerMethodThreadGoalGet         = "thread/goal/get"
@@ -1755,6 +1756,67 @@ func (a *CodexAppServerAdapter) sendTurnInterrupt(
 	reason string,
 ) {
 	a.sendThreadInterrupt(appSession.client, session, appSession.threadID, activeTurnID, reason)
+}
+
+// scheduleChildNicknameFetches resolves spawned sub-agents' display names.
+// codex assigns each spawned agent an agentNickname on its Thread object but
+// never pushes it (no thread/name/updated for children), so - like traycer -
+// we fetch it asynchronously via thread/read and emit a subAgentName marker.
+func (a *CodexAppServerAdapter) scheduleChildNicknameFetches(session Session, childThreadIDs []string) {
+	if a == nil || len(childThreadIDs) == 0 {
+		return
+	}
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return
+	}
+	client := appSession.client
+	for _, childThreadID := range childThreadIDs {
+		go a.fetchChildThreadNickname(client, session, childThreadID)
+	}
+}
+
+func (a *CodexAppServerAdapter) fetchChildThreadNickname(client *codexAppServerClient, session Session, childThreadID string) {
+	childThreadID = strings.TrimSpace(childThreadID)
+	if client == nil || childThreadID == "" {
+		return
+	}
+	// The nickname can be assigned slightly after the spawn item announces the
+	// thread; retry a few times before giving up (numbered fallback remains).
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-client.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), acpStartCallTimeout)
+		raw, err := client.ThreadReadNoHandler(ctx, acpStartCallTimeout, map[string]any{
+			"threadId": childThreadID,
+		})
+		cancel()
+		if err != nil {
+			continue
+		}
+		result := map[string]any{}
+		_ = json.Unmarshal(raw, &result)
+		thread := payloadObject(result["thread"])
+		nickname := firstNonEmpty(asString(thread["agentNickname"]), asString(thread["name"]))
+		if nickname == "" {
+			continue
+		}
+		event := appServerSubAgentNameEvent(session, childThreadID, nickname)
+		if event.Type == "" {
+			return
+		}
+		if event.Payload.TurnID == "" {
+			// The activity store rejects turnless message updates.
+			event.Payload.TurnID = a.sessionMarkerTurnID(session.AgentSessionID)
+		}
+		a.emitSessionEvents(session.AgentSessionID, []activityshared.Event{event})
+		return
+	}
 }
 
 func (a *CodexAppServerAdapter) sendThreadInterrupt(
