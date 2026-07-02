@@ -1,14 +1,9 @@
-import { useState, type JSX } from "react";
-import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
-import { ToolActivityKindIcon } from "../../toolActivityKindIcons";
+import { memo, useState, type JSX } from "react";
+import { AlertCircle, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { translate } from "../../../i18n/index";
 import type { AgentTaskSubAgentVM } from "../contracts/agentTaskItemVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { CollapsibleReveal } from "./CollapsibleReveal";
-import {
-  ToolMarkdownBlock,
-  ToolSection
-} from "./tool-renderers/agentToolContentShared";
 import { formatAgentToolDurationMs } from "./tool-renderers/render-data/agentToolRenderData";
 
 // A delegated sub-agent renders as a first-class row aligned with tool rows:
@@ -27,8 +22,10 @@ export function AgentSubAgentCards({
   if (subAgents.length === 0) {
     return null;
   }
+  // No wrapper element: the transcript row's spacing-compression selectors
+  // match direct .detail-tool-row children, keeping gaps identical to tools.
   return (
-    <div className="workspace-agents-status-panel__detail-subagents workspace-agents-status-panel__detail-subagents--standalone">
+    <>
       {subAgents.map((subAgent) => (
         <AgentSubAgentCard
           key={subAgent.ownerThreadId}
@@ -36,11 +33,41 @@ export function AgentSubAgentCards({
           onLinkClick={onLinkClick}
         />
       ))}
-    </div>
+    </>
   );
 }
 
-export function AgentSubAgentCard({
+// Field-level memo: streaming updates elsewhere in the transcript must not
+// re-render settled cards; a collapsed card renders only its header row
+// (CollapsibleReveal lazy-mounts the body on first expand).
+export const AgentSubAgentCard = memo(
+  AgentSubAgentCardImpl,
+  (prev, next) =>
+    prev.onLinkClick === next.onLinkClick &&
+    subAgentVMEquals(prev.subAgent, next.subAgent)
+);
+
+function subAgentVMEquals(
+  left: AgentTaskSubAgentVM,
+  right: AgentTaskSubAgentVM
+): boolean {
+  return (
+    left.ownerThreadId === right.ownerThreadId &&
+    left.status === right.status &&
+    left.name === right.name &&
+    left.task === right.task &&
+    left.laneIndex === right.laneIndex &&
+    left.laneCount === right.laneCount &&
+    left.latestActivity === right.latestActivity &&
+    left.failureDetail === right.failureDetail &&
+    left.queued === right.queued &&
+    left.startedAtUnixMs === right.startedAtUnixMs &&
+    left.latestActivityAtUnixMs === right.latestActivityAtUnixMs &&
+    left.terminalAtUnixMs === right.terminalAtUnixMs
+  );
+}
+
+function AgentSubAgentCardImpl({
   subAgent,
   onLinkClick
 }: {
@@ -100,12 +127,7 @@ function SubAgentHeader({
         {subAgent.status === "failed" ? (
           <AlertCircle size={16} strokeWidth={2} aria-hidden="true" />
         ) : (
-          <ToolActivityKindIcon
-            kind="delegate_agent"
-            width={16}
-            height={16}
-            aria-hidden="true"
-          />
+          <Bot size={16} strokeWidth={2} aria-hidden="true" />
         )}
       </div>
       <div className="workspace-agents-status-panel__detail-tool-row-text">
@@ -142,30 +164,24 @@ function SubAgentHeader({
 }
 
 function SubAgentBody({
-  subAgent,
-  onLinkClick
+  subAgent
 }: {
   subAgent: AgentTaskSubAgentVM;
   onLinkClick?: (href: string) => void;
 }): JSX.Element {
   "use memo";
+  // Bash-block layout: the task is the header strip, live progress renders
+  // below it - no section labels.
   return (
-    <div className="workspace-agents-status-panel__detail-tool-body">
-      {subAgent.task ? (
-        <ToolSection
-          title={translate("agentHost.agentTool.details.subAgentTask")}
-        >
-          <ToolMarkdownBlock
-            content={subAgent.task}
-            onLinkClick={onLinkClick}
-          />
-        </ToolSection>
-      ) : null}
-      <ToolSection
-        title={translate("agentHost.agentTool.details.subAgentProgress")}
-      >
+    <div className="workspace-agents-status-panel__detail-tool-body workspace-agents-status-panel__detail-tool-body--plain">
+      <div className="workspace-agents-status-panel__detail-subagent-terminal">
+        {subAgent.task ? (
+          <div className="workspace-agents-status-panel__detail-subagent-task-strip">
+            {subAgent.task}
+          </div>
+        ) : null}
         <SubAgentProgress subAgent={subAgent} />
-      </ToolSection>
+      </div>
     </div>
   );
 }
@@ -188,7 +204,7 @@ function SubAgentProgress({
     );
   return (
     <div
-      className={`workspace-agents-status-panel__detail-subagent-activity${
+      className={`workspace-agents-status-panel__detail-subagent-activity workspace-agents-status-panel__detail-subagent-activity--in-terminal${
         subAgent.failureDetail
           ? " workspace-agents-status-panel__detail-subagent-activity--failure"
           : ""

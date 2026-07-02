@@ -1242,11 +1242,13 @@ describe("AgentExpandedToolContent", () => {
     // Identity comes from the sub-agent's own thread name, never the tool name.
     expect(screen.getByText("Repo smell analyst")).toBeTruthy();
     expect(screen.queryByText("spawnAgent")).toBeNull();
-    expect(screen.getByText("TASK")).toBeTruthy();
-    expect(screen.getByText("PROGRESS")).toBeTruthy();
     expect(screen.getByText(/1m 40s · Running/)).toBeTruthy();
-    // Progress is a single line: only the latest activity renders.
+    // Bash-block layout: task strip on top, latest progress line below - no
+    // section labels.
+    expect(screen.getByText("inspect the repository")).toBeTruthy();
     expect(screen.getByText("Run command")).toBeTruthy();
+    expect(screen.queryByText("TASK")).toBeNull();
+    expect(screen.queryByText("PROGRESS")).toBeNull();
     expect(screen.queryByText("Scanning layout")).toBeNull();
     expect(screen.queryByText("3 earlier steps omitted")).toBeNull();
   });

@@ -8134,10 +8134,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: block;
 }
 
-/* Standalone sub-agent cards (first-class rows, not tool chrome) */
-.workspace-agents-status-panel__detail-subagents--standalone {
-  margin: 4px 0;
-}
 
 .workspace-agents-status-panel__detail-subagent-log {
   display: flex;
@@ -8175,10 +8171,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--tutti-status-danger, #c0392b);
 }
 
-/* Tool-row-aligned sub-agent header */
-.workspace-agents-status-panel__detail-tool-row--subagent {
-  margin: 2px 0;
-}
 
 .workspace-agents-status-panel__detail-subagent-name {
   color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
@@ -8197,4 +8189,28 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .workspace-agents-status-panel__detail-subagent-reveal {
   box-sizing: border-box;
   padding-left: 24px;
+}
+
+/* Bash-block-style sub-agent body: task strip on top, progress below */
+.workspace-agents-status-panel__detail-subagent-terminal {
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--background-panel);
+}
+
+.workspace-agents-status-panel__detail-subagent-task-strip {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.workspace-agents-status-panel__detail-subagent-activity--in-terminal {
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.5;
 }
