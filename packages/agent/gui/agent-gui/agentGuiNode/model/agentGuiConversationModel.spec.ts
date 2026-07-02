@@ -1916,14 +1916,14 @@ describe("agentGuiConversationModel", () => {
 
       const spawnCall = toolCalls[0];
       expect(spawnCall?.task?.subAgents).toEqual([
-        {
+        expect.objectContaining({
           ownerThreadId: "child-thread-1",
           status: "running",
           latestActivity: "Run command",
           latestActivityKind: "tool",
           startedAtUnixMs: 30,
           latestActivityAtUnixMs: 40
-        }
+        })
       ]);
 
       const groupEntries = (projected?.rows ?? []).flatMap((row) =>

@@ -531,6 +531,16 @@ has no reliable `turnId`, the boundary must reject it instead of synthesizing a
 must not retarget optimistic prompts from turnless or untimestamped live
 messages.
 
+Codex app-server sub-agent child-thread rows carry `payload.ownerThreadId` and
+must stay out of the parent transcript. AgentGUI should project those rows only
+through the parent collaboration tool card's sub-agent lanes. Child lifecycle
+state is lane-owned: spawn-card success means only that delegation started
+successfully, not that the child completed. The lane projection should treat
+owner-thread `subAgentLifecycle` markers as terminal state, use
+`agentsStates`/`statuses` from wait or close control-tool output as
+corroborating terminal state, and keep the lane running while child output
+continues without either signal.
+
 ### Layer Ownership Summary
 
 | Layer                                   | Owns                                                                                                   | Must not own                                                 |

@@ -1994,18 +1994,48 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-subagents {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   width: 100%;
   min-width: 0;
 }
 
-.workspace-agents-status-panel__detail-subagent-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.workspace-agents-status-panel__detail-subagent-card {
   min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--text-tertiary) 24%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-tertiary) 5%, transparent);
+  overflow: hidden;
+}
+
+.workspace-agents-status-panel__detail-subagent-header {
+  display: grid;
+  grid-template-columns: 12px 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  cursor: pointer;
+  list-style: none;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.workspace-agents-status-panel__detail-subagent-header::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-agents-status-panel__detail-subagent-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--text-tertiary);
+  border-bottom: 1.5px solid var(--text-tertiary);
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.workspace-agents-status-panel__detail-subagent-card[open]
+  .workspace-agents-status-panel__detail-subagent-chevron {
+  transform: rotate(45deg);
 }
 
 .workspace-agents-status-panel__detail-subagent-status {
@@ -2030,19 +2060,40 @@ aside.workspace-agents-status-panel
   background: var(--state-danger);
 }
 
+.workspace-agents-status-panel__detail-subagent-status--canceled {
+  background: var(--text-tertiary);
+}
+
+.workspace-agents-status-panel__detail-subagent-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 650;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .workspace-agents-status-panel__detail-subagent-meta {
   flex: none;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-weight: 600;
   white-space: nowrap;
 }
 
+.workspace-agents-status-panel__detail-subagent-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 9px 9px 27px;
+}
+
 .workspace-agents-status-panel__detail-subagent-activity {
   min-width: 0;
-  overflow: hidden;
   color: var(--text-tertiary);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 @keyframes workspace-agents-subagent-pulse {

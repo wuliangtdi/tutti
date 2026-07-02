@@ -1359,6 +1359,8 @@ export const en = {
         delegateSession: "Delegate session",
         subAgents: "Sub-agents",
         subAgentStarting: "Starting…",
+        subAgentTask: "TASK",
+        subAgentProgress: "PROGRESS",
         missingFailureDetails: "The provider reported failure without details.",
         noMatches: "No matches",
         noMatchingTools: "No matching tools",

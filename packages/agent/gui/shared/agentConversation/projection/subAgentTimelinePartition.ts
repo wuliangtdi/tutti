@@ -80,9 +80,11 @@ export function partitionSubAgentTimelineItems(
 interface SubAgentCollabCard {
   callId: string;
   startedAtUnixMs: number;
-  status: AgentTaskSubAgentStatus;
+  task: string | null;
+  agentName: string | null;
   receiverThreadIds: ReadonlySet<string>;
   outputStrings: ReadonlySet<string>;
+  childStatuses: ReadonlyMap<string, AgentTaskSubAgentStatus>;
 }
 
 export function buildSubAgentLanesByCallId(
@@ -107,7 +109,7 @@ export function buildSubAgentLanesByCallId(
       continue;
     }
     const lanes = lanesByCallId.get(card.callId) ?? [];
-    lanes.push(subAgentLane(ownerThreadId, sortedItems, card.status));
+    lanes.push(subAgentLane(ownerThreadId, sortedItems, card));
     lanesByCallId.set(card.callId, lanes);
   }
   for (const lanes of lanesByCallId.values()) {
@@ -116,6 +118,17 @@ export function buildSubAgentLanesByCallId(
         (left.startedAtUnixMs ?? 0) - (right.startedAtUnixMs ?? 0) ||
         left.ownerThreadId.localeCompare(right.ownerThreadId)
     );
+    for (let index = 0; index < lanes.length; index += 1) {
+      const lane = lanes[index];
+      if (!lane) {
+        continue;
+      }
+      lanes[index] = {
+        ...lane,
+        laneIndex: index + 1,
+        laneCount: lanes.length
+      };
+    }
   }
   return lanesByCallId;
 }
@@ -180,18 +193,52 @@ function toolCallRawId(id: string): string {
 function subAgentLane(
   ownerThreadId: string,
   sortedItems: readonly WorkspaceAgentActivityTimelineItem[],
-  status: AgentTaskSubAgentStatus
+  card: SubAgentCollabCard
 ): AgentTaskSubAgentVM {
   const latest = latestDisplayableActivity(sortedItems);
+  const terminal = latestTerminalMarker(sortedItems);
   const lastItem = sortedItems[sortedItems.length - 1];
+  const status =
+    terminal?.status ?? card.childStatuses.get(ownerThreadId) ?? "running";
+  const terminalAtUnixMs = terminal?.occurredAtUnixMs ?? null;
+  const agentName = firstString(card.agentName, card.task);
   return {
     ownerThreadId,
     status,
+    title: agentName ?? ownerThreadId,
+    task: card.task,
+    laneIndex: 1,
+    laneCount: 1,
     latestActivity: latest?.text ?? null,
     latestActivityKind: latest?.kind ?? null,
+    failureDetail: terminal?.detail ?? null,
     startedAtUnixMs: timelineItemTime(sortedItems[0]) || null,
-    latestActivityAtUnixMs: timelineItemTime(lastItem) || null
+    latestActivityAtUnixMs:
+      terminalAtUnixMs ?? timelineItemTime(lastItem) ?? null,
+    terminalAtUnixMs
   };
+}
+
+function latestTerminalMarker(
+  sortedItems: readonly WorkspaceAgentActivityTimelineItem[]
+): {
+  status: AgentTaskSubAgentStatus;
+  detail: string | null;
+  occurredAtUnixMs: number | null;
+} | null {
+  for (let index = sortedItems.length - 1; index >= 0; index -= 1) {
+    const item = sortedItems[index];
+    const payload = item?.payload;
+    if (!payload || payload.messageKind !== "subAgentLifecycle") {
+      continue;
+    }
+    return {
+      status: subAgentStatusFromLifecycle(payload.subAgentLifecycleStatus),
+      detail: stringValue(payload.detail) ?? null,
+      occurredAtUnixMs: timelineItemTime(item) || null
+    };
+  }
+  return null;
 }
 
 function latestDisplayableActivity(
@@ -200,6 +247,9 @@ function latestDisplayableActivity(
   for (let index = sortedItems.length - 1; index >= 0; index -= 1) {
     const item = sortedItems[index];
     if (!item) {
+      continue;
+    }
+    if (item.payload?.messageKind === "subAgentLifecycle") {
       continue;
     }
     if (isWorkspaceAgentToolCallItem(item)) {
@@ -264,9 +314,9 @@ function collectCollabCards(
       callId: string;
       startedAtUnixMs: number;
       latestAtUnixMs: number;
-      latestStatus: string | null;
       receiverThreadIds: Set<string>;
       outputStrings: Set<string>;
+      childStatuses: Map<string, AgentTaskSubAgentStatus>;
     }
   >();
   for (const item of mainTimelineItems) {
@@ -278,40 +328,65 @@ function collectCollabCards(
       continue;
     }
     const time = timelineItemTime(item);
-    const status = firstString(item.status, stringValue(item.payload?.status));
+    const input = recordValue(item.payload?.input);
+    const output = recordValue(item.payload?.output);
     const existing = cardsByCallId.get(callId);
     if (!existing) {
       cardsByCallId.set(callId, {
         callId,
         startedAtUnixMs: time,
         latestAtUnixMs: time,
-        latestStatus: status ?? null,
-        receiverThreadIds: collectReceiverThreadIds(item.payload?.input),
-        outputStrings: collectStringValues(item.payload?.output)
+        receiverThreadIds: collectReceiverThreadIds(input),
+        outputStrings: collectStringValues(output),
+        childStatuses: collectChildStatuses(output)
       });
       continue;
     }
     existing.startedAtUnixMs = Math.min(existing.startedAtUnixMs, time);
     if (time >= existing.latestAtUnixMs) {
       existing.latestAtUnixMs = time;
-      existing.latestStatus = status ?? existing.latestStatus;
     }
-    for (const value of collectReceiverThreadIds(item.payload?.input)) {
+    for (const value of collectReceiverThreadIds(input)) {
       existing.receiverThreadIds.add(value);
     }
-    for (const value of collectStringValues(item.payload?.output)) {
+    for (const value of collectStringValues(output)) {
       existing.outputStrings.add(value);
+    }
+    for (const [threadId, childStatus] of collectChildStatuses(output)) {
+      existing.childStatuses.set(threadId, childStatus);
     }
   }
   return [...cardsByCallId.values()]
-    .map((card) => ({
-      callId: card.callId,
-      startedAtUnixMs: card.startedAtUnixMs,
-      status: subAgentStatusFromCallStatus(card.latestStatus),
-      receiverThreadIds: card.receiverThreadIds,
-      outputStrings: card.outputStrings
-    }))
+    .map((card) => {
+      const input = recordValue(
+        partitionCardInput(mainTimelineItems, card.callId)?.payload?.input
+      );
+      return {
+        callId: card.callId,
+        startedAtUnixMs: card.startedAtUnixMs,
+        task: stringValue(input?.task),
+        agentName: stringValue(input?.agentName),
+        receiverThreadIds: card.receiverThreadIds,
+        outputStrings: card.outputStrings,
+        childStatuses: card.childStatuses
+      };
+    })
     .sort((left, right) => left.startedAtUnixMs - right.startedAtUnixMs);
+}
+
+function partitionCardInput(
+  mainTimelineItems: readonly WorkspaceAgentActivityTimelineItem[],
+  callId: string
+): WorkspaceAgentActivityTimelineItem | null {
+  for (const item of mainTimelineItems) {
+    if (!isWorkspaceAgentToolCallItem(item) || !isCollabCardItem(item)) {
+      continue;
+    }
+    if (firstString(item.callId, stringValue(item.payload?.callId)) === callId) {
+      return item;
+    }
+  }
+  return null;
 }
 
 function isCollabCardItem(item: WorkspaceAgentActivityTimelineItem): boolean {
@@ -327,8 +402,7 @@ function matchCardByTimeAffinity(
     (card) => card.startedAtUnixMs <= laneStartedAtUnixMs
   );
   const candidates = startedBeforeLane.length > 0 ? startedBeforeLane : cards;
-  const running = candidates.filter((card) => card.status === "running");
-  const pool = running.length > 0 ? running : candidates;
+  const pool = candidates;
   if (pool.length === 0) {
     return null;
   }
@@ -345,10 +419,8 @@ function matchCardByTimeAffinity(
   );
 }
 
-function subAgentStatusFromCallStatus(
-  status: string | null
-): AgentTaskSubAgentStatus {
-  switch ((status ?? "").trim().toLowerCase()) {
+function subAgentStatusFromLifecycle(status: unknown): AgentTaskSubAgentStatus {
+  switch (typeof status === "string" ? status.trim().toLowerCase() : "") {
     case "completed":
     case "done":
     case "success":
@@ -357,8 +429,12 @@ function subAgentStatusFromCallStatus(
     case "failed":
     case "error":
     case "errored":
-    case "canceled":
       return "failed";
+    case "canceled":
+    case "cancelled":
+    case "interrupted":
+    case "stopped":
+      return "canceled";
     default:
       return "running";
   }
@@ -380,6 +456,63 @@ function collectReceiverThreadIds(input: unknown): Set<string> {
     }
   }
   return out;
+}
+
+function collectChildStatuses(
+  value: unknown
+): Map<string, AgentTaskSubAgentStatus> {
+  const out = new Map<string, AgentTaskSubAgentStatus>();
+  collectChildStatusesInto(value, out, 0);
+  return out;
+}
+
+function collectChildStatusesInto(
+  value: unknown,
+  out: Map<string, AgentTaskSubAgentStatus>,
+  depth: number
+): void {
+  if (depth > 6 || value == null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      collectChildStatusesInto(entry, out, depth + 1);
+    }
+    return;
+  }
+  if (typeof value !== "object") {
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  const status = subAgentStatusFromLifecycle(
+    record.status ?? record.state ?? record.lifecycleStatus
+  );
+  const id = firstString(
+    stringValue(record.threadId),
+    stringValue(record.threadID),
+    stringValue(record.agentId),
+    stringValue(record.agent_id),
+    stringValue(record.id)
+  );
+  if (id && status !== "running") {
+    out.set(id, status);
+  }
+  for (const [key, entry] of Object.entries(record)) {
+    if (key === "agentsStates" || key === "statuses") {
+      collectChildStatusesInto(entry, out, depth + 1);
+      continue;
+    }
+    if (typeof entry === "object" && entry != null) {
+      const nestedStatus = subAgentStatusFromLifecycle(
+        (entry as Record<string, unknown>).status ??
+          (entry as Record<string, unknown>).state
+      );
+      if (nestedStatus !== "running" && key.trim()) {
+        out.set(key, nestedStatus);
+      }
+    }
+    collectChildStatusesInto(entry, out, depth + 1);
+  }
 }
 
 function collectStringValues(value: unknown, depth = 0): Set<string> {
@@ -445,6 +578,12 @@ function normalizeToolToken(value: string | null | undefined): string {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function firstString(

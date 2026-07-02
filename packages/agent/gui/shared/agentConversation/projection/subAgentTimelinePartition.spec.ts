@@ -128,14 +128,17 @@ describe("subAgentTimelinePartition", () => {
       const lanes = buildSubAgentLanesByCallId(partition);
 
       expect(lanes.get("spawn-1")).toEqual([
-        {
+        expect.objectContaining({
           ownerThreadId: "child-thread-1",
           status: "running",
+          title: "spawnAgent",
+          task: "inspect the repository",
           latestActivity: "Run command",
           latestActivityKind: "tool",
           startedAtUnixMs: 150,
-          latestActivityAtUnixMs: 220
-        }
+          latestActivityAtUnixMs: 220,
+          terminalAtUnixMs: null
+        })
       ]);
     });
 
@@ -289,7 +292,7 @@ describe("subAgentTimelinePartition", () => {
       ]);
     });
 
-    it("marks lanes failed when their card failed", () => {
+    it("keeps a streaming child running after the spawn card completed", () => {
       const partition = partitionSubAgentTimelineItems([
         collabCardItem({
           id: 10,
@@ -300,17 +303,140 @@ describe("subAgentTimelinePartition", () => {
         }),
         collabCardItem({
           id: 11,
-          eventId: "spawn-1-failed",
+          eventId: "spawn-1-completed",
           callId: "spawn-1",
-          itemType: "call.errored",
-          status: "failed",
+          itemType: "call.completed",
+          status: "completed",
           occurredAtUnixMs: 300
         }),
         childAssistantItem({
           id: 12,
           eventId: "child-msg-1",
           ownerThreadId: "child-thread-1",
-          text: "exploded",
+          text: "still working",
+          occurredAtUnixMs: 200
+        })
+      ]);
+
+      expect(
+        buildSubAgentLanesByCallId(partition).get("spawn-1")?.[0]?.status
+      ).toBe("running");
+    });
+
+    it("marks lanes completed from child terminal markers", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100
+        }),
+        childAssistantItem({
+          id: 11,
+          eventId: "child-msg-1",
+          ownerThreadId: "child-thread-1",
+          text: "finishing",
+          occurredAtUnixMs: 200
+        }),
+        childLifecycleItem({
+          id: 12,
+          eventId: "child-terminal-1",
+          ownerThreadId: "child-thread-1",
+          status: "completed",
+          occurredAtUnixMs: 350
+        })
+      ]);
+
+      expect(buildSubAgentLanesByCallId(partition).get("spawn-1")?.[0]).toEqual(
+        expect.objectContaining({
+          ownerThreadId: "child-thread-1",
+          status: "completed",
+          latestActivity: "finishing",
+          terminalAtUnixMs: 350,
+          latestActivityAtUnixMs: 350
+        })
+      );
+    });
+
+    it("marks lanes failed from child terminal markers with detail", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100
+        }),
+        childLifecycleItem({
+          id: 11,
+          eventId: "child-terminal-1",
+          ownerThreadId: "child-thread-1",
+          status: "failed",
+          detail: "child thread exploded",
+          occurredAtUnixMs: 350
+        })
+      ]);
+
+      expect(buildSubAgentLanesByCallId(partition).get("spawn-1")?.[0]).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          failureDetail: "child thread exploded"
+        })
+      );
+    });
+
+    it("marks lanes canceled from child terminal markers", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100
+        }),
+        childLifecycleItem({
+          id: 11,
+          eventId: "child-terminal-1",
+          ownerThreadId: "child-thread-1",
+          status: "canceled",
+          occurredAtUnixMs: 350
+        })
+      ]);
+
+      expect(
+        buildSubAgentLanesByCallId(partition).get("spawn-1")?.[0]?.status
+      ).toBe("canceled");
+    });
+
+    it("uses agentsStates on control-tool output as a lane terminal source", () => {
+      const partition = partitionSubAgentTimelineItems([
+        collabCardItem({
+          id: 10,
+          eventId: "spawn-1-started",
+          callId: "spawn-1",
+          status: "running",
+          occurredAtUnixMs: 100,
+          receiverThreadIds: ["child-thread-1"]
+        }),
+        collabCardItem({
+          id: 11,
+          eventId: "spawn-1-completed",
+          callId: "spawn-1",
+          itemType: "call.completed",
+          status: "completed",
+          occurredAtUnixMs: 300,
+          output: {
+            agentsStates: [
+              { threadId: "child-thread-1", status: "failed" }
+            ]
+          }
+        }),
+        childAssistantItem({
+          id: 12,
+          eventId: "child-msg-1",
+          ownerThreadId: "child-thread-1",
+          text: "latest child activity",
           occurredAtUnixMs: 200
         })
       ]);
@@ -486,6 +612,38 @@ function childCallItem({
     name,
     status: "running",
     payload: { name, ownerThreadId, callId: `${eventId}-call` },
+    occurredAtUnixMs,
+    createdAtUnixMs: occurredAtUnixMs
+  });
+}
+
+function childLifecycleItem({
+  id,
+  eventId,
+  ownerThreadId,
+  status,
+  detail,
+  occurredAtUnixMs
+}: {
+  id: number;
+  eventId: string;
+  ownerThreadId: string;
+  status: "completed" | "failed" | "canceled";
+  detail?: string;
+  occurredAtUnixMs: number;
+}): WorkspaceAgentActivityTimelineItem {
+  return timelineItem({
+    id,
+    eventId,
+    itemType: "message.assistant",
+    role: "assistant",
+    status,
+    payload: {
+      ownerThreadId,
+      messageKind: "subAgentLifecycle",
+      subAgentLifecycleStatus: status,
+      ...(detail ? { detail } : {})
+    },
     occurredAtUnixMs,
     createdAtUnixMs: occurredAtUnixMs
   });

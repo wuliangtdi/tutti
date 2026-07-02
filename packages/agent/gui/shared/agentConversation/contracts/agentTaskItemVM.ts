@@ -1,6 +1,10 @@
 import type { AgentToolCallVM } from "./agentToolCallVM";
 
-export type AgentTaskSubAgentStatus = "running" | "completed" | "failed";
+export type AgentTaskSubAgentStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "canceled";
 
 // Live view of one delegated sub-agent thread (Codex collab child thread).
 // The child thread's transcript rows are segregated out of the parent
@@ -9,10 +13,16 @@ export type AgentTaskSubAgentStatus = "running" | "completed" | "failed";
 export interface AgentTaskSubAgentVM {
   ownerThreadId: string;
   status: AgentTaskSubAgentStatus;
+  title: string;
+  task: string | null;
+  laneIndex: number;
+  laneCount: number;
   latestActivity: string | null;
   latestActivityKind: "message" | "reasoning" | "tool" | null;
+  failureDetail: string | null;
   startedAtUnixMs: number | null;
   latestActivityAtUnixMs: number | null;
+  terminalAtUnixMs: number | null;
 }
 
 export interface AgentTaskStepVM {

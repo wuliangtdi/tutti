@@ -1274,6 +1274,8 @@ export const zhCN = {
         delegateSession: "委托会话",
         subAgents: "子智能体",
         subAgentStarting: "正在启动…",
+        subAgentTask: "任务",
+        subAgentProgress: "进展",
         missingFailureDetails: "Provider 报告失败，但没有返回失败详情。",
         noMatches: "没有匹配结果",
         noMatchingTools: "没有匹配的工具",

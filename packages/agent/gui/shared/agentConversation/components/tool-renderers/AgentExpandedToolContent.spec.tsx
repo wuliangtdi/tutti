@@ -1237,10 +1237,16 @@ describe("AgentExpandedToolContent", () => {
               {
                 ownerThreadId: "child-thread-1",
                 status: "running",
+                title: "spawnAgent",
+                task: "inspect the repository",
+                laneIndex: 1,
+                laneCount: 1,
                 latestActivity: "Run command",
                 latestActivityKind: "tool",
+                failureDetail: null,
                 startedAtUnixMs: 1_000,
-                latestActivityAtUnixMs: 101_000
+                latestActivityAtUnixMs: 101_000,
+                terminalAtUnixMs: null
               }
             ]
           }
@@ -1248,8 +1254,11 @@ describe("AgentExpandedToolContent", () => {
       />
     );
 
-    expect(screen.getByText("Sub-agents")).toBeTruthy();
-    expect(screen.getByText(/Running · 1m 40s/)).toBeTruthy();
+    // The tool title and the sub-agent lane header both render the agent name.
+    expect(screen.getAllByText("spawnAgent").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("TASK")).toBeTruthy();
+    expect(screen.getByText("PROGRESS")).toBeTruthy();
+    expect(screen.getByText(/1m 40s · Running/)).toBeTruthy();
     expect(screen.getByText("Run command")).toBeTruthy();
   });
 
@@ -1278,10 +1287,16 @@ describe("AgentExpandedToolContent", () => {
               {
                 ownerThreadId: "child-thread-1",
                 status: "running",
+                title: "spawnAgent",
+                task: "inspect the repository",
+                laneIndex: 1,
+                laneCount: 1,
                 latestActivity: null,
                 latestActivityKind: null,
+                failureDetail: null,
                 startedAtUnixMs: 1_000,
-                latestActivityAtUnixMs: 1_000
+                latestActivityAtUnixMs: 1_000,
+                terminalAtUnixMs: null
               }
             ]
           }
