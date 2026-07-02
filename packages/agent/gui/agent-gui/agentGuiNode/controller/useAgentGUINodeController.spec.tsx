@@ -315,6 +315,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
+        conversationScope: "multi-provider",
         data: agentGuiData(null, "codex", {
           providerTargetId: "local:codex",
           providerTargetRef: { kind: "local-provider", provider: "codex" }
@@ -526,7 +527,7 @@ describe("useAgentGUINodeController", () => {
     });
   });
 
-  it("keeps provider filters disabled for single-provider conversation scope", async () => {
+  it("keeps single-provider scope pinned to the node provider when filter actions fire", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -554,6 +555,7 @@ describe("useAgentGUINodeController", () => {
         currentUserId: "user-1",
         workspacePath: "/workspace",
         avoidGroupingEdits: false,
+        conversationScope: "single-provider",
         data: agentGuiData(null, "codex"),
         providerTargets: [
           {
@@ -580,11 +582,30 @@ describe("useAgentGUINodeController", () => {
         result.current.viewModel.conversations.map((item) => item.id)
       ).toEqual(["codex-session"]);
     });
+    expect(result.current.viewModel.conversationFilter).toEqual({
+      kind: "all"
+    });
 
     act(() => {
       result.current.actions.updateConversationFilter({
         kind: "agentTarget",
         agentTargetId: "local:claude-code"
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.conversationFilter).toEqual({
+        kind: "all"
+      });
+    });
+    expect(
+      result.current.viewModel.conversations.map((item) => item.id)
+    ).toEqual(["codex-session"]);
+
+    act(() => {
+      result.current.actions.updateConversationFilter({
+        kind: "provider",
+        provider: "claude-code"
       });
     });
 
@@ -4425,7 +4446,6 @@ describe("useAgentGUINodeController", () => {
     await waitFor(() => {
       expect(list.mock.calls.length).toBeGreaterThanOrEqual(3);
     });
-
     expect(result.current.viewModel.conversations).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: secondCreatedId })])
     );
