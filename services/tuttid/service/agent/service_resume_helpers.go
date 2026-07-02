@@ -19,6 +19,35 @@ func (s *Service) reconcilePersistedStaleTurn(ctx context.Context, workspaceID s
 	return s.reconcileStaleTurnOnResume(ctx, persisted)
 }
 
+func (s *Service) shouldReconcilePersistedStaleTurn(session RuntimeSession, workspaceID string, agentSessionID string) (bool, error) {
+	if !runtimeSessionHasLiveTurn(session) {
+		return true, nil
+	}
+	return s.shouldReconcileGhostOpenApprovals(session, workspaceID, agentSessionID)
+}
+
+func (s *Service) shouldReconcileGhostOpenApprovals(session RuntimeSession, workspaceID string, agentSessionID string) (bool, error) {
+	if runtimeSessionHasLivePendingInteractive(session) {
+		return false, nil
+	}
+	if runtimeSessionHasLiveWaitingInteractiveTurn(session) {
+		return false, nil
+	}
+	if s == nil || s.MessageReader == nil {
+		return false, nil
+	}
+	page, ok := s.MessageReader.ListSessionMessages(agentactivitybiz.ListSessionMessagesInput{
+		WorkspaceID:    strings.TrimSpace(workspaceID),
+		AgentSessionID: strings.TrimSpace(agentSessionID),
+		Limit:          100,
+		Order:          agentactivitybiz.MessageOrderDesc,
+	})
+	if !ok {
+		return false, nil
+	}
+	return hasStaleResumeGhostApproval(page.Messages), nil
+}
+
 func (s *Service) reconcileStaleTurnOnResume(ctx context.Context, session PersistedSession) (bool, error) {
 	shouldReconcile, err := s.shouldReconcileStaleTurn(session)
 	if err != nil {
@@ -66,6 +95,31 @@ func hasStaleResumeOpenToolCall(messages []SessionMessage) bool {
 		}
 	}
 	return false
+}
+
+func hasStaleResumeGhostApproval(messages []SessionMessage) bool {
+	for _, message := range messages {
+		if isStaleResumeGhostApproval(message) {
+			return true
+		}
+	}
+	return false
+}
+
+func isStaleResumeGhostApproval(message SessionMessage) bool {
+	if strings.TrimSpace(message.Kind) != "tool_call" {
+		return false
+	}
+	status := strings.TrimSpace(message.Status)
+	if status == "" {
+		status = payloadString(message.Payload, "status")
+	}
+	switch status {
+	case "waiting_approval", "waiting_input", "awaiting_approval":
+		return true
+	default:
+		return false
+	}
 }
 
 func isResumeStaleTurnStatus(status string) bool {
@@ -118,6 +172,25 @@ func runtimeSessionHasLivePendingInteractive(session RuntimeSession) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+func runtimeSessionHasLiveWaitingInteractiveTurn(session RuntimeSession) bool {
+	if session.TurnLifecycle == nil {
+		return false
+	}
+	activeTurnID := ""
+	if session.TurnLifecycle.ActiveTurnID != nil {
+		activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
+	}
+	if activeTurnID == "" {
+		return false
+	}
+	switch strings.TrimSpace(session.TurnLifecycle.Phase) {
+	case "waiting_approval", "waiting_input", "awaiting_approval":
+		return true
+	default:
+		return false
 	}
 }
 

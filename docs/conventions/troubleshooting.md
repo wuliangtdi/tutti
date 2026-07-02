@@ -906,7 +906,16 @@ delimited by ---`, and the composer skill picker may show partial or
   update that carries an explicit `parentToolUseId` as canonical: it may merge
   through `agentId`/`taskId` aliases only into an entry whose recorded parent
   tool call is empty or identical, and it must not overwrite an entry's
-  recorded `agentId`/`taskId` with a different value. When the SDK
+  recorded `agentId`/`taskId` with a different value. Child assistant messages
+  tagged with `parent_tool_use_id` stream through the parent query while the
+  child is still running (often seconds after launch), so they are never a
+  completion signal; settle a delegated task only from the child `result`
+  message, the `task_notification` system message, or the `TaskCompleted`
+  hook. Otherwise the first child message marks the task completed, the next
+  `task_progress` flips it back to running, and the running background-agent
+  count oscillates (for example 2 -> 3 -> 2) without any new launch. A
+  `task_progress` that arrives after the task has settled must not resurrect
+  it; only an explicit `task_started` may restart a task. When the SDK
   resumes parent work after a background agent, the sidecar must emit
   `turn_started` for the synthetic continuation and the Go adapter must map it
   to `EventTurnStarted`; keep the background-agent wait banner separate from
@@ -931,7 +940,57 @@ delimited by ---`, and the composer skill picker may show partial or
   binding, keep sidecar coverage that an unknown `task_id` racing ahead of its
   own launch does not bind to another running task, and Go adapter coverage
   that an alias conflict with a different recorded parent tool call keeps two
-  background-agent entries separate.
+  background-agent entries separate. For completion semantics, keep sidecar
+  coverage that a mid-run child assistant message does not complete the
+  delegated task (only the child `result` does) and that a trailing
+  `task_progress` after settlement does not resurrect the task.
+
+### Claude SDK subagent approval stuck in Message Center
+
+- Symptom:
+  A concurrent Claude Code SDK parent turn launches several `Task` subagents, the
+  parent turn settles to idle, and Message Center still shows a
+  `waiting_approval` tool call for a nested subagent Bash command. Clicking
+  approve/reject fails with `interactive request ... is no longer live`, Agent
+  GUI may never show the approval card, and `runtimeContext.backgroundAgents`
+  can stay positive even though some subagents already returned text in the raw
+  JSONL.
+- Quick checks:
+  Compare runtime `pendingInteractive` with durable `waiting_approval` rows.
+  Inspect tuttid logs for `message_update ... is missing turnId` on
+  `approval_resolved`. In sidecar logs, check whether the approval resolved
+  after the parent turn cleared `activeTurnId`. In the raw Claude session JSONL,
+  look for nested assistant messages with `parent_tool_use_id` and
+  `stop_reason=end_turn` but no child `result` event.
+- Root cause:
+  Subagent tool approvals can outlive the parent turn lifecycle. The sidecar may
+  emit `approval_resolved` after the active turn id is cleared, so the Go
+  adapter persists the completion without `turnId`. Service stale reconciliation
+  previously treated live background agents as proof that every open approval
+  was still live, leaving ghost durable approvals. Text-only subagent completions
+  that finish with a nested `end_turn` assistant message never emitted
+  `task_completed`, so background-agent counts stayed stale and submit paths
+  kept blocking.
+- Fix:
+  Store the originating turn id on pending interactive requests in the sidecar and
+  Go adapter, and reuse it when emitting `approval_resolved` if the event omits
+  `turnId`. Reconcile ghost open approvals whenever runtime has no live
+  `pendingInteractive`, even if background agents are still running. When
+  `SubmitInteractive` returns a stale no-longer-live error, reconcile the
+  persisted approval instead of surfacing the raw failure. Treat nested assistant
+  messages with non-empty `parent_tool_use_id` and `stop_reason=end_turn` as
+  delegated-task completion when no child `result` arrives. In the Claude SDK
+  sidecar, also parse fold-in `queued_command` attachments and user-string
+  `<task-notification>` payloads (not only `system/task_notification`), binding
+  completion by `tool-use-id`/`tool_use_id` so concurrent async agents settle
+  independently.
+- Validation:
+  Add adapter coverage that stored pending turn ids survive missing
+  `approval_resolved.turnId`. Add service coverage for ghost approval reconcile
+  with live background agents and stale submit reconciliation. Add sidecar
+  coverage that nested `end_turn` assistant text completes the delegated task,
+  fold-in `queued_command` notifications complete running agents, and dequeued
+  user-string task notifications complete by parent tool use id.
 
 ### Claude SDK parent waits forever for background agents that already finished
 

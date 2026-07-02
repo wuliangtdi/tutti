@@ -396,9 +396,15 @@ func (s *Service) LocalAttachmentPath(ctx context.Context, workspaceID string, a
 func (s *Service) get(ctx context.Context, workspaceID string, agentSessionID string, reconcileStaleTurn bool) (Session, error) {
 	session, ok := s.controller().Session(workspaceID, agentSessionID)
 	if ok {
-		if reconcileStaleTurn && !runtimeSessionHasLiveTurn(session) {
-			if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
+		if reconcileStaleTurn {
+			shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
+			if err != nil {
 				return Session{}, err
+			}
+			if shouldReconcile {
+				if _, err := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID); err != nil {
+					return Session{}, err
+				}
 			}
 		}
 		service := serviceSession(
@@ -659,6 +665,15 @@ func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, age
 		OptionID:       optionalInputString(input.OptionID),
 		Payload:        input.Payload,
 	}); err != nil {
+		if isStaleInteractiveRequestError(err) {
+			reconciled, recErr := s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
+			if recErr != nil {
+				return Session{}, recErr
+			}
+			if reconciled {
+				return s.get(ctx, workspaceID, agentSessionID, false)
+			}
+		}
 		return Session{}, normalizeRuntimeError(err)
 	}
 	return s.Get(ctx, workspaceID, agentSessionID)
@@ -715,8 +730,11 @@ func (s *Service) ensureRuntimeSessionResult(
 ) (ensuredRuntimeSession, error) {
 	if session, ok := s.controller().Session(workspaceID, agentSessionID); ok {
 		staleTurnReconciled := false
-		if !runtimeSessionHasLiveTurn(session) {
-			var err error
+		shouldReconcile, err := s.shouldReconcilePersistedStaleTurn(session, workspaceID, agentSessionID)
+		if err != nil {
+			return ensuredRuntimeSession{}, err
+		}
+		if shouldReconcile {
 			staleTurnReconciled, err = s.reconcilePersistedStaleTurn(ctx, workspaceID, agentSessionID)
 			if err != nil {
 				return ensuredRuntimeSession{}, err

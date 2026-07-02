@@ -125,6 +125,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		eventID:        newID(),
 		callID:         callID,
 		callType:       callType,
+		turnID:         strings.TrimSpace(turnID),
 		input:          input,
 		kind:           firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
 		name:           title,
@@ -163,15 +164,24 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 	if pending == nil {
 		return nil
 	}
+	effectiveTurnID := firstNonEmptyString(
+		strings.TrimSpace(turnID),
+		payloadString(payload, "turnId"),
+		payloadString(payload, "turnID"),
+		pending.turnID,
+	)
+	if adapterSession != nil {
+		effectiveTurnID = adapterSession.backgroundAgentTurnID(payload, effectiveTurnID)
+	}
 	response := pendingACPResponse{
 		optionID: firstNonEmpty(payloadString(payload, "optionId"), payloadString(payload, "selectedId")),
 		action:   payloadString(payload, "action"),
 		payload:  payloadMap(payload, "payload"),
 	}
 	if errText := payloadString(payload, "error"); errText != "" {
-		return acpPermissionResolvedEvents(session, turnID, pending, pendingACPResponse{}, errors.New(errText))
+		return acpPermissionResolvedEvents(session, effectiveTurnID, pending, pendingACPResponse{}, errors.New(errText))
 	}
-	return acpPermissionResolvedEvents(session, turnID, pending, response, nil)
+	return acpPermissionResolvedEvents(session, effectiveTurnID, pending, response, nil)
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
@@ -192,7 +202,8 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
 	a.mu.Unlock()
 	events := make([]activityshared.Event, 0, len(pending))
 	for _, request := range pending {
-		events = append(events, acpPermissionResolvedEvents(session, turnID, request, pendingACPResponse{}, err)...)
+		effectiveTurnID := firstNonEmptyString(strings.TrimSpace(turnID), request.turnID)
+		events = append(events, acpPermissionResolvedEvents(session, effectiveTurnID, request, pendingACPResponse{}, err)...)
 	}
 	return events
 }

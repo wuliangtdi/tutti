@@ -265,6 +265,13 @@ agents into one runtime entry, and leave the composer wait count stale or
 cleared early. The daemon `backgroundAgents` map follows the same canonical
 rule: an update carrying an explicit parent tool call id may merge through
 weaker aliases only into an entry with an empty or identical recorded parent.
+Delegated tasks settle only on the child `result` message, the
+`task_notification` system message, or the `TaskCompleted` hook. Child
+assistant messages tagged with `parent_tool_use_id` stream while the child is
+still running and must not complete the task, and a trailing `task_progress`
+after settlement must not flip the task back to running; only a new
+`task_started` may restart it. Violating either rule makes the running
+background-agent count oscillate without new launches.
 
 Claude SDK manual `/compact` turns must publish a visible compact completion
 activity when the SDK emits only a `compact_boundary` system message. The

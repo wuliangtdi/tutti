@@ -30,6 +30,12 @@ import {
   sidecarClaudeOptionsFromPayload,
   type SidecarClaudeOptions
 } from "./options.ts";
+import {
+  parseTaskNotification,
+  readQueuedTaskNotificationPrompt,
+  readUserMessageNotificationText,
+  taskNotificationToSystemMessage
+} from "./taskNotification.ts";
 
 type RequestEnvelope = {
   id?: string;
@@ -82,10 +88,12 @@ type InteractiveSubmission = {
   readonly action: string;
   readonly optionId: string;
   readonly payload: Record<string, unknown>;
+  readonly turnId: string;
 };
 
 type PendingInteraction = {
   readonly requestId: string;
+  readonly turnId: string;
   readonly resolve: (value: InteractiveSubmission) => void;
   readonly reject: (error: Error) => void;
 };
@@ -491,7 +499,13 @@ export class SessionRuntime {
       throw new Error(`interactive request ${requestId} is no longer live`);
     }
     this.pendingInteractions.delete(requestId);
-    pending.resolve({ requestId, action, optionId, payload });
+    pending.resolve({
+      requestId,
+      action,
+      optionId,
+      payload,
+      turnId: pending.turnId
+    });
   }
 
   async applySettings(payload: Record<string, unknown>): Promise<void> {
@@ -799,8 +813,14 @@ export class SessionRuntime {
   ): Promise<InteractiveSubmission> {
     const requestId = crypto.randomUUID();
     const toolUseID = callbackOptions.toolUseID || requestId;
+    const turnId = this.resolveInteractiveTurnId(callbackOptions);
     const request = new Promise<InteractiveSubmission>((resolve, reject) => {
-      this.pendingInteractions.set(requestId, { requestId, resolve, reject });
+      this.pendingInteractions.set(requestId, {
+        requestId,
+        turnId,
+        resolve,
+        reject
+      });
       callbackOptions.signal.addEventListener(
         "abort",
         () => {
@@ -816,7 +836,7 @@ export class SessionRuntime {
     emit({
       type: eventType,
       payload: {
-        turnId: this.activeTurnId,
+        turnId,
         requestId,
         toolCallId: toolUseID,
         toolName,
@@ -834,6 +854,43 @@ export class SessionRuntime {
     return request;
   }
 
+  private resolveInteractiveTurnId(
+    callbackOptions: ToolPermissionOptions
+  ): string {
+    if (this.activeTurnId) {
+      return this.activeTurnId;
+    }
+    const toolUseID = stringValue(callbackOptions.toolUseID);
+    if (toolUseID) {
+      const tool = this.toolByID.get(toolUseID);
+      const parentToolUseID = stringValue(tool?.parentToolUseId);
+      if (parentToolUseID) {
+        const task = this.delegatedTasksByParentToolUseID.get(parentToolUseID);
+        if (task?.turnId) {
+          return task.turnId;
+        }
+      }
+    }
+    for (let index = this.turnQueue.length - 1; index >= 0; index -= 1) {
+      const turn = this.turnQueue[index];
+      if (turn && !turn.settled && !turn.synthetic) {
+        return turn.turnId;
+      }
+    }
+    for (const task of this.delegatedTasksByParentToolUseID.values()) {
+      if (task.status === "running" && task.turnId) {
+        return task.turnId;
+      }
+    }
+    for (let index = this.turnQueue.length - 1; index >= 0; index -= 1) {
+      const turn = this.turnQueue[index];
+      if (turn && !turn.settled) {
+        return turn.turnId;
+      }
+    }
+    return "";
+  }
+
   private emitInteractiveResolved(
     eventType: "approval_resolved" | "user_input_resolved",
     submission: InteractiveSubmission
@@ -841,7 +898,9 @@ export class SessionRuntime {
     emit({
       type: eventType,
       payload: {
-        turnId: this.activeTurnId,
+        turnId:
+          submission.turnId ||
+          this.resolveInteractiveTurnId({} as ToolPermissionOptions),
         requestId: submission.requestId,
         action: submission.action,
         optionId: submission.optionId,
@@ -955,6 +1014,17 @@ export class SessionRuntime {
       this.emitSessionState();
     }
 
+    const messageType = (message as { type?: string }).type;
+    if (messageType === "attachment") {
+      const prompt = readQueuedTaskNotificationPrompt(
+        message as unknown as Record<string, unknown>
+      );
+      if (prompt) {
+        this.handleTaskNotificationFromText(prompt);
+      }
+      return;
+    }
+
     if (message.type === "system") {
       this.handleSystemMessage(message as unknown as Record<string, unknown>);
       return;
@@ -1045,10 +1115,19 @@ export class SessionRuntime {
 
     if (message.type === "assistant") {
       if (parentToolUseID) {
-        this.completeDelegatedTaskFromAssistantMessage(
-          parentToolUseID,
-          message
-        );
+        if (this.isNestedDelegatedTaskTerminalAssistant(message)) {
+          this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
+            status: "completed",
+            summary:
+              this.extractAssistantTextFromMessage(message) ||
+              "Subagent task completed."
+          });
+        }
+        // Child-agent assistant messages stream through the parent query while
+        // the child is still running, so they are not a completion signal.
+        // Delegated tasks settle through the child result message, the
+        // task_notification system message, the TaskCompleted hook, or a
+        // terminal assistant message tagged with end_turn.
         return;
       }
       if (!this.ensureActiveTurn("assistant")) {
@@ -1070,6 +1149,12 @@ export class SessionRuntime {
     }
 
     if (message.type === "user") {
+      const notificationText = readUserMessageNotificationText(
+        message as { message?: { content?: unknown } }
+      );
+      if (notificationText.includes("<task-notification>")) {
+        this.handleTaskNotificationFromText(notificationText);
+      }
       this.activateTurnForUserMessage(message);
       const blocks = contentBlocksFromMessage(message);
       if (
@@ -1451,6 +1536,26 @@ export class SessionRuntime {
       this.handleTaskSystemMessage(subtype, message);
       return;
     }
+    if (subtype === "task_updated") {
+      const patch = recordValue(message.patch);
+      const status = stringValue(patch?.status);
+      if (
+        status === "completed" ||
+        status === "failed" ||
+        status === "killed"
+      ) {
+        this.handleTaskSystemMessage("task_notification", {
+          task_id: stringValue(message.task_id),
+          tool_use_id: stringValue(message.tool_use_id),
+          status: status === "killed" ? "stopped" : status,
+          summary:
+            stringValue(patch?.description) ||
+            stringValue(message.summary) ||
+            stringValue(message.description)
+        });
+      }
+      return;
+    }
     if (subtype === "init" || subtype === "commands_changed") {
       const commands = commandEntries(message.commands);
       if (commands.length > 0 || Array.isArray(message.commands)) {
@@ -1510,6 +1615,17 @@ export class SessionRuntime {
     }
   }
 
+  private handleTaskNotificationFromText(text: string): void {
+    const parsed = parseTaskNotification(text);
+    if (!parsed) {
+      return;
+    }
+    this.handleTaskSystemMessage(
+      "task_notification",
+      taskNotificationToSystemMessage(parsed)
+    );
+  }
+
   private handleTaskSystemMessage(
     subtype: "task_started" | "task_progress" | "task_notification",
     message: Record<string, unknown>
@@ -1529,9 +1645,18 @@ export class SessionRuntime {
       task.description = description;
     }
     if (subtype === "task_notification") {
+      if (task.status !== "running") {
+        return;
+      }
       task.status = delegatedTaskStatus(message.status);
       this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
       this.emitDelegatedTaskParentUpdate(task, message);
+      return;
+    }
+    if (subtype === "task_progress" && task.status !== "running") {
+      // A trailing progress event delivered after the task's own completion
+      // must not resurrect the task and bump the running count; only an
+      // explicit task_started may restart a settled task.
       return;
     }
     task.status = "running";
@@ -2134,26 +2259,15 @@ export class SessionRuntime {
     this.emitDelegatedTaskParentUpdate(task, message);
   }
 
-  private completeDelegatedTaskFromAssistantMessage(
-    parentToolUseID: string,
-    message: SDKMessage
-  ): void {
-    const summary = textSummaryFromContentBlocks(
-      contentBlocksFromMessage(message)
-    );
-    this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
-      status: "completed",
-      ...(summary ? { summary } : {})
-    });
-  }
-
   private completeDelegatedTaskFromResultMessage(
     parentToolUseID: string,
     message: SDKMessage
   ): void {
     const result = message as Record<string, unknown>;
+    const summary = stringValue(result.summary) || stringValue(result.result);
     this.completeDelegatedTaskFromParentMessage(parentToolUseID, {
       ...result,
+      ...(summary ? { summary } : {}),
       status: delegatedTaskStatus(result.subtype ?? result.status)
     });
   }
@@ -2172,6 +2286,31 @@ export class SessionRuntime {
     task.status = delegatedTaskStatus(message.status);
     this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
     this.emitDelegatedTaskParentUpdate(task, message);
+  }
+
+  private isNestedDelegatedTaskTerminalAssistant(message: SDKMessage): boolean {
+    const nested = recordValue((message as { message?: unknown }).message);
+    const stopReason =
+      stringValue(nested?.stop_reason) ||
+      stringValue((message as Record<string, unknown>).stop_reason);
+    if (stopReason !== "end_turn") {
+      return false;
+    }
+    return contentBlocksFromMessage(message).some(
+      (block) =>
+        block.type === "text" && Boolean(stringValue(block.text)?.trim())
+    );
+  }
+
+  private extractAssistantTextFromMessage(message: SDKMessage): string {
+    return contentBlocksFromMessage(message)
+      .flatMap((block) =>
+        block.type === "text" && stringValue(block.text)
+          ? [stringValue(block.text) as string]
+          : []
+      )
+      .join("\n")
+      .trim();
   }
 
   private emitTaskPlanUpdated(): void {
@@ -2310,6 +2449,7 @@ export class SessionRuntime {
     const explicitParentToolUseId =
       stringValue(message.parentToolUseId) ||
       stringValue(message.parent_tool_use_id) ||
+      stringValue(message.tool_use_id) ||
       stringValue(message.toolCallId) ||
       stringValue(message.callId);
     if (explicitParentToolUseId) {
@@ -2379,9 +2519,7 @@ export class SessionRuntime {
     }
     task.turnId = turnId;
     const summary =
-      stringValue(message.summary) ||
-      stringValue(message.description) ||
-      "Subagent task completed.";
+      delegatedTaskSummaryFromMessage(message) || "Subagent task completed.";
     const usage = recordValue(message.usage);
     const metadata: Record<string, unknown> = {
       adapter: "claude-agent-sdk",
@@ -2436,7 +2574,7 @@ export class SessionRuntime {
       stringValue(message.summary) ||
       task.description ||
       task.subject;
-    const summary = stringValue(message.summary);
+    const summary = delegatedTaskSummaryFromMessage(message);
     const lastToolName =
       stringValue(message.last_tool_name) || stringValue(message.lastToolName);
     const usage = recordValue(message.usage);
@@ -2650,16 +2788,6 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function textSummaryFromContentBlocks(
-  blocks: ReadonlyArray<Record<string, unknown>>
-): string {
-  return blocks
-    .map((block) => stringValue(block.text))
-    .filter((text) => text.length > 0)
-    .join("\n\n")
-    .trim();
-}
-
 function normalizeTitle(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
@@ -2679,6 +2807,16 @@ function envObject(value: unknown): Record<string, string | undefined> {
 
 function booleanValue(value: unknown): boolean {
   return value === true;
+}
+
+function delegatedTaskSummaryFromMessage(
+  message: Record<string, unknown>
+): string {
+  return (
+    stringValue(message.result) ||
+    stringValue(message.summary) ||
+    stringValue(message.description)
+  );
 }
 
 function delegatedTaskStatus(value: unknown): DelegatedTaskStatus {

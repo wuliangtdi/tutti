@@ -377,3 +377,10 @@ func normalizeRuntimeError(err error) error {
 	}
 	return err
 }
+
+func isStaleInteractiveRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no longer live")
+}

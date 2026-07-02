@@ -18,6 +18,7 @@ import (
 
 const (
 	claudeCodeRuntimeEnv           = "TUTTI_CLAUDE_CODE_RUNTIME"
+	claudeCodeRuntimeACP           = "acp"
 	claudeCodeRuntimeSDK           = "sdk"
 	claudeSDKSidecarCommandEnv     = "TUTTI_CLAUDE_SDK_SIDECAR_COMMAND"
 	claudeSDKSidecarTestDriverEnv  = "TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER"
@@ -1820,7 +1821,11 @@ func (a *ClaudeCodeSDKAdapter) emitCommandSnapshot(snapshot AgentSessionCommandS
 }
 
 func claudeCodeSDKRuntimeEnabled() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv(claudeCodeRuntimeEnv)), claudeCodeRuntimeSDK)
+	runtime := strings.TrimSpace(os.Getenv(claudeCodeRuntimeEnv))
+	if runtime == "" {
+		return true
+	}
+	return strings.EqualFold(runtime, claudeCodeRuntimeSDK)
 }
 
 func claudeSDKSidecarCommand() []string {

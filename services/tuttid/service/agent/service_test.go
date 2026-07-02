@@ -3622,14 +3622,25 @@ func TestServiceReconcilesOpenToolCallBeforeSubmittingInteractive(t *testing.T) 
 	}
 }
 
-func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing.T) {
+func TestServiceReconcilesGhostOpenApprovalWhileBackgroundAgentsAreLive(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
-		ID:                "session-1",
-		WorkspaceID:       "ws-1",
-		Provider:          "codex",
-		ProviderSessionID: "provider-session-1",
-		Status:            "ready",
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": float64(1),
+				"items": []any{
+					map[string]any{
+						"agentId":         "agent-1",
+						"parentToolUseId": "toolu-agent",
+						"status":          "running",
+					},
+				},
+			},
+		},
 	}
 	reconciled := make([]PersistedSession, 0)
 	service := NewService(runtime)
@@ -3637,29 +3648,97 @@ func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing
 		reconciled: &reconciled,
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
-				ID:                "session-1",
-				WorkspaceID:       "ws-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session-1",
-				Status:            "waiting",
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "idle",
 			},
 		},
 	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
 
-	if _, err := service.SubmitInteractive(
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
+	}
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want ghost open approval cleared", reconciled)
+	}
+}
+
+func TestServiceSubmitInteractiveReconcilesStaleLiveRequestError(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.submitInteractiveErr = errors.New(`interactive request "permission-1" is no longer live`)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "active",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
+
+	session, err := service.SubmitInteractive(
 		context.Background(),
 		"ws-1",
 		"session-1",
 		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
-	); err != nil {
+		SubmitInteractiveInput{OptionID: stringRef("allow")},
+	)
+	if err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}
-	if len(reconciled) != 1 {
-		t.Fatalf("reconciled = %#v, want stale ready runtime session reconciled", reconciled)
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
 	}
-	if len(runtime.submitInteractiveCalls) != 0 {
-		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want stale approval cleared after no-longer-live", reconciled)
 	}
 }
 
@@ -4248,6 +4327,7 @@ type fakeRuntime struct {
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]RuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
+	submitInteractiveErr   error
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
@@ -4432,6 +4512,9 @@ func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExec
 
 func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) error {
 	f.submitInteractiveCalls = append(f.submitInteractiveCalls, input)
+	if f.submitInteractiveErr != nil {
+		return f.submitInteractiveErr
+	}
 	return nil
 }
 

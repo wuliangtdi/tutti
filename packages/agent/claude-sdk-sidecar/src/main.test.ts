@@ -54,7 +54,7 @@ test("late delegated task notification keeps original parent turn id", async () 
   }
 });
 
-test("delegated assistant parent message completes background agent", async () => {
+test("delegated child result completes background agent, not mid-run child assistant messages", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
@@ -82,11 +82,24 @@ test("delegated assistant parent message completes background agent", async () =
     session.exec("turn-1", "delegate task");
     await waitForEvent(events, "task_completed");
 
-    const taskCompleted = events.find(
+    const completedEvents = events.filter(
       (event) => event.type === "task_completed"
     );
+    assert.equal(completedEvents.length, 1);
+    const taskCompleted = completedEvents[0];
     assert.equal(taskCompleted?.payload?.parentToolUseId, "toolu-agent");
     assert.equal(taskCompleted?.payload?.summary, "Child result ready");
+
+    // The mid-run child assistant message streams before the task_progress
+    // event; completion must come only after progress, from the child result.
+    const progressIndex = events.findIndex(
+      (event) => event.type === "task_progress"
+    );
+    const completedIndex = events.findIndex(
+      (event) => event.type === "task_completed"
+    );
+    assert.ok(progressIndex >= 0);
+    assert.ok(completedIndex > progressIndex);
 
     const parentToolCompleted = events.find(
       (event) =>
@@ -95,6 +108,50 @@ test("delegated assistant parent message completes background agent", async () =
         event.payload?.status === "completed"
     );
     assert.equal(parentToolCompleted?.payload?.turnId, "turn-1");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("trailing task_progress does not resurrect a settled delegated task", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeDelegatedTaskQuery(prompt, { progressAfterNotification: true })
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    // Let the fake stream drain the trailing task_progress message.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const completedIndex = events.findIndex(
+      (event) => event.type === "task_completed"
+    );
+    assert.ok(completedIndex >= 0);
+    const resurrected = events
+      .slice(completedIndex + 1)
+      .find((event) => event.type === "task_progress");
+    assert.equal(resurrected, undefined);
   } finally {
     restoreSink();
   }
@@ -259,6 +316,113 @@ test("late compact boundary still attaches to slash compact turn", async () => {
 
     const usage = events.find((event) => event.type === "usage_updated");
     assert.equal(usage?.payload?.turnId, "turn-late");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("nested end_turn assistant completes delegated task without child result", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeDelegatedTextOnlyCompletionQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+
+    const completed = events.find((event) => event.type === "task_completed");
+    assert.equal(completed?.payload?.parentToolUseId, "toolu-agent");
+    assert.equal(completed?.payload?.summary, "7");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("fold-in queued_command task notification completes running delegated task", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeFoldInTaskNotificationQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+
+    const completed = events.find((event) => event.type === "task_completed");
+    assert.equal(completed?.payload?.parentToolUseId, "toolu-agent");
+    assert.equal(completed?.payload?.summary, "7");
+  } finally {
+    restoreSink();
+  }
+});
+
+test("user task-notification string completes running delegated task", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      fakeUserTaskNotificationQuery
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+
+    const completed = events.find((event) => event.type === "task_completed");
+    assert.equal(completed?.payload?.parentToolUseId, "toolu-agent");
   } finally {
     restoreSink();
   }
@@ -896,6 +1060,7 @@ function fakeDelegatedTaskQuery(
     omitNotificationIds?: boolean;
     skipNotification?: boolean;
     continueAfterNotification?: boolean;
+    progressAfterNotification?: boolean;
   } = {}
 ): AsyncIterable<SDKMessage> {
   return {
@@ -968,6 +1133,14 @@ function fakeDelegatedTaskQuery(
         status: "completed",
         summary: "Found files"
       } as unknown as SDKMessage;
+      if (options.progressAfterNotification) {
+        yield {
+          type: "system",
+          subtype: "task_progress",
+          task_id: "task-1",
+          description: "Explore codebase structure"
+        } as unknown as SDKMessage;
+      }
       if (!options.continueAfterNotification) {
         return;
       }
@@ -1019,6 +1192,9 @@ function fakeDelegatedAssistantParentQuery({
         type: "result",
         subtype: "success"
       } as unknown as SDKMessage;
+      // Mid-run child streaming: assistant messages tagged with the parent
+      // tool use id arrive while the child is still working and must not
+      // settle the delegated task.
       yield {
         type: "assistant",
         uuid: "assistant-child-1",
@@ -1026,8 +1202,20 @@ function fakeDelegatedAssistantParentQuery({
         session_id: "provider-session-1",
         message: {
           role: "assistant",
-          content: [{ type: "text", text: "Child result ready" }]
+          content: [{ type: "text", text: "Still working on the child task" }]
         }
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "task_progress",
+        task_id: "agent-1",
+        description: "Child task"
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success",
+        parent_tool_use_id: "toolu-agent",
+        result: "Child result ready"
       } as unknown as SDKMessage;
     },
     close() {}
@@ -1646,6 +1834,134 @@ async function emitTestHooks(
       await (hook as (value: unknown) => Promise<unknown>)(input);
     }
   }
+}
+
+function fakeDelegatedTextOnlyCompletionQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Child task");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "assistant",
+        uuid: "assistant-child-final",
+        parent_tool_use_id: "toolu-agent",
+        session_id: "provider-session-1",
+        message: {
+          role: "assistant",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "7" }]
+        }
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function fakeFoldInTaskNotificationQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Child task");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "attachment",
+        uuid: "attachment-fold-in",
+        session_id: "provider-session-1",
+        attachment: {
+          type: "queued_command",
+          commandMode: "task-notification",
+          prompt: `<task-notification>
+<task-id>agent-1</task-id>
+<tool-use-id>toolu-agent</tool-use-id>
+<status>completed</status>
+<summary>Agent "Child task" finished</summary>
+<result>7</result>
+</task-notification>`
+        }
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
+function fakeUserTaskNotificationQuery({
+  prompt
+}: {
+  prompt: AsyncIterable<SDKUserMessage>;
+}): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield delegatedAgentToolUse("toolu-agent", "Child task");
+      yield delegatedAgentToolResult("toolu-agent", "agent-1");
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+      yield {
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1",
+        message: {
+          role: "user",
+          content: `<task-notification>
+<task-id>agent-1</task-id>
+<tool-use-id>toolu-agent</tool-use-id>
+<status>completed</status>
+<summary>Agent "Child task" finished</summary>
+</task-notification>`
+        }
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
 }
 
 async function waitForEvent(
