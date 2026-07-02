@@ -792,6 +792,7 @@ export const en = {
       systemNoticeWarning: "Codex warning",
       systemNoticeDefault: "Agent notice",
       turnSummary: "Changed files",
+      userMessageLocator: "User messages",
       turnSummaryFilesChanged: "{{count}} files changed",
       turnSummaryModified: "{{count}} modified",
       turnSummaryCreated: "{{count}} new",

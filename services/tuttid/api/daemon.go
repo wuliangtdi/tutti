@@ -31,6 +31,7 @@ type DaemonAPI struct {
 	UserProjectService        UserProjectService
 	PreferencesService        preferencesapi.Service
 	ManagedCredentialsService *managedcredentialsservice.Service
+	AccountService            AccountService
 	EventStreamService        EventStreamService
 	WorkspaceService          workspaceapi.CatalogService
 	WorkbenchService          workspaceapi.WorkbenchService

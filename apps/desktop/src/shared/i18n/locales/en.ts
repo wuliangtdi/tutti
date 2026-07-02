@@ -523,6 +523,7 @@ export const en = {
       },
       nav: {
         about: "About",
+        account: "Account",
         apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",
@@ -536,6 +537,16 @@ export const en = {
         githubAction: "GitHub",
         versionLabel: "Version",
         websiteAction: "Website"
+      },
+      account: {
+        description: "Sign in to use your Tutti account on this device.",
+        login: "Sign in",
+        logout: "Sign out",
+        refresh: "Refresh",
+        reopenLogin: "Open sign-in again",
+        signedOutTitle: "Not signed in",
+        signingIn: "Signing in...",
+        signingOut: "Signing out..."
       },
       apps: {
         appCatalogChannelDescription:
@@ -657,6 +668,9 @@ export const en = {
         showAppDeveloperSourcesLabel: "Show app authors and source",
         showAppDeveloperSourcesSaveFailed:
           "We couldn't update App Center source display.",
+        tuttiAgentSwitchDescription:
+          "Shows account and agent development controls.",
+        tuttiAgentSwitchLabel: "Tutti Agent Switch",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"

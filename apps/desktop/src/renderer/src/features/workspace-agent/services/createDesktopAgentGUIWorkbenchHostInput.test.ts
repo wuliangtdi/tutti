@@ -2094,6 +2094,15 @@ function createWorkspaceAgentActivityService(
     async listAgentGeneratedFiles() {
       return { entries: [], workspaceId };
     },
+    async listSessionGroups() {
+      return { groups: [], workspaceId };
+    },
+    async listSessionsPage() {
+      return { hasMore: false, sessions: [], workspaceId };
+    },
+    async searchSessions() {
+      return { hasMore: false, sessions: [], workspaceId };
+    },
     async scanExternalSessionImports() {
       throw new Error("not implemented");
     },

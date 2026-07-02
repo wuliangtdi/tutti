@@ -729,6 +729,7 @@ export const zhCN = {
       systemNoticeWarning: "Codex 警告",
       systemNoticeDefault: "Agent 通知",
       turnSummary: "已变更文件",
+      userMessageLocator: "用户消息",
       turnSummaryFilesChanged: "变更了 {{count}} 个文件",
       turnSummaryModified: "{{count}} 个修改",
       turnSummaryCreated: "{{count}} 个新增",

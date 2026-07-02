@@ -1,5 +1,8 @@
 import type {
   AddIssueManagerContextRefsRequest,
+  AccountLoginStartResponse,
+  AccountLoginStatusResponse,
+  AccountUserInfo,
   AgentProviderComposerOptionsResponse,
   AgentProviderProbeResponse,
   AgentProviderActionId,
@@ -93,6 +96,7 @@ import type {
   WorkspaceAgentSessionAttachmentResponse,
   WorkspaceAgentGeneratedFileListResponse,
   WorkspaceAgentSessionGitBranchesResponse,
+  WorkspaceAgentSessionGroupsResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionMessagesResponse,
   WorkspaceAgentSessionListResponse,
@@ -129,6 +133,10 @@ export type TuttidTrackEvent = TrackEvent;
 export type TuttidTrackEventsRequest = TrackEventsRequest;
 
 export interface TuttidClient {
+  startAccountLogin(): Promise<AccountLoginStartResponse>;
+  getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
+  getAccountUserInfo(): Promise<AccountUserInfo | null>;
+  logoutAccount(): Promise<void>;
   listCliCapabilities(
     workspaceID?: string,
     options?: { includeHidden?: boolean; includeIntegration?: boolean }
@@ -469,11 +477,20 @@ export interface TuttidClient {
   listWorkspaceAgentSessions(
     workspaceID: string,
     request?: {
+      cwd?: string;
+      cursor?: string;
       limit?: number;
       searchQuery?: string;
       visibleOnly?: boolean;
     }
   ): Promise<WorkspaceAgentSessionListResponse>;
+  listWorkspaceAgentSessionGroups(
+    workspaceID: string,
+    request?: {
+      sessionLimit?: number;
+      visibleOnly?: boolean;
+    }
+  ): Promise<WorkspaceAgentSessionGroupsResponse>;
   listWorkspaceAgentGeneratedFiles(
     workspaceID: string,
     request?: {

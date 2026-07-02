@@ -83,7 +83,11 @@ async function listDeveloperLogsAgentSessions(
     workspaces.workspaces.map((workspace) =>
       tuttidClient
         .listWorkspaceAgentSessions(workspace.id)
-        .catch(() => ({ sessions: [], workspaceId: workspace.id }))
+        .catch(() => ({
+          hasMore: false,
+          sessions: [],
+          workspaceId: workspace.id
+        }))
     )
   );
 
