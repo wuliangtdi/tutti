@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime/codexproto"
@@ -13,6 +14,9 @@ import (
 
 type codexAppServerClient struct {
 	raw *acpClient
+	// parsedNotificationMethods tracks notification methods already run
+	// through the typed schema parse (telemetry only).
+	parsedNotificationMethods sync.Map
 }
 
 type codexAppServerCaller struct {
@@ -132,6 +136,13 @@ func (c *codexAppServerClient) parseInboundMessage(message acpMessage) {
 				"method", method,
 			)
 		}
+		return
+	}
+	// Notifications are the hot path (token-delta traffic) and the reducer
+	// re-decodes params into map[string]any anyway (D7): the typed parse here
+	// is schema-drift telemetry only, so run it once per method per client
+	// instead of paying a second full decode on every frame.
+	if _, seen := c.parsedNotificationMethods.LoadOrStore(method, struct{}{}); seen {
 		return
 	}
 	_, err := codexproto.ParseServerNotification(method, message.Params)
