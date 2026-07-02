@@ -1432,6 +1432,12 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 			event.OwnerThreadID == "" {
 			t.Fatalf("cancel child event = %#v", event)
 		}
+		// The activity store rejects turnless message updates, so a canceled
+		// marker without a turn id never reaches the GUI (observed live:
+		// "message_update ... is missing turnId").
+		if event.Payload.TurnID != "turn-1" {
+			t.Fatalf("cancel child event turn id = %q, want turn-1", event.Payload.TurnID)
+		}
 	}
 	waitForCondition(t, func() bool {
 		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)) == 3
@@ -1453,6 +1459,42 @@ func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("Exec did not finish after interrupt")
 	}
+}
+
+func TestCodexAppServerAdapterCancelAfterTurnCompletedStillMarksChildrenCanceled(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "spawn-child-1",
+		"receiverThreadIds": []any{"child-thread-1"},
+	})
+
+	// Run a turn to completion so no active turn remains, but children keep
+	// running (spawned agents outlive the parent turn).
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "parent task",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	if got := adapter.sessionActiveTurnID(session.AgentSessionID); got != "" {
+		t.Fatalf("active turn id after completion = %q, want empty", got)
+	}
+
+	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(cancelEvents) != 1 {
+		t.Fatalf("cancel child events = %#v, want one canceled marker", cancelEvents)
+	}
+	// The last completed turn id keeps the marker acceptable to the activity
+	// store, which rejects turnless message updates.
+	if cancelEvents[0].Payload.TurnID != "turn-1" {
+		t.Fatalf("cancel marker turn id = %q, want turn-1 (last completed turn)", cancelEvents[0].Payload.TurnID)
+	}
+	_ = transport
 }
 
 func TestCodexAppServerAdapterCancelForceClosesWedgedTurn(t *testing.T) {

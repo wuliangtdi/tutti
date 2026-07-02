@@ -137,8 +137,12 @@ type codexAppServerSession struct {
 	authState       string
 	authMessage     string
 	activeTurnID    string
-	activeTurn      *codexAppServerActiveTurn
-	childThreads    map[string]*codexAppServerThreadContext
+	// lastTurnID survives turn settlement so post-turn child lifecycle
+	// markers can carry a turn id (the activity store rejects turnless
+	// message updates).
+	lastTurnID   string
+	activeTurn   *codexAppServerActiveTurn
+	childThreads map[string]*codexAppServerThreadContext
 	acpLiveState
 	pendingRequests map[string]*pendingACPRequest
 }
@@ -1663,7 +1667,7 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected
 	}
-	childEvents := a.interruptLinkedChildThreads(session, appSession, reason)
+	childEvents := a.interruptLinkedChildThreads(session, appSession, a.sessionMarkerTurnID(session.AgentSessionID), reason)
 	activeTurnID, queued := a.requestActiveTurnCancel(session.AgentSessionID)
 	// Unblock any handler waiting on an approval answer first: the message
 	// read loop is parked inside that handler, so the interrupt response
@@ -1784,6 +1788,7 @@ func (a *CodexAppServerAdapter) sendThreadInterrupt(
 func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
 	session Session,
 	appSession *codexAppServerSession,
+	markerTurnID string,
 	reason string,
 ) []activityshared.Event {
 	if a == nil || appSession == nil || appSession.client == nil {
@@ -1796,7 +1801,7 @@ func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
 	events := make([]activityshared.Event, 0, len(childThreadIDs))
 	for _, childThreadID := range childThreadIDs {
 		go a.sendThreadInterrupt(appSession.client, session, childThreadID, "", reason)
-		event := appServerSubAgentLifecycleEvent(session, childThreadID, "", "canceled", reason)
+		event := appServerSubAgentLifecycleEvent(session, childThreadID, markerTurnID, "canceled", reason)
 		if event.Type != "" {
 			events = append(events, event)
 		}
@@ -2303,6 +2308,9 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, tu
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession != nil {
 		appSession.activeTurnID = strings.TrimSpace(turnID)
+		if appSession.activeTurnID != "" {
+			appSession.lastTurnID = appSession.activeTurnID
+		}
 		if appSession.activeTurn != nil &&
 			appSession.activeTurnID != "" &&
 			appSession.activeTurn.cancelRequested &&
@@ -2312,6 +2320,21 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(agentSessionID string, tu
 		}
 	}
 	return false
+}
+
+// sessionMarkerTurnID resolves the turn id to stamp on child lifecycle
+// markers: the active turn when one is running, else the last settled turn.
+func (a *CodexAppServerAdapter) sessionMarkerTurnID(agentSessionID string) string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return ""
+	}
+	return firstNonEmpty(appSession.activeTurnID, appSession.lastTurnID)
 }
 
 func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingACPRequest) {

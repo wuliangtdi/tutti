@@ -38,7 +38,15 @@ func (r codexAppServerReducer) ReduceNotification(
 	}
 	route := a.appServerNotificationRoute(session, message.Method, params)
 	if route.drop {
-		return codexAppServerReduction{Events: appServerEventsWithOwnerThreadID(route.events, route.ownerThreadID)}
+		routed := appServerEventsWithOwnerThreadID(route.events, route.ownerThreadID)
+		for index := range routed {
+			// The activity store rejects turnless message updates; fall back to
+			// the parent's turn so hidden child markers always reach the GUI.
+			if routed[index].Payload.TurnID == "" {
+				routed[index].Payload.TurnID = firstNonEmpty(turnID, r.adapter.sessionMarkerTurnID(session.AgentSessionID))
+			}
+		}
+		return codexAppServerReduction{Events: routed}
 	}
 	if route.normalizer != nil {
 		normalizer = route.normalizer
