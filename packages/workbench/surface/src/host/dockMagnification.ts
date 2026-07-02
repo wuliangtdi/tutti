@@ -773,6 +773,14 @@ export function useDockMagnification({
     let animationFrame: number | null = null;
     let latestPoint: { clientX: number; clientY: number } | null = null;
 
+    const clearAmbientPointerSample = () => {
+      latestPoint = null;
+      if (animationFrame !== null) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+    };
+
     const runAmbientPointerMove = () => {
       animationFrame = null;
       const point = latestPoint;
@@ -812,6 +820,7 @@ export function useDockMagnification({
 
     const handleAmbientPointerMove = (event: PointerEvent) => {
       if (magnifyActiveRef.current) {
+        clearAmbientPointerSample();
         return;
       }
       if (
@@ -821,6 +830,7 @@ export function useDockMagnification({
           dockPlacement
         })
       ) {
+        clearAmbientPointerSample();
         return;
       }
       latestPoint = { clientX: event.clientX, clientY: event.clientY };
@@ -840,9 +850,7 @@ export function useDockMagnification({
         handleAmbientPointerMove,
         globalPointerListenerOptions
       );
-      if (animationFrame !== null) {
-        cancelAnimationFrame(animationFrame);
-      }
+      clearAmbientPointerSample();
     };
   }, [
     dockPlacement,

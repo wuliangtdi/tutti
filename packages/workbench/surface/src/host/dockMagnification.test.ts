@@ -480,6 +480,14 @@ test("dock magnification samples ambient pointer moves without taking dock point
   );
   assert.match(
     source,
+    /const clearAmbientPointerSample = \(\) => \{[\s\S]*?latestPoint = null;[\s\S]*?cancelAnimationFrame\(animationFrame\);/
+  );
+  assert.match(
+    source,
+    /!isPointNearDockScreenEdge\([\s\S]*?\) \{[\s\S]*?clearAmbientPointerSample\(\);[\s\S]*?return;/
+  );
+  assert.match(
+    source,
     /isPointerInsideDockMagnificationTarget\(point\.clientX, point\.clientY\)[\s\S]*?handlePointerMove\(point\.clientX, point\.clientY\);/
   );
 });
