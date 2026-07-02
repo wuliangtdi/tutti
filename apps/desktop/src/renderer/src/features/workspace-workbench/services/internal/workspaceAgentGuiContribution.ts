@@ -131,7 +131,10 @@ export function createWorkspaceAgentGuiContribution(input: {
       onCapabilitySettingsRequest: input.onCapabilitySettingsRequest,
       onLinkAction: handleLinkAction,
       onOpenAgentConversationWindow: async (request) => {
-        await requestWorkspaceAgentGuiLaunch(request);
+        await requestWorkspaceAgentGuiLaunch({
+          ...request,
+          openInNewWindow: true
+        });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,

@@ -139,6 +139,16 @@ Workbench dock or external launch
 This means an AgentGUI bug can start at several different interfaces. Do not
 assume that a visible UI symptom starts in the visible UI component.
 
+Conversation rail "open in new window" actions are internal workbench-window
+launches, not Electron `BrowserWindow` launches. The action should stay inside
+the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
+`requestWorkspaceAgentGuiLaunch`, the workspace launch handler calls
+`host.launchNode`, and AgentGUI opens the requested session through an
+`agent-gui:open-session` activation. Normal session launches may reuse an
+already-open node showing that session; the explicit new-window action must pass
+`openInNewWindow` so the descriptor creates a fresh panel-scoped AgentGUI
+instance while still activating the same durable session.
+
 ## Runtime Data Chain
 
 Durable activity state flows in one direction:

@@ -135,6 +135,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   agentSessionId?: string;
+  openInNewWindow?: boolean;
   provider: unknown;
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
@@ -142,6 +143,7 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
     dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
+      ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       provider
     },
     reason: "host" as const,
@@ -187,8 +189,10 @@ export interface AgentGuiWorkbenchLaunchDescriptor {
     | null;
   dockEntryId: string;
   instanceId: string;
+  openInNewWindow: boolean;
   provider: AgentGuiWorkbenchProvider;
   reuseDockEntryNode: boolean;
+  reuseExistingSessionNode: boolean;
   targetAgentSessionId: string | null;
 }
 
@@ -209,18 +213,21 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       },
       dockEntryId,
       instanceId: createAgentGuiWorkbenchInstanceId({ provider }),
+      openInNewWindow: false,
       provider,
       reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
         dockEntryId,
         launchKind: "prefill"
       }),
+      reuseExistingSessionNode: true,
       targetAgentSessionId: null
     };
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
+  const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: targetAgentSessionId,
+    agentSessionId: openInNewWindow ? null : targetAgentSessionId,
     provider
   });
 
@@ -235,11 +242,13 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       : null,
     dockEntryId,
     instanceId,
+    openInNewWindow,
     provider,
     reuseDockEntryNode: shouldReuseAgentGuiWorkbenchDockEntryNode({
       dockEntryId,
       launchKind: targetAgentSessionId ? "session" : "empty"
     }),
+    reuseExistingSessionNode: !openInNewWindow,
     targetAgentSessionId
   };
 }
@@ -316,4 +325,11 @@ function agentSessionIdFromLaunchPayload(payload: unknown): string | null {
   return typeof agentSessionId === "string" && agentSessionId.trim()
     ? agentSessionId.trim()
     : null;
+}
+
+function openInNewWindowFromLaunchPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  return (payload as { openInNewWindow?: unknown }).openInNewWindow === true;
 }
