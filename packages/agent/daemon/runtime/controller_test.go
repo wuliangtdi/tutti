@@ -2203,6 +2203,45 @@ func (a *asyncExecTestAdapter) calls() (bool, bool) {
 	return a.execCalled, a.asyncCalled
 }
 
+// steeringAsyncExecAdapter mirrors CodexAppServerAdapter.steerActiveTurn: the
+// prompt is steered into an already-running provider turn, so ExecAsync emits
+// only the steered user message for the new turn id and no terminal event ever
+// arrives for it.
+type steeringAsyncExecAdapter struct {
+	execDone chan struct{}
+}
+
+func (*steeringAsyncExecAdapter) Provider() string { return ProviderCodex }
+
+func (*steeringAsyncExecAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (*steeringAsyncExecAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*steeringAsyncExecAdapter) Close(context.Context, Session) error { return nil }
+
+func (*steeringAsyncExecAdapter) Exec(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
+func (a *steeringAsyncExecAdapter) ExecAsync(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) error {
+	if emit != nil {
+		// Exact event shape produced by steerActiveTurn.
+		emit([]activityshared.Event{
+			newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, "steered prompt", userPromptActivityPayload(content, "", map[string]any{
+				"steered": true,
+			})),
+		})
+	}
+	a.execDone <- struct{}{}
+	return nil
+}
+
+func (*steeringAsyncExecAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	return nil, nil
+}
+
 type blockingExecAdapter struct {
 	mu       sync.Mutex
 	seen     []string
@@ -2455,6 +2494,48 @@ func TestControllerExecUsesAsyncAdapterAndFinalizesFromTerminalEvent(t *testing.
 	}
 	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "settled" {
 		t.Fatalf("turn lifecycle = %#v, want settled", session.TurnLifecycle)
+	}
+}
+
+func TestControllerExecSteerSettlesTurnRecordWithoutTerminalEvent(t *testing.T) {
+	t.Parallel()
+
+	adapter := &steeringAsyncExecAdapter{execDone: make(chan struct{}, 2)}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("also update the docs"),
+	}); err != nil {
+		t.Fatalf("steer Exec: %v", err)
+	}
+	select {
+	case <-adapter.execDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for steer ExecAsync")
+	}
+	// The steer submission does not own a provider turn: no terminal event
+	// will ever arrive for its turn id, so the controller turn record must
+	// settle immediately or the session blocks every future Exec with
+	// ErrSessionActiveTurn until daemon restart.
+	waitForCondition(t, func() bool {
+		return !controller.HasActiveTurn("room-1", started.Session.AgentSessionID)
+	})
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("follow-up prompt"),
+	}); err != nil {
+		t.Fatalf("Exec after steer: %v", err)
 	}
 }
 

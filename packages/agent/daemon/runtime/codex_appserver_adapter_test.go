@@ -1574,6 +1574,12 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser {
 		t.Fatalf("steer events = %#v, want single user message", events)
 	}
+	// The controller relies on this marker (turnSteeredIntoActiveTurn) to
+	// settle the steer submission's turn record: no terminal event will ever
+	// arrive for a steered turn id.
+	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
+		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
+	}
 
 	transport.conn.completePendingTurn()
 	select {

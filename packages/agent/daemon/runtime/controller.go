@@ -910,7 +910,7 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) {
+		if turnHasTerminalEvent(events, turnID) || turnSteeredIntoActiveTurn(events, turnID) {
 			finish(session)
 		}
 	}
@@ -945,6 +945,27 @@ func turnHasTerminalEvent(events []activityshared.Event, turnID string) bool {
 			if string(event.Type) == EventTurnCanceled {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// turnSteeredIntoActiveTurn reports that the adapter steered this submission's
+// content into an already-running provider turn (codex turn/steer): the steer
+// turn id owns no provider turn, so no terminal event will ever arrive for it
+// and the controller record must settle now. The blocking exec path gets this
+// for free by calling finishTurn unconditionally after Exec returns.
+func turnSteeredIntoActiveTurn(events []activityshared.Event, turnID string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	for _, event := range events {
+		if event.Type != activityshared.EventMessageAppended || strings.TrimSpace(event.Payload.TurnID) != turnID {
+			continue
+		}
+		if steered, ok := event.Payload.Metadata["steered"].(bool); ok && steered {
+			return true
 		}
 	}
 	return false
