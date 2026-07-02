@@ -67,51 +67,42 @@ func (a *CodexAppServerAdapter) transitionActiveTurnPhase(
 // initial turn snapshot. The blocking Exec wrapper observes the terminal
 // channel; it no longer owns terminal classification.
 func (a *CodexAppServerAdapter) completeActiveTurn(agentSessionID string, turn map[string]any) {
-	if a == nil {
-		return
-	}
-	terminal := codexAppServerTurnTerminal{turn: turn}
-	var activeTurn *codexAppServerActiveTurn
-	a.mu.Lock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession != nil {
-		activeTurn = appSession.activeTurn
-		if activeTurn != nil && a.activeTurnMatchesProviderTurnLocked(appSession, turn) {
-			terminal.phase = appServerProjectedTurnTerminalPhase(turn, activeTurn.forceCanceled)
-			activeTurn.phase = terminal.phase
-			appSession.activeTurnID = ""
-			appServerLogTurnTerminalShadowMismatch(agentSessionID, turn, terminal.phase)
-		} else {
-			activeTurn = nil
-		}
-	}
-	a.mu.Unlock()
-	if activeTurn == nil {
-		return
-	}
-	select {
-	case activeTurn.terminal <- terminal:
-	default:
-	}
+	a.settleActiveTurn(agentSessionID, asString(turn["id"]), func(activeTurn *codexAppServerActiveTurn) codexAppServerTurnTerminal {
+		phase := appServerProjectedTurnTerminalPhase(turn, activeTurn.forceCanceled)
+		appServerLogTurnTerminalShadowMismatch(agentSessionID, turn, phase)
+		return codexAppServerTurnTerminal{turn: turn, phase: phase}
+	})
 }
 
 func (a *CodexAppServerAdapter) failActiveTurnFromAppServerError(agentSessionID string, params map[string]any) {
+	err := appServerNotificationError(params)
+	a.settleActiveTurn(agentSessionID, asString(params["turnId"]), func(*codexAppServerActiveTurn) codexAppServerTurnTerminal {
+		return codexAppServerTurnTerminal{err: err, phase: codexAppServerTurnPhaseFailed}
+	})
+}
+
+// settleActiveTurn owns the shared settle sequence — lock, session lookup,
+// provider-turn-id match (empty ids are wildcards), phase transition,
+// activeTurnID clear, non-blocking terminal send — so the completion and
+// failure paths cannot diverge on the guards. terminalFor runs under the
+// adapter lock with the matched active turn.
+func (a *CodexAppServerAdapter) settleActiveTurn(
+	agentSessionID string,
+	providerTurnID string,
+	terminalFor func(*codexAppServerActiveTurn) codexAppServerTurnTerminal,
+) {
 	if a == nil {
 		return
 	}
-	turnID := strings.TrimSpace(asString(params["turnId"]))
-	err := appServerNotificationError(params)
-	terminal := codexAppServerTurnTerminal{
-		err:   err,
-		phase: codexAppServerTurnPhaseFailed,
-	}
 	var activeTurn *codexAppServerActiveTurn
+	var terminal codexAppServerTurnTerminal
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	if appSession != nil {
 		activeTurn = appSession.activeTurn
-		if activeTurn != nil && a.activeTurnMatchesProviderTurnIDLocked(appSession, turnID) {
-			activeTurn.phase = codexAppServerTurnPhaseFailed
+		if activeTurn != nil && a.activeTurnMatchesProviderTurnIDLocked(appSession, providerTurnID) {
+			terminal = terminalFor(activeTurn)
+			activeTurn.phase = terminal.phase
 			appSession.activeTurnID = ""
 		} else {
 			activeTurn = nil
@@ -125,13 +116,6 @@ func (a *CodexAppServerAdapter) failActiveTurnFromAppServerError(agentSessionID 
 	case activeTurn.terminal <- terminal:
 	default:
 	}
-}
-
-func (a *CodexAppServerAdapter) activeTurnMatchesProviderTurnLocked(
-	appSession *codexAppServerSession,
-	turn map[string]any,
-) bool {
-	return a.activeTurnMatchesProviderTurnIDLocked(appSession, asString(turn["id"]))
 }
 
 func (a *CodexAppServerAdapter) activeTurnMatchesProviderTurnIDLocked(
