@@ -4048,6 +4048,9 @@ type ListWorkspaceAgentGeneratedFilesParams struct {
 // ListWorkspaceAgentSessionSectionsParams defines parameters for ListWorkspaceAgentSessionSections.
 type ListWorkspaceAgentSessionSectionsParams struct {
 	LimitPerSection *int `form:"limitPerSection,omitempty" json:"limitPerSection,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
 }
 
 // ListWorkspaceAgentSessionSectionPageParams defines parameters for ListWorkspaceAgentSessionSectionPage.
@@ -4057,6 +4060,9 @@ type ListWorkspaceAgentSessionSectionPageParams struct {
 	// Cursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// AgentTargetId Optional agent target filter applied before section pagination and hasMore calculation.
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
 }
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.

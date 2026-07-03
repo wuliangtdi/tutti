@@ -4907,6 +4907,10 @@ export type ListWorkspaceAgentSessionSectionsData = {
   };
   query?: {
     limitPerSection?: number;
+    /**
+     * Optional agent target filter applied before section pagination and hasMore calculation.
+     */
+    agentTargetId?: string;
   };
   url: "/v1/workspaces/{workspaceID}/agent-session-sections";
 };
@@ -4963,6 +4967,10 @@ export type ListWorkspaceAgentSessionSectionPageData = {
      */
     cursor?: string;
     limit?: number;
+    /**
+     * Optional agent target filter applied before section pagination and hasMore calculation.
+     */
+    agentTargetId?: string;
   };
   url: "/v1/workspaces/{workspaceID}/agent-session-sections/page";
 };

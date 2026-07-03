@@ -52,6 +52,9 @@ func (api DaemonAPI) ListWorkspaceAgentSessionSections(ctx context.Context, requ
 		}, nil
 	}
 	input := agentservice.ListSessionSectionsInput{LimitPerSection: 5}
+	if request.Params.AgentTargetId != nil {
+		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
+	}
 	if request.Params.LimitPerSection != nil {
 		if *request.Params.LimitPerSection <= 0 || *request.Params.LimitPerSection > listWorkspaceAgentSessionsLimitMax {
 			return writeListWorkspaceAgentSessionSectionsError(agentservice.ErrInvalidArgument), nil
@@ -77,6 +80,9 @@ func (api DaemonAPI) ListWorkspaceAgentSessionSectionPage(ctx context.Context, r
 	input := agentservice.ListSessionSectionPageInput{
 		Limit:      5,
 		SectionKey: strings.TrimSpace(request.Params.SectionKey),
+	}
+	if request.Params.AgentTargetId != nil {
+		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
 	}
 	if request.Params.Cursor != nil {
 		input.Cursor = strings.TrimSpace(*request.Params.Cursor)

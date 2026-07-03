@@ -45,6 +45,7 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
     await client.listWorkspaceAgentSessionSectionPage(
       "ws-1",
       {
+        agentTargetId: "claude-target",
         cursor: "1000|session-1",
         limit: 30,
         sectionKey: "project:/workspace/project"
@@ -61,6 +62,7 @@ test("createDesktopTuttidClient forwards workspace agent session query params", 
   abortController.abort();
   assert.equal(capturedRequest.signal?.aborted, true);
   assert.deepEqual(requestQueryEntries, {
+    agentTargetId: "claude-target",
     cursor: "1000|session-1",
     limit: "30",
     sectionKey: "project:/workspace/project"

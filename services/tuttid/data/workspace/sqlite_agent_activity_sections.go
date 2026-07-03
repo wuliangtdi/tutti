@@ -19,6 +19,7 @@ func (s *SQLiteStore) ListSessionSection(
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	sectionKey := strings.TrimSpace(input.SectionKey)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if workspaceID == "" || sectionKey == "" {
 		return agentactivitybiz.SessionSectionPage{}, false, nil
 	}
@@ -36,12 +37,15 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND rail_section_key = ?
+  AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
   AND (? = '' OR updated_at_unix_ms < ? OR (updated_at_unix_ms = ? AND agent_session_id > ?))
 ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 	args := []any{
 		workspaceID,
 		sectionKey,
+		agentTargetID,
+		agentTargetID,
 		strings.TrimSpace(input.CursorSessionID),
 		input.CursorUpdatedAtMS,
 		input.CursorUpdatedAtMS,

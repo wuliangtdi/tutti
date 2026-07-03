@@ -293,6 +293,7 @@ test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal
 
   await service.listSessionSectionPage({
     workspaceId: "ws-1",
+    agentTargetId: "claude-target",
     cursor: "10|session-1",
     limit: 5,
     sectionKey: "project:/workspace",
@@ -303,9 +304,55 @@ test("WorkspaceAgentActivityService.listSessionSectionPage forwards abort signal
     {
       workspaceId: "ws-1",
       request: {
+        agentTargetId: "claude-target",
         cursor: "10|session-1",
         limit: 5,
         sectionKey: "project:/workspace"
+      },
+      options: { signal: abortController.signal }
+    }
+  ]);
+});
+
+test("WorkspaceAgentActivityService.listSessionSections forwards agent target filter to tuttid", async () => {
+  const abortController = new AbortController();
+  const listCalls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSections: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSections"]
+        >[2]
+      ) => {
+        listCalls.push({ options, request, workspaceId });
+        return {
+          sections: [],
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  await service.listSessionSections({
+    workspaceId: "ws-1",
+    agentTargetId: "claude-target",
+    limitPerSection: 5,
+    signal: abortController.signal
+  });
+
+  assert.deepEqual(listCalls, [
+    {
+      workspaceId: "ws-1",
+      request: {
+        agentTargetId: "claude-target",
+        limitPerSection: 5
       },
       options: { signal: abortController.signal }
     }

@@ -24,6 +24,7 @@ func (s *Service) ListSessionSections(
 	if workspaceID == "" || input.LimitPerSection <= 0 {
 		return SessionSectionsPage{}, ErrInvalidArgument
 	}
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	projects, err := s.currentUserProjects(ctx)
 	if err != nil {
 		return SessionSectionsPage{}, err
@@ -31,13 +32,13 @@ func (s *Service) ListSessionSections(
 	sections := make([]SessionSection, 0, len(projects)+1)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
-		section, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, project.SectionKey, &project, "", input.LimitPerSection)
+		section, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, project.SectionKey, &project, "", input.LimitPerSection, agentTargetID)
 		if err != nil {
 			return SessionSectionsPage{}, err
 		}
 		sections = append(sections, section)
 	}
-	conversations, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sessionSectionKeyConversations, nil, "", input.LimitPerSection)
+	conversations, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sessionSectionKeyConversations, nil, "", input.LimitPerSection, agentTargetID)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
@@ -58,8 +59,9 @@ func (s *Service) ListSessionSectionPage(
 	if workspaceID == "" || sectionKey == "" || input.Limit <= 0 {
 		return SessionSection{}, ErrInvalidArgument
 	}
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
 	if sectionKey == sessionSectionKeyConversations {
-		return s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sectionKey, nil, input.Cursor, input.Limit)
+		return s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sectionKey, nil, input.Cursor, input.Limit, agentTargetID)
 	}
 	projects, err := s.currentUserProjects(ctx)
 	if err != nil {
@@ -68,7 +70,7 @@ func (s *Service) ListSessionSectionPage(
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
 		if project.SectionKey == sectionKey {
-			return s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, sectionKey, &project, input.Cursor, input.Limit)
+			return s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, sectionKey, &project, input.Cursor, input.Limit, agentTargetID)
 		}
 	}
 	return SessionSection{}, ErrInvalidArgument
@@ -100,6 +102,7 @@ func (s *Service) sessionSectionPage(
 	project *userprojectbiz.Project,
 	cursor string,
 	limit int,
+	agentTargetID string,
 ) (SessionSection, error) {
 	reader, ok := s.SessionReader.(SessionSectionReader)
 	if !ok {
@@ -116,6 +119,7 @@ func (s *Service) sessionSectionPage(
 	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
 		WorkspaceID:       workspaceID,
 		SectionKey:        sectionKey,
+		AgentTargetID:     strings.TrimSpace(agentTargetID),
 		CursorUpdatedAtMS: parsedCursor.UpdatedAtUnixMS,
 		CursorSessionID:   parsedCursor.ID,
 		Limit:             limit,

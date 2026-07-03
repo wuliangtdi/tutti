@@ -1739,6 +1739,13 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
       responses:
         "200":
           description: Workspace agent session sections
@@ -1787,6 +1794,13 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
+        - name: agentTargetId
+          in: query
+          required: false
+          description: Optional agent target filter applied before section pagination and hasMore calculation.
+          schema:
+            type: string
+            minLength: 1
       responses:
         "200":
           description: Workspace agent session section page

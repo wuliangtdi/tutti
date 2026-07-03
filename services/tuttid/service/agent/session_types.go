@@ -115,12 +115,14 @@ type SessionListPage struct {
 
 type ListSessionSectionsInput struct {
 	LimitPerSection int
+	AgentTargetID   string
 }
 
 type ListSessionSectionPageInput struct {
-	SectionKey string
-	Cursor     string
-	Limit      int
+	SectionKey    string
+	Cursor        string
+	Limit         int
+	AgentTargetID string
 }
 
 type SessionSectionsPage struct {

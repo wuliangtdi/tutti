@@ -3526,6 +3526,7 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 
 	page, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
 		LimitPerSection: 5,
+		AgentTargetID:   "claude-target",
 	})
 	if err != nil {
 		t.Fatalf("ListSessionSections returned error: %v", err)
@@ -3545,6 +3546,9 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
 		t.Fatalf("conversations section = %#v", page.Sections[1])
 	}
+	if reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader agentTargetID = %q, want claude-target", reader.lastInput.AgentTargetID)
+	}
 }
 
 func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
@@ -3559,9 +3563,10 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 	}}}
 
 	section, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
-		SectionKey: "project:/workspace/project",
-		Cursor:     "4000|middle",
-		Limit:      2,
+		SectionKey:    "project:/workspace/project",
+		Cursor:        "4000|middle",
+		Limit:         2,
+		AgentTargetID: "claude-target",
 	})
 	if err != nil {
 		t.Fatalf("ListSessionSectionPage returned error: %v", err)
@@ -3572,7 +3577,8 @@ func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
 	if reader.lastInput.SectionKey != "project:/workspace/project" ||
 		reader.lastInput.CursorUpdatedAtMS != 4000 ||
 		reader.lastInput.CursorSessionID != "middle" ||
-		reader.lastInput.Limit != 2 {
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
 		t.Fatalf("reader input = %#v", reader.lastInput)
 	}
 }

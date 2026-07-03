@@ -58,6 +58,7 @@ type GeneratedFileList struct {
 type ListSessionSectionInput struct {
 	WorkspaceID       string
 	SectionKey        string
+	AgentTargetID     string
 	CursorUpdatedAtMS int64
 	CursorSessionID   string
 	Limit             int

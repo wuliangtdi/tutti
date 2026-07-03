@@ -488,6 +488,7 @@ export interface TuttidClient {
   listWorkspaceAgentSessionSections(
     workspaceID: string,
     request?: {
+      agentTargetId?: string;
       limitPerSection?: number;
     },
     requestOptions?: TuttidRequestOptions
@@ -496,6 +497,7 @@ export interface TuttidClient {
     workspaceID: string,
     request: {
       sectionKey: string;
+      agentTargetId?: string;
       cursor?: string;
       limit?: number;
     },

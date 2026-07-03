@@ -64,12 +64,14 @@ export interface AgentActivityRuntimeSessionPageResult {
 }
 
 export interface AgentActivityRuntimeListSessionSectionsInput {
+  agentTargetId?: string | null;
   limitPerSection?: number;
   signal?: AbortSignal;
   workspaceId: string;
 }
 
 export interface AgentActivityRuntimeListSessionSectionPageInput {
+  agentTargetId?: string | null;
   cursor?: string;
   limit?: number;
   sectionKey: string;

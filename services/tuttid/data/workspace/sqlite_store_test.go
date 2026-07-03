@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1803,6 +1804,100 @@ func TestSQLiteStoreListSessionSectionPagesByRailSectionKey(t *testing.T) {
 	}
 	if got, want := activitySessionIDs(conversationsPage.Sessions), []string{"chat"}; !slices.Equal(got, want) {
 		t.Fatalf("conversations sessions = %#v, want %#v", got, want)
+	}
+}
+
+func TestSQLiteStoreListSessionSectionFiltersAgentTargetBeforePagination(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+
+	if err := store.Create(ctx, workspacebiz.Summary{
+		ID:   "ws-agent-section-target-filter",
+		Name: "Workspace Agent Section Target Filter",
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{
+		ID:    "project-app",
+		Path:  "/workspace/app",
+		Label: "App",
+	}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+	reports := []agentactivitybiz.SessionStateReport{
+		{
+			WorkspaceID:      "ws-agent-section-target-filter",
+			AgentSessionID:   "claude-1",
+			AgentTargetID:    "claude-target",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "claude-code",
+			Cwd:              "/workspace/app",
+			Status:           "completed",
+			OccurredAtUnixMS: 600,
+		},
+		{
+			WorkspaceID:      "ws-agent-section-target-filter",
+			AgentSessionID:   "claude-2",
+			AgentTargetID:    "claude-target",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "claude-code",
+			Cwd:              "/workspace/app/pkg",
+			Status:           "completed",
+			OccurredAtUnixMS: 500,
+		},
+	}
+	for index := range 4 {
+		reports = append(reports, agentactivitybiz.SessionStateReport{
+			WorkspaceID:      "ws-agent-section-target-filter",
+			AgentSessionID:   fmt.Sprintf("codex-%d", index+1),
+			AgentTargetID:    "codex-target",
+			Origin:           agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider:         "codex",
+			Cwd:              "/workspace/app",
+			Status:           "completed",
+			OccurredAtUnixMS: int64(400 - index),
+		})
+	}
+	for _, input := range reports {
+		if _, err := store.ReportSessionState(ctx, input); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", input.AgentSessionID, err)
+		}
+	}
+
+	allTargetsPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: "ws-agent-section-target-filter",
+		SectionKey:  "project:/workspace/app",
+		Limit:       5,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(all targets) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(all targets) ok=false, want true")
+	}
+	if !allTargetsPage.HasMore {
+		t.Fatalf("all targets hasMore = false, want true")
+	}
+
+	claudePage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID:   "ws-agent-section-target-filter",
+		SectionKey:    "project:/workspace/app",
+		AgentTargetID: "claude-target",
+		Limit:         5,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSection(claude target) error = %v", err)
+	}
+	if !ok {
+		t.Fatal("ListSessionSection(claude target) ok=false, want true")
+	}
+	if got, want := activitySessionIDs(claudePage.Sessions), []string{"claude-2", "claude-1"}; !slices.Equal(got, want) {
+		t.Fatalf("claude sessions = %#v, want %#v", got, want)
+	}
+	if claudePage.HasMore || claudePage.NextCursor != "" {
+		t.Fatalf("claude page state = hasMore %v cursor %q, want false empty", claudePage.HasMore, claudePage.NextCursor)
 	}
 }
 

@@ -685,8 +685,8 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testin
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
-				if input.LimitPerSection != 7 {
-					t.Fatalf("limitPerSection = %d, want 7", input.LimitPerSection)
+				if input.LimitPerSection != 7 || input.AgentTargetID != "claude-target" {
+					t.Fatalf("section input = %#v, want limitPerSection and agentTargetID", input)
 				}
 				return agentservice.SessionSectionsPage{
 					WorkspaceID: workspaceID,
@@ -704,7 +704,7 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testin
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-session-sections?limitPerSection=7",
+		"/v1/workspaces/ws-1/agent-session-sections?limitPerSection=7&agentTargetId=claude-target",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {
@@ -720,8 +720,8 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionPageForwardsCursor(t *te
 				if workspaceID != "ws-1" {
 					t.Fatalf("workspaceID = %q, want ws-1", workspaceID)
 				}
-				if input.SectionKey != "project:/workspace/project" || input.Cursor != "1000|session-1" || input.Limit != 5 {
-					t.Fatalf("page input = %#v, want sectionKey cursor limit", input)
+				if input.SectionKey != "project:/workspace/project" || input.Cursor != "1000|session-1" || input.Limit != 5 || input.AgentTargetID != "claude-target" {
+					t.Fatalf("page input = %#v, want sectionKey cursor limit agentTargetID", input)
 				}
 				return agentservice.SessionSection{
 					Kind:       "project",
@@ -736,7 +736,7 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionSectionPageForwardsCursor(t *te
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-session-sections/page?sectionKey=project:%2Fworkspace%2Fproject&cursor=1000%7Csession-1&limit=5",
+		"/v1/workspaces/ws-1/agent-session-sections/page?sectionKey=project:%2Fworkspace%2Fproject&cursor=1000%7Csession-1&limit=5&agentTargetId=claude-target",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {

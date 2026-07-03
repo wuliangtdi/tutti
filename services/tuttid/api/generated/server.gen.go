@@ -1281,6 +1281,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessionSections(w http.Resp
 		return
 	}
 
+	// ------------- Optional query parameter "agentTargetId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentTargetId", r.URL.Query(), &params.AgentTargetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentTargetId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWorkspaceAgentSessionSections(w, r, workspaceID, params)
 	}))
@@ -1351,6 +1364,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceAgentSessionSectionPage(w http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentTargetId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentTargetId", r.URL.Query(), &params.AgentTargetId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentTargetId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetId", Err: err})
 		}
 		return
 	}

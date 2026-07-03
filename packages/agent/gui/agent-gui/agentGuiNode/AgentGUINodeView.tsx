@@ -3644,6 +3644,46 @@ function stabilizeConversationSectionItems(
   return changed ? stable : previous;
 }
 
+function updateConversationSectionsFromSummaries(
+  previous: ConversationSection[] | null,
+  conversations: readonly AgentGUINodeViewModel["conversations"][number][]
+): ConversationSection[] | null {
+  if (!previous || conversations.length === 0) {
+    return previous;
+  }
+  const summariesById = new Map(
+    conversations.map((conversation) => [conversation.id, conversation])
+  );
+  let changed = false;
+  const nextSections = previous.map((section) => {
+    let sectionChanged = false;
+    const items = section.items.map((item) => {
+      const summary = summariesById.get(item.id);
+      if (!summary) {
+        return item;
+      }
+      const nextItem = {
+        ...summary,
+        project: item.project
+      };
+      if (conversationSummariesRenderEqual(item, nextItem)) {
+        return item;
+      }
+      sectionChanged = true;
+      return nextItem;
+    });
+    if (!sectionChanged) {
+      return section;
+    }
+    changed = true;
+    return {
+      ...section,
+      items
+    };
+  });
+  return changed ? nextSections : (previous as ConversationSection[]);
+}
+
 function projectRuntimeSectionsToConversationSections(input: {
   conversationFilter: Parameters<
     typeof buildAgentGUIConversationSummaries
@@ -4005,6 +4045,10 @@ function useAgentGUIConversationRail({
     !previewMode &&
     Boolean(runtimeListSessionSections) &&
     Boolean(runtimeListSessionSectionPage);
+  const sectionAgentTargetId =
+    conversationFilter.kind === "agentTarget"
+      ? conversationFilter.agentTargetId.trim()
+      : "";
   const userProjectPaths = useMemo(
     () =>
       userProjects
@@ -4034,12 +4078,12 @@ function useAgentGUIConversationRail({
     };
   }, [conversationFilter, provider, userProjectPathKey, workspaceId]);
 
-  const conversationRefreshKey = useMemo(
+  const conversationMembershipKey = useMemo(
     () =>
       conversations
         .map(
           (conversation) =>
-            `${conversation.id}:${conversation.updatedAtUnixMs}:${conversation.status}:${conversation.pinnedAtUnixMs ?? 0}`
+            `${conversation.id}:${conversation.pinnedAtUnixMs ?? 0}`
         )
         .join("|"),
     [conversations]
@@ -4052,6 +4096,7 @@ function useAgentGUIConversationRail({
     const requestSequence = pagingRequestSequenceRef.current;
     const abortController = new AbortController();
     void runtimeListSessionSections({
+      agentTargetId: sectionAgentTargetId || undefined,
       limitPerSection: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
       signal: abortController.signal,
       workspaceId
@@ -4099,14 +4144,24 @@ function useAgentGUIConversationRail({
     };
   }, [
     conversationFilter,
-    conversationRefreshKey,
+    conversationMembershipKey,
     labels,
     provider,
     runtimeListSessionSections,
     runtimeSectionsEnabled,
+    sectionAgentTargetId,
     userProjectPathKey,
     workspaceId
   ]);
+
+  useEffect(() => {
+    if (!runtimeSectionsEnabled) {
+      return;
+    }
+    setRuntimeRailSections((current) =>
+      updateConversationSectionsFromSummaries(current, conversations)
+    );
+  }, [conversations, runtimeSectionsEnabled]);
 
   const loadMoreSectionConversations = useCallback(
     (section: ConversationSection) => {
@@ -4139,6 +4194,7 @@ function useAgentGUIConversationRail({
         return next;
       });
       void runtimeListSessionSectionPage({
+        agentTargetId: sectionAgentTargetId || undefined,
         cursor: cursor || undefined,
         limit: AGENT_GUI_CONVERSATION_RAIL_SECTION_PAGE_SIZE,
         sectionKey: section.id,
@@ -4226,6 +4282,7 @@ function useAgentGUIConversationRail({
       previewMode,
       provider,
       runtimeListSessionSectionPage,
+      sectionAgentTargetId,
       sectionPageStates,
       workspaceId
     ]
@@ -4299,6 +4356,8 @@ const AgentGUIConversationRailPane = memo(
     const conversationItemElementsRef = useRef(
       new Map<string, HTMLDivElement>()
     );
+    const activeConversationScrollCompletedRef = useRef<string | null>(null);
+    const previousActiveConversationIdRef = useRef<string | null>(null);
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
       loadMoreSectionConversations,
@@ -4442,12 +4501,25 @@ const AgentGUIConversationRailPane = memo(
     );
 
     useLayoutEffect(() => {
-      if (!activeConversationId) {
+      const activeId = activeConversationId?.trim() ?? "";
+      if (!activeId) {
+        previousActiveConversationIdRef.current = null;
+        activeConversationScrollCompletedRef.current = null;
         return;
       }
-      conversationItemElementsRef.current
-        .get(activeConversationId)
-        ?.scrollIntoView({ block: "nearest" });
+      if (previousActiveConversationIdRef.current !== activeId) {
+        previousActiveConversationIdRef.current = activeId;
+        activeConversationScrollCompletedRef.current = null;
+      }
+      if (activeConversationScrollCompletedRef.current === activeId) {
+        return;
+      }
+      const activeElement = conversationItemElementsRef.current.get(activeId);
+      if (!activeElement) {
+        return;
+      }
+      activeElement.scrollIntoView({ block: "nearest" });
+      activeConversationScrollCompletedRef.current = activeId;
     }, [activeConversationId, groupedConversationIdentityKey]);
 
     return (

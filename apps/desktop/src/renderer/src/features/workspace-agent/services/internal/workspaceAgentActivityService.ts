@@ -194,6 +194,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       await this.dependencies.tuttidClient.listWorkspaceAgentSessionSections(
         workspaceId,
         {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
           limitPerSection: input.limitPerSection
         },
         {
@@ -225,6 +226,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       await this.dependencies.tuttidClient.listWorkspaceAgentSessionSectionPage(
         workspaceId,
         {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
           cursor: input.cursor?.trim() || undefined,
           limit: input.limit,
           sectionKey: input.sectionKey
