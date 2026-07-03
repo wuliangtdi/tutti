@@ -916,6 +916,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if value(importedSession.Title) != "Plan the import" {
 		t.Fatalf("imported session title = %q, want first user message", value(importedSession.Title))
 	}
+	if importedSession.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("imported Codex agent target id = %q, want %s", importedSession.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 	importedMessages, err := service.ListMessages(ctx, "ws-1", codexAID, ListMessagesInput{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListMessages imported session error = %v", err)
@@ -960,6 +963,13 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if rerun.ImportedSessions != 2 || rerun.ImportedMessages != 3 {
 		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
+	}
+	claudeSession, err := service.Get(ctx, "ws-1", externalImportedSessionID("claude-code", "claude-a"))
+	if err != nil {
+		t.Fatalf("Get imported Claude Code session error = %v", err)
+	}
+	if claudeSession.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("imported Claude Code agent target id = %q, want %s", claudeSession.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
 	finalRerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},
