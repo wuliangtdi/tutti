@@ -2406,7 +2406,7 @@ describe("AgentComposer", () => {
     expect(referenceCluster).toContainElement(
       screen.getByRole("button", { name: "提及上下文" })
     );
-    expect(referenceDropdown).toHaveAttribute("data-slot", "select-trigger");
+    expect(referenceDropdown).toHaveAttribute("role", "combobox");
     expect(referenceDropdown).toHaveClass(
       "agent-gui-node__composer-reference-trigger"
     );
@@ -4210,6 +4210,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     mentionPalette: "提及上下文",
     removeMention: "移除引用",
     addReference: "添加引用",
+    addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
     providerSwitchLabel: "切换 Provider",
     reviewPicker: {

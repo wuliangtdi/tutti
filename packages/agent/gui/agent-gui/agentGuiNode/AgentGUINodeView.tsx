@@ -457,6 +457,7 @@ export interface AgentGUIViewLabels {
   mentionPalette: string;
   removeMention: string;
   addReference: string;
+  addContent: string;
   referenceWorkspaceFiles: string;
   projectLocked: string;
   projectMissingDescription: string;
@@ -2069,6 +2070,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       mentionPalette: labels.mentionPalette,
       removeMention: labels.removeMention,
       addReference: labels.addReference,
+      addContent: labels.addContent,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
@@ -2081,6 +2083,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       interactivePromptLabels,
       labels.defaultModel,
       labels.addReference,
+      labels.addContent,
       labels.deleteQueuedPrompt,
       labels.editQueuedPrompt,
       labels.fileMentionEmpty,

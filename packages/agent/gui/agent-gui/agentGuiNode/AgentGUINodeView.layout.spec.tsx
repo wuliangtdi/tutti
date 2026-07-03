@@ -2454,6 +2454,7 @@ function createLabels(): AgentGUIViewLabels {
     mentionPalette: "mentionPalette",
     removeMention: "removeMention",
     addReference: "addReference",
+    addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     syncPending: "syncPending",
     syncSynced: "syncSynced",

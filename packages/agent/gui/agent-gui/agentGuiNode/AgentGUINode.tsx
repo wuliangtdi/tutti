@@ -1418,6 +1418,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       mentionPalette: t("agentHost.agentGui.mentionPalette"),
       removeMention: t("common.remove"),
       addReference: t("agentHost.agentGui.addReference"),
+      addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]

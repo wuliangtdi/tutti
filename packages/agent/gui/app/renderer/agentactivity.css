@@ -5821,7 +5821,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   --agent-message-locator-dot-size: 6px;
   --agent-message-locator-hit-size: 36px;
   --agent-message-locator-center-offset: 18px;
-  --agent-message-locator-inline-shift: 6px;
+  --agent-message-locator-inline-shift: 4px;
   --agent-message-locator-scrollbar-gap: 8px;
   --agent-message-locator-visible-height: 100vh;
   --agent-message-locator-visible-top-offset: 0px;

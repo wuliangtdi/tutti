@@ -358,6 +358,7 @@ export interface AgentComposerProps {
     mentionPalette: string;
     removeMention: string;
     addReference: string;
+    addContent: string;
     referenceWorkspaceFiles: string;
     providerSwitchLabel: string;
     projectLocked: string;
@@ -3253,58 +3254,74 @@ export function AgentComposer({
             <div className={composerStyles.footerGroup}>
               <div className="inline-flex shrink-0 items-center gap-1">
                 {previewMode ? (
-                  <button
-                    type="button"
-                    aria-label={labels.referenceWorkspaceFiles}
-                    title={labels.referenceWorkspaceFiles}
-                    className={cn(
-                      styles.composerMenuTrigger,
-                      styles.composerReferenceTrigger,
-                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
-                    )}
-                  >
-                    <AddIcon
-                      aria-hidden
-                      className="size-3.5"
-                      data-agent-reference-add-icon="true"
-                    />
-                  </button>
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={labels.referenceWorkspaceFiles}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerReferenceTrigger,
+                            "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
+                          )}
+                        >
+                          <AddIcon
+                            aria-hidden
+                            className="size-3.5"
+                            data-agent-reference-add-icon="true"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 ) : (
-                  <Select
-                    open={false}
-                    value={workspaceReferenceSelectValue}
-                    disabled={
-                      !onRequestWorkspaceReferences ||
-                      composerControlsHardDisabled
-                    }
-                    onOpenChange={(isOpen) => {
-                      if (isOpen) {
-                        void handleWorkspaceReferencePicker();
-                      }
-                    }}
-                    onValueChange={(nextValue) => {
-                      if (nextValue === workspaceReferenceOptionValue) {
-                        void handleWorkspaceReferencePicker();
-                      }
-                    }}
-                  >
-                    <SelectTrigger
-                      size="sm"
-                      aria-label={labels.referenceWorkspaceFiles}
-                      title={labels.referenceWorkspaceFiles}
-                      className={cn(
-                        styles.composerMenuTrigger,
-                        styles.composerReferenceTrigger,
-                        "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
-                      )}
-                    >
-                      <AddIcon
-                        aria-hidden
-                        className="size-3.5"
-                        data-agent-reference-add-icon="true"
-                      />
-                    </SelectTrigger>
-                  </Select>
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <Select
+                        open={false}
+                        value={workspaceReferenceSelectValue}
+                        disabled={
+                          !onRequestWorkspaceReferences ||
+                          composerControlsHardDisabled
+                        }
+                        onOpenChange={(isOpen) => {
+                          if (isOpen) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                        onValueChange={(nextValue) => {
+                          if (nextValue === workspaceReferenceOptionValue) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                      >
+                        <TooltipTrigger asChild>
+                          <SelectTrigger
+                            size="sm"
+                            aria-label={labels.referenceWorkspaceFiles}
+                            className={cn(
+                              styles.composerMenuTrigger,
+                              styles.composerReferenceTrigger,
+                              "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                            )}
+                          >
+                            <AddIcon
+                              aria-hidden
+                              className="size-3.5"
+                              data-agent-reference-add-icon="true"
+                            />
+                          </SelectTrigger>
+                        </TooltipTrigger>
+                      </Select>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 <button
                   type="button"

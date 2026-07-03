@@ -948,6 +948,7 @@ export const en = {
         "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
       mentionPalette: "Mention context",
       addReference: "Add reference",
+      addContent: "Add files and more",
       referenceWorkspaceFiles: "Reference workspace files",
       referencePicker: {
         clearFilter: "Clear filter",

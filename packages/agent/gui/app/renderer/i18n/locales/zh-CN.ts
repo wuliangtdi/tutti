@@ -875,6 +875,7 @@ export const zhCN = {
       fileMentionTabHint: "Tab 切换分类 ｜ ←→ 进入/返回文件夹 ｜ ↑↓ 切换选中",
       mentionPalette: "提及上下文",
       addReference: "添加引用",
+      addContent: "添加文件等内容",
       referenceWorkspaceFiles: "引用空间文件",
       referencePicker: {
         clearFilter: "清除筛选",
