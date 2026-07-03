@@ -3656,18 +3656,27 @@ export function useAgentGUINodeController({
   const normalizedExplicitProviderTargets = useMemo(
     () =>
       normalizeAgentGUIProviderTargets(providerTargets, {
-        fallbackToLocal: false
+        fallbackToLocal: false,
+        includeDisabledPlaceholders: conversationScope === "multi-provider"
       }),
-    [providerTargets]
+    [conversationScope, providerTargets]
   );
   const normalizedProviderTargets = useMemo(
     () =>
       providerTargetsLoading
         ? []
         : providerTargets === undefined
-          ? normalizeAgentGUIProviderTargets(null)
+          ? normalizeAgentGUIProviderTargets(null, {
+              includeDisabledPlaceholders:
+                conversationScope === "multi-provider"
+            })
           : normalizedExplicitProviderTargets,
-    [normalizedExplicitProviderTargets, providerTargets, providerTargetsLoading]
+    [
+      conversationScope,
+      normalizedExplicitProviderTargets,
+      providerTargets,
+      providerTargetsLoading
+    ]
   );
   const shouldFallbackToLocalProviderTargets =
     providerTargets === undefined && !providerTargetsLoading;
@@ -10792,12 +10801,14 @@ export function useAgentGUINodeController({
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
+      selectProvider(input);
     },
     [
       agentActivityRuntime,
       canUseConversationTargetFilter,
       defaultProviderTargetId,
       normalizedProviderTargets,
+      selectProvider,
       shouldFallbackToLocalProviderTargets,
       workspaceId
     ]

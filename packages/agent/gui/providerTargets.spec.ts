@@ -29,6 +29,36 @@ describe("agent gui provider targets", () => {
       "local:gemini",
       "local:openclaw"
     ]);
+    expect(createLocalAgentGUIProviderTarget("nexight")).toMatchObject({
+      label: "Tutti Agent",
+      provider: "nexight"
+    });
+  });
+
+  it("can append disabled placeholder targets for unavailable future providers", () => {
+    const targets = normalizeAgentGUIProviderTargets(
+      [
+        createLocalAgentGUIProviderTarget("codex"),
+        createLocalAgentGUIProviderTarget("claude-code")
+      ],
+      {
+        fallbackToLocal: false,
+        includeDisabledPlaceholders: true
+      }
+    );
+
+    expect(
+      targets.map((target) => ({
+        disabled: target.disabled === true,
+        label: target.label,
+        provider: target.provider
+      }))
+    ).toEqual([
+      { disabled: false, label: "Codex", provider: "codex" },
+      { disabled: false, label: "Claude Code", provider: "claude-code" },
+      { disabled: true, label: "Tutti Agent", provider: "nexight" },
+      { disabled: true, label: "Hermes", provider: "hermes" }
+    ]);
   });
 
   it("treats nullish provider target refs as equal", () => {

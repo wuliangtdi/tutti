@@ -19,7 +19,6 @@ import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-referen
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type { AgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import { MANAGED_AGENT_ICON_URLS } from "../../shared/managedAgentIcons";
-import { agentGuiDockIconUrls } from "../../dockIcons";
 import { AgentActivityHostProvider } from "../../agentActivityHost";
 import type { AgentActivityRuntime } from "../../agentActivityRuntime";
 import { AgentGUINode } from "./AgentGUINode";
@@ -579,10 +578,14 @@ vi.mock("../../i18n/index", () => ({
         reset?: string;
         text?: string;
         label?: string;
+        provider?: string;
         usedTokens?: string;
         totalTokens?: string;
       }
     ) => {
+      if (key === "agentHost.agentGui.empty") {
+        return `What can ${options?.provider ?? "Codex"} help you with?`;
+      }
       if (typeof options?.count === "number") {
         if (key === "agentHost.agentGui.relativeTimeMinutes") {
           return `${options.count} 分钟`;
@@ -1250,7 +1253,7 @@ describe("AgentGUINode", () => {
     );
   });
 
-  it("shows the provider dock icon before the Agent GUI window title", () => {
+  it("does not show a provider icon before the Agent GUI window title", () => {
     const codex = renderAgentGUINode({
       title: "Agent",
       state: {
@@ -1263,7 +1266,7 @@ describe("AgentGUINode", () => {
     const codexIcon = codex.container.querySelector<HTMLImageElement>(
       '[data-agent-gui-window-provider-icon="true"]'
     );
-    expect(codexIcon).toHaveAttribute("src", agentGuiDockIconUrls.codex);
+    expect(codexIcon).toBeNull();
     codex.unmount();
 
     const claude = renderAgentGUINode({
@@ -1278,10 +1281,7 @@ describe("AgentGUINode", () => {
     const claudeIcon = claude.container.querySelector<HTMLImageElement>(
       '[data-agent-gui-window-provider-icon="true"]'
     );
-    expect(claudeIcon).toHaveAttribute(
-      "src",
-      agentGuiDockIconUrls["claude-code"]
-    );
+    expect(claudeIcon).toBeNull();
   });
 
   it("uses the active conversation as the window title when the rail is collapsed", () => {
@@ -1759,7 +1759,7 @@ describe("AgentGUINode", () => {
     renderAgentGUINode();
 
     const emptyHeading = screen.getByRole("heading", {
-      name: "agentHost.agentGui.empty"
+      name: "What can Codex help you with?"
     });
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
@@ -1778,7 +1778,7 @@ describe("AgentGUINode", () => {
     ).toContainElement(emptyHeading);
   });
 
-  it("renders the empty hero icon from the selected provider target", () => {
+  it("renders the empty hero from the selected provider target", () => {
     mockViewModel = createViewModel({
       data: {
         provider: "codex",
@@ -1794,6 +1794,11 @@ describe("AgentGUINode", () => {
 
     renderAgentGUINode();
 
+    expect(
+      screen.getByRole("heading", {
+        name: "What can Claude Code help you with?"
+      })
+    ).toBeTruthy();
     const iconEffect = document.querySelector(
       ".agent-gui-node__empty-hero-icon-effect"
     );
@@ -1819,12 +1824,12 @@ describe("AgentGUINode", () => {
     );
   });
 
-  it("emphasizes the empty hero provider name only for English copy", () => {
+  it("emphasizes the empty hero provider name across localized copy", () => {
     expect(
       shouldEmphasizeEmptyHeroProvider("What can Codex help you with?")
     ).toBe(true);
     expect(shouldEmphasizeEmptyHeroProvider("需要 Codex 帮你做些什么？")).toBe(
-      false
+      true
     );
   });
 

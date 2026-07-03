@@ -388,7 +388,7 @@ describe("useAgentGUINodeController", () => {
     expect(onRememberComposerDefaults).not.toHaveBeenCalled();
   });
 
-  it("selects a rail target by updating only the conversation filter", async () => {
+  it("selects a rail target by updating the filter and empty composer provider", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({
         presences: [],
@@ -460,29 +460,27 @@ describe("useAgentGUINodeController", () => {
         agentTargetId: "local:claude-code"
       });
     });
-    // The home composer chip follows the selected tab (in-memory override)…
+    expect(result.current.viewModel.data.provider).toBe("claude-code");
     expect(result.current.viewModel.selectedProviderTarget.provider).toBe(
       "claude-code"
     );
-    expect(result.current.viewModel.data.provider).toBe("claude-code");
     expect(result.current.viewModel.data.agentTargetId).toBe(
       "local:claude-code"
     );
-    // …without persisting the tab selection into the node target data.
     const currentData = agentGuiData(null, "codex", {
       agentTargetId: "local:codex",
       composerOverrides: { model: "gpt-5" }
     });
-    for (const [updater] of onDataChange.mock.calls) {
-      const next = updater(currentData);
-      expect(next).toMatchObject({
-        provider: "codex",
-        agentTargetId: "local:codex",
-        composerOverrides: { model: "gpt-5" }
-      });
-      expect(next.providerTargetId ?? null).toBeNull();
-      expect(next.providerTargetRef ?? null).toBeNull();
-    }
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) => updater(currentData))
+      .find((candidate) => candidate.provider === "claude-code");
+    expect(nextData).toMatchObject({
+      provider: "claude-code",
+      agentTargetId: "local:claude-code",
+      composerOverrides: null
+    });
+    expect(nextData?.providerTargetId ?? null).toBeNull();
+    expect(nextData?.providerTargetRef ?? null).toBeNull();
   });
 
   it("resolves provider readiness gates from the selected provider target before legacy node provider", () => {
@@ -528,7 +526,7 @@ describe("useAgentGUINodeController", () => {
     );
   });
 
-  it("does not persist provider target ids while filtering rail conversations", async () => {
+  it("selects provider-only rail targets for the empty composer", async () => {
     installAgentHostApi({
       list: vi.fn(async () => ({ presences: [], sessions: [] })),
       listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
@@ -576,7 +574,6 @@ describe("useAgentGUINodeController", () => {
         kind: "all"
       });
     });
-    // The home composer chip follows the selected tab target in memory…
     expect(result.current.viewModel.selectedProviderTarget.targetId).toBe(
       "shared-agent:codex-1"
     );
@@ -584,17 +581,20 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.data.providerTargetId).toBe(
       "shared-agent:codex-1"
     );
-    // …without persisting the provider target ids into the node data.
-    for (const [updater] of onDataChange.mock.calls) {
-      const next = updater(initialData);
-      expect(next).toMatchObject({
-        provider: "claude-code",
-        agentTargetId: "local:claude-code",
-        composerOverrides: { model: "sonnet" }
-      });
-      expect(next.providerTargetId ?? null).toBeNull();
-      expect(next.providerTargetRef ?? null).toBeNull();
-    }
+    const nextData = onDataChange.mock.calls
+      .map(([updater]) => updater(initialData))
+      .find((candidate) => candidate.provider === "codex");
+    expect(nextData).toMatchObject({
+      provider: "codex",
+      agentTargetId: null,
+      providerTargetId: "shared-agent:codex-1",
+      providerTargetRef: {
+        kind: "shared-agent",
+        provider: "codex",
+        sharedAgentId: "codex-1"
+      },
+      composerOverrides: null
+    });
   });
 
   it("syncs the composer target to an activated conversation from another provider", async () => {

@@ -59,6 +59,13 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
+export const agentGuiWorkbenchProviderRailWidthPx = 48;
+const agentGuiWorkbenchUnifiedDockTileProviders = [
+  "codex",
+  "claude-code",
+  "nexight",
+  "hermes"
+] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT =
   "tutti:agent-gui-workbench-conversation-rail-toggle";
@@ -225,9 +232,6 @@ export function createAgentGuiWorkbenchContribution(
           const headerTitle = isUnifiedDockNode
             ? copy.nodeTitle
             : providerTitle;
-          const headerIconUrl = isUnifiedDockNode
-            ? input.unifiedDockIconUrl
-            : agentGuiDockIconUrls[provider];
           const rawWorkbenchState = (externalNodeState ??
             node.data.runtimeNodeState) as
             | Partial<AgentGuiWorkbenchNodeState>
@@ -292,9 +296,11 @@ export function createAgentGuiWorkbenchContribution(
             conversationTitle,
             conversationRailWidthPx,
             displayMode,
-            iconUrl: headerIconUrl,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
+            providerRailWidthPx: isUnifiedDockNode
+              ? agentGuiWorkbenchProviderRailWidthPx
+              : 0,
             title: headerTitle,
             windowActions: {
               close: windowActions.close,
@@ -508,13 +514,15 @@ export function buildAgentGuiDockEntries(
   if (input.layout === "unified") {
     const launchPayload = resolveAgentGuiUnifiedDockLaunchPayload(input);
     const provider = launchPayload.provider;
+    const unifiedTileIconUrls = resolveAgentGuiUnifiedDockTileIconUrls(
+      input.dockIconUrls
+    );
     return [
       createAgentGuiWorkbenchDockEntry({
         aggregateProviders: agentGuiWorkbenchDefaultDockProviders,
-        iconUrl:
-          input.unifiedDockIconUrl ??
-          input.dockIconUrls?.[provider] ??
-          agentGuiDockIconUrls[provider],
+        icon: createAgentGuiWorkbenchLaunchpadStyleDockIcon({
+          tileIconUrls: unifiedTileIconUrls
+        }),
         label: input.label ?? agentGuiWorkbenchDefaultCopy.nodeTitle,
         launchPayload,
         layout: "unified",
@@ -531,7 +539,11 @@ export function buildAgentGuiDockEntries(
   return agentGuiWorkbenchProviders.map((provider, index) =>
     createAgentGuiWorkbenchDockEntry({
       label: agentGuiWorkbenchProviderLabels[provider],
-      iconUrl: input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider],
+      icon: createElement("img", {
+        alt: "",
+        draggable: false,
+        src: input.dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider]
+      }),
       layout: "legacySplit",
       order: index,
       provider,
@@ -633,7 +645,7 @@ export function resolveAgentGuiWorkbenchContributionCopy(
 
 function createAgentGuiWorkbenchDockEntry(input: {
   aggregateProviders?: readonly AgentGuiWorkbenchProvider[];
-  iconUrl?: string;
+  icon: ReactNode;
   label: string;
   launchPayload?: Record<string, unknown>;
   layout: AgentGuiWorkbenchDockLayout;
@@ -645,11 +657,7 @@ function createAgentGuiWorkbenchDockEntry(input: {
   visibility: WorkbenchHostDockEntry["visibility"];
 }): WorkbenchHostDockEntry {
   return {
-    icon: createElement("img", {
-      alt: "",
-      draggable: false,
-      src: input.iconUrl
-    }),
+    icon: input.icon,
     iconSize: "large",
     id: agentGuiWorkbenchDockEntryIdForLayout({
       dockLayout: input.layout,
@@ -690,6 +698,40 @@ function createAgentGuiWorkbenchDockEntry(input: {
     typeId: agentGuiWorkbenchTypeId,
     visibility: input.visibility
   };
+}
+
+function resolveAgentGuiUnifiedDockTileIconUrls(
+  dockIconUrls: Partial<Record<AgentGuiWorkbenchProvider, string>> | undefined
+): readonly string[] {
+  return agentGuiWorkbenchUnifiedDockTileProviders.map(
+    (provider) => dockIconUrls?.[provider] ?? agentGuiDockIconUrls[provider]
+  );
+}
+
+function createAgentGuiWorkbenchLaunchpadStyleDockIcon(input: {
+  tileIconUrls: readonly string[];
+}): ReactNode {
+  return createElement(
+    "span",
+    {
+      "aria-hidden": "true",
+      className: "agent-gui-workbench-dock-icon"
+    },
+    input.tileIconUrls.map((src, index) =>
+      createElement(
+        "span",
+        {
+          className: "agent-gui-workbench-dock-icon__tile",
+          key: `${src}:${index}`
+        },
+        createElement("img", {
+          alt: "",
+          draggable: false,
+          src
+        })
+      )
+    )
+  );
 }
 
 function resolveAgentGuiWorkbenchProviderFromNode(

@@ -42,8 +42,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
-  SelectValue
+  SelectTrigger
 } from "@tutti-os/ui-system";
 import { ListChecks, Target, X } from "lucide-react";
 import {
@@ -156,12 +155,12 @@ import atLinedIconUrl from "../../app/renderer/assets/icons/@-lined-14px.svg";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
-import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
 import {
   MANAGED_AGENT_ICON_FALLBACK_URL,
   MANAGED_AGENT_ICON_URLS
 } from "../../shared/managedAgentIcons";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
+import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
 
 export { formatSlashStatusTokenCount };
 
@@ -192,9 +191,6 @@ export interface AgentComposerProps {
   workspacePath?: string | null;
   currentUserId?: string | null;
   provider: string;
-  selectedProviderTarget?: AgentGUIProviderTarget | null;
-  providerTargets?: readonly AgentGUIProviderTarget[];
-  providerSelectReadonly?: boolean;
   slashStatus?: AgentComposerSlashStatus | null;
   usage?: AgentComposerUsage | null;
   draftContent: AgentComposerDraft;
@@ -219,6 +215,13 @@ export interface AgentComposerProps {
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  selectedProviderTarget?: AgentGUIProviderTarget | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  providerSelectReadonly?: boolean;
+  onProviderSelect?: (input: {
+    provider: AgentGUIProvider;
+    providerTargetId?: string | null;
+  }) => void;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
@@ -235,6 +238,7 @@ export interface AgentComposerProps {
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
+  providerSelectLabel?: string;
   labels: {
     send: string;
     modelLabel: string;
@@ -407,10 +411,6 @@ export interface AgentComposerProps {
     browserUse?: boolean;
     computerUse?: boolean;
     permissionModeId?: string | null;
-  }) => void;
-  onProviderSelect?: (input: {
-    provider: AgentGUIProvider;
-    providerTargetId?: string | null;
   }) => void;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   onCapabilitySettingsRequest?: (
@@ -764,6 +764,19 @@ const MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR = [
   "#agent-gui-conversation-rail-resize"
 ].join(",");
 
+function resolveComposerProviderIconUrl(provider: AgentGUIProvider): string {
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizeManagedAgentProvider(provider)] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
+}
+
+function resolveComposerProviderTargetIconUrl(
+  target: AgentGUIProviderTarget
+): string {
+  return target.iconUrl ?? resolveComposerProviderIconUrl(target.provider);
+}
+
 interface MentionPaletteFrame {
   height: number;
   left: number;
@@ -812,30 +825,11 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
-function resolveComposerProviderIconUrl(provider: string): string {
-  const normalizedProvider = normalizeManagedAgentProvider(provider);
-  return (
-    MANAGED_AGENT_ICON_URLS[normalizedProvider] ??
-    MANAGED_AGENT_ICON_FALLBACK_URL
-  );
-}
-
-function resolveComposerProviderTargetIconUrl(
-  target: AgentGUIProviderTarget
-): string {
-  return (
-    target.iconUrl?.trim() || resolveComposerProviderIconUrl(target.provider)
-  );
-}
-
 export function AgentComposer({
   workspaceId,
   workspacePath,
   currentUserId,
   provider,
-  selectedProviderTarget = null,
-  providerTargets = [],
-  providerSelectReadonly = false,
   slashStatus = null,
   usage = null,
   draftContent,
@@ -852,6 +846,10 @@ export function AgentComposer({
   queuedPrompts,
   drainingQueuedPromptId,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  selectedProviderTarget = null,
+  providerTargets = [],
+  providerSelectReadonly = false,
+  onProviderSelect,
   canQueueWhileBusy,
   showStopButton,
   activePrompt,
@@ -868,12 +866,12 @@ export function AgentComposer({
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
+  providerSelectLabel = "",
   labels,
   workspaceUserProjectI18n,
   onDraftContentChange,
   onProjectPathChange = () => {},
   onSettingsChange,
-  onProviderSelect,
   capabilityMenuState,
   onSubmit,
   onSubmitGuidance,
@@ -2218,23 +2216,6 @@ export function AgentComposer({
     }
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
-  const providerSwitchTargets = useMemo(
-    () => providerTargets.filter((target) => target.disabled !== true),
-    [providerTargets]
-  );
-  const showProviderSelect = providerSwitchTargets.length > 1;
-  const selectedProviderTargetId =
-    selectedProviderTarget?.targetId ?? `local:${provider}`;
-  const selectedProviderSwitchTarget =
-    providerSwitchTargets.find(
-      (target) => target.targetId === selectedProviderTargetId
-    ) ??
-    selectedProviderTarget ??
-    providerSwitchTargets.find((target) => target.provider === provider) ??
-    null;
-  const selectedProviderLabel = selectedProviderSwitchTarget?.label ?? provider;
-  const providerSelectDisabled =
-    previewMode || providerSelectReadonly || !onProviderSelect;
 
   const applyDroppedFileReferences = useCallback(
     async (files: readonly File[]) => {
@@ -2375,12 +2356,41 @@ export function AgentComposer({
   const composerClassName = isHeroLayout
     ? styles.composerHero
     : styles.composer;
+  const providerSwitchTargets = useMemo(
+    () => providerTargets.filter(Boolean),
+    [providerTargets]
+  );
+  const selectedProviderTargetId =
+    selectedProviderTarget?.targetId ?? `local:${provider}`;
+  const selectedProviderSwitchTarget =
+    providerSwitchTargets.find(
+      (target) => target.targetId === selectedProviderTargetId
+    ) ??
+    providerSwitchTargets.find((target) => target.provider === provider) ??
+    selectedProviderTarget;
+  const providerMenuTargets =
+    selectedProviderSwitchTarget &&
+    !providerSwitchTargets.some(
+      (target) => target.targetId === selectedProviderSwitchTarget.targetId
+    )
+      ? [selectedProviderSwitchTarget, ...providerSwitchTargets]
+      : providerSwitchTargets;
+  const selectedProviderLabel =
+    selectedProviderSwitchTarget?.label ??
+    selectedProviderTarget?.label ??
+    provider;
   const inputShellClassName = cn(
     styles.composerInputShell,
     isHeroLayout && styles.composerInputShellHero
   );
   const inputDisabled =
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const providerSelectDisabled =
+    providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
+  const showProviderSelect =
+    !isHeroLayout &&
+    selectedProviderSwitchTarget !== null &&
+    providerMenuTargets.length > 0;
   const handleMentionPaletteButton = useCallback((): void => {
     if (composerControlsHardDisabled || inputDisabled) {
       return;
@@ -3393,13 +3403,13 @@ export function AgentComposer({
               </div>
               {showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
-                  value={selectedProviderTargetId}
+                  value={selectedProviderSwitchTarget.targetId}
                   disabled={providerSelectDisabled}
                   onValueChange={(nextTargetId) => {
-                    const target = providerSwitchTargets.find(
+                    const target = providerMenuTargets.find(
                       (candidate) => candidate.targetId === nextTargetId
                     );
-                    if (!target) {
+                    if (!target || target.disabled === true) {
                       return;
                     }
                     onProviderSelect?.({
@@ -3410,29 +3420,40 @@ export function AgentComposer({
                 >
                   <SelectTrigger
                     size="sm"
-                    aria-label={labels.providerSwitchLabel}
-                    title={labels.providerSwitchLabel}
+                    aria-label={providerSelectLabel}
+                    title={providerSelectLabel}
                     className={cn(
                       styles.composerMenuTrigger,
                       styles.composerProviderSelect,
-                      "max-w-[160px] text-[var(--agent-gui-text-secondary)]"
+                      "w-auto max-w-[180px]"
                     )}
                   >
-                    <span className="min-w-0 truncate">
-                      <SelectValue placeholder={selectedProviderLabel} />
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        className="size-4 shrink-0 rounded-[4px]"
+                        src={resolveComposerProviderTargetIconUrl(
+                          selectedProviderSwitchTarget
+                        )}
+                      />
+                      <span className="min-w-0 truncate">
+                        {selectedProviderLabel}
+                      </span>
                     </span>
                   </SelectTrigger>
                   <SelectContent
                     align="start"
                     className={cn(styles.composerMenuContent, "min-w-[190px]")}
                   >
-                    {providerSwitchTargets.map((target) => (
+                    {providerMenuTargets.map((target) => (
                       <SelectItem
                         key={`${target.provider}:${target.targetId}`}
                         value={target.targetId}
                         className={cn(styles.composerMenuItem, "gap-2")}
+                        disabled={target.disabled === true}
                       >
-                        <span className="flex min-w-0 items-center gap-2">
+                        <span className="flex min-w-0 items-center gap-1.5">
                           <img
                             alt=""
                             aria-hidden="true"

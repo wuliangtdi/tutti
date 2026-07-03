@@ -87,7 +87,6 @@ import type {
   AgentComposerGitBranchLoader,
   AgentComposerSlashStatusLimit
 } from "./AgentComposer";
-import { agentGuiDockIconUrls } from "../../dockIcons";
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -1074,7 +1073,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
       empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      emptyForProvider: (provider: string) =>
+        t("agentHost.agentGui.empty", {
+          provider: resolveAgentGUIProviderDisplayLabel(
+            provider,
+            fallbackAgentTitle
+          )
+        }),
       emptyProvider: displayProviderLabel,
+      emptyProviderForProvider: (provider: string) =>
+        resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
@@ -1445,9 +1453,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     (isConversationRailCollapsed ? activeConversationWindowTitle : null) ||
     windowAgentTitle ||
     title;
-  const windowTitleIconUrl =
-    agentGuiDockIconUrls[activeProvider as keyof typeof agentGuiDockIconUrls] ??
-    null;
   const activeProbeProvider = activeProvider as AgentProvider;
   const railStatusProvider = useMemo(
     () =>
@@ -1595,18 +1600,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       nodeId={nodeId}
       kind="agentGui"
       title={windowTitle}
-      titleIcon={
-        windowTitleIconUrl ? (
-          <img
-            src={windowTitleIconUrl}
-            alt=""
-            draggable={false}
-            aria-hidden="true"
-            className="size-4 rounded-[4px]"
-            data-agent-gui-window-provider-icon="true"
-          />
-        ) : null
-      }
+      titleIcon={null}
       position={position}
       width={width}
       height={height}

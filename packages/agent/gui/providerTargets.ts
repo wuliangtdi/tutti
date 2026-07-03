@@ -9,7 +9,7 @@ const agentGUIProviderTargetFallbackLabels: Record<AgentGUIProvider, string> = {
   codex: "Codex",
   gemini: "Gemini",
   hermes: "Hermes",
-  nexight: "Nexight",
+  nexight: "Tutti Agent",
   openclaw: "OpenClaw"
 };
 
@@ -20,6 +20,11 @@ export const agentGUIDefaultTargetProviders = [
   "hermes",
   "gemini",
   "openclaw"
+] as const satisfies readonly AgentGUIProvider[];
+
+const agentGUIDisabledPlaceholderProviders = [
+  "nexight",
+  "hermes"
 ] as const satisfies readonly AgentGUIProvider[];
 
 export function createLocalAgentGUIProviderTarget(
@@ -36,6 +41,15 @@ export function createLocalAgentGUIProviderTarget(
       provider
     },
     label: agentGUIProviderTargetFallbackLabels[provider] ?? provider
+  };
+}
+
+export function createDisabledPlaceholderAgentGUIProviderTarget(
+  provider: AgentGUIProvider
+): AgentGUIProviderTarget {
+  return {
+    ...createLocalAgentGUIProviderTarget(provider),
+    disabled: true
   };
 }
 
@@ -68,12 +82,18 @@ export function localAgentGUIAgentTargetId(
 
 export function normalizeAgentGUIProviderTargets(
   targets: readonly AgentGUIProviderTarget[] | null | undefined,
-  options?: { fallbackToLocal?: boolean }
+  options?: {
+    fallbackToLocal?: boolean;
+    includeDisabledPlaceholders?: boolean;
+  }
 ): AgentGUIProviderTarget[] {
   const fallbackToLocal = options?.fallbackToLocal !== false;
+  const includeDisabledPlaceholders =
+    options?.includeDisabledPlaceholders === true;
   const source = targets && targets.length > 0 ? targets : [];
   const normalizedTargets: AgentGUIProviderTarget[] = [];
   const seenTargetKeys = new Set<string>();
+  const seenProviders = new Set<AgentGUIProvider>();
   for (const target of source) {
     const normalized = normalizeAgentGUIProviderTarget(target);
     if (!normalized) {
@@ -84,7 +104,18 @@ export function normalizeAgentGUIProviderTargets(
       continue;
     }
     seenTargetKeys.add(dedupeKey);
+    seenProviders.add(normalized.provider);
     normalizedTargets.push(normalized);
+  }
+  if (includeDisabledPlaceholders && normalizedTargets.length > 0) {
+    for (const provider of agentGUIDisabledPlaceholderProviders) {
+      if (seenProviders.has(provider)) {
+        continue;
+      }
+      normalizedTargets.push(
+        createDisabledPlaceholderAgentGUIProviderTarget(provider)
+      );
+    }
   }
   return normalizedTargets.length > 0 || !fallbackToLocal
     ? normalizedTargets
