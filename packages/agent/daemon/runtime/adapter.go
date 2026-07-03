@@ -102,6 +102,14 @@ type PromptContentAdapter interface {
 	ValidatePromptContent(Session, []PromptContentBlock) error
 }
 
+// GoalControlAdapter executes goal control commands (/goal paused|active|clear)
+// as thread-level operations without opening a turn, so they keep working
+// while another turn holds the session's turn slot. handled reports whether
+// the prompt was a goal command this adapter executed.
+type GoalControlAdapter interface {
+	ExecGoalControl(ctx context.Context, session Session, content []PromptContentBlock, displayPrompt string, turnID string) (events []activityshared.Event, handled bool, err error)
+}
+
 type PermissionModeAdapter interface {
 	ApplyPermissionMode(context.Context, Session) error
 }

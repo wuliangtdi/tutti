@@ -588,11 +588,22 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
-	session, err = c.beginTurn(session, turnID, cancel)
+	// beginTurn returns the zero session on failure; keep the real session
+	// for the goal-control fallback below.
+	startedSession, err := c.beginTurn(session, turnID, cancel)
 	if err != nil {
 		cancel()
+		if errors.Is(err, ErrSessionActiveTurn) {
+			// Goal control (/goal paused|active|clear) is a thread-level
+			// operation like Cancel: it must act immediately while a turn is
+			// running, exactly when the single-turn gate would reject it.
+			if result, handled, controlErr := c.execGoalControlWithActiveTurn(ctx, session, adapter, content, displayPrompt, turnID, metadata); handled {
+				return result, controlErr
+			}
+		}
 		return ExecResult{}, err
 	}
+	session = startedSession
 	submitEvents := submittedTurnActivityEvents(session, turnID)
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
@@ -611,6 +622,65 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		TurnLifecycle:      *session.TurnLifecycle,
 		SubmitAvailability: *session.SubmitAvailability,
 	}, nil
+}
+
+// execGoalControlWithActiveTurn runs a /goal control command while another
+// turn holds the session's turn slot. The adapter executes it against the
+// thread without opening a turn; the resulting events (steered user message,
+// goal update, notice) are applied and published through the session-event
+// path, and the running turn keeps owning the session lifecycle.
+func (c *Controller) execGoalControlWithActiveTurn(
+	ctx context.Context,
+	session Session,
+	adapter Adapter,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	metadata map[string]any,
+) (ExecResult, bool, error) {
+	goalAdapter, ok := adapter.(GoalControlAdapter)
+	if !ok {
+		return ExecResult{}, false, nil
+	}
+	events, handled, err := goalAdapter.ExecGoalControl(ctx, session, content, displayPrompt, turnID)
+	slog.Info("agent session goal control with active turn",
+		"event", "agent_session.goal_control.with_active_turn",
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"handled", handled,
+		"event_count", len(events),
+		"error", fmt.Sprintf("%v", err),
+	)
+	if !handled {
+		return ExecResult{}, false, nil
+	}
+	if err != nil {
+		logAgentSubmitTrace("runtime.exec.goal_control_failed", session, turnID, metadata, map[string]any{
+			"error": err.Error(),
+		})
+		return ExecResult{}, true, err
+	}
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	logAgentSubmitTrace("runtime.exec.goal_control", session, turnID, metadata, map[string]any{
+		"activity_event_count": len(events),
+	})
+	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
+		session = refreshed
+	}
+	result := ExecResult{
+		AgentSessionID: session.AgentSessionID,
+		Status:         ExecStatusStarted,
+		TurnID:         turnID,
+		Accepted:       true,
+		SessionStatus:  session.Status,
+	}
+	if session.TurnLifecycle != nil {
+		result.TurnLifecycle = *session.TurnLifecycle
+	}
+	if session.SubmitAvailability != nil {
+		result.SubmitAvailability = *session.SubmitAvailability
+	}
+	return result, true, nil
 }
 
 func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Session, adapter Adapter) error {

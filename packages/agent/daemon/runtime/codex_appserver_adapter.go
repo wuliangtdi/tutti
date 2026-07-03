@@ -1573,6 +1573,32 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	return events, nil
 }
 
+// ExecGoalControl executes a /goal control command as a thread-level
+// operation without opening a turn. The controller routes here when another
+// turn already holds the session's turn slot, so the goal banner's
+// pause/resume/delete act immediately instead of being rejected by the
+// single-turn gate. handled is false when the prompt is not a /goal command.
+func (a *CodexAppServerAdapter) ExecGoalControl(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+) ([]activityshared.Event, bool, error) {
+	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
+	command, args := splitSlashCommand(visibleText)
+	if command != appServerSlashGoal {
+		return nil, false, nil
+	}
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, true, ErrSessionDisconnected
+	}
+	session.ProviderSessionID = appSession.threadID
+	events, err := a.execGoalControlCommand(ctx, appSession, session, args, turnID, content, explicitDisplayPrompt, visibleText, nil)
+	return events, true, err
+}
+
 // execGoalControlCommand executes /goal while another turn is running. The
 // goal RPC runs against the thread (not the turn); the submission is recorded
 // like a steered message so the controller closes this Exec's turn record

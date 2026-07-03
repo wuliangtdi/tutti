@@ -2696,6 +2696,74 @@ func TestCodexAppServerAdapterMidTurnGoalClearDoesNotSteer(t *testing.T) {
 	}
 }
 
+// Goal control from the GUI must keep working while another turn holds the
+// controller's turn slot: the single-turn gate falls back to the adapter's
+// thread-level goal control instead of rejecting with "already has an
+// active turn".
+func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.holdTurn = true
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("long task"),
+	}); err != nil {
+		t.Fatalf("Exec long task: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
+	})
+
+	// Goal control succeeds while the turn slot is occupied…
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("/goal clear"),
+	})
+	if err != nil {
+		t.Fatalf("Exec /goal clear: %v", err)
+	}
+	if !result.Accepted {
+		t.Fatalf("goal control result = %#v, want accepted", result)
+	}
+	if goal := adapter.sessionGoal(agentSessionID); len(goal) != 0 {
+		t.Fatalf("goal not cleared: %#v", goal)
+	}
+	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
+		t.Fatalf("running turn must survive goal control")
+	}
+
+	// …while ordinary prompts still hit the single-turn gate.
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("another prompt"),
+	}); !errors.Is(err, ErrSessionActiveTurn) {
+		t.Fatalf("mid-turn plain prompt error = %v, want ErrSessionActiveTurn", err)
+	}
+
+	transport.conn.completePendingTurn()
+}
+
 // thread/goal/updated notifications must reach the GUI as session events even
 // while no turn is running (the banner refreshes off this signal).
 func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing.T) {
