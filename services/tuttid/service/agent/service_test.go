@@ -710,6 +710,68 @@ func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing
 	}
 }
 
+func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-model.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-model", "cwd": project},
+		},
+		map[string]any{
+			"timestamp": now,
+			"type":      "turn_context",
+			"payload":   map[string]any{"turn_id": "turn-1", "cwd": project, "model": "gpt-5.4", "effort": "xhigh"},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-model-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Use my usual settings"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-model"))
+	if err != nil {
+		t.Fatalf("Get imported Codex session error = %v", err)
+	}
+	if session.Settings.Model != "gpt-5.4" {
+		t.Fatalf("settings.Model = %q, want imported turn_context model", session.Settings.Model)
+	}
+	if session.Settings.ReasoningEffort != "xhigh" {
+		t.Fatalf("settings.ReasoningEffort = %q, want imported turn_context effort", session.Settings.ReasoningEffort)
+	}
+}
+
 func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)

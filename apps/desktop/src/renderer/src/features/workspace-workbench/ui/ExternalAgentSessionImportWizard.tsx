@@ -241,9 +241,26 @@ export function ExternalAgentSessionImportWizard({
 
   const showSelectStep = step === "select" && !result && !error && !loading;
 
+  // Scanning is quick, but importing can run for a while against a large
+  // history. Dismissing the dialog does not cancel the in-flight request (the
+  // import keeps running to completion on the backend either way), but an
+  // accidental outside click/Escape here reads as "the import stopped" and
+  // hides the progress/result UI for no reason. Block dismissal while a
+  // request is in flight so the only way out is the explicit Cancel/Back
+  // control (disabled while importing) or letting it finish.
+  const blockDismissWhileBusy = (event: { preventDefault: () => void }) => {
+    if (loading || importing) {
+      event.preventDefault();
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[640px]">
+      <DialogContent
+        className="flex max-h-[min(640px,calc(100vh-32px))] flex-col gap-0 overflow-hidden bg-[var(--background-fronted)] p-0 sm:max-w-[640px]"
+        onEscapeKeyDown={blockDismissWhileBusy}
+        onInteractOutside={blockDismissWhileBusy}
+      >
         <DialogHeader className="shrink-0 border-b border-[var(--border-1)] px-5 py-4">
           <DialogTitle>
             {step === "select"

@@ -27,6 +27,18 @@ func parseCodexJSONL(path string, reader io.Reader) (externalImportedSession, bo
 				stringField(payload, "session_id"),
 			)
 			session.Cwd = firstNonEmptyString(session.Cwd, stringField(raw, "cwd"), stringField(payload, "cwd"))
+		case "turn_context":
+			// turn_context records the model/effort the local Codex CLI was
+			// actually configured with for that turn. Later turns overwrite
+			// earlier ones so the imported session reflects the most recent
+			// configuration the user had in place.
+			payload := mapField(raw, "payload")
+			if model := stringField(payload, "model"); model != "" {
+				session.Model = model
+			}
+			if effort := stringField(payload, "effort"); effort != "" {
+				session.ReasoningEffort = effort
+			}
 		case "response_item":
 			payload := mapField(raw, "payload")
 			message := codexMessageFromPayload(payload, index, timestamp)
@@ -194,6 +206,14 @@ func parseClaudeCodeJSONL(path string, reader io.Reader) (externalImportedSessio
 		content := messageMap["content"]
 		if role == "user" && isPureExternalToolResult(content) {
 			role = "tool"
+		}
+		// Assistant transcript lines carry the model the local Claude Code CLI
+		// actually used for that turn; keep the most recent one so the
+		// imported session preserves the user's local model configuration.
+		if role == "assistant" {
+			if model := stringField(messageMap, "model"); model != "" {
+				session.Model = model
+			}
 		}
 		message := externalImportedMessage{
 			RawID:            firstNonEmptyString(stringField(raw, "uuid"), stringField(messageMap, "id"), strconv.Itoa(index)),

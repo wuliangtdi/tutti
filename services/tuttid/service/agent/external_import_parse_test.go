@@ -49,6 +49,62 @@ func TestParseCodexJSONLUsesFirstUserEventAsTitle(t *testing.T) {
 	}
 }
 
+func TestParseCodexJSONLCapturesLatestModelAndEffortFromTurnContext(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseCodexJSONL(
+		filepath.Join(cwd, "rollout.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"type":      "session_meta",
+				"payload":   map[string]any{"id": "codex-model", "cwd": cwd},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"type":      "turn_context",
+				"payload": map[string]any{
+					"turn_id": "turn-1",
+					"cwd":     cwd,
+					"model":   "gpt-5.3",
+					"effort":  "medium",
+				},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:02Z",
+				"type":      "event_msg",
+				"payload": map[string]any{
+					"type":    "user_message",
+					"message": "Tell me the plan",
+				},
+			},
+			// A later turn switches the local CLI to a higher-effort model;
+			// the imported session should reflect this most recent setting.
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:03Z",
+				"type":      "turn_context",
+				"payload": map[string]any{
+					"turn_id": "turn-2",
+					"cwd":     cwd,
+					"model":   "gpt-5.4",
+					"effort":  "xhigh",
+				},
+			},
+		)),
+	)
+	if err != nil {
+		t.Fatalf("parseCodexJSONL error = %v", err)
+	}
+	if !ok {
+		t.Fatal("parseCodexJSONL ok = false")
+	}
+	if session.Model != "gpt-5.4" {
+		t.Fatalf("model = %q, want latest turn_context model", session.Model)
+	}
+	if session.ReasoningEffort != "xhigh" {
+		t.Fatalf("reasoningEffort = %q, want latest turn_context effort", session.ReasoningEffort)
+	}
+}
+
 func TestParseCodexJSONLPreservesToolCallStructure(t *testing.T) {
 	cwd := t.TempDir()
 	session, ok, err := parseCodexJSONL(
@@ -302,6 +358,53 @@ func TestParseClaudeCodeJSONLPrefersCustomTitle(t *testing.T) {
 	}
 	if session.Title != "Summarize user persona prompts" {
 		t.Fatalf("title = %q, want custom-title", session.Title)
+	}
+}
+
+func TestParseClaudeCodeJSONLCapturesLatestAssistantModel(t *testing.T) {
+	cwd := t.TempDir()
+	session, ok, err := parseClaudeCodeJSONL(
+		filepath.Join(cwd, "claude.jsonl"),
+		strings.NewReader(testAgentJSONL(t,
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:00Z",
+				"sessionId": "claude-model",
+				"cwd":       cwd,
+				"uuid":      "claude-1",
+				"message":   map[string]any{"role": "user", "content": []any{map[string]any{"type": "text", "text": "Hello"}}},
+			},
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:01Z",
+				"sessionId": "claude-model",
+				"cwd":       cwd,
+				"uuid":      "claude-2",
+				"message": map[string]any{
+					"role":    "assistant",
+					"model":   "claude-sonnet-4-5",
+					"content": []any{map[string]any{"type": "text", "text": "Hi there"}},
+				},
+			},
+			// A later assistant turn switches models mid conversation; the
+			// imported session should reflect the most recent one so
+			// continuing the chat reuses the user's latest local setting.
+			map[string]any{
+				"timestamp": "2026-06-18T00:00:02Z",
+				"sessionId": "claude-model",
+				"cwd":       cwd,
+				"uuid":      "claude-3",
+				"message": map[string]any{
+					"role":    "assistant",
+					"model":   "claude-opus-4-8",
+					"content": []any{map[string]any{"type": "text", "text": "Follow up"}},
+				},
+			},
+		)),
+	)
+	if err != nil || !ok {
+		t.Fatalf("parseClaudeCodeJSONL ok=%v err=%v", ok, err)
+	}
+	if session.Model != "claude-opus-4-8" {
+		t.Fatalf("model = %q, want latest assistant message model", session.Model)
 	}
 }
 
