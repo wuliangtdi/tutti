@@ -1355,6 +1355,57 @@ describe("agent GUI workbench contribution copy", () => {
     });
   });
 
+  it("does not reserve provider rail header space after switching back to separate icons", () => {
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      dockLayout: "legacySplit",
+      renderBody: () => null,
+      workspaceId: "workspace-1"
+    });
+
+    render(
+      contribution.nodes?.[0]?.renderHeader?.({
+        activation: null,
+        defaultActions: null,
+        displayMode: "floating",
+        dragHandleProps: {},
+        externalNodeState: {
+          conversationRailCollapsed: false,
+          conversationRailWidthPx: 360,
+          lastActiveAgentSessionId: null
+        },
+        externalWorkspaceState: null,
+        instanceId: "agent-gui:codex:panel:test-1",
+        instanceKey: null,
+        isFocused: true,
+        node: {
+          data: {
+            dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+            runtimeNodeState: null
+          },
+          displayMode: "floating",
+          frame: { height: 560, width: 1040, x: 0, y: 0 },
+          id: "agent-gui-node-1",
+          title: "Agent"
+        },
+        surfaceSize: { height: 800, width: 1200 },
+        windowActions: {
+          applyQuickLayout: () => {},
+          close: () => {},
+          focus: () => {},
+          minimize: () => {},
+          resize: () => {},
+          toggleDisplayMode: () => {}
+        }
+      } as never) ?? null
+    );
+
+    expect(
+      document.querySelector('[data-agent-gui-workbench-header="true"]')
+    ).toHaveStyle({
+      "--agent-gui-workbench-header-rail-width": "360px"
+    });
+  });
+
   it("caps workbench header conversation titles with 32px right padding", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 

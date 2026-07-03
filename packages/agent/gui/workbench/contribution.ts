@@ -59,7 +59,7 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.7;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };
-export const agentGuiWorkbenchProviderRailWidthPx = 48;
+export const agentGuiWorkbenchProviderRailWidthPx = 52;
 const agentGuiWorkbenchUnifiedDockTileProviders = [
   "codex",
   "claude-code",
@@ -298,9 +298,10 @@ export function createAgentGuiWorkbenchContribution(
             displayMode,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
-            providerRailWidthPx: isUnifiedDockNode
-              ? agentGuiWorkbenchProviderRailWidthPx
-              : 0,
+            providerRailWidthPx:
+              input.dockLayout === "unified"
+                ? agentGuiWorkbenchProviderRailWidthPx
+                : 0,
             title: headerTitle,
             windowActions: {
               close: windowActions.close,
