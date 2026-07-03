@@ -27,6 +27,7 @@ import {
 import type {
   AgentActivityCancelSessionResult,
   AgentActivityComposerOptions,
+  AgentActivityGoalControlAction,
   AgentActivityDisplayStatus,
   AgentActivitySession,
   AgentActivitySnapshot
@@ -8113,8 +8114,11 @@ export function useAgentGUINodeController({
   // Goal control commands (/goal clear|paused|active) act on the running
   // thread immediately; the local prompt queue would defer them until the
   // turn ends, defeating their purpose (e.g. stopping a runaway goal).
-  const submitGoalCommand = useCallback(
-    (command: string) => {
+  // Goal banner controls act directly on the session's goal (like the stop
+  // button acts on the turn): a dedicated control API, no prompt, no queue,
+  // no transcript entry — matching the codex desktop goal bar.
+  const goalControl = useCallback(
+    (action: AgentActivityGoalControlAction, objective?: string) => {
       if (previewMode) {
         return;
       }
@@ -8122,38 +8126,28 @@ export function useAgentGUINodeController({
       if (!agentSessionId) {
         return;
       }
-      submitExistingPrompt(
-        agentSessionId,
-        textPromptContent(command),
-        undefined,
-        {
-          bypassLocalQueue: true
-        }
-      );
+      setDetailError(null);
+      void agentActivityRuntime
+        .goalControl({
+          workspaceId,
+          agentSessionId,
+          action,
+          ...(objective !== undefined ? { objective } : {})
+        })
+        .catch((error: unknown) => {
+          if (!isCurrentConversation(agentSessionId)) {
+            return;
+          }
+          setDetailError(getAgentGUIErrorMessage(error));
+        });
     },
-    [previewMode, submitExistingPrompt]
-  );
-
-  // Edit drops "/goal <objective>" into the composer draft so the user can
-  // adjust the objective and resubmit; it does not touch the running goal.
-  const editGoalCommand = useCallback(
-    (objective: string) => {
-      if (previewMode) {
-        return;
-      }
-      const agentSessionId = activeConversationIdRef.current;
-      if (!agentSessionId) {
-        return;
-      }
-      setDraftBySessionId((current) => ({
-        ...current,
-        [agentSessionId]: {
-          ...emptyAgentComposerDraft(),
-          prompt: `/goal ${objective.trim()}`.trimEnd()
-        }
-      }));
-    },
-    [previewMode]
+    [
+      agentActivityRuntime,
+      isCurrentConversation,
+      previewMode,
+      setDetailError,
+      workspaceId
+    ]
   );
 
   const submitPrompt = useCallback(
@@ -10597,10 +10591,7 @@ export function useAgentGUINodeController({
   const stableSelectConversation =
     useStableControllerEventCallback(selectConversation);
   const stableSubmitPrompt = useStableControllerEventCallback(submitPrompt);
-  const stableSubmitGoalCommand =
-    useStableControllerEventCallback(submitGoalCommand);
-  const stableEditGoalCommand =
-    useStableControllerEventCallback(editGoalCommand);
+  const stableGoalControl = useStableControllerEventCallback(goalControl);
   const stableSubmitGuidancePrompt =
     useStableControllerEventCallback(submitGuidancePrompt);
   const stableShowPromptImagesUnsupported = useStableControllerEventCallback(
@@ -10673,8 +10664,7 @@ export function useAgentGUINodeController({
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
-      submitGoalCommand: stableSubmitGoalCommand,
-      editGoalCommand: stableEditGoalCommand,
+      goalControl: stableGoalControl,
       submitGuidancePrompt: stableSubmitGuidancePrompt,
       loadOlderConversationMessages: stableLoadOlderConversationMessages,
       showPromptImagesUnsupported: stableShowPromptImagesUnsupported,
@@ -10728,8 +10718,7 @@ export function useAgentGUINodeController({
       stableSubmitApprovalOption,
       stableSubmitInteractivePrompt,
       stableSubmitPrompt,
-      stableSubmitGoalCommand,
-      stableEditGoalCommand,
+      stableGoalControl,
       stableToggleConversationPinned,
       stableUpdateConversationFilter,
       stableUpdateComposerSettings,

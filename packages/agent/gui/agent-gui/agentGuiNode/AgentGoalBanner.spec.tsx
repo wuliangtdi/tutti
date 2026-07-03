@@ -134,7 +134,7 @@ describe("AgentGoalBanner", () => {
   });
 
   it("offers edit, pause, and delete actions for an active goal", () => {
-    const onEditGoal = vi.fn();
+    const onEditObjective = vi.fn();
     const onPauseGoal = vi.fn();
     const onResumeGoal = vi.fn();
     const onClearGoal = vi.fn();
@@ -143,7 +143,7 @@ describe("AgentGoalBanner", () => {
         objective="Ship it"
         status="active"
         labels={labels}
-        onEditGoal={onEditGoal}
+        onEditObjective={onEditObjective}
         onPauseGoal={onPauseGoal}
         onResumeGoal={onResumeGoal}
         onClearGoal={onClearGoal}
@@ -152,13 +152,53 @@ describe("AgentGoalBanner", () => {
 
     expect(screen.queryByTestId("agent-gui-goal-banner-clear-hint")).toBeNull();
     expect(screen.queryByTestId("agent-gui-goal-banner-resume")).toBeNull();
-    fireEvent.click(screen.getByTestId("agent-gui-goal-banner-edit"));
     fireEvent.click(screen.getByTestId("agent-gui-goal-banner-pause"));
     fireEvent.click(screen.getByTestId("agent-gui-goal-banner-clear"));
-    expect(onEditGoal).toHaveBeenCalledTimes(1);
     expect(onPauseGoal).toHaveBeenCalledTimes(1);
     expect(onClearGoal).toHaveBeenCalledTimes(1);
     expect(onResumeGoal).not.toHaveBeenCalled();
+    expect(onEditObjective).not.toHaveBeenCalled();
+  });
+
+  it("edits the objective inline and confirms with Enter", () => {
+    const onEditObjective = vi.fn();
+    render(
+      <AgentGoalBanner
+        objective="Ship it"
+        status="active"
+        labels={labels}
+        onEditObjective={onEditObjective}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agent-gui-goal-banner-edit"));
+    const input = screen.getByTestId(
+      "agent-gui-goal-banner-edit-input"
+    ) as HTMLInputElement;
+    expect(input.value).toBe("Ship it");
+    fireEvent.change(input, { target: { value: "Ship it faster" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onEditObjective).toHaveBeenCalledWith("Ship it faster");
+    expect(screen.queryByTestId("agent-gui-goal-banner-edit-input")).toBeNull();
+  });
+
+  it("cancels the inline edit with Escape without applying", () => {
+    const onEditObjective = vi.fn();
+    render(
+      <AgentGoalBanner
+        objective="Ship it"
+        status="active"
+        labels={labels}
+        onEditObjective={onEditObjective}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("agent-gui-goal-banner-edit"));
+    const input = screen.getByTestId("agent-gui-goal-banner-edit-input");
+    fireEvent.change(input, { target: { value: "Changed" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onEditObjective).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("agent-gui-goal-banner-edit-input")).toBeNull();
   });
 
   it.each(["paused", "blocked", "usageLimited", "budgetLimited"])(

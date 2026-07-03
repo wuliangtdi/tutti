@@ -2962,6 +2962,23 @@ aside.workspace-agents-status-panel
   color: var(--agent-gui-text-primary, var(--text-primary));
 }
 
+.agent-gui-chrome__goal-edit-input {
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: color-mix(
+    in srgb,
+    var(--agent-gui-text-primary, var(--text-primary)) 6%,
+    transparent
+  );
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--agent-gui-text-primary, var(--text-primary));
+  outline: none;
+}
+
 .agent-gui-chrome__message-slot {
   display: flex;
   min-width: 0;

@@ -624,6 +624,55 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}, nil
 }
 
+type GoalControlInput struct {
+	RoomID         string
+	AgentSessionID string
+	Action         GoalControlAction
+	Objective      string
+}
+
+type GoalControlResult struct {
+	AgentSessionID string
+	// Goal is the fresh goal snapshot after the action (nil after clear).
+	Goal map[string]any
+}
+
+// GoalControl performs a direct goal action (banner buttons) as a
+// session-level control operation — like Cancel, it never opens a turn, so it
+// works regardless of what is currently running.
+func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (GoalControlResult, error) {
+	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
+	if err != nil {
+		return GoalControlResult{}, err
+	}
+	goalAdapter, ok := adapter.(GoalControlAdapter)
+	if !ok {
+		return GoalControlResult{}, fmt.Errorf("agent provider does not support goals")
+	}
+	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+		return GoalControlResult{}, err
+	}
+	events, goal, err := goalAdapter.GoalControl(ctx, session, input.Action, input.Objective)
+	if err != nil {
+		slog.Warn("agent session goal control failed",
+			"event", "agent_session.goal_control.failed",
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"action", string(input.Action),
+			"error", err.Error(),
+		)
+		return GoalControlResult{}, err
+	}
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	slog.Info("agent session goal control accepted",
+		"event", "agent_session.goal_control.accepted",
+		"room_id", session.RoomID,
+		"agent_session_id", session.AgentSessionID,
+		"action", string(input.Action),
+	)
+	return GoalControlResult{AgentSessionID: session.AgentSessionID, Goal: goal}, nil
+}
+
 // execGoalControlWithActiveTurn runs a /goal control command while another
 // turn holds the session's turn slot. The adapter executes it against the
 // thread without opening a turn; the resulting events (steered user message,

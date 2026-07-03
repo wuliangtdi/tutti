@@ -1573,6 +1573,84 @@ func (*CodexAppServerAdapter) steerActiveTurn(
 	return events, nil
 }
 
+// GoalControl performs a direct goal action from the GUI without going
+// through the prompt pipeline: no user message, no turn, no transcript entry
+// — only the goal RPC plus a goal-updated session event so the banner
+// refreshes, matching the codex desktop goal bar's in-place controls.
+func (a *CodexAppServerAdapter) GoalControl(
+	ctx context.Context,
+	session Session,
+	action GoalControlAction,
+	objective string,
+) ([]activityshared.Event, map[string]any, error) {
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, nil, ErrSessionDisconnected
+	}
+	session.ProviderSessionID = appSession.threadID
+	method := appServerMethodThreadGoalSet
+	params := map[string]any{"threadId": appSession.threadID}
+	switch action {
+	case GoalControlPause:
+		params["status"] = "paused"
+	case GoalControlResume:
+		params["status"] = "active"
+	case GoalControlClear:
+		method = appServerMethodThreadGoalClear
+	case GoalControlSet:
+		objective = strings.TrimSpace(objective)
+		if objective == "" {
+			return nil, nil, fmt.Errorf("goal objective is required")
+		}
+		params["objective"] = objective
+		params["status"] = "active"
+	default:
+		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
+	}
+	slog.Info("agent session app-server goal control",
+		"event", "agent_session.app_server.goal.control",
+		"agent_session_id", session.AgentSessionID,
+		"action", string(action),
+	)
+	result, err := appSession.callGoalNoHandler(ctx, method, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	goalUpdateType := "thread_goal_update"
+	var goal map[string]any
+	if method == appServerMethodThreadGoalClear {
+		a.applyGoalClear(session.AgentSessionID)
+		goalUpdateType = "thread_goal_cleared"
+	} else {
+		goal = appServerGoalFromResult(result)
+		if len(goal) > 0 {
+			a.applyGoalUpdate(session.AgentSessionID, goal)
+		} else if action == GoalControlPause || action == GoalControlResume {
+			// Status-only set may return an empty goal payload; mirror the
+			// change locally so the banner and the reducer's paused-goal
+			// defense stay correct.
+			if goal = a.sessionGoal(session.AgentSessionID); len(goal) > 0 {
+				if action == GoalControlPause {
+					goal["status"] = "paused"
+				} else {
+					goal["status"] = "active"
+				}
+				a.applyGoalUpdate(session.AgentSessionID, goal)
+			}
+		}
+	}
+	events := []activityshared.Event{}
+	if event, ok := acpGoalUpdatedEvent(session, goalUpdateType); ok {
+		events = append(events, event)
+	}
+	if action == GoalControlResume || action == GoalControlSet {
+		// Codex normally starts the next goal turn itself after the goal
+		// becomes active again; the nudge covers the case where it does not.
+		a.scheduleGoalContinuationNudge(session)
+	}
+	return events, a.sessionGoal(session.AgentSessionID), nil
+}
+
 // ExecGoalControl executes a /goal control command as a thread-level
 // operation without opening a turn. The controller routes here when another
 // turn already holds the session's turn slot, so the goal banner's

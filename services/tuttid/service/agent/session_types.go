@@ -38,6 +38,7 @@ type StaleTurnResumeReconciler interface {
 
 type RuntimeController interface {
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
+	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
@@ -289,6 +290,18 @@ type RuntimeCancelInput struct {
 type RuntimeCancelResult struct {
 	AgentSessionID string
 	Canceled       bool
+}
+
+type RuntimeGoalControlInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+}
+
+type RuntimeGoalControlResult struct {
+	AgentSessionID string
+	Goal           map[string]any
 }
 
 type RuntimeCloseInput struct {

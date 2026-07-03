@@ -2764,6 +2764,99 @@ func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
 	transport.conn.completePendingTurn()
 }
 
+// Direct goal control (banner buttons) is a session-level operation: no
+// prompt, no turn, works whether or not a turn is running.
+func TestControllerGoalControl(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.holdTurn = true
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	// Pause with no turn running.
+	result, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlPause,
+	})
+	if err != nil {
+		t.Fatalf("GoalControl pause: %v", err)
+	}
+	if asString(result.Goal["status"]) != "paused" {
+		t.Fatalf("pause result goal = %#v, want paused", result.Goal)
+	}
+
+	// Resume and edit the objective while a turn is running.
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("long task"),
+	}); err != nil {
+		t.Fatalf("Exec long task: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
+	})
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlResume,
+	}); err != nil {
+		t.Fatalf("GoalControl resume: %v", err)
+	}
+	if status := asString(adapter.sessionGoal(agentSessionID)["status"]); status != "active" {
+		t.Fatalf("goal status after resume = %q, want active", status)
+	}
+	result, err = controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlSet,
+		Objective:      "ship it faster",
+	})
+	if err != nil {
+		t.Fatalf("GoalControl set: %v", err)
+	}
+	if asStringRaw(result.Goal["objective"]) != "ship it faster" {
+		t.Fatalf("set result goal = %#v, want updated objective", result.Goal)
+	}
+	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
+		t.Fatalf("running turn must survive goal control")
+	}
+
+	// Clear.
+	result, err = controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlClear,
+	})
+	if err != nil {
+		t.Fatalf("GoalControl clear: %v", err)
+	}
+	if len(result.Goal) != 0 {
+		t.Fatalf("clear result goal = %#v, want empty", result.Goal)
+	}
+	if goal := adapter.sessionGoal(agentSessionID); len(goal) != 0 {
+		t.Fatalf("goal not cleared: %#v", goal)
+	}
+
+	transport.conn.completePendingTurn()
+}
+
 // thread/goal/updated notifications must reach the GUI as session events even
 // while no turn is running (the banner refreshes off this signal).
 func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing.T) {

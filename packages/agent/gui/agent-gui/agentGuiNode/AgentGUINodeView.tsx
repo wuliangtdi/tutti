@@ -11,6 +11,7 @@ import {
   useRef,
   useState
 } from "react";
+import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
 import { useSnapshot } from "valtio";
 import { proxy } from "valtio/vanilla";
 import {
@@ -490,8 +491,10 @@ interface AgentGUINodeViewProps {
       content: AgentPromptContentBlock[],
       displayPrompt?: string
     ) => void;
-    submitGoalCommand: (command: string) => void;
-    editGoalCommand: (objective: string) => void;
+    goalControl: (
+      action: AgentActivityGoalControlAction,
+      objective?: string
+    ) => void;
     submitGuidancePrompt: (
       content: AgentPromptContentBlock[],
       displayPrompt?: string
@@ -2196,8 +2199,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     actions.updateComposerSettings
   );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
-  const submitGoalCommand = useStableEventCallback(actions.submitGoalCommand);
-  const editGoalCommand = useStableEventCallback(actions.editGoalCommand);
+  const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
     actions.submitGuidancePrompt
   );
@@ -2776,8 +2778,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           onSubmitBottomDockInteractivePrompt={
             submitBottomDockInteractivePrompt
           }
-          onSubmitGoalCommand={submitGoalCommand}
-          onEditGoalCommand={editGoalCommand}
+          onGoalControl={goalControl}
         />
       ) : null}
     </main>
@@ -3051,8 +3052,7 @@ interface AgentGUIBottomDockPaneProps {
   onRetryActivation: AgentGUINodeViewProps["actions"]["retryActivation"];
   onContinueInNewConversation: AgentGUINodeViewProps["actions"]["continueInNewConversation"];
   onSubmitBottomDockInteractivePrompt: AgentGUINodeViewProps["actions"]["submitInteractivePrompt"];
-  onSubmitGoalCommand: AgentGUINodeViewProps["actions"]["submitGoalCommand"];
-  onEditGoalCommand: AgentGUINodeViewProps["actions"]["editGoalCommand"];
+  onGoalControl: AgentGUINodeViewProps["actions"]["goalControl"];
 }
 
 const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
@@ -3070,8 +3070,7 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
   onRetryActivation,
   onContinueInNewConversation,
   onSubmitBottomDockInteractivePrompt,
-  onSubmitGoalCommand,
-  onEditGoalCommand
+  onGoalControl
 }: AgentGUIBottomDockPaneProps): React.JSX.Element {
   "use memo";
   const state = useSnapshot(store) as AgentGUIBottomDockStoreSnapshot;
@@ -3144,10 +3143,10 @@ const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           tokensUsed={goalTokensUsed ?? undefined}
           timeUsedSeconds={goalTimeUsedSeconds ?? undefined}
           labels={goalBannerLabels}
-          onEditGoal={() => onEditGoalCommand(goalObjective)}
-          onPauseGoal={() => onSubmitGoalCommand("/goal paused")}
-          onResumeGoal={() => onSubmitGoalCommand("/goal active")}
-          onClearGoal={() => onSubmitGoalCommand("/goal clear")}
+          onEditObjective={(objective) => onGoalControl("set", objective)}
+          onPauseGoal={() => onGoalControl("pause")}
+          onResumeGoal={() => onGoalControl("resume")}
+          onClearGoal={() => onGoalControl("clear")}
         />
       ) : null}
       {bottomDockReplacementPrompt ? (

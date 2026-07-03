@@ -1736,6 +1736,12 @@ function createNoopAgentActivityRuntime(): AgentActivityRuntime {
   const snapshot = createEmptyAgentActivitySnapshot();
   return {
     promptContentUploadSupport: { file: true, image: true },
+    async goalControl(input) {
+      return {
+        session: createRuntimeSession(input.workspaceId, input.agentSessionId),
+        goal: null
+      };
+    },
     async cancelSession(input) {
       return {
         session: createRuntimeSession(input.workspaceId, input.agentSessionId),
@@ -1887,8 +1893,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     createConversation: vi.fn(),
     selectConversation: vi.fn(),
     submitPrompt: vi.fn(),
-    submitGoalCommand: vi.fn(),
-    editGoalCommand: vi.fn(),
+    goalControl: vi.fn(),
     submitGuidancePrompt: vi.fn(),
     loadOlderConversationMessages: vi.fn(),
     showPromptImagesUnsupported: vi.fn(),

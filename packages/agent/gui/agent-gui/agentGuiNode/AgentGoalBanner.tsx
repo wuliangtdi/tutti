@@ -25,7 +25,8 @@ export interface AgentGoalBannerProps {
   tokensUsed?: number;
   timeUsedSeconds?: number;
   labels: AgentGoalBannerLabels;
-  onEditGoal?: () => void;
+  /** Called with the edited objective when the inline edit is confirmed. */
+  onEditObjective?: (objective: string) => void;
   onPauseGoal?: () => void;
   onResumeGoal?: () => void;
   onClearGoal?: () => void;
@@ -139,12 +140,14 @@ export function AgentGoalBanner({
   tokensUsed,
   timeUsedSeconds,
   labels,
-  onEditGoal,
+  onEditObjective,
   onPauseGoal,
   onResumeGoal,
   onClearGoal
 }: AgentGoalBannerProps): JSX.Element {
   "use memo";
+  // null = not editing; otherwise the in-progress edit text.
+  const [editDraft, setEditDraft] = useState<string | null>(null);
   const normalizedStatus = normalizeGoalStatus(status);
   const isActive = normalizedStatus === "" || normalizedStatus === "active";
   const serverSeconds =
@@ -181,10 +184,17 @@ export function AgentGoalBanner({
   const showResume =
     onResumeGoal !== undefined && RESUMABLE_GOAL_STATUSES.has(normalizedStatus);
   const hasActions =
-    onEditGoal !== undefined ||
+    onEditObjective !== undefined ||
     showPause ||
     showResume ||
     onClearGoal !== undefined;
+  const commitEdit = (): void => {
+    const next = (editDraft ?? "").trim();
+    setEditDraft(null);
+    if (next !== "" && next !== objective.trim()) {
+      onEditObjective?.(next);
+    }
+  };
   return (
     <div className={styles.sessionChrome}>
       <section
@@ -197,25 +207,46 @@ export function AgentGoalBanner({
             <span className={styles.chromeIcon}>
               <Target aria-hidden className="size-3.5" />
             </span>
-            <p
-              className={cn(styles.chromeMessage, styles.chromeNoticeMessage)}
-              title={fullMessage}
-            >
-              <span className={styles.chromeNoticeTitle}>{title}</span>
-              <span
-                className={styles.chromeNoticeDescription}
-                data-testid="agent-gui-goal-banner-description"
+            {editDraft !== null ? (
+              <input
+                className={styles.chromeGoalEditInput}
+                value={editDraft}
+                autoFocus
+                aria-label={labels.editAction}
+                data-testid="agent-gui-goal-banner-edit-input"
+                onChange={(event) => setEditDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitEdit();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setEditDraft(null);
+                  }
+                }}
+                onBlur={() => setEditDraft(null)}
+              />
+            ) : (
+              <p
+                className={cn(styles.chromeMessage, styles.chromeNoticeMessage)}
+                title={fullMessage}
               >
-                {description}
-              </span>
-            </p>
+                <span className={styles.chromeNoticeTitle}>{title}</span>
+                <span
+                  className={styles.chromeNoticeDescription}
+                  data-testid="agent-gui-goal-banner-description"
+                >
+                  {description}
+                </span>
+              </p>
+            )}
           </div>
           {hasActions ? (
             <div className={styles.chromeGoalActions}>
-              {onEditGoal !== undefined ? (
+              {onEditObjective !== undefined && editDraft === null ? (
                 <button
                   type="button"
-                  onClick={onEditGoal}
+                  onClick={() => setEditDraft(objective)}
                   title={labels.editAction}
                   aria-label={labels.editAction}
                   data-testid="agent-gui-goal-banner-edit"
