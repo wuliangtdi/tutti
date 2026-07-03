@@ -911,6 +911,7 @@ export const zhCN = {
       mentionKindAppFactory: "应用工厂",
       mentionKindFile: "文件",
       mentionKindIssue: "任务",
+      mentionKindReference: "引用",
       mentionKindSession: "会话",
       mentionGroupFiles: "文件",
       mentionGroupOpenedFiles: "我打开的文件",
