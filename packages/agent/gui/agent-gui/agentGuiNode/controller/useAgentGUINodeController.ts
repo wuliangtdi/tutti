@@ -366,6 +366,44 @@ function composerOptionsForTarget(input: {
   );
 }
 
+function composerTargetDebugSummary(target: AgentGUIComposerTargetData) {
+  return {
+    provider: target.provider,
+    agentTargetId: target.agentTargetId,
+    providerTargetId: target.providerTargetId,
+    targetId: target.targetId,
+    dataProvider: target.data.provider,
+    dataAgentTargetId: target.data.agentTargetId ?? null,
+    dataProviderTargetId: target.data.providerTargetId ?? null
+  };
+}
+
+function providerTargetDebugSummary(target: AgentGUIProviderTarget | null) {
+  return target
+    ? {
+        provider: target.provider,
+        agentTargetId: target.agentTargetId ?? null,
+        targetId: target.targetId,
+        disabled: target.disabled === true
+      }
+    : null;
+}
+
+function composerOptionsDebugSummary(
+  options: AgentActivityComposerOptions | null
+) {
+  return options
+    ? {
+        provider: options.provider ?? null,
+        modelConfigurable: options.modelConfigurable ?? false,
+        modelCount: options.models.length,
+        firstModel: options.models[0]?.value ?? null,
+        permissionDefault: options.permissionConfig?.defaultValue ?? null,
+        permissionModeCount: options.permissionConfig?.modes.length ?? 0
+      }
+    : null;
+}
+
 function agentGUIProviderTargetsEqual(
   left: AgentGUIProviderTarget,
   right: AgentGUIProviderTarget
@@ -5999,6 +6037,12 @@ export function useAgentGUINodeController({
       });
       const composerOptionsCwd =
         selectedProjectPathRef.current?.trim() || workspacePath.trim() || "";
+      console.log("[AgentGUI composer-target] load-options", {
+        target: composerTargetDebugSummary(targetData),
+        cwd: composerOptionsCwd,
+        force: options?.force === true,
+        settings
+      });
       void Promise.resolve(
         agentActivityRuntime.getComposerOptions({
           workspaceId,
@@ -10234,6 +10278,7 @@ export function useAgentGUINodeController({
   ]);
   const stableComposerSettings = useStableComposerSettingsVM(composerSettings);
   const prevSettingsLoadingRef = useRef<boolean | null>(null);
+  const lastComposerTargetDebugKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const nextLoading = stableComposerSettings.isSettingsLoading;
     if (prevSettingsLoadingRef.current === nextLoading) {
@@ -10246,6 +10291,99 @@ export function useAgentGUINodeController({
     composerTargetData.provider,
     stableComposerSettings.availableModels.length,
     stableComposerSettings.isSettingsLoading
+  ]);
+  useEffect(() => {
+    const payload = {
+      activeConversationId,
+      conversationFilter,
+      nodeData: {
+        provider: data.provider,
+        agentTargetId: data.agentTargetId ?? null,
+        providerTargetId: data.providerTargetId ?? null
+      },
+      selectedProviderTarget: providerTargetDebugSummary(
+        selectedProviderTarget
+      ),
+      effectiveSelectedProviderTarget: providerTargetDebugSummary(
+        effectiveSelectedProviderTarget
+      ),
+      homeComposerTargetOverride: providerTargetDebugSummary(
+        homeComposerTargetOverride
+      ),
+      nodeComposerTargetResolvedByProviderTarget,
+      selectedComposerTargetData: composerTargetDebugSummary(
+        selectedComposerTargetData
+      ),
+      composerTargetData: composerTargetDebugSummary(composerTargetData),
+      viewData:
+        activeConversationId === null
+          ? {
+              provider: selectedComposerTargetData.data.provider,
+              agentTargetId:
+                selectedComposerTargetData.data.agentTargetId ?? null,
+              providerTargetId:
+                selectedComposerTargetData.data.providerTargetId ?? null
+            }
+          : {
+              provider: data.provider,
+              agentTargetId: data.agentTargetId ?? null,
+              providerTargetId: data.providerTargetId ?? null
+            },
+      optionsKeys: {
+        agentTargetIds: Object.keys(
+          agentActivitySnapshot.composerOptionsByAgentTargetId ?? {}
+        ).sort(),
+        providers: Object.keys(
+          agentActivitySnapshot.composerOptionsByProvider ?? {}
+        ).sort()
+      },
+      providerComposerOptions: composerOptionsDebugSummary(
+        providerComposerOptions
+      ),
+      draftSettings,
+      stableComposerSettings: {
+        model: stableComposerSettings.draftSettings.model,
+        selectedModelValue: stableComposerSettings.selectedModelValue ?? null,
+        availableModels: stableComposerSettings.availableModels.map(
+          (option) => option.value
+        ),
+        permissionModeId:
+          stableComposerSettings.draftSettings.permissionModeId ?? null,
+        selectedPermissionModeValue:
+          stableComposerSettings.selectedPermissionModeValue ?? null,
+        availablePermissionModes:
+          stableComposerSettings.availablePermissionModes?.map(
+            (option) => option.value
+          ) ?? [],
+        isSettingsLoading: stableComposerSettings.isSettingsLoading,
+        supportsModel: stableComposerSettings.supportsModel,
+        supportsPermissionMode:
+          stableComposerSettings.supportsPermissionMode ?? false
+      }
+    };
+    const key = JSON.stringify(payload);
+    if (lastComposerTargetDebugKeyRef.current === key) {
+      return;
+    }
+    lastComposerTargetDebugKeyRef.current = key;
+    console.log("[AgentGUI composer-target] resolved", payload);
+  }, [
+    activeConversationId,
+    agentActivitySnapshot.composerOptionsByAgentTargetId,
+    agentActivitySnapshot.composerOptionsByProvider,
+    composerTargetData,
+    conversationFilter,
+    data.agentTargetId,
+    data.provider,
+    data.providerTargetId,
+    draftSettings,
+    effectiveSelectedProviderTarget,
+    homeComposerTargetOverride,
+    nodeComposerTargetResolvedByProviderTarget,
+    providerComposerOptions,
+    selectedComposerTargetData,
+    selectedProviderTarget,
+    stableComposerSettings
   ]);
 
   const updateConversationFilter = useCallback(
@@ -10290,6 +10428,13 @@ export function useAgentGUINodeController({
         current: dataRef.current,
         isExplicit: nextTargetIsExplicit,
         target: nextTarget
+      });
+      console.log("[AgentGUI composer-target] select-provider", {
+        input,
+        nextTarget: providerTargetDebugSummary(nextTarget),
+        nextTargetIsExplicit,
+        nextTargetData: composerTargetDebugSummary(nextTargetData),
+        activeConversationId: activeConversationIdRef.current
       });
       setHomeComposerTargetOverride(nextTarget);
       const previous = activeConversationIdRef.current;
