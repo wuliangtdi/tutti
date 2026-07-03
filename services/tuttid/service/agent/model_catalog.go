@@ -2,10 +2,14 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
+	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
 const (
@@ -43,13 +47,15 @@ type AgentModelLister interface {
 }
 
 type CachedAgentModelCatalog struct {
-	Codex  AgentModelLister
-	Gemini AgentModelLister
-	Now    func() time.Time
+	Codex      AgentModelLister
+	TuttiAgent AgentModelLister
+	Gemini     AgentModelLister
+	Now        func() time.Time
 
-	mu          sync.Mutex
-	codexCache  *agentModelCatalogCacheEntry
-	geminiCache *agentModelCatalogCacheEntry
+	mu              sync.Mutex
+	codexCache      *agentModelCatalogCacheEntry
+	tuttiAgentCache *agentModelCatalogCacheEntry
+	geminiCache     *agentModelCatalogCacheEntry
 }
 
 type agentModelCatalogCacheEntry struct {
@@ -60,8 +66,9 @@ type agentModelCatalogCacheEntry struct {
 
 func NewAgentModelCatalog() *CachedAgentModelCatalog {
 	return &CachedAgentModelCatalog{
-		Codex:  CodexCLIModelLister{},
-		Gemini: GeminiCLIModelLister{},
+		Codex:      CodexCLIModelLister{},
+		TuttiAgent: defaultTuttiAgentModelLister(),
+		Gemini:     GeminiCLIModelLister{},
 	}
 }
 
@@ -70,6 +77,8 @@ func (c *CachedAgentModelCatalog) ListModels(ctx context.Context, provider strin
 	switch provider {
 	case agentprovider.Codex:
 		return c.listCodexModels(ctx)
+	case agentprovider.TuttiAgent:
+		return c.listTuttiAgentModels(ctx)
 	case agentprovider.Gemini:
 		return c.listGeminiModels(ctx)
 	default:
@@ -99,6 +108,98 @@ func (c *CachedAgentModelCatalog) listCodexModels(ctx context.Context) (AgentMod
 	}
 	c.writeCodexCache(now, result, err)
 	return cloneAgentModelCatalogResult(result), err
+}
+
+// listTuttiAgentModels mirrors the Codex path against the tutti-agent fork's
+// app-server. No static fallback list is used: model visibility is decided by
+// the Tutti model gateway policy, so only the live model/list result is
+// trustworthy.
+func (c *CachedAgentModelCatalog) listTuttiAgentModels(ctx context.Context) (AgentModelCatalogResult, error) {
+	now := c.now()
+	if cached := c.readTuttiAgentCache(now); cached != nil {
+		return cached.result, cached.err
+	}
+	lister := c.TuttiAgent
+	if lister == nil {
+		lister = defaultTuttiAgentModelLister()
+	}
+	listResult, err := lister.ListModels(ctx)
+	result := AgentModelCatalogResult{
+		Provider:  agentprovider.TuttiAgent,
+		Source:    "tutti-agent-cli",
+		FetchedAt: now,
+		Models:    cloneAgentModelOptions(listResult.Models),
+	}
+	c.writeTuttiAgentCache(now, result, err)
+	return cloneAgentModelCatalogResult(result), err
+}
+
+func defaultTuttiAgentModelLister() CodexCLIModelLister {
+	return CodexCLIModelLister{
+		Command:    "tutti-agent",
+		ClientName: "tutti_agent",
+		PrepareEnv: prepareTuttiAgentModelListEnv,
+	}
+}
+
+func prepareTuttiAgentModelListEnv(env []string) ([]string, error) {
+	env = append([]string(nil), env...)
+	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
+	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
+	if err := agentsidecarservice.PrepareTuttiAgentHome(tuttiAgentHome, agentsidecarservice.PrepareInput{}); err != nil {
+		return nil, err
+	}
+	env = append(env, "TUTTI_AGENT_HOME="+tuttiAgentHome)
+	// Prevent Tutti Agent's legacy CODEX_HOME fallback from reading Codex's
+	// model cache when tuttid itself runs inside a Codex-hosted environment.
+	env = append(env, "CODEX_HOME=")
+	return env, nil
+}
+
+func withoutEnvKeys(env []string, keys ...string) []string {
+	if len(env) == 0 || len(keys) == 0 {
+		return env
+	}
+	drop := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		drop[key] = struct{}{}
+	}
+	filtered := env[:0]
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, ok := drop[key]; ok {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func (c *CachedAgentModelCatalog) readTuttiAgentCache(now time.Time) *agentModelCatalogCacheEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.tuttiAgentCache == nil || now.UnixMilli() > c.tuttiAgentCache.expiresAtMS {
+		c.tuttiAgentCache = nil
+		return nil
+	}
+	return &agentModelCatalogCacheEntry{
+		result: cloneAgentModelCatalogResult(c.tuttiAgentCache.result),
+		err:    c.tuttiAgentCache.err,
+	}
+}
+
+func (c *CachedAgentModelCatalog) writeTuttiAgentCache(now time.Time, result AgentModelCatalogResult, err error) {
+	ttl := codexModelCacheTTL
+	if err != nil {
+		ttl = codexModelErrorCacheTTL
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.tuttiAgentCache = &agentModelCatalogCacheEntry{
+		result:      cloneAgentModelCatalogResult(result),
+		err:         err,
+		expiresAtMS: now.Add(ttl).UnixMilli(),
+	}
 }
 
 func (c *CachedAgentModelCatalog) listGeminiModels(ctx context.Context) (AgentModelCatalogResult, error) {

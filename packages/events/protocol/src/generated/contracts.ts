@@ -51,7 +51,7 @@ export interface PreferencesDesktopPreferencesV1 {
       permissionModeId?: string;
       reasoningEffort?: string;
     };
-    nexight?: {
+    "tutti-agent"?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
@@ -75,7 +75,7 @@ export interface PreferencesDesktopPreferencesV1 {
   agentGuiConversationRailCollapsedByProvider: {
     "claude-code"?: boolean;
     codex?: boolean;
-    nexight?: boolean;
+    "tutti-agent"?: boolean;
     gemini?: boolean;
     hermes?: boolean;
     openclaw?: boolean;
@@ -84,13 +84,7 @@ export interface PreferencesDesktopPreferencesV1 {
   agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
-  defaultAgentProvider:
-    | "claude-code"
-    | "codex"
-    | "nexight"
-    | "gemini"
-    | "hermes"
-    | "openclaw";
+  defaultAgentProvider: "claude-code" | "codex";
   dockIconStyle: "default" | "flat";
   dockPlacement: "bottom" | "left";
   fileDefaultOpenersByExtension: Record<

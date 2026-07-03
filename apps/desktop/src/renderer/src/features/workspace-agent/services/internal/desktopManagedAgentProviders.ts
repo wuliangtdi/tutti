@@ -12,7 +12,7 @@ import type {
 export const desktopManagedAgentProviders = [
   "claude-code",
   "codex",
-  "nexight",
+  "tutti-agent",
   "gemini",
   "hermes",
   "openclaw"

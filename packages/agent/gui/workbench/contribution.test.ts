@@ -77,7 +77,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(entries.map((entry) => entry.id)).toEqual([
       "agent-gui:claude-code",
       "agent-gui",
-      "agent-gui:nexight",
+      "agent-gui:tutti-agent",
       "agent-gui:hermes",
       "agent-gui:gemini",
       "agent-gui:openclaw"

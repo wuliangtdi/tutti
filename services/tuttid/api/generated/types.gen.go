@@ -395,6 +395,7 @@ func (e AgentTargetLaunchRefType) Valid() bool {
 const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
+	AgentTargetProviderTuttiAgent AgentTargetProvider = "tutti-agent"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetProvider enum.
@@ -403,6 +404,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderClaudeCode:
 		return true
 	case AgentTargetProviderCodex:
+		return true
+	case AgentTargetProviderTuttiAgent:
 		return true
 	default:
 		return false
@@ -661,6 +664,24 @@ func (e DesktopBrowserUseConnectionMode) Valid() bool {
 	case AutoConnect:
 		return true
 	case Isolated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopDefaultAgentProvider.
+const (
+	DesktopDefaultAgentProviderClaudeCode DesktopDefaultAgentProvider = "claude-code"
+	DesktopDefaultAgentProviderCodex      DesktopDefaultAgentProvider = "codex"
+)
+
+// Valid indicates whether the value is a known member of the DesktopDefaultAgentProvider enum.
+func (e DesktopDefaultAgentProvider) Valid() bool {
+	switch e {
+	case DesktopDefaultAgentProviderClaudeCode:
+		return true
+	case DesktopDefaultAgentProviderCodex:
 		return true
 	default:
 		return false
@@ -1080,28 +1101,31 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 
 // Defines values for WorkspaceAgentProvider.
 const (
-	WorkspaceAgentProviderClaudeCode WorkspaceAgentProvider = "claude-code"
-	WorkspaceAgentProviderCodex      WorkspaceAgentProvider = "codex"
-	WorkspaceAgentProviderGemini     WorkspaceAgentProvider = "gemini"
-	WorkspaceAgentProviderHermes     WorkspaceAgentProvider = "hermes"
-	WorkspaceAgentProviderNexight    WorkspaceAgentProvider = "nexight"
-	WorkspaceAgentProviderOpenclaw   WorkspaceAgentProvider = "openclaw"
+	ClaudeCode WorkspaceAgentProvider = "claude-code"
+	Codex      WorkspaceAgentProvider = "codex"
+	Gemini     WorkspaceAgentProvider = "gemini"
+	Hermes     WorkspaceAgentProvider = "hermes"
+	Nexight    WorkspaceAgentProvider = "nexight"
+	Openclaw   WorkspaceAgentProvider = "openclaw"
+	TuttiAgent WorkspaceAgentProvider = "tutti-agent"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentProvider enum.
 func (e WorkspaceAgentProvider) Valid() bool {
 	switch e {
-	case WorkspaceAgentProviderClaudeCode:
+	case ClaudeCode:
 		return true
-	case WorkspaceAgentProviderCodex:
+	case Codex:
 		return true
-	case WorkspaceAgentProviderGemini:
+	case Gemini:
 		return true
-	case WorkspaceAgentProviderHermes:
+	case Hermes:
 		return true
-	case WorkspaceAgentProviderNexight:
+	case Nexight:
 		return true
-	case WorkspaceAgentProviderOpenclaw:
+	case Openclaw:
+		return true
+	case TuttiAgent:
 		return true
 	default:
 		return false
@@ -2489,8 +2513,8 @@ type DesktopAgentComposerDefaultsByProvider struct {
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
 	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
-	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
 	Openclaw   *DesktopAgentComposerDefaults `json:"openclaw,omitempty"`
+	TuttiAgent *DesktopAgentComposerDefaults `json:"tutti-agent,omitempty"`
 }
 
 // DesktopAgentConversationDetailMode defines model for DesktopAgentConversationDetailMode.
@@ -2505,8 +2529,8 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	Codex      *bool `json:"codex,omitempty"`
 	Gemini     *bool `json:"gemini,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
-	Nexight    *bool `json:"nexight,omitempty"`
 	Openclaw   *bool `json:"openclaw,omitempty"`
+	TuttiAgent *bool `json:"tutti-agent,omitempty"`
 }
 
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.
@@ -2514,6 +2538,9 @@ type DesktopAppCatalogChannel string
 
 // DesktopBrowserUseConnectionMode defines model for DesktopBrowserUseConnectionMode.
 type DesktopBrowserUseConnectionMode string
+
+// DesktopDefaultAgentProvider defines model for DesktopDefaultAgentProvider.
+type DesktopDefaultAgentProvider string
 
 // DesktopDockIconStyle defines model for DesktopDockIconStyle.
 type DesktopDockIconStyle string
@@ -2541,7 +2568,7 @@ type DesktopPreferences struct {
 	AgentGuiConversationRailCollapsedByProvider DesktopAgentGuiConversationRailCollapsedByProvider `json:"agentGuiConversationRailCollapsedByProvider"`
 	AppCatalogChannel                           DesktopAppCatalogChannel                           `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    *DesktopBrowserUseConnectionMode                   `json:"browserUseConnectionMode,omitempty"`
-	DefaultAgentProvider                        WorkspaceAgentProvider                             `json:"defaultAgentProvider"`
+	DefaultAgentProvider                        DesktopDefaultAgentProvider                        `json:"defaultAgentProvider"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`

@@ -4019,7 +4019,7 @@ components:
         browserUseConnectionMode:
           $ref: "#/components/schemas/DesktopBrowserUseConnectionMode"
         defaultAgentProvider:
-          $ref: "#/components/schemas/WorkspaceAgentProvider"
+          $ref: "#/components/schemas/DesktopDefaultAgentProvider"
         dockIconStyle:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
@@ -4073,6 +4073,11 @@ components:
       enum:
         - coding
         - general
+    DesktopDefaultAgentProvider:
+      type: string
+      enum:
+        - claude-code
+        - codex
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4086,7 +4091,7 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         codex:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
-        nexight:
+        tutti-agent:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         gemini:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
@@ -4102,7 +4107,7 @@ components:
           type: boolean
         codex:
           type: boolean
-        nexight:
+        tutti-agent:
           type: boolean
         gemini:
           type: boolean
@@ -4151,6 +4156,7 @@ components:
       enum:
         - codex
         - claude-code
+        - tutti-agent
     AgentTargetSource:
       type: string
       enum:
@@ -5418,6 +5424,7 @@ components:
       enum:
         - claude-code
         - codex
+        - tutti-agent
         - nexight
         - gemini
         - hermes

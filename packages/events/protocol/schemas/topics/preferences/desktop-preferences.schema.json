@@ -29,7 +29,7 @@
       "properties": {
         "claude-code": { "$ref": "#/$defs/agentComposerDefaults" },
         "codex": { "$ref": "#/$defs/agentComposerDefaults" },
-        "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
+        "tutti-agent": { "$ref": "#/$defs/agentComposerDefaults" },
         "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
         "openclaw": { "$ref": "#/$defs/agentComposerDefaults" }
@@ -41,7 +41,7 @@
       "properties": {
         "claude-code": { "type": "boolean" },
         "codex": { "type": "boolean" },
-        "nexight": { "type": "boolean" },
+        "tutti-agent": { "type": "boolean" },
         "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
         "openclaw": { "type": "boolean" }
@@ -65,14 +65,7 @@
     },
     "defaultAgentProvider": {
       "type": "string",
-      "enum": [
-        "claude-code",
-        "codex",
-        "nexight",
-        "gemini",
-        "hermes",
-        "openclaw"
-      ]
+      "enum": ["claude-code", "codex"]
     },
     "dockIconStyle": {
       "type": "string",

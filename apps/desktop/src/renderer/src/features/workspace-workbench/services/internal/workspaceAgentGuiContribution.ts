@@ -83,6 +83,12 @@ export function createWorkspaceAgentGuiContribution(input: {
   workspaceUserProjectService: IWorkspaceUserProjectService;
   workspaceId: string;
 }): WorkbenchContribution {
+  const defaultAgentProvider = isWorkspaceAgentGuiProviderEnabledForNewEntry(
+    input.defaultAgentProvider,
+    input.providerTargets
+  )
+    ? input.defaultAgentProvider
+    : null;
   const agentGUIWorkbenchHostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: input.hostFilesApi,
     tuttidClient: input.tuttidClient,
@@ -193,9 +199,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     unifiedDockIconUrl: input.unifiedDockIconUrl,
     dockLayout: input.agentDockLayout,
     frame: workspaceAgentGuiNodeFrame,
-    defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
-      ? input.defaultAgentProvider
-      : null,
+    defaultProvider: defaultAgentProvider,
     defaultProviderTargetId: input.defaultProviderTargetId,
     providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
       input.agentProviderStatusService
@@ -204,9 +208,7 @@ export function createWorkspaceAgentGuiContribution(input: {
     providerTargetsLoading: input.providerTargetsLoading,
     resolveDockLaunchPayload: () =>
       resolveAgentGuiUnifiedDockLaunchPayload({
-        defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
-          ? input.defaultAgentProvider
-          : null,
+        defaultProvider: defaultAgentProvider,
         defaultProviderTargetId: input.defaultProviderTargetId,
         providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
           input.agentProviderStatusService
@@ -241,9 +243,30 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceId: input.workspaceId
       }),
     resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
+      isWorkspaceAgentGuiDefaultDockProvider(provider) &&
+      isWorkspaceAgentGuiProviderEnabledForNewEntry(
+        provider,
+        input.providerTargets
+      )
+        ? "always"
+        : "never",
     workspaceId: input.workspaceId
   });
+}
+
+function isWorkspaceAgentGuiProviderEnabledForNewEntry(
+  provider: string | null | undefined,
+  providerTargets: readonly AgentGUIProviderTarget[] | null | undefined
+): provider is AgentGuiWorkbenchProvider {
+  if (!isAgentGuiWorkbenchProvider(provider)) {
+    return false;
+  }
+  if (provider !== "tutti-agent") {
+    return true;
+  }
+  return (providerTargets ?? []).some(
+    (target) => target.provider === provider && target.disabled !== true
+  );
 }
 
 function resolveWorkspaceAgentGuiProviderAvailability(

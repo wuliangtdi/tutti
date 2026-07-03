@@ -194,7 +194,7 @@ func composerProviderCapabilities(provider string) []string {
 	switch agentprovider.Normalize(provider) {
 	case agentprovider.ClaudeCode:
 		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
-	case agentprovider.Codex:
+	case agentprovider.Codex, agentprovider.TuttiAgent:
 		// planMode pre-session optimism: the adapter re-negotiates at session
 		// start (collaborationMode/list) and drops it for older binaries.
 		capabilities = []string{"imageInput", "skills", "compact", "tokenUsage", "rateLimits", "planMode", "interrupt"}
@@ -267,7 +267,7 @@ func composerDefaultSpeed(provider string) string {
 
 func composerDefaultReasoningEffort(provider string) string {
 	switch provider {
-	case agentprovider.Codex, agentprovider.ClaudeCode:
+	case agentprovider.Codex, agentprovider.TuttiAgent, agentprovider.ClaudeCode:
 		return "high"
 	default:
 		return ""
@@ -464,7 +464,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	switch agentprovider.Normalize(provider) {
 	case agentprovider.ClaudeCode:
 		return "default"
-	case agentprovider.Codex, agentprovider.Nexight:
+	case agentprovider.Codex, agentprovider.TuttiAgent, agentprovider.Nexight:
 		return "auto"
 	case agentprovider.Gemini, agentprovider.Hermes:
 		return "yolo"
@@ -484,7 +484,7 @@ func normalizePermissionModeIDForProvider(provider string, value string) string 
 
 func permissionConfigForProvider(provider string) PermissionConfig {
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.Nexight:
+	case agentprovider.Codex, agentprovider.TuttiAgent, agentprovider.Nexight:
 		return PermissionConfig{
 			Configurable: true,
 			Modes: []PermissionModeOption{
@@ -542,7 +542,7 @@ func composerOptionsProviderSupportsSettings(provider string) bool {
 
 func composerOptionsProviderUsesModelCatalog(provider string) bool {
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.Gemini:
+	case agentprovider.Codex, agentprovider.TuttiAgent, agentprovider.Gemini:
 		return true
 	default:
 		return false
@@ -659,10 +659,12 @@ func composerSelectedModelOptions(model string) []map[string]string {
 }
 
 func reasoningConfigOptionID(provider string) string {
-	if provider == "codex" {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.TuttiAgent:
 		return "reasoning_effort"
+	default:
+		return "effort"
 	}
-	return "effort"
 }
 
 const (
@@ -680,7 +682,7 @@ const (
 //     live `off` / `on` config values.
 func speedProviderSupportsSpeed(provider string) bool {
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.ClaudeCode:
+	case agentprovider.Codex, agentprovider.TuttiAgent, agentprovider.ClaudeCode:
 		return composerOptionsProviderSupportsSettings(provider)
 	default:
 		return false
@@ -691,10 +693,12 @@ func speedProviderSupportsSpeed(provider string) bool {
 // the tier onto the app-server `service_tier` config; Claude Code sets a `fast`
 // ACP config option when the agent advertises it.
 func speedConfigOptionID(provider string) string {
-	if agentprovider.Normalize(provider) == agentprovider.Codex {
+	switch agentprovider.Normalize(provider) {
+	case agentprovider.Codex, agentprovider.TuttiAgent:
 		return "service_tier"
+	default:
+		return "fast"
 	}
-	return "fast"
 }
 
 func speedTierValuesForProvider(provider string) []string {

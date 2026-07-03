@@ -15,6 +15,12 @@ const agentGuiContributionSource = readFileSync(
   ),
   "utf8"
 );
+const launchpadOverlaySource = readFileSync(
+  resolve(
+    "src/renderer/src/features/workspace-workbench/ui/WorkspaceLaunchpadOverlay.tsx"
+  ),
+  "utf8"
+);
 
 test("WorkspaceWorkbench does not render a global agent install pending overlay", () => {
   assert.doesNotMatch(source, /WorkspaceAgentConnectingCard/);
@@ -73,5 +79,23 @@ test("agent gui rail external action opens an internal agent session window", ()
   assert.match(
     agentGuiContributionSource,
     /onOpenAgentConversationWindow:\s*async \(request\) => \{\s*await requestWorkspaceAgentGuiLaunch\(\{\s*\.\.\.request,\s*openInNewWindow: true\s*\}\);[\s\S]*?\}/
+  );
+});
+
+test("agent gui dock visibility ignores disabled Tutti Agent targets", () => {
+  assert.match(
+    agentGuiContributionSource,
+    /target\.provider === provider && target\.disabled !== true/
+  );
+});
+
+test("launchpad keeps settings-disabled Tutti Agent silent", () => {
+  assert.match(launchpadOverlaySource, /disabledBySettings/);
+  assert.match(launchpadOverlaySource, /disabledBySettings\s*\?\s*undefined/);
+  assert.match(launchpadOverlaySource, /disabledBySettings\) \{\s*return null/);
+  assert.doesNotMatch(launchpadOverlaySource, /agentDisabledBySettings/);
+  assert.doesNotMatch(
+    launchpadOverlaySource,
+    /provider !== "tutti-agent" \|\|[\s\S]*tuttiAgentSwitchEnabled/
   );
 });

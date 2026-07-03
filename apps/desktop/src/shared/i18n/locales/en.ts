@@ -762,7 +762,7 @@ export const en = {
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderTutti: "Tutti",
+        manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "Sign-in required",
         manageStatusAvailable: "Available to connect",
         manageStatusChecking: "Checking",

@@ -92,6 +92,46 @@ const (
 const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
 	"Run `codex login` on the host (or sync Codex credentials), then retry this session."
 
+const (
+	tuttiAgentAppServerCommand = "tutti-agent"
+	// tuttiAgentClientInfoName is the originator the Tutti Agent fork presents
+	// to the Tutti model gateway. It must not reuse codexOfficialOriginator:
+	// that value exists to satisfy OpenAI's official-client allowlist and does
+	// not apply to gateway-authenticated first-party traffic.
+	tuttiAgentClientInfoName               = "tutti_agent"
+	tuttiAgentAppServerAuthRequiredMessage = "Tutti Agent requires authentication. " +
+		"Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session."
+)
+
+// appServerAdapterConfig captures the provider-specific identity of an
+// app-server CLI so a single adapter implementation can serve Codex and
+// Codex-compatible forks (Tutti Agent) without sharing brand, command, or
+// auth assumptions.
+type appServerAdapterConfig struct {
+	provider            string
+	command             []string
+	clientInfoName      string
+	authRequiredMessage string
+}
+
+func codexAppServerAdapterConfig() appServerAdapterConfig {
+	return appServerAdapterConfig{
+		provider:            ProviderCodex,
+		command:             []string{codexAppServerCommand, codexAppServerSubcmd},
+		clientInfoName:      codexOfficialOriginator,
+		authRequiredMessage: codexAppServerAuthRequiredMessage,
+	}
+}
+
+func tuttiAgentAppServerAdapterConfig() appServerAdapterConfig {
+	return appServerAdapterConfig{
+		provider:            ProviderTuttiAgent,
+		command:             []string{tuttiAgentAppServerCommand, codexAppServerSubcmd},
+		clientInfoName:      tuttiAgentClientInfoName,
+		authRequiredMessage: tuttiAgentAppServerAuthRequiredMessage,
+	}
+}
+
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
 const defaultCodexAppServerCancelGraceWindow = 3 * time.Second
@@ -100,6 +140,7 @@ const defaultCodexAppServerGoalContinuationGraceWindow = 100 * time.Millisecond
 type CodexAppServerAdapter struct {
 	transport   ProcessTransport
 	host        HostMetadata
+	config      appServerAdapterConfig
 	mu          sync.Mutex
 	sessions    map[string]*codexAppServerSession
 	commandSink CommandSnapshotSink
@@ -114,6 +155,10 @@ type CodexAppServerAdapter struct {
 	// cancelGraceWindow bounds the graceful-interrupt wait in Cancel before the
 	// process is force-closed. Zero falls back to the default.
 	cancelGraceWindow time.Duration
+	// cliVersionMu/cliVersionCached memoize the served CLI's --version result
+	// per adapter instance (each instance owns one command).
+	cliVersionMu     sync.Mutex
+	cliVersionCached string
 }
 
 type codexAppServerSessionLock struct {
@@ -210,9 +255,21 @@ func NewCodexAppServerAdapter(transport ProcessTransport) *CodexAppServerAdapter
 }
 
 func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return newAppServerAdapter(transport, host, codexAppServerAdapterConfig())
+}
+
+// NewTuttiAgentAppServerAdapterWithHostMetadata serves the tutti-agent
+// provider through the shared app-server adapter with Tutti-branded command,
+// client identity, and auth messaging.
+func NewTuttiAgentAppServerAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *CodexAppServerAdapter {
+	return newAppServerAdapter(transport, host, tuttiAgentAppServerAdapterConfig())
+}
+
+func newAppServerAdapter(transport ProcessTransport, host HostMetadata, config appServerAdapterConfig) *CodexAppServerAdapter {
 	return &CodexAppServerAdapter{
 		transport:         transport,
 		host:              host,
+		config:            config,
 		sessions:          make(map[string]*codexAppServerSession),
 		lifecycleLocks:    make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
@@ -227,23 +284,18 @@ func NewCodexAppServerAdapterWithHostMetadata(transport ProcessTransport, host H
 // by upstreams that gate on an "official Codex client" allowlist.
 const codexOfficialOriginator = "codex_cli_rs"
 
-var (
-	codexCLIVersionMu     sync.Mutex
-	codexCLIVersionCached string
-)
-
-// resolveCodexCLIVersion returns the version of the codex binary that serves
-// the app-server (e.g. "0.142.1"), resolved with the same env (PATH) the
-// app-server is spawned with so the two agree. The result is cached after the
-// first successful lookup; an empty string signals "unknown" so callers can
-// fall back.
-func resolveCodexCLIVersion(env []string) string {
-	codexCLIVersionMu.Lock()
-	defer codexCLIVersionMu.Unlock()
-	if codexCLIVersionCached != "" {
-		return codexCLIVersionCached
+// resolveCLIVersion returns the version of the binary that serves the
+// app-server (e.g. "0.142.1"), resolved with the same env (PATH) the
+// app-server is spawned with so the two agree. The result is cached per
+// adapter after the first successful lookup; an empty string signals
+// "unknown" so callers can fall back.
+func (a *CodexAppServerAdapter) resolveCLIVersion(env []string) string {
+	a.cliVersionMu.Lock()
+	defer a.cliVersionMu.Unlock()
+	if a.cliVersionCached != "" {
+		return a.cliVersionCached
 	}
-	cmd := exec.Command(codexAppServerCommand, "--version")
+	cmd := exec.Command(a.config.command[0], "--version")
 	if len(env) > 0 {
 		cmd.Env = env
 	}
@@ -256,32 +308,37 @@ func resolveCodexCLIVersion(env []string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	codexCLIVersionCached = strings.TrimSpace(fields[len(fields)-1])
-	return codexCLIVersionCached
+	a.cliVersionCached = strings.TrimSpace(fields[len(fields)-1])
+	return a.cliVersionCached
 }
 
-// codexClientInfoParams builds the app-server initialize clientInfo so the
-// outbound originator/User-Agent match the official Codex CLI, resolving the
-// codex binary version from the spawn env.
-func codexClientInfoParams(host HostMetadata, env []string) map[string]any {
-	return codexClientInfoParamsForVersion(host, resolveCodexCLIVersion(env))
+// clientInfoParams builds the app-server initialize clientInfo. The served
+// CLI derives its outbound originator/User-Agent from clientInfo.name, so the
+// name comes from the adapter config: the official Codex originator for the
+// codex provider, the Tutti identity for tutti-agent.
+func (a *CodexAppServerAdapter) clientInfoParams(env []string) map[string]any {
+	return clientInfoParamsForVersion(a.host, a.config.clientInfoName, a.resolveCLIVersion(env))
 }
 
-// codexClientInfoParamsForVersion composes the clientInfo for a known codex
-// version, falling back to the host-provided version when it is empty.
+// codexClientInfoParamsForVersion composes the official Codex clientInfo for a
+// known codex version, falling back to the host-provided version when empty.
 func codexClientInfoParamsForVersion(host HostMetadata, version string) map[string]any {
+	return clientInfoParamsForVersion(host, codexOfficialOriginator, version)
+}
+
+func clientInfoParamsForVersion(host HostMetadata, name string, version string) map[string]any {
 	if strings.TrimSpace(version) == "" {
 		version = strings.TrimSpace(host.ClientInfo.Version)
 	}
 	return map[string]any{
-		"name":    codexOfficialOriginator,
+		"name":    name,
 		"title":   host.ClientInfo.Title,
 		"version": version,
 	}
 }
 
-func (*CodexAppServerAdapter) Provider() string {
-	return ProviderCodex
+func (a *CodexAppServerAdapter) Provider() string {
+	return a.config.provider
 }
 
 func (*CodexAppServerAdapter) sessionCWD(session Session) string {
@@ -320,8 +377,8 @@ func (*CodexAppServerAdapter) ValidatePromptContent(Session, []PromptContentBloc
 	return nil
 }
 
-func (*CodexAppServerAdapter) commandString() string {
-	return codexAppServerCommand + " " + codexAppServerSubcmd
+func (a *CodexAppServerAdapter) commandString() string {
+	return strings.Join(a.config.command, " ")
 }
 
 func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (events []activityshared.Event, err error) {
@@ -366,7 +423,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 			serverInfo:      serverInfo,
 			account:         account,
 			authState:       "auth_required",
-			authMessage:     codexAppServerAuthRequiredMessage,
+			authMessage:     a.config.authRequiredMessage,
 			acpLiveState:    newACPLiveState(),
 			pendingRequests: make(map[string]*pendingACPRequest),
 		})
@@ -377,7 +434,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 			"agent":            serverInfo,
 			"permissionModeId": session.PermissionModeID,
 			"authState":        "auth_required",
-			"authMessage":      codexAppServerAuthRequiredMessage,
+			"authMessage":      a.config.authRequiredMessage,
 		})}, nil
 	}
 	models := []map[string]any(nil)
@@ -403,7 +460,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 				serverInfo:      serverInfo,
 				account:         account,
 				authState:       "auth_required",
-				authMessage:     codexAppServerAuthRequiredMessage,
+				authMessage:     a.config.authRequiredMessage,
 				acpLiveState:    newACPLiveState(),
 				pendingRequests: make(map[string]*pendingACPRequest),
 			})
@@ -414,7 +471,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 				"agent":            serverInfo,
 				"permissionModeId": session.PermissionModeID,
 				"authState":        "auth_required",
-				"authMessage":      codexAppServerAuthRequiredMessage,
+				"authMessage":      a.config.authRequiredMessage,
 			})}, nil
 		}
 		return nil, err
@@ -429,7 +486,7 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 	})
 	slog.Info("agent session app-server thread started",
 		"event", "agent_session.app_server.thread_start.succeeded",
-		"provider", ProviderCodex,
+		"provider", a.config.provider,
 		"room_id", session.RoomID,
 		"agent_session_id", session.AgentSessionID,
 		"provider_session_id", threadID,
@@ -515,7 +572,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 			serverInfo:      serverInfo,
 			account:         account,
 			authState:       "auth_required",
-			authMessage:     codexAppServerAuthRequiredMessage,
+			authMessage:     a.config.authRequiredMessage,
 			acpLiveState:    newACPLiveState(),
 			pendingRequests: make(map[string]*pendingACPRequest),
 		})
@@ -646,17 +703,17 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 		return nil, nil, errors.New("app-server process transport is unavailable")
 	}
 	trace.Log("process.start.begin", map[string]any{
-		"command": strings.Join([]string{codexAppServerCommand, codexAppServerSubcmd}, " "),
+		"command": a.commandString(),
 		"cwd":     a.sessionCWD(session),
 	})
 	processStartedAt := time.Now()
 	spawnEnv := append(codexACPEnv(session, a.host), session.Env...)
 	conn, err := a.transport.Start(ctx, ProcessSpec{
-		Provider:       ProviderCodex,
+		Provider:       a.config.provider,
 		AgentSessionID: session.AgentSessionID,
 		RoomID:         session.RoomID,
 		CWD:            a.sessionCWD(session),
-		Command:        []string{codexAppServerCommand, codexAppServerSubcmd},
+		Command:        append([]string(nil), a.config.command...),
 		Env:            spawnEnv,
 	})
 	if err != nil {
@@ -704,7 +761,7 @@ func (a *CodexAppServerAdapter) startInitializedClient(
 
 	initializeResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodInitialize, func() (json.RawMessage, error) {
 		return client.Initialize(ctx, acpStartCallTimeout, map[string]any{
-			"clientInfo": codexClientInfoParams(a.host, spawnEnv),
+			"clientInfo": a.clientInfoParams(spawnEnv),
 			"capabilities": map[string]any{
 				"experimentalApi": true,
 			},
@@ -1307,7 +1364,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		return append([]activityshared.Event(nil), events...)
 	}
 	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackACPFamilySessionTitle(session.Title, visibleText, "", ProviderCodex); fallbackTitle != "" {
+	if fallbackTitle := fallbackACPFamilySessionTitle(session.Title, visibleText, "", a.config.provider); fallbackTitle != "" {
 		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
 		session.Title = fallbackTitle
 	}

@@ -35,6 +35,7 @@ import {
   type DesktopAgentComposerDefaultsByProvider,
   type DesktopAgentGuiConversationRailCollapsedByProvider,
   type DesktopAgentProvider,
+  type DesktopDefaultAgentProvider,
   type DesktopAgentConversationDetailMode,
   type DesktopAgentDockLayout,
   type DesktopAppCatalogChannel,
@@ -107,8 +108,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
   }
 
   async setDefaultAgentProvider(
-    provider: DesktopAgentProvider
-  ): Promise<DesktopAgentProvider> {
+    provider: DesktopDefaultAgentProvider
+  ): Promise<DesktopDefaultAgentProvider> {
     if (this.store.changingDefaultAgentProvider === provider) {
       return provider;
     }
@@ -696,7 +697,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentDockLayout?: DesktopAgentDockLayout;
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopAgentProvider;
+    defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
@@ -760,7 +761,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       agentDockLayout: DesktopAgentDockLayout;
       appCatalogChannel: DesktopAppCatalogChannel;
       browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-      defaultAgentProvider: DesktopAgentProvider;
+      defaultAgentProvider: DesktopDefaultAgentProvider;
       dockIconStyle: DesktopDockIconStyle;
       dockPlacement: DesktopDockPlacement;
       fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
@@ -780,7 +781,7 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     agentDockLayout: DesktopAgentDockLayout;
     appCatalogChannel: DesktopAppCatalogChannel;
     browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopAgentProvider;
+    defaultAgentProvider: DesktopDefaultAgentProvider;
     dockIconStyle: DesktopDockIconStyle;
     dockPlacement: DesktopDockPlacement;
     fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;

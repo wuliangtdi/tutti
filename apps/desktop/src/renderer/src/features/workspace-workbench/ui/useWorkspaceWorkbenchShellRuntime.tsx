@@ -57,6 +57,7 @@ import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
+import { filterWorkspaceAgentGuiProviderTargets } from "./workspaceAgentGuiProviderTargetFilter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -123,7 +124,8 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const { service: workspaceSettingsService } = useWorkspaceSettingsService();
+  const { service: workspaceSettingsService, state: workspaceSettingsState } =
+    useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
@@ -131,8 +133,12 @@ export function useWorkspaceWorkbenchShellRuntime({
   >(undefined);
   const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
   const resolvedAgentGuiProviderTargets = useMemo(
-    () => agentGuiProviderTargets ?? [],
-    [agentGuiProviderTargets]
+    () =>
+      filterWorkspaceAgentGuiProviderTargets(agentGuiProviderTargets ?? [], {
+        tuttiAgentSwitchEnabled:
+          workspaceSettingsState.tuttiAgentSwitchEnabled === true
+      }),
+    [agentGuiProviderTargets, workspaceSettingsState.tuttiAgentSwitchEnabled]
   );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(

@@ -34,6 +34,7 @@ import {
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
 import { useTranslation } from "@renderer/i18n";
+import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService.ts";
 import {
   isWorkspaceAgentGuiComingSoonProvider,
   resolveWorkspaceAgentGuiLabel,
@@ -77,6 +78,7 @@ export function WorkspaceLaunchpadOverlay({
   const { service: appCenterService, state: appCenterState } =
     useWorkspaceAppCenterService();
   const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const { state: workspaceSettingsState } = useWorkspaceSettingsService();
   const reporterService = useService(IReporterService);
   const agentProviderSnapshot = useSyncExternalStore(
     (listener) => agentProviderStatusService.subscribe(listener),
@@ -110,38 +112,45 @@ export function WorkspaceLaunchpadOverlay({
       ),
     [agentProviderSnapshot.statuses]
   );
+  const launchpadAgentProviders = useMemo(() => workspaceAgentGuiProviders, []);
 
   const items = useMemo(
     () =>
       buildWorkbenchLaunchpadItems<WorkspaceAgentProvider>({
-        agentDescriptors: workspaceAgentGuiProviders.map((provider) => {
+        agentDescriptors: launchpadAgentProviders.map((provider) => {
           const status = statusByProvider.get(provider) ?? null;
+          const disabledBySettings =
+            provider === "tutti-agent" &&
+            workspaceSettingsState.tuttiAgentSwitchEnabled !== true;
           const comingSoon =
             isWorkspaceAgentGuiComingSoonProvider(provider) ||
             status?.availability.status === "unsupported";
           const launchEnabled =
-            !comingSoon && status?.availability.status === "ready";
+            !disabledBySettings &&
+            !comingSoon &&
+            status?.availability.status === "ready";
           return {
             actions: resolveLaunchpadAgentActions({
               comingSoon,
+              disabledBySettings,
               status
             }),
             comingSoon,
             disabledReason: launchEnabled
               ? undefined
-              : comingSoon
-                ? t("workspace.workbenchDesktop.agentProviders.comingSoon")
-                : t("workspace.workbenchDesktop.launchpad.agentUnavailable"),
+              : disabledBySettings
+                ? undefined
+                : comingSoon
+                  ? t("workspace.workbenchDesktop.agentProviders.comingSoon")
+                  : t("workspace.workbenchDesktop.launchpad.agentUnavailable"),
             iconUrl: launchpadDockIcons.agents[provider],
-            label:
-              provider === "nexight"
-                ? "Tutti"
-                : resolveWorkspaceAgentGuiLabel(provider),
+            label: resolveWorkspaceAgentGuiLabel(provider),
             launchEnabled,
             provider,
             reason: resolveLaunchpadAgentReason(
               {
                 comingSoon,
+                disabledBySettings,
                 status
               },
               t
@@ -201,7 +210,14 @@ export function WorkspaceLaunchpadOverlay({
           }
         ]
       }),
-    [appCenterState.apps, launchpadDockIcons, statusByProvider, t]
+    [
+      appCenterState.apps,
+      launchpadAgentProviders,
+      launchpadDockIcons,
+      statusByProvider,
+      workspaceSettingsState.tuttiAgentSwitchEnabled,
+      t
+    ]
   );
 
   useEffect(() => {
@@ -373,9 +389,10 @@ function resolveLaunchpadNodeItemType(
 
 function resolveLaunchpadAgentActions(input: {
   comingSoon: boolean;
+  disabledBySettings: boolean;
   status: AgentProviderStatus | null;
 }): { id: string }[] {
-  if (input.comingSoon) {
+  if (input.comingSoon || input.disabledBySettings) {
     return [];
   }
   if (input.status === null) {
@@ -398,10 +415,14 @@ function resolveLaunchpadAgentActions(input: {
 function resolveLaunchpadAgentReason(
   input: {
     comingSoon: boolean;
+    disabledBySettings: boolean;
     status: AgentProviderStatus | null;
   },
   t: WorkspaceLaunchpadTranslate
 ): string | null {
+  if (input.disabledBySettings) {
+    return null;
+  }
   if (input.comingSoon) {
     return t("workspace.workbenchDesktop.agentProviders.comingSoon");
   }

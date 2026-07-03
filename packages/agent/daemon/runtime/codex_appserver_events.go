@@ -1765,8 +1765,12 @@ func appServerInfo(raw json.RawMessage) map[string]any {
 		return info
 	}
 	var result struct {
-		UserAgent      string `json:"userAgent"`
-		CodexHome      string `json:"codexHome"`
+		UserAgent string `json:"userAgent"`
+		CodexHome string `json:"codexHome"`
+		// The Tutti Agent fork renames the initialize home field; its serde
+		// alias only applies to deserialization, so both spellings must be
+		// accepted here.
+		TuttiAgentHome string `json:"tuttiAgentHome"`
 		PlatformOS     string `json:"platformOs"`
 		PlatformFamily string `json:"platformFamily"`
 	}
@@ -1775,6 +1779,9 @@ func appServerInfo(raw json.RawMessage) map[string]any {
 	}
 	if result.UserAgent != "" {
 		info["userAgent"] = result.UserAgent
+	}
+	if result.CodexHome == "" {
+		result.CodexHome = result.TuttiAgentHome
 	}
 	if result.CodexHome != "" {
 		info["codexHome"] = result.CodexHome

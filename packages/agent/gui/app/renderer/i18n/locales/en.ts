@@ -644,6 +644,7 @@ export const en = {
       batchRunnerProviderHermes: "Hermes",
       batchRunnerProviderNexight: "Nexight",
       batchRunnerProviderOpenClaw: "OpenClaw",
+      batchRunnerProviderTuttiAgent: "Tutti Agent",
       batchRunnerRun: "Run",
       batchRunnerRunning: "Running...",
       batchRunnerExport: "Export",

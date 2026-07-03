@@ -62,6 +62,7 @@ import {
 } from "../../../../../shared/i18n/index.ts";
 import {
   type DesktopAgentProvider,
+  type DesktopDefaultAgentProvider,
   desktopAgentDockLayouts,
   desktopAgentConversationDetailModes,
   desktopAppCatalogChannels,
@@ -129,11 +130,11 @@ const tuttiDesktopIconUrl = new URL(
 const workspaceSettingsDefaultAgentProviders = [
   "codex",
   "claude-code"
-] as const satisfies readonly DesktopAgentProvider[];
+] as const satisfies readonly DesktopDefaultAgentProvider[];
 
 function isWorkspaceSettingsDefaultAgentProvider(
   provider: DesktopAgentProvider
-): boolean {
+): provider is DesktopDefaultAgentProvider {
   return provider === "codex" || provider === "claude-code";
 }
 
@@ -2413,9 +2414,9 @@ function WorkspaceAgentSettingsSection({
   agentConversationDetailMode: DesktopAgentConversationDetailMode;
   browserUseConnectionMode: DesktopBrowserUseConnectionMode;
   changingAgentConversationDetailMode: DesktopAgentConversationDetailMode | null;
-  changingDefaultAgentProvider: DesktopAgentProvider | null;
+  changingDefaultAgentProvider: DesktopDefaultAgentProvider | null;
   changingBrowserUseConnectionMode: DesktopBrowserUseConnectionMode | null;
-  defaultAgentProvider: DesktopAgentProvider;
+  defaultAgentProvider: DesktopDefaultAgentProvider;
   focusedAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   focusRequestID: number;
   onAgentConversationDetailModeChange: (
@@ -2424,7 +2425,7 @@ function WorkspaceAgentSettingsSection({
   onBrowserUseConnectionModeChange: (
     mode: DesktopBrowserUseConnectionMode
   ) => void;
-  onDefaultAgentProviderChange: (provider: DesktopAgentProvider) => void;
+  onDefaultAgentProviderChange: (provider: DesktopDefaultAgentProvider) => void;
   onOpenExternalAgentImport: () => void;
 }) {
   const { t } = useTranslation();
@@ -2553,7 +2554,7 @@ function WorkspaceAgentSettingsSection({
             disabled={isUpdatingDefaultAgentProvider}
             value={pendingDefaultAgentProvider}
             onValueChange={(value) =>
-              onDefaultAgentProviderChange(value as DesktopAgentProvider)
+              onDefaultAgentProviderChange(value as DesktopDefaultAgentProvider)
             }
           >
             <SelectTrigger

@@ -866,6 +866,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
         agentProviderStatusService:
           this.dependencies.agentProviderStatusService,
         i18n: input.i18n,
+        providerTargets: input.providerTargets,
         workspaceAgentActivityService:
           this.dependencies.workspaceAgentActivityService,
         workspaceId: input.workspaceId

@@ -55,7 +55,7 @@ test("bindDesktopManagedAgentProviderVisibilityRefresh refreshes managed provide
   }
 
   assert.deepEqual(refreshCalls, [
-    ["claude-code", "codex", "nexight", "gemini", "hermes", "openclaw"]
+    ["claude-code", "codex", "tutti-agent", "gemini", "hermes", "openclaw"]
   ]);
 });
 

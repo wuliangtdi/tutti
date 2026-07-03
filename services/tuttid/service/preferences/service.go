@@ -70,7 +70,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		AgentDockLayout:                             normalizeAgentDockLayout(input.AgentDockLayout),
 		AppCatalogChannel:                           normalizeAppCatalogChannel(input.AppCatalogChannel),
 		BrowserUseConnectionMode:                    normalizeBrowserUseConnectionMode(input.BrowserUseConnectionMode),
-		DefaultAgentProvider:                        agentproviderbiz.Normalize(input.DefaultAgentProvider),
+		DefaultAgentProvider:                        normalizeDefaultAgentProvider(input.DefaultAgentProvider),
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
@@ -110,6 +110,14 @@ func (s Service) resolveWindowSnapping(ctx context.Context, input *DesktopWindow
 		Enabled:        preferences.WindowSnappingEnabled,
 		ShortcutPreset: normalizeWindowSnappingShortcutPreset(preferences.WindowSnappingShortcutPreset),
 	}, nil
+}
+
+func normalizeDefaultAgentProvider(value string) string {
+	normalized := agentproviderbiz.Normalize(value)
+	if preferencesbiz.IsDesktopDefaultAgentProvider(normalized) {
+		return normalized
+	}
+	return preferencesbiz.DefaultDesktopDefaultAgentProvider
 }
 
 func normalizeAgentDockLayout(value string) string {

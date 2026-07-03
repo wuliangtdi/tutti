@@ -37,6 +37,7 @@ import { useTranslation } from "@renderer/i18n";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
+import { isDesktopAgentProvider } from "@shared/preferences";
 import type { DesktopComputerUseApi, DesktopRuntimeApi } from "@preload/types";
 import type { DesktopComputerUseStatus } from "@shared/contracts/ipc";
 import {
@@ -515,14 +516,16 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       ),
     [provider, providerTargets, workbenchAgentTargetId]
   );
-  const providerComposerDefaults =
-    desktopPreferencesState.agentComposerDefaultsByProvider[nodeProvider] ??
-    null;
+  const providerComposerDefaults = isDesktopAgentProvider(nodeProvider)
+    ? (desktopPreferencesState.agentComposerDefaultsByProvider[nodeProvider] ??
+      null)
+    : null;
   const hasExplicitConversationRailCollapsedState =
     hasDesktopAgentGUIConversationRailCollapsedState(rawWorkbenchStateSource);
   const preferredConversationRailCollapsed =
+    isDesktopAgentProvider(nodeProvider) &&
     desktopPreferencesState.agentGuiConversationRailCollapsedByProvider[
-      provider
+      nodeProvider
     ] === true;
   // Single source of truth: derive the node state directly from the workbench
   // external store (plus a pure provider-default overlay). There is no local
@@ -592,7 +595,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       nodeStateRef.current = next;
       const previousRailCollapsed = current.conversationRailCollapsed === true;
       const nextRailCollapsed = next.conversationRailCollapsed === true;
-      if (!previewMode && previousRailCollapsed !== nextRailCollapsed) {
+      if (
+        !previewMode &&
+        previousRailCollapsed !== nextRailCollapsed &&
+        isDesktopAgentProvider(next.provider)
+      ) {
         void desktopPreferencesService
           .rememberAgentGuiConversationRailCollapsed(
             next.provider,
@@ -966,7 +973,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     NonNullable<AgentGUIProps["onRememberComposerDefaults"]>
   >(
     ({ provider: defaultsProvider, defaults }) => {
-      if (previewMode) {
+      if (previewMode || !isDesktopAgentProvider(defaultsProvider)) {
         return;
       }
       const previousDefaults =

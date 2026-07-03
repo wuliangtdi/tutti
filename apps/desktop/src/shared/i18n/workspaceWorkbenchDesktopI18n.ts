@@ -98,7 +98,7 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     manageProviderGemini: "agentProviders.manageProviderGemini",
     manageProviderHermes: "agentProviders.manageProviderHermes",
     manageProviderOpenClaw: "agentProviders.manageProviderOpenClaw",
-    manageProviderTutti: "agentProviders.manageProviderTutti",
+    manageProviderTuttiAgent: "agentProviders.manageProviderTuttiAgent",
     manageStatusAuthRequired: "agentProviders.manageStatusAuthRequired",
     manageStatusAvailable: "agentProviders.manageStatusAvailable",
     manageStatusChecking: "agentProviders.manageStatusChecking",

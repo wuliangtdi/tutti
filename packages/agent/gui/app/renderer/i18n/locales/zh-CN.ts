@@ -593,6 +593,7 @@ export const zhCN = {
       batchRunnerProviderHermes: "Hermes",
       batchRunnerProviderNexight: "Nexight",
       batchRunnerProviderOpenClaw: "OpenClaw",
+      batchRunnerProviderTuttiAgent: "Tutti Agent",
       batchRunnerRun: "执行",
       batchRunnerRunning: "执行中...",
       batchRunnerExport: "导出",

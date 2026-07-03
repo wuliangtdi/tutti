@@ -4,7 +4,8 @@ import {
   hermesRoundedUrl,
   manageAgentClaudeCodeUrl,
   manageAgentTuttiUrl,
-  openclawRoundedUrl
+  openclawRoundedUrl,
+  tuttiAgentRoundedUrl
 } from "./managedAgentIconAssets.ts";
 
 export const agentGuiDockIconUrl = codexRoundedUrl;
@@ -15,5 +16,6 @@ export const agentGuiDockIconUrls = {
   gemini: geminiRoundedUrl,
   hermes: hermesRoundedUrl,
   nexight: manageAgentTuttiUrl,
-  openclaw: openclawRoundedUrl
+  openclaw: openclawRoundedUrl,
+  "tutti-agent": tuttiAgentRoundedUrl
 } as const;

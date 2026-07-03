@@ -727,7 +727,7 @@ export const zhCN = {
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",
-        manageProviderTutti: "Tutti",
+        manageProviderTuttiAgent: "Tutti Agent",
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",
         manageStatusChecking: "检测中",

@@ -80,6 +80,9 @@ function projectDesktopAgentProviderReadinessGate(input: {
         onAction: input.onAction
       };
     case "auth_required":
+      if (input.provider === "tutti-agent") {
+        return null;
+      }
       return {
         status: "auth_required",
         pendingAction: pendingActionForProvider(

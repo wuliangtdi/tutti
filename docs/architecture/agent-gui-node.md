@@ -165,6 +165,10 @@ provider target immediately, including the empty-state artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
 state and must be cleared when the selected provider target changes; provider-
 or target-scoped defaults may still provide the next settings.
+Host feature switches that disable a provider for new conversations should keep
+the provider target present with `disabled: true` when another surface still
+needs to show the provider in a disabled state. Filter the target out only for
+surfaces that should completely hide it.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -1154,6 +1158,20 @@ AgentGUI does not persist or send their `providerTargetRef`. For system local
 Codex and Claude Code targets, the synthesized targets may expose `local:codex`
 and `local:claude-code` as `agentTargetId`, matching the legacy local
 `providerTargetId` format so old node state can fall back without remapping.
+
+Desktop workbench may apply product entry gates before passing target data into
+AgentGUI. The Tutti Agent switch (`tuttiAgentSwitchEnabled`) is one such gate:
+when off, desktop removes `local:tutti-agent` from new-session targets, unified
+dock launch, launchpad, provider rail/composer entry points, and workspace-app
+mention candidates. This gate must not filter session/activity snapshots or
+direct session-open paths; existing `tutti-agent` sessions remain readable and
+their provider identity stays `tutti-agent`.
+
+`nexight` remains a historical/runtime provider identity for old activity data
+and compatibility code, but it is no longer a desktop new-entry AgentGUI
+provider. Do not reintroduce `agent-nexight` or the old "Tutti" pseudo-app as a
+launch surface; use the first-party `agent-tutti-agent` / `local:tutti-agent`
+path instead.
 
 ### Conversation Projection
 

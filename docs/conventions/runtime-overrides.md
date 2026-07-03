@@ -22,6 +22,8 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
 | `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
 | `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
+| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.        |
+| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`.  |
 
 ## Workspace App Catalog
 

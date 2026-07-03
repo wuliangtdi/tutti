@@ -24,7 +24,7 @@ describe("agent gui provider targets", () => {
     ).toEqual([
       "local:codex",
       "local:claude-code",
-      "local:nexight",
+      "local:tutti-agent",
       "local:hermes",
       "local:gemini",
       "local:openclaw"

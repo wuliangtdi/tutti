@@ -3640,9 +3640,10 @@ function conversationProjectsRenderEqual(
 }
 
 const agentGUIProviderRailOrder: readonly AgentGUIProvider[] = [
-  "nexight",
   "claude-code",
   "codex",
+  "tutti-agent",
+  "nexight",
   "openclaw",
   "hermes",
   "gemini"

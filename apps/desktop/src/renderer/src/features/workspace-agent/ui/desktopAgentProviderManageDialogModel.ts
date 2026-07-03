@@ -28,7 +28,7 @@ export interface DesktopAgentProviderManageRow {
   configDetected: boolean;
   pending: boolean;
   primaryActionId: DesktopAgentProviderManageRowAction | null;
-  provider: WorkspaceAgentProvider;
+  provider: (typeof desktopAgentProviderManageDialogProviders)[number];
   status: DesktopAgentProviderManageRowStatus;
 }
 
@@ -54,7 +54,7 @@ export function projectDesktopAgentProviderManageRows(input: {
 export function projectDesktopAgentProviderManageRow(input: {
   isLoading: boolean;
   pendingActions: readonly AgentProviderStatusPendingAction[];
-  provider: WorkspaceAgentProvider;
+  provider: (typeof desktopAgentProviderManageDialogProviders)[number];
   status: AgentProviderStatus | null;
 }): DesktopAgentProviderManageRow {
   const status = resolveDesktopAgentProviderManageRowStatus(

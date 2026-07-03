@@ -3,7 +3,7 @@ import type { AgentGuiWorkbenchProvider } from "./types.ts";
 export const agentGuiWorkbenchProviders = [
   "claude-code",
   "codex",
-  "nexight",
+  "tutti-agent",
   "hermes",
   "gemini",
   "openclaw"
@@ -11,7 +11,8 @@ export const agentGuiWorkbenchProviders = [
 
 export const agentGuiWorkbenchDefaultDockProviders = [
   "codex",
-  "claude-code"
+  "claude-code",
+  "tutti-agent"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDockSuppressedProviders = [
@@ -19,9 +20,8 @@ export const agentGuiWorkbenchDockSuppressedProviders = [
   "gemini"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
-export const agentGuiWorkbenchComingSoonProviders = [
-  "nexight"
-] as const satisfies readonly AgentGuiWorkbenchProvider[];
+export const agentGuiWorkbenchComingSoonProviders =
+  [] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 const defaultDockProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchDefaultDockProviders
@@ -32,6 +32,7 @@ const dockSuppressedProviderSet = new Set<AgentGuiWorkbenchProvider>(
 const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchComingSoonProviders
 );
+const enabledWorkbenchProviderSet = new Set<string>(agentGuiWorkbenchProviders);
 
 // i18n-check-ignore: provider brand names.
 export const agentGuiWorkbenchProviderLabels: Record<
@@ -43,7 +44,8 @@ export const agentGuiWorkbenchProviderLabels: Record<
   gemini: "Gemini CLI",
   hermes: "Hermes Agent",
   nexight: "Nexight",
-  openclaw: "OpenClaw"
+  openclaw: "OpenClaw",
+  "tutti-agent": "Tutti Agent"
 };
 
 export function resolveAgentGuiWorkbenchProviderLabel(
@@ -73,10 +75,7 @@ export function isAgentGuiWorkbenchComingSoonProvider(
 export function isAgentGuiWorkbenchProvider(
   value: unknown
 ): value is AgentGuiWorkbenchProvider {
-  return (
-    typeof value === "string" &&
-    agentGuiWorkbenchProviders.includes(value as AgentGuiWorkbenchProvider)
-  );
+  return typeof value === "string" && enabledWorkbenchProviderSet.has(value);
 }
 
 export function normalizeAgentGuiWorkbenchProvider(

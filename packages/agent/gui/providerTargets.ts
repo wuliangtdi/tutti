@@ -10,13 +10,14 @@ const agentGUIProviderTargetFallbackLabels: Record<AgentGUIProvider, string> = {
   gemini: "Gemini",
   hermes: "Hermes",
   nexight: "Nexight",
-  openclaw: "OpenClaw"
+  openclaw: "OpenClaw",
+  "tutti-agent": "Tutti Agent"
 };
 
 export const agentGUIDefaultTargetProviders = [
   "codex",
   "claude-code",
-  "nexight",
+  "tutti-agent",
   "hermes",
   "gemini",
   "openclaw"
@@ -61,6 +62,8 @@ export function localAgentGUIAgentTargetId(
       return "local:codex";
     case "claude-code":
       return "local:claude-code";
+    case "tutti-agent":
+      return "local:tutti-agent";
     default:
       return null;
   }

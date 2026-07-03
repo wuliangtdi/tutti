@@ -277,7 +277,7 @@ export type DesktopPreferences = {
   agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-  defaultAgentProvider: WorkspaceAgentProvider;
+  defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
@@ -308,12 +308,14 @@ export type DesktopAgentComposerDefaults = {
 
 export type DesktopAgentConversationDetailMode = "coding" | "general";
 
+export type DesktopDefaultAgentProvider = "claude-code" | "codex";
+
 export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
 export type DesktopAgentComposerDefaultsByProvider = {
   "claude-code"?: DesktopAgentComposerDefaults;
   codex?: DesktopAgentComposerDefaults;
-  nexight?: DesktopAgentComposerDefaults;
+  "tutti-agent"?: DesktopAgentComposerDefaults;
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
@@ -322,7 +324,7 @@ export type DesktopAgentComposerDefaultsByProvider = {
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "claude-code"?: boolean;
   codex?: boolean;
-  nexight?: boolean;
+  "tutti-agent"?: boolean;
   gemini?: boolean;
   hermes?: boolean;
   openclaw?: boolean;
@@ -349,7 +351,7 @@ export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
 
-export type AgentTargetProvider = "codex" | "claude-code";
+export type AgentTargetProvider = "codex" | "claude-code" | "tutti-agent";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -842,6 +844,7 @@ export type WorkspaceTerminalCloseGuardResponse = {
 export type WorkspaceAgentProvider =
   | "claude-code"
   | "codex"
+  | "tutti-agent"
   | "nexight"
   | "gemini"
   | "hermes"

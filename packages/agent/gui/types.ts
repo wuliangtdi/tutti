@@ -66,7 +66,13 @@ export interface AgentGUINodeData {
 
 export type AgentGUIProvider = Extract<
   AgentProvider,
-  "claude-code" | "codex" | "nexight" | "gemini" | "hermes" | "openclaw"
+  | "claude-code"
+  | "codex"
+  | "tutti-agent"
+  | "nexight"
+  | "gemini"
+  | "hermes"
+  | "openclaw"
 >;
 
 export interface AgentGUIProviderTargetRef {
@@ -202,6 +208,7 @@ export interface RoomIssueNodeData {
   selectedProvider:
     | "codex"
     | "claude-code"
+    | "tutti-agent"
     | "nexight"
     | "gemini"
     | "openclaw"

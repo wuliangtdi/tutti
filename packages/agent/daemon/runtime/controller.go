@@ -147,6 +147,7 @@ func NewDefaultControllerWithOptions(
 		[]Adapter{
 			newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
 			NewCodexAppServerAdapterWithHostMetadata(transport, host),
+			NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 			NewNexightAdapterWithHostMetadata(transport, host),
 			NewGeminiAdapterWithHostMetadata(transport, host),
 			NewHermesAdapterWithHostMetadata(transport, host),
@@ -422,7 +423,7 @@ func defaultPermissionModeIDForProvider(provider string) string {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return "default"
-	case ProviderCodex, ProviderNexight:
+	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
 		return "auto"
 	case ProviderGemini, ProviderHermes:
 		return "yolo"
@@ -458,7 +459,7 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return isClaudeCodePermissionModeID(mode)
-	case ProviderCodex, ProviderNexight:
+	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
 			return true
@@ -1567,11 +1568,19 @@ func (c *Controller) reconcileSessionStatusLocked(key string, session Session) S
 		session.SubmitAvailability = blockedSubmitAvailability("background_agent")
 		return session
 	}
-	if session.Status != SessionStatusWorking {
-		return session
+	if sessionStatusShouldReconcileToReady(session.Status) {
+		session.Status = SessionStatusReady
 	}
-	session.Status = SessionStatusReady
 	return session
+}
+
+func sessionStatusShouldReconcileToReady(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "", "created", "submitted", "running", "streaming", SessionStatusWorking:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Controller) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {

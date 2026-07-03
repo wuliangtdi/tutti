@@ -17,7 +17,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		AgentDockLayout:                             tuttigenerated.DesktopAgentDockLayout(preferencesbiz.NormalizeDesktopAgentDockLayout(value.AgentDockLayout)),
 		AppCatalogChannel:                           tuttigenerated.DesktopAppCatalogChannel(value.AppCatalogChannel),
 		BrowserUseConnectionMode:                    generatedBrowserUseConnectionModePointer(value.BrowserUseConnectionMode),
-		DefaultAgentProvider:                        tuttigenerated.WorkspaceAgentProvider(value.DefaultAgentProvider),
+		DefaultAgentProvider:                        tuttigenerated.DesktopDefaultAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
@@ -48,9 +48,9 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 	return tuttigenerated.DesktopAgentGuiConversationRailCollapsedByProvider{
 		ClaudeCode: optionalBoolPointerFromMap(value, "claude-code"),
 		Codex:      optionalBoolPointerFromMap(value, "codex"),
+		TuttiAgent: optionalBoolPointerFromMap(value, "tutti-agent"),
 		Gemini:     optionalBoolPointerFromMap(value, "gemini"),
 		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
-		Nexight:    optionalBoolPointerFromMap(value, "nexight"),
 		Openclaw:   optionalBoolPointerFromMap(value, "openclaw"),
 	}
 }
@@ -74,9 +74,9 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 	return tuttigenerated.DesktopAgentComposerDefaultsByProvider{
 		ClaudeCode: generatedAgentComposerDefaultsPointer(value["claude-code"]),
 		Codex:      generatedAgentComposerDefaultsPointer(value["codex"]),
+		TuttiAgent: generatedAgentComposerDefaultsPointer(value["tutti-agent"]),
 		Gemini:     generatedAgentComposerDefaultsPointer(value["gemini"]),
 		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
-		Nexight:    generatedAgentComposerDefaultsPointer(value["nexight"]),
 		Openclaw:   generatedAgentComposerDefaultsPointer(value["openclaw"]),
 	}
 }

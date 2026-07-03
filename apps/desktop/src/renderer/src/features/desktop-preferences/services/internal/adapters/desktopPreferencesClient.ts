@@ -307,7 +307,7 @@ function preferencesEqual(
 const desktopAgentProviderKeys = [
   "claude-code",
   "codex",
-  "nexight",
+  "tutti-agent",
   "gemini",
   "hermes",
   "openclaw"

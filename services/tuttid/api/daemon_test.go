@@ -1199,7 +1199,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 
 	var response tuttigenerated.AgentProviderComposerOptionsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.Provider != tuttigenerated.WorkspaceAgentProviderCodex {
+	if response.Provider != tuttigenerated.Codex {
 		t.Fatalf("provider = %q, want codex", response.Provider)
 	}
 	if response.EffectiveSettings.Model == nil || *response.EffectiveSettings.Model != "gpt-5" {
@@ -1583,8 +1583,8 @@ func TestDaemonAPIGeneratedRoutesGetDesktopPreferences(t *testing.T) {
 	if response.Preferences.Locale != tuttigenerated.ZhCN {
 		t.Fatalf("locale = %q, want %q", response.Preferences.Locale, tuttigenerated.ZhCN)
 	}
-	if response.Preferences.DefaultAgentProvider != tuttigenerated.WorkspaceAgentProviderClaudeCode {
-		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.WorkspaceAgentProviderClaudeCode)
+	if response.Preferences.DefaultAgentProvider != tuttigenerated.DesktopDefaultAgentProviderClaudeCode {
+		t.Fatalf("defaultAgentProvider = %q, want %q", response.Preferences.DefaultAgentProvider, tuttigenerated.DesktopDefaultAgentProviderClaudeCode)
 	}
 	if response.Preferences.AgentConversationDetailMode != tuttigenerated.General {
 		t.Fatalf("agentConversationDetailMode = %q, want %q", response.Preferences.AgentConversationDetailMode, tuttigenerated.General)
@@ -1702,8 +1702,8 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 
 	var response tuttigenerated.ListAgentTargetsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Targets) != 2 {
-		t.Fatalf("targets len = %d, want 2", len(response.Targets))
+	if len(response.Targets) != 3 {
+		t.Fatalf("targets len = %d, want 3", len(response.Targets))
 	}
 	if response.Targets[0].Id != agenttargetbiz.IDLocalCodex ||
 		response.Targets[0].Provider != tuttigenerated.AgentTargetProviderCodex ||
@@ -1716,6 +1716,12 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		response.Targets[1].LaunchRef.Type != tuttigenerated.LocalCli ||
 		response.Targets[1].LaunchRef.Provider != tuttigenerated.AgentTargetProviderClaudeCode {
 		t.Fatalf("second target = %#v, want local claude-code", response.Targets[1])
+	}
+	if response.Targets[2].Id != agenttargetbiz.IDLocalTuttiAgent ||
+		response.Targets[2].Provider != tuttigenerated.AgentTargetProviderTuttiAgent ||
+		response.Targets[2].LaunchRef.Type != tuttigenerated.LocalCli ||
+		response.Targets[2].LaunchRef.Provider != tuttigenerated.AgentTargetProviderTuttiAgent {
+		t.Fatalf("third target = %#v, want local tutti-agent", response.Targets[2])
 	}
 }
 

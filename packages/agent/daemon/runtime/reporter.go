@@ -891,7 +891,12 @@ func cloneInteractivePrompt(value *agentsessionstore.WorkspaceAgentInteractivePr
 }
 
 func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentStatePatch, event activityshared.Event) {
-	if patch == nil || strings.TrimSpace(patch.Provider) != ProviderCodex {
+	if patch == nil {
+		return
+	}
+	switch strings.TrimSpace(patch.Provider) {
+	case ProviderCodex, ProviderTuttiAgent:
+	default:
 		return
 	}
 	turnID := strings.TrimSpace(event.Payload.TurnID)

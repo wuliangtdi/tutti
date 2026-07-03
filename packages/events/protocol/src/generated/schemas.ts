@@ -59,7 +59,7 @@ export const preferencesDesktopPreferencesSchema = {
             }
           }
         },
-        nexight: {
+        "tutti-agent": {
           type: "object",
           additionalProperties: false,
           properties: {
@@ -131,7 +131,7 @@ export const preferencesDesktopPreferencesSchema = {
         codex: {
           type: "boolean"
         },
-        nexight: {
+        "tutti-agent": {
           type: "boolean"
         },
         gemini: {
@@ -163,7 +163,7 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: ["claude-code", "codex", "nexight", "gemini", "hermes", "openclaw"]
+      enum: ["claude-code", "codex"]
     },
     dockIconStyle: {
       type: "string",
@@ -1022,7 +1022,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 }
               }
             },
-            nexight: {
+            "tutti-agent": {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1094,7 +1094,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             codex: {
               type: "boolean"
             },
-            nexight: {
+            "tutti-agent": {
               type: "boolean"
             },
             gemini: {
@@ -1126,14 +1126,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: [
-            "claude-code",
-            "codex",
-            "nexight",
-            "gemini",
-            "hermes",
-            "openclaw"
-          ]
+          enum: ["claude-code", "codex"]
         },
         dockIconStyle: {
           type: "string",
@@ -1280,7 +1273,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 }
               }
             },
-            nexight: {
+            "tutti-agent": {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1352,7 +1345,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             codex: {
               type: "boolean"
             },
-            nexight: {
+            "tutti-agent": {
               type: "boolean"
             },
             gemini: {
@@ -1384,14 +1377,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         },
         defaultAgentProvider: {
           type: "string",
-          enum: [
-            "claude-code",
-            "codex",
-            "nexight",
-            "gemini",
-            "hermes",
-            "openclaw"
-          ]
+          enum: ["claude-code", "codex"]
         },
         dockIconStyle: {
           type: "string",

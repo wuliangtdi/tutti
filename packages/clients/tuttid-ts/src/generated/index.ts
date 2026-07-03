@@ -420,6 +420,7 @@ export type {
   DesktopAgentGuiConversationRailCollapsedByProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
+  DesktopDefaultAgentProvider,
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFileDefaultOpener,

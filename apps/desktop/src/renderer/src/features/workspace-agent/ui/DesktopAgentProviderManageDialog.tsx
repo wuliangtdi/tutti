@@ -60,9 +60,13 @@ const providerLabelKeys = {
   codex: "workspace.workbenchDesktop.agentProviders.manageProviderCodex",
   gemini: "workspace.workbenchDesktop.agentProviders.manageProviderGemini",
   hermes: "workspace.workbenchDesktop.agentProviders.manageProviderHermes",
-  nexight: "workspace.workbenchDesktop.agentProviders.manageProviderTutti",
-  openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw"
-} as const satisfies Record<WorkspaceAgentProvider, DesktopI18nKey>;
+  openclaw: "workspace.workbenchDesktop.agentProviders.manageProviderOpenClaw",
+  "tutti-agent":
+    "workspace.workbenchDesktop.agentProviders.manageProviderTuttiAgent"
+} as const satisfies Record<
+  (typeof desktopAgentProviderManageDialogProviders)[number],
+  DesktopI18nKey
+>;
 
 const statusLabelKeys = {
   auth_required:
