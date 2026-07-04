@@ -278,13 +278,6 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	// pause/resume are tutti-level goal controls with no native /goal
-	// spelling; forwarding them verbatim would set them as the objective.
-	if command, args := splitSlashCommand(visibleText); command == appServerSlashGoal {
-		if action, _ := goalControlActionFromSlashArgs(args); action == GoalControlPause || action == GoalControlResume {
-			return a.execGoalControlTurn(ctx, session, adapterSession, content, explicitDisplayPrompt, visibleText, turnID, emit)
-		}
-	}
 	events := make([]activityshared.Event, 0, 4)
 	emitEvents := func(next []activityshared.Event) {
 		if len(next) == 0 {
@@ -2089,6 +2082,9 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 			CapabilityPlanMode,
 			CapabilityInterrupt,
 			"review",
+			// Goal set/clear/display only — no CapabilityGoalPause: Claude
+			// Code's goal has no paused state to control.
+			"goal",
 		},
 	}
 	if providerConfig := providerRuntimeConfig(session, session.Provider); len(providerConfig) > 0 {
@@ -2142,13 +2138,6 @@ func (s *claudeSDKAdapterSession) applyGoalUpdated(payload map[string]any) strin
 	}
 	updateType := strings.TrimSpace(payloadString(payload, "updateType"))
 	if updateType == "thread_goal_clear" || updateType == "thread_goal_cleared" {
-		// Pausing clears the CLI-side goal (Claude Code has no native pause
-		// and would otherwise resume autonomous continuation after the next
-		// user message); that clear's echo must not wipe the paused mirror
-		// resume re-arms from.
-		if asString(s.liveState.goal["status"]) == "paused" {
-			return ""
-		}
 		s.liveState.goal = nil
 		return firstNonEmpty(updateType, "thread_goal_cleared")
 	}

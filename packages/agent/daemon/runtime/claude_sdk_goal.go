@@ -9,17 +9,18 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
 )
 
-// Claude Code's goal machinery lives inside the CLI: /goal arms a
-// session-level condition whose evaluator drives autonomous new turns until
-// it is met, surfacing goal_status attachments — but none of it is reachable
-// through the SDK as an API (no goal RPC, no paused state; an interrupted
-// goal stays active and resumes continuation after the next user message).
-// Goal control is therefore emulated at the adapter: the local goal mirror
-// (what the GUI banner renders) updates immediately, and the CLI is kept in
-// sync through its own /goal command forwarded as a sidecar exec — queued
-// behind the running turn when one is live. Pause = interrupt + CLI-side
-// /goal clear with the objective retained in the mirror; resume re-arms
-// /goal from the mirror.
+// Claude Code's goal is a session-level entity inside the CLI (a condition
+// whose evaluator drives autonomous new turns until it is met), but the SDK
+// exposes no API for it: commands go in as /goal prompt text, state comes
+// out as goal_status attachments, and there is no paused state — an
+// interrupted goal stays active and resumes continuation after the next user
+// message. The adapter therefore keeps goal interaction 1:1 with that
+// surface: set and clear forward the native /goal command (the sidecar
+// queues it behind a live turn), display is observation-only, and
+// pause/resume are rejected rather than emulated — a wrapper may shorten
+// native operations but must not invent states the CLI cannot honor.
+// Providers with a real paused state advertise CapabilityGoalPause; the GUI
+// hides the pause/resume controls without it.
 
 // GoalControl performs a direct goal action (GUI banner buttons) without
 // claiming the session's turn slot.
@@ -58,59 +59,18 @@ func (a *ClaudeCodeSDKAdapter) GoalControl(
 			return nil, nil, err
 		}
 		events = a.goalMirrorEvents(session, "thread_goal_cleared")
-	case GoalControlPause:
-		goal := a.localGoal(adapterSession)
-		if len(goal) == 0 {
-			return nil, nil, fmt.Errorf("session has no goal to pause")
-		}
-		goal["status"] = "paused"
-		a.applyLocalGoal(adapterSession, goal)
-		events = a.goalMirrorEvents(session, "thread_goal_update")
-		if a.hasLiveTurns(adapterSession) {
-			// Stop the work in flight; the sidecar settles the turn as
-			// canceled through the normal event path.
-			cancelEvents, err := a.Cancel(ctx, session, "")
-			if err != nil {
-				return nil, nil, err
-			}
-			events = append(events, cancelEvents...)
-		}
-		// An interrupt alone does not pause: Claude Code keeps an
-		// interrupted goal active and its evaluator resumes autonomous
-		// continuation after the next user message. Clear the CLI-side goal
-		// so paused sticks; the objective survives in the local mirror
-		// (applyGoalUpdated drops the clear's echo while paused).
-		if err := a.sendGoalCommandExec(ctx, session, adapterSession, appServerSlashGoal+" clear"); err != nil {
-			return nil, nil, err
-		}
-	case GoalControlResume:
-		goal := a.localGoal(adapterSession)
-		if len(goal) == 0 {
-			return nil, nil, fmt.Errorf("session has no goal to resume")
-		}
-		objective := strings.TrimSpace(asStringRaw(goal["objective"]))
-		if objective == "" {
-			return nil, nil, fmt.Errorf("session goal has no objective to resume")
-		}
-		goal["status"] = "active"
-		a.applyLocalGoal(adapterSession, goal)
-		events = a.goalMirrorEvents(session, "thread_goal_update")
-		// Pause cleared the CLI-side goal, so resume must re-arm /goal
-		// regardless of turn state (a live turn just queues it). Iterations,
-		// timer, and token baseline reset — inherent to re-setting a goal.
-		if err := a.sendGoalCommandExec(ctx, session, adapterSession, appServerSlashGoal+" "+objective); err != nil {
-			return nil, nil, err
-		}
+	case GoalControlPause, GoalControlResume:
+		return nil, nil, fmt.Errorf("goal %s is not supported for claude sessions: Claude Code has no paused goal state (stop the turn, or clear the goal)", action)
 	default:
 		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
 	}
 	return events, a.localGoal(adapterSession), nil
 }
 
-// ExecGoalControl handles a typed "/goal …" prompt while another turn holds
-// the session's turn slot, so the command acts immediately instead of being
-// rejected by the single-turn gate. handled is false when the prompt is not a
-// /goal command.
+// ExecGoalControl forwards a typed "/goal …" prompt through the sidecar's
+// native prompt queue while another turn holds the session's turn slot, so
+// the command is not rejected by the single-turn gate. handled is false when
+// the prompt is not a /goal command.
 func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	ctx context.Context,
 	session Session,
@@ -119,7 +79,7 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	turnID string,
 ) ([]activityshared.Event, bool, error) {
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
-	command, args := splitSlashCommand(visibleText)
+	command, _ := splitSlashCommand(visibleText)
 	if command != appServerSlashGoal {
 		return nil, false, nil
 	}
@@ -127,10 +87,10 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 	if adapterSession == nil {
 		return nil, true, ErrSessionDisconnected
 	}
-	action, objective := goalControlActionFromSlashArgs(args)
+	session.ProviderSessionID = adapterSession.providerSessionID
 	// The submission is recorded like a steered message so the controller
 	// closes this Exec's turn record while the running turn keeps owning the
-	// session lifecycle.
+	// session lifecycle; the command itself runs as its own queued turn.
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"adapter":     claudeSDKSidecarAdapterName,
@@ -138,79 +98,13 @@ func (a *ClaudeCodeSDKAdapter) ExecGoalControl(
 			"goalControl": true,
 		}))),
 	}
-	if action == "" {
-		// Bare "/goal" is a status query; re-state the current mirror.
-		events = append(events, a.goalMirrorEvents(session, "thread_goal_update")...)
-		return events, true, nil
+	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
+		events = append(events, event)
 	}
-	controlEvents, _, err := a.GoalControl(ctx, session, action, objective)
-	if err != nil {
+	if err := a.sendGoalCommandExec(ctx, session, adapterSession, visibleText); err != nil {
 		return events, true, err
 	}
-	return append(events, controlEvents...), true, nil
-}
-
-// execGoalControlTurn runs a pause/resume /goal prompt as an immediately
-// settling turn: the control acts locally (plus an interrupt or continuation
-// exec where needed) and never reaches the CLI as prompt text.
-func (a *ClaudeCodeSDKAdapter) execGoalControlTurn(
-	ctx context.Context,
-	session Session,
-	adapterSession *claudeSDKAdapterSession,
-	content []PromptContentBlock,
-	explicitDisplayPrompt string,
-	visibleText string,
-	turnID string,
-	emit EventSink,
-) ([]activityshared.Event, error) {
-	_, args := splitSlashCommand(visibleText)
-	action, objective := goalControlActionFromSlashArgs(args)
-	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
-			"adapter":     claudeSDKSidecarAdapterName,
-			"goalControl": true,
-		}))),
-		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
-			"adapter": claudeSDKSidecarAdapterName,
-		}),
-	}
-	controlEvents, _, err := a.GoalControl(ctx, session, action, objective)
-	if err != nil {
-		events = append(events, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
-			"error": err.Error(),
-		}))
-		events = a.stampTurnLifecycleSnapshots(adapterSession, events)
-		if emit != nil {
-			emit(events)
-		}
-		return events, nil
-	}
-	events = append(events, controlEvents...)
-	events = append(events, newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
-		"adapter": claudeSDKSidecarAdapterName,
-	}))
-	events = a.stampTurnLifecycleSnapshots(adapterSession, events)
-	if emit != nil {
-		emit(events)
-	}
-	return events, nil
-}
-
-// goalControlActionFromSlashArgs maps /goal arguments onto a control action.
-func goalControlActionFromSlashArgs(args string) (GoalControlAction, string) {
-	trimmed := strings.TrimSpace(args)
-	switch strings.ToLower(trimmed) {
-	case "":
-		return "", ""
-	case "clear", "reset":
-		return GoalControlClear, ""
-	case "pause", "paused":
-		return GoalControlPause, ""
-	case "resume", "active", "continue":
-		return GoalControlResume, ""
-	default:
-		return GoalControlSet, trimmed
-	}
+	return events, true, nil
 }
 
 // sendGoalCommandExec forwards a /goal command to the sidecar as its own
@@ -260,10 +154,4 @@ func (a *ClaudeCodeSDKAdapter) goalMirrorEvents(session Session, updateType stri
 		return []activityshared.Event{event}
 	}
 	return nil
-}
-
-func (a *ClaudeCodeSDKAdapter) hasLiveTurns(adapterSession *claudeSDKAdapterSession) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return len(adapterSession.turns) > 0
 }
