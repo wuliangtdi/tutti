@@ -750,7 +750,7 @@ function resolveUnifiedAgentGuiDockTarget(
   >
 ): AgentGUIProviderTarget | null {
   const targets = normalizeAgentGUIProviderTargets(input.targets, {
-    fallbackToLocal:
+    useStaticCatalog:
       input.providerTargetsLoading !== true && input.targets == null
   }).filter(
     (

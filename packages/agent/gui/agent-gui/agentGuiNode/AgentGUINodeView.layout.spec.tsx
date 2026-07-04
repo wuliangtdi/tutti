@@ -946,7 +946,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
-  it("shows provider target loading placeholders without local fallback tiles", () => {
+  it("shows provider target loading placeholders without static catalog tiles", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -988,7 +988,7 @@ describe("AgentGUINodeView layout persistence", () => {
     ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
   });
 
-  it("keeps the provider rail to the default agent tiles for local fallback catalogs", () => {
+  it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),

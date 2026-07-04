@@ -48,8 +48,8 @@ describe("agent gui provider targets", () => {
         createLocalAgentGUIProviderTarget("claude-code")
       ],
       {
-        fallbackToLocal: false,
-        includeDisabledPlaceholders: true
+        includeDisabledPlaceholders: true,
+        useStaticCatalog: false
       }
     );
 
@@ -157,7 +157,7 @@ describe("agent gui provider targets", () => {
     ]);
   });
 
-  it("marks future providers disabled in the local fallback catalog", () => {
+  it("marks future providers disabled in the static provider catalog", () => {
     const targets = normalizeAgentGUIProviderTargets(undefined, {
       includeDisabledPlaceholders: true
     });
@@ -177,9 +177,9 @@ describe("agent gui provider targets", () => {
     ]);
   });
 
-  it("can normalize explicit targets without local fallback targets", () => {
+  it("can normalize explicit targets without static catalog targets", () => {
     const targets = normalizeAgentGUIProviderTargets([], {
-      fallbackToLocal: false
+      useStaticCatalog: false
     });
 
     expect(targets).toEqual([]);
@@ -266,7 +266,7 @@ describe("agent gui provider targets", () => {
           label: "Claude Code"
         }
       ],
-      { fallbackToLocal: false }
+      { useStaticCatalog: false }
     );
 
     expect(

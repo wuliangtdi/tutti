@@ -5724,7 +5724,7 @@ describe("useAgentGUINodeController", () => {
     ).toBeUndefined();
   });
 
-  it("keeps OpenClaw local fallback disabled even when the gateway is ready", async () => {
+  it("keeps OpenClaw static catalog target disabled even when the gateway is ready", async () => {
     let resolveWarmup: (() => void) | undefined;
     const warmupOpenclawGateway = vi.fn(
       () =>

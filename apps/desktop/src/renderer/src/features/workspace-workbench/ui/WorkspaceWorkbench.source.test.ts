@@ -100,7 +100,7 @@ test("WorkspaceLaunchpad renders one generic Agent entry", () => {
   );
 });
 
-test("workspace shell leaves AgentGUI provider targets on local fallback", () => {
+test("workspace shell leaves AgentGUI provider targets on static catalog mode", () => {
   assert.doesNotMatch(shellRuntimeSource, /loadAgentGuiProviderTargets/);
   assert.match(shellRuntimeSource, /providerTargets:\s*undefined/);
   assert.match(shellRuntimeSource, /providerTargetsLoading:\s*false/);

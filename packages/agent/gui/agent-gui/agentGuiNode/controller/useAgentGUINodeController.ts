@@ -3655,8 +3655,8 @@ export function useAgentGUINodeController({
   const normalizedExplicitProviderTargets = useMemo(
     () =>
       normalizeAgentGUIProviderTargets(providerTargets, {
-        fallbackToLocal: false,
-        includeDisabledPlaceholders: true
+        includeDisabledPlaceholders: true,
+        useStaticCatalog: false
       }),
     [providerTargets]
   );
@@ -3678,7 +3678,7 @@ export function useAgentGUINodeController({
     providerTargets,
     providerTargetsLoading
   ]);
-  const shouldFallbackToLocalProviderTargets =
+  const shouldUseStaticProviderTargets =
     !providerTargetsLoading &&
     (providerTargets === undefined ||
       normalizedExplicitProviderTargets.length === 0);
@@ -3686,10 +3686,10 @@ export function useAgentGUINodeController({
     const resolved = resolveAgentGUIProviderTarget({
       agentTargetId: data.agentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: data.provider,
       providerTargetId: data.providerTargetId,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     return (
       resolved ?? {
@@ -3709,7 +3709,7 @@ export function useAgentGUINodeController({
     data.providerTargetId,
     defaultProviderTargetId,
     normalizedProviderTargets,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const selectedProviderTargetIsExplicit = useMemo(
     () =>
@@ -7570,9 +7570,9 @@ export function useAgentGUINodeController({
         const filterTarget = resolveAgentGUIProviderTarget({
           agentTargetId: filter.agentTargetId,
           defaultProviderTargetId,
-          fallbackToLocal: false,
           provider: dataRef.current.provider,
-          providerTargets: normalizedProviderTargets
+          providerTargets: normalizedProviderTargets,
+          useStaticCatalog: false
         });
         if (
           filterTarget &&
@@ -9767,9 +9767,9 @@ export function useAgentGUINodeController({
     const sessionTarget = resolveAgentGUIProviderTarget({
       agentTargetId: summaryAgentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: summary.provider,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     if (!sessionTarget || sessionTarget.provider !== summary.provider) {
       return;
@@ -9819,7 +9819,7 @@ export function useAgentGUINodeController({
     normalizedProviderTargets,
     previewMode,
     providerTargetsLoading,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const visibleConversationsRef = useRef<AgentGUIConversationSummary[] | null>(
     null
@@ -10674,10 +10674,10 @@ export function useAgentGUINodeController({
       const nextProvider = input.provider;
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: nextProvider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
       if (!nextTarget) {
         return;
@@ -10746,7 +10746,7 @@ export function useAgentGUINodeController({
       normalizedProviderTargets,
       persistActiveConversation,
       previewMode,
-      shouldFallbackToLocalProviderTargets
+      shouldUseStaticProviderTargets
     ]
   );
   const selectConversationFilterTarget = useCallback(
@@ -10756,10 +10756,10 @@ export function useAgentGUINodeController({
     }) => {
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: input.provider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
       if (!nextTarget || nextTarget.disabled === true) {
         reportAgentGUIConversationFilterTargetUnresolved({
@@ -10789,7 +10789,7 @@ export function useAgentGUINodeController({
       defaultProviderTargetId,
       normalizedProviderTargets,
       selectProvider,
-      shouldFallbackToLocalProviderTargets,
+      shouldUseStaticProviderTargets,
       workspaceId
     ]
   );

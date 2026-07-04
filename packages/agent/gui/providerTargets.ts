@@ -4,7 +4,7 @@ import type {
   AgentGUIProviderTargetRef
 } from "./types.ts";
 
-const agentGUIProviderTargetFallbackLabels: Record<AgentGUIProvider, string> = {
+const agentGUIProviderTargetStaticLabels: Record<AgentGUIProvider, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
   gemini: "Gemini",
@@ -41,7 +41,7 @@ export function createLocalAgentGUIProviderTarget(
       kind: "local",
       provider
     },
-    label: agentGUIProviderTargetFallbackLabels[provider] ?? provider
+    label: agentGUIProviderTargetStaticLabels[provider] ?? provider
   };
 }
 
@@ -62,7 +62,7 @@ export function createLocalAgentGUIProviderTargets(
   );
 }
 
-function createFallbackAgentGUIProviderTargets(
+function createStaticAgentGUIProviderTargets(
   providers: readonly AgentGUIProvider[] = agentGUIDefaultTargetProviders,
   options?: { includeDisabledPlaceholders?: boolean }
 ): AgentGUIProviderTarget[] {
@@ -104,13 +104,13 @@ export function localAgentGUIAgentTargetId(
 export function normalizeAgentGUIProviderTargets(
   targets: readonly AgentGUIProviderTarget[] | null | undefined,
   options?: {
-    fallbackToLocal?: boolean;
     includeDisabledPlaceholders?: boolean;
+    useStaticCatalog?: boolean;
   }
 ): AgentGUIProviderTarget[] {
-  const fallbackToLocal = options?.fallbackToLocal !== false;
   const includeDisabledPlaceholders =
     options?.includeDisabledPlaceholders === true;
+  const useStaticCatalog = options?.useStaticCatalog !== false;
   const source = targets && targets.length > 0 ? targets : [];
   const normalizedTargets: AgentGUIProviderTarget[] = [];
   const seenTargetKeys = new Set<string>();
@@ -138,9 +138,9 @@ export function normalizeAgentGUIProviderTargets(
       );
     }
   }
-  return normalizedTargets.length > 0 || !fallbackToLocal
+  return normalizedTargets.length > 0 || !useStaticCatalog
     ? normalizedTargets
-    : createFallbackAgentGUIProviderTargets(undefined, {
+    : createStaticAgentGUIProviderTargets(undefined, {
         includeDisabledPlaceholders
       });
 }
@@ -148,10 +148,10 @@ export function normalizeAgentGUIProviderTargets(
 export function resolveAgentGUIProviderTarget(input: {
   agentTargetId?: string | null;
   defaultProviderTargetId?: string | null;
-  fallbackToLocal?: boolean;
   provider: AgentGUIProvider;
   providerTargetId?: string | null;
   providerTargets: readonly AgentGUIProviderTarget[];
+  useStaticCatalog?: boolean;
 }): AgentGUIProviderTarget | null {
   const targetByAgentTargetId = new Map(
     input.providerTargets.flatMap((target) =>
@@ -176,7 +176,7 @@ export function resolveAgentGUIProviderTarget(input: {
     targetById.get(localAgentGUIProviderTargetId(input.provider)) ??
     providerTargets.find((target) => target.disabled !== true) ??
     providerTargets[0] ??
-    (input.fallbackToLocal === false
+    (input.useStaticCatalog === false
       ? null
       : createLocalAgentGUIProviderTarget(input.provider))
   );
