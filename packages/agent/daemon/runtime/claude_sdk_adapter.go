@@ -2142,6 +2142,13 @@ func (s *claudeSDKAdapterSession) applyGoalUpdated(payload map[string]any) strin
 	}
 	updateType := strings.TrimSpace(payloadString(payload, "updateType"))
 	if updateType == "thread_goal_clear" || updateType == "thread_goal_cleared" {
+		// Pausing clears the CLI-side goal (Claude Code has no native pause
+		// and would otherwise resume autonomous continuation after the next
+		// user message); that clear's echo must not wipe the paused mirror
+		// resume re-arms from.
+		if asString(s.liveState.goal["status"]) == "paused" {
+			return ""
+		}
 		s.liveState.goal = nil
 		return firstNonEmpty(updateType, "thread_goal_cleared")
 	}

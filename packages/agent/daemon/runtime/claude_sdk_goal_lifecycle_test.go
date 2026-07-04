@@ -211,60 +211,102 @@ func TestClaudeSDKGoalControlSetAndClear(t *testing.T) {
 	}
 }
 
-// Pause stops the running goal turn (Claude Code does not self-continue
-// after an interrupt); resume while a turn runs only flips the mirror.
-func TestClaudeSDKGoalControlPauseInterruptsLiveTurn(t *testing.T) {
+// Pause must interrupt the work in flight AND clear the CLI-side goal:
+// Claude Code keeps an interrupted goal active and would resume autonomous
+// continuation after the next user message. Resume re-arms /goal from the
+// mirror.
+func TestClaudeSDKGoalControlPauseClearsCLIGoalAndResumeRearms(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := newBlockingClaudeSDKConnection()
+	defer conn.Close()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
-	events, goal, err := adapter.GoalControl(context.Background(), session, GoalControlPause, "")
-	if err != nil {
-		t.Fatalf("GoalControl pause: %v", err)
+	type controlResult struct {
+		events []activityshared.Event
+		goal   map[string]any
+		err    error
 	}
-	if goal["status"] != "paused" {
-		t.Fatalf("goal after pause = %#v", goal)
+	results := make(chan controlResult, 1)
+	go func() {
+		events, goal, err := adapter.GoalControl(context.Background(), session, GoalControlPause, "")
+		results <- controlResult{events, goal, err}
+	}()
+	clearRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal clear")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: clearRequest.ID, Type: "ok"})
+	result := <-results
+	if result.err != nil {
+		t.Fatalf("GoalControl pause: %v", result.err)
 	}
-	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_update")
-	sent := conn.sentRequests()
-	if len(sent) != 1 || sent[0].Type != "cancel" {
-		t.Fatalf("sent requests = %#v, want one cancel", sent)
+	if result.goal["status"] != "paused" {
+		t.Fatalf("goal after pause = %#v", result.goal)
+	}
+	assertClaudeSDKGoalUpdateEvent(t, result.events, "thread_goal_update")
+	var sawCancel bool
+	for _, request := range conn.sentRequests() {
+		if request.Type == "cancel" {
+			sawCancel = true
+		}
+	}
+	if !sawCancel {
+		t.Fatalf("pause with a live turn must interrupt it: %#v", conn.sentRequests())
 	}
 
-	_, goal, err = adapter.GoalControl(context.Background(), session, GoalControlResume, "")
-	if err != nil {
-		t.Fatalf("GoalControl resume: %v", err)
+	// The CLI clear's echo must not wipe the paused mirror resume re-arms
+	// from.
+	if updateType := adapterSession.applyGoalUpdated(map[string]any{"updateType": "thread_goal_cleared"}); updateType != "" {
+		t.Fatalf("paused mirror consumed the clear echo: %q", updateType)
 	}
-	if goal["status"] != "active" {
-		t.Fatalf("goal after resume = %#v", goal)
+	if goal := adapter.localGoal(adapterSession); goal["objective"] != "ship it" || goal["status"] != "paused" {
+		t.Fatalf("paused mirror after clear echo = %#v", goal)
 	}
-	for _, request := range conn.sentRequests() {
-		if request.Type == "exec" {
-			t.Fatalf("resume with a live turn must not open a continuation exec: %#v", request)
-		}
+
+	go func() {
+		events, goal, err := adapter.GoalControl(context.Background(), session, GoalControlResume, "")
+		results <- controlResult{events, goal, err}
+	}()
+	resumeRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal ship it")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: resumeRequest.ID, Type: "ok"})
+	result = <-results
+	if result.err != nil {
+		t.Fatalf("GoalControl resume: %v", result.err)
+	}
+	if result.goal["status"] != "active" {
+		t.Fatalf("goal after resume = %#v", result.goal)
 	}
 }
 
-// Typed /goal pause is a tutti-level control: it must act thread-level and
-// never reach the CLI as prompt text (which would set "pause" as the
-// objective).
+// Typed /goal pause is a tutti-level control: it must never reach the CLI as
+// prompt text (which would set "pause" as the objective); the only exec it
+// produces is the CLI-side /goal clear that makes the pause stick.
 func TestClaudeSDKExecRoutesGoalPauseWithoutForwarding(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := newBlockingClaudeSDKConnection()
+	defer conn.Close()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 
-	events, err := adapter.Exec(context.Background(), session, textPrompt("/goal pause"), "", "turn-goal", nil, nil)
-	if err != nil {
-		t.Fatalf("Exec /goal pause: %v", err)
+	type execResult struct {
+		events []activityshared.Event
+		err    error
 	}
-	settled := claudeSDKSnapshotForEvent(t, events, activityshared.EventTurnCompleted)
+	results := make(chan execResult, 1)
+	go func() {
+		events, err := adapter.Exec(context.Background(), session, textPrompt("/goal pause"), "", "turn-goal", nil, nil)
+		results <- execResult{events, err}
+	}()
+	clearRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal clear")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: clearRequest.ID, Type: "ok"})
+	result := <-results
+	if result.err != nil {
+		t.Fatalf("Exec /goal pause: %v", result.err)
+	}
+	settled := claudeSDKSnapshotForEvent(t, result.events, activityshared.EventTurnCompleted)
 	if settled.Phase != string(activityshared.TurnPhaseSettled) {
 		t.Fatalf("goal control turn snapshot = %#v", settled)
 	}
@@ -272,8 +314,8 @@ func TestClaudeSDKExecRoutesGoalPauseWithoutForwarding(t *testing.T) {
 		t.Fatalf("goal after typed pause = %#v", goal)
 	}
 	for _, request := range conn.sentRequests() {
-		if request.Type == "exec" {
-			t.Fatalf("/goal pause must not be forwarded to the sidecar: %#v", request)
+		if request.Type == "exec" && strings.TrimSpace(payloadString(request.Payload, "prompt")) != "/goal clear" {
+			t.Fatalf("/goal pause leaked to the sidecar as prompt text: %#v", request)
 		}
 	}
 }
@@ -284,7 +326,8 @@ func TestClaudeSDKExecGoalControl(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := newBlockingClaudeSDKConnection()
+	defer conn.Close()
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.applyLocalGoal(adapterSession, map[string]any{"objective": "ship it", "status": "active"})
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
@@ -293,7 +336,20 @@ func TestClaudeSDKExecGoalControl(t *testing.T) {
 		t.Fatalf("non-goal prompt handled=%v err=%v", handled, err)
 	}
 
-	events, handled, err := adapter.ExecGoalControl(context.Background(), session, textPrompt("/goal pause"), "", "turn-goal")
+	type goalExecResult struct {
+		events  []activityshared.Event
+		handled bool
+		err     error
+	}
+	results := make(chan goalExecResult, 1)
+	go func() {
+		events, handled, err := adapter.ExecGoalControl(context.Background(), session, textPrompt("/goal pause"), "", "turn-goal")
+		results <- goalExecResult{events, handled, err}
+	}()
+	clearRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal clear")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: clearRequest.ID, Type: "ok"})
+	result := <-results
+	events, handled, err := result.events, result.handled, result.err
 	if err != nil || !handled {
 		t.Fatalf("ExecGoalControl handled=%v err=%v", handled, err)
 	}

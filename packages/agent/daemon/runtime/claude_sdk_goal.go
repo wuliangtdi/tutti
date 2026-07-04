@@ -10,14 +10,16 @@ import (
 )
 
 // Claude Code's goal machinery lives inside the CLI: /goal arms a
-// loop-until-condition that drives the running turn and surfaces goal_status
-// attachments, with no thread-level RPC and no native paused state. Goal
-// control is therefore emulated at the adapter: the local goal mirror (what
-// the GUI banner renders) updates immediately, and the CLI is kept in sync
-// through its own /goal command forwarded as a sidecar exec — queued behind
-// the running turn when one is live. Pause interrupts the running turn
-// (Claude Code does not self-continue after an interrupt), resume re-arms
-// /goal when the session is idle.
+// session-level condition whose evaluator drives autonomous new turns until
+// it is met, surfacing goal_status attachments — but none of it is reachable
+// through the SDK as an API (no goal RPC, no paused state; an interrupted
+// goal stays active and resumes continuation after the next user message).
+// Goal control is therefore emulated at the adapter: the local goal mirror
+// (what the GUI banner renders) updates immediately, and the CLI is kept in
+// sync through its own /goal command forwarded as a sidecar exec — queued
+// behind the running turn when one is live. Pause = interrupt + CLI-side
+// /goal clear with the objective retained in the mirror; resume re-arms
+// /goal from the mirror.
 
 // GoalControl performs a direct goal action (GUI banner buttons) without
 // claiming the session's turn slot.
@@ -65,32 +67,39 @@ func (a *ClaudeCodeSDKAdapter) GoalControl(
 		a.applyLocalGoal(adapterSession, goal)
 		events = a.goalMirrorEvents(session, "thread_goal_update")
 		if a.hasLiveTurns(adapterSession) {
-			// Stopping the loop means stopping the turn that runs it; the
-			// sidecar settles the turn as canceled through the normal event
-			// path, so no terminal event is synthesized here.
+			// Stop the work in flight; the sidecar settles the turn as
+			// canceled through the normal event path.
 			cancelEvents, err := a.Cancel(ctx, session, "")
 			if err != nil {
 				return nil, nil, err
 			}
 			events = append(events, cancelEvents...)
 		}
+		// An interrupt alone does not pause: Claude Code keeps an
+		// interrupted goal active and its evaluator resumes autonomous
+		// continuation after the next user message. Clear the CLI-side goal
+		// so paused sticks; the objective survives in the local mirror
+		// (applyGoalUpdated drops the clear's echo while paused).
+		if err := a.sendGoalCommandExec(ctx, session, adapterSession, appServerSlashGoal+" clear"); err != nil {
+			return nil, nil, err
+		}
 	case GoalControlResume:
 		goal := a.localGoal(adapterSession)
 		if len(goal) == 0 {
 			return nil, nil, fmt.Errorf("session has no goal to resume")
 		}
+		objective := strings.TrimSpace(asStringRaw(goal["objective"]))
+		if objective == "" {
+			return nil, nil, fmt.Errorf("session goal has no objective to resume")
+		}
 		goal["status"] = "active"
 		a.applyLocalGoal(adapterSession, goal)
 		events = a.goalMirrorEvents(session, "thread_goal_update")
-		if !a.hasLiveTurns(adapterSession) {
-			objective := strings.TrimSpace(asStringRaw(goal["objective"]))
-			command := appServerSlashGoal
-			if objective != "" {
-				command += " " + objective
-			}
-			if err := a.sendGoalCommandExec(ctx, session, adapterSession, command); err != nil {
-				return nil, nil, err
-			}
+		// Pause cleared the CLI-side goal, so resume must re-arm /goal
+		// regardless of turn state (a live turn just queues it). Iterations,
+		// timer, and token baseline reset — inherent to re-setting a goal.
+		if err := a.sendGoalCommandExec(ctx, session, adapterSession, appServerSlashGoal+" "+objective); err != nil {
+			return nil, nil, err
 		}
 	default:
 		return nil, nil, fmt.Errorf("unsupported goal control action %q", action)
