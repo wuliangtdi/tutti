@@ -668,6 +668,19 @@ func (a *ClaudeCodeSDKAdapter) dispatchClaudeSDKEvent(agentSessionID string, ada
 		a.completeClaudeSDKWaiterEvent(adapterSession, waiter, turnID, next, terminal, err)
 		return
 	}
+	if terminal {
+		// No daemon-registered Exec()/ExecAsync() waiter is tracking this
+		// turnID's outcome: either its terminal event was already delivered
+		// once (the waiter already completed and was unregistered) or this
+		// turn never became the tracked active turn in the first place (for
+		// example an internal/queued Claude SDK turn — see turnQueue /
+		// settleQueuedTurn in the sidecar — that got settled without ever
+		// being submitted through Exec). Publishing it here would surface a
+		// stray, possibly contradictory outcome notification for the session:
+		// a phantom completed/failed toast landing alongside the real turn's
+		// own outcome toast for the same agent session. Drop it instead.
+		return
+	}
 	if err != nil {
 		next = append(next, newSessionActivityEvent(session, EventSessionFailed, SessionStatusFailed, map[string]any{
 			"error": err.Error(),
