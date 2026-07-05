@@ -65,6 +65,7 @@ export interface WorkspaceWorkbenchShellRuntime {
     onConfirm: () => void;
     request: WorkbenchHostCloseDialogRequest | null;
   };
+  defaultAgentTargetId: string | null;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: WorkbenchDockPlacement;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -139,6 +140,17 @@ export function useWorkspaceWorkbenchShellRuntime({
         : undefined,
     [agentGuiProviderTargets]
   );
+  const defaultAgentTargetId = useMemo(
+    () =>
+      resolveDefaultAgentTargetId({
+        defaultProvider: desktopPreferencesState.defaultAgentProvider,
+        targets: resolvedAgentGuiProviderTargets
+      }),
+    [
+      desktopPreferencesState.defaultAgentProvider,
+      resolvedAgentGuiProviderTargets
+    ]
+  );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
@@ -173,6 +185,7 @@ export function useWorkspaceWorkbenchShellRuntime({
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
+          defaultProviderTargetId: defaultAgentTargetId,
           providerTargets: resolvedAgentGuiProviderTargets,
           providerTargetsLoading: agentGuiProviderTargetsLoading,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
@@ -305,6 +318,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
+      defaultProviderTargetId: defaultAgentTargetId,
       providerTargets: resolvedAgentGuiProviderTargets,
       providerTargetsLoading: agentGuiProviderTargetsLoading,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
@@ -320,6 +334,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     appI18n,
     appCenterState.revision,
     agentGuiProviderTargetsLoading,
+    defaultAgentTargetId,
     resolvedAgentGuiProviderTargets,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
@@ -455,6 +470,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       onConfirm: shellRuntimeController.closeDialog.confirm,
       request: shellRuntimeSnapshot.closeDialog.request
     },
+    defaultAgentTargetId,
     dockIconStyle: desktopPreferencesState.dockIconStyle,
     dockPlacement: desktopPreferencesState.dockPlacement,
     hostInput: shellRuntimeSnapshot.hostInput,
@@ -489,6 +505,24 @@ export function useWorkspaceWorkbenchShellRuntime({
     workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };
+}
+
+function resolveDefaultAgentTargetId(input: {
+  defaultProvider?: string | null;
+  targets?: readonly AgentGUIProviderTarget[];
+}): string | null {
+  const defaultProvider = input.defaultProvider?.trim() ?? "";
+  const targets = input.targets ?? [];
+  return (
+    targets.find(
+      (target) =>
+        defaultProvider !== "" &&
+        target.provider === defaultProvider &&
+        target.disabled !== true
+    )?.targetId ??
+    targets.find((target) => target.disabled !== true)?.targetId ??
+    null
+  );
 }
 
 function closeWorkspaceAppWebviews(
