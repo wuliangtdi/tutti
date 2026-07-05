@@ -3614,7 +3614,7 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 		Cwd:             "/workspace/hidden",
 		Status:          "completed",
 		Visible:         false,
-		Title:           "Hidden",
+		Title:           "Mention hidden",
 		CreatedAtUnixMS: time.UnixMilli(1000).UnixMilli(),
 		UpdatedAtUnixMS: hiddenUpdatedAt.UnixMilli(),
 	}
