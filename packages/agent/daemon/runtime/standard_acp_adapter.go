@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -50,6 +49,12 @@ type standardACPConfig struct {
 	// requiresNewSessionForSettings reports settings patches that can only
 	// take effect via a fresh process/session (spawn-time-only flags).
 	requiresNewSessionForSettings func(Session, SessionSettingsPatch) bool
+	// autoApprovePermissionDecision lets a provider resolve incoming
+	// session/request_permission requests without prompting, from the live
+	// permission tier (e.g. Cursor "full access"). It returns a decision
+	// token ("approved" / "denied") to apply automatically, or "" to prompt
+	// the user as usual. Nil (the default) always prompts.
+	autoApprovePermissionDecision func(permissionModeID string) string
 }
 
 type standardACPAdapter struct {
@@ -77,6 +82,10 @@ type standardACPSession struct {
 	backgroundAgents map[string]standardACPBackgroundAgent
 	recentTurnID     string
 	recentTurnExpiry time.Time
+	// permissionModeID tracks the session's live permission tier so an
+	// auto-approve tier (e.g. Cursor "full access") applies to permission
+	// requests immediately after a mid-session tier change, without a respawn.
+	permissionModeID string
 }
 
 type standardACPSessionLock struct {
@@ -102,255 +111,10 @@ const standardACPRecentTurnTTL = 10 * time.Minute
 
 const acpMethodSetConfigOption = "session/set_config_option"
 const acpMethodCloseSession = "session/close"
-const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
-const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
-const claudeSDKMessageMethod = "_claude/sdkMessage"
-const claudePlanModeInstructions = "You are in plan mode. Inspect files and gather context as needed, but do not edit files, run mutation commands, or make external changes. Produce a concrete implementation plan first. If the user gives feedback, refine the plan. Only after the user approves leaving plan mode may you implement changes."
-
-const (
-	sessionSpeedStandard = "standard"
-	sessionSpeedFast     = "fast"
-
-	claudeCodeACPFastOff = "off"
-	claudeCodeACPFastOn  = "on"
-)
-
-var claudeCodeACPModelAliases = map[string]bool{
-	"default":    true,
-	"sonnet":     true,
-	"opus":       true,
-	"haiku":      true,
-	"sonnet[1m]": true,
-	"opusplan":   true,
-}
-
 const (
 	acpCloseCallTimeout  = 750 * time.Millisecond
 	acpCloseGraceTimeout = 200 * time.Millisecond
 )
-
-// claudeCodeLegacyACPModelCandidates lists live ACP model values to try when a
-// persisted alias (e.g. "opus") is not directly advertised. Order matters:
-// claude-agent-acp 0.46+ exposes Opus as "opus[1m]"; 0.42.x folded Opus into
-// "default" and rejected bare "opus".
-func claudeCodeLegacyACPModelCandidates(model string) []string {
-	switch strings.TrimSpace(model) {
-	case "opus", "opusplan":
-		return []string{"opus[1m]", "opus", "default"}
-	default:
-		return nil
-	}
-}
-
-func NewNexightAdapter(transport ProcessTransport) *standardACPAdapter {
-	return NewNexightAdapterWithHostMetadata(transport, LegacyHostMetadata())
-}
-
-func NewNexightAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderNexight,
-			adapterName:         "nexight-acp",
-			command:             []string{nexightACPCommand},
-			defaultTitle:        "Nexight",
-			defaultTitleAliases: []string{"", ProviderNexight, "tutti"},
-			authRequiredMessage: "Nexight ACP requires authentication in the runtime VM. Sync the Nexight host credentials, then retry this session.",
-			permissionModeID:    codexACPModeID,
-			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
-			env:                 func(session Session) []string { return standardACPEnv(session, host) },
-			// nexight-acp is codex-acp derived: transport retry/fallback text
-			// arrives as ordinary chunks and stderr logs, so keep the notice
-			// projection the old CodexAdapter provided.
-			allowSyntheticNotice: true,
-			stderrMessageMapper:  nexightACPSystemNoticeMessageFromStderr,
-			// Model/effort (and the spark-family model_reasoning_summary=none
-			// override) are spawn-time codex config flags; the reasoning-summary
-			// override cannot change on a live process, so switching across the
-			// spark boundary forces a new session.
-			commandWithSettings:           nexightACPCommandWithSettings,
-			requiresNewSessionForSettings: nexightRequiresNewSessionForSettings,
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
-	}
-}
-
-// nexightACPSystemNoticeMessageFromStderr projects codex-acp "handled error
-// during turn" stderr retry logs into a synthetic stream_error session/update
-// so reconnect attempts surface as transport notices instead of vanishing.
-// (Recovered from the retired CodexAdapter; nexight-acp shares that stderr
-// format.)
-func nexightACPSystemNoticeMessageFromStderr(stderr []byte) (acpMessage, bool) {
-	text := strings.TrimSpace(string(stderr))
-	if text == "" {
-		return acpMessage{}, false
-	}
-	normalized := strings.ToLower(text)
-	if !strings.Contains(normalized, "handled error during turn") {
-		return acpMessage{}, false
-	}
-	if !strings.Contains(normalized, "responsestreamdisconnected") &&
-		!strings.Contains(normalized, "broken pipe") &&
-		!strings.Contains(normalized, "response stream") {
-		return acpMessage{}, false
-	}
-	detail := truncateACPLogValue(text, 4000)
-	params, err := json.Marshal(map[string]any{
-		"update": map[string]any{
-			"kind":              "agent_system_notice",
-			"sessionUpdate":     "stream_error",
-			"message":           "ResponseStreamDisconnected",
-			"noticeKind":        "transport_retry",
-			"severity":          "warning",
-			"title":             "Codex connection interrupted. Reconnecting...",
-			"detail":            detail,
-			"additionalDetails": detail,
-			"retryable":         true,
-			"source":            "acp_stderr",
-		},
-	})
-	if err != nil {
-		return acpMessage{}, false
-	}
-	return acpMessage{
-		JSONRPC: "2.0",
-		Method:  acpMethodUpdate,
-		Params:  params,
-	}, true
-}
-
-// nexightACPConfigFlag is the codex-acp CLI flag for spawn-time config
-// overrides (recovered with the settings logic from the retired CodexAdapter).
-const nexightACPConfigFlag = "--config"
-
-// nexightACPCommandWithSettings appends the session's model/effort settings as
-// spawn-time codex config flags; without them model selection depends entirely
-// on the agent advertising a "model" config option after session/new.
-func nexightACPCommandWithSettings(base []string, session Session) []string {
-	command := append([]string(nil), base...)
-	if len(command) == 0 {
-		return command
-	}
-	for _, entry := range nexightACPConfigEntries(session) {
-		command = append(command, nexightACPConfigFlag, entry)
-	}
-	return command
-}
-
-func nexightACPConfigEntries(session Session) []string {
-	settings := session.SettingsValue()
-	entries := make([]string, 0, 4)
-	if model := strings.TrimSpace(settings.Model); model != "" {
-		entries = append(entries, "model="+model)
-		if summary := codexACPReasoningSummaryOverride(model); summary != "" {
-			entries = append(entries, codexACPConfigModelReasoningSummary+"="+summary)
-		}
-	}
-	if reasoning := codexACPReasoningEffortValue(settings.ReasoningEffort); reasoning != "" {
-		entries = append(entries, "model_reasoning_effort="+reasoning)
-	}
-	return entries
-}
-
-// nexightRequiresNewSessionForSettings forces a new session when the
-// spark-family model_reasoning_summary spawn override would change: it is a
-// process-start-only flag, so a live session cannot apply it.
-func nexightRequiresNewSessionForSettings(session Session, patch SessionSettingsPatch) bool {
-	if patch.Model == nil {
-		return false
-	}
-	currentModel := session.SettingsValue().Model
-	nextModel := strings.TrimSpace(*patch.Model)
-	return codexACPReasoningSummaryOverride(currentModel) != codexACPReasoningSummaryOverride(nextModel)
-}
-
-func NewGeminiAdapter(transport ProcessTransport) *standardACPAdapter {
-	return NewGeminiAdapterWithHostMetadata(transport, LegacyHostMetadata())
-}
-
-func NewGeminiAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderGemini,
-			adapterName:         "gemini-acp",
-			command:             []string{"gemini", "--acp"},
-			defaultTitle:        "Gemini CLI",
-			authRequiredMessage: "Gemini ACP requires authentication in the runtime VM; ensure Gemini host credentials are synced before starting Agent GUI",
-			permissionModeID: func(string) string {
-				return "yolo"
-			},
-			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
-			env:              func(session Session) []string { return standardACPEnv(session, host) },
-			beforeNewSession: geminiACPBeforeNewSession,
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
-	}
-}
-
-func NewHermesAdapter(transport ProcessTransport) *standardACPAdapter {
-	return NewHermesAdapterWithHostMetadata(transport, LegacyHostMetadata())
-}
-
-func NewHermesAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderHermes,
-			adapterName:         "hermes-acp",
-			command:             []string{"hermes", "acp"},
-			defaultTitle:        "Hermes Agent",
-			authRequiredMessage: "Hermes ACP requires authentication in the runtime VM; ensure Hermes host credentials are synced before starting Agent GUI",
-			permissionModeID: func(string) string {
-				return "yolo"
-			},
-			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
-			env:              func(session Session) []string { return standardACPEnv(session, host) },
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
-	}
-}
-
-func NewOpenClawAdapter(transport ProcessTransport) *standardACPAdapter {
-	return NewOpenClawAdapterWithHostMetadata(transport, LegacyHostMetadata())
-}
-
-func NewOpenClawAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderOpenClaw,
-			adapterName:         "openclaw-acp",
-			command:             []string{"openclaw", "acp", "-v"},
-			defaultTitle:        "OpenClaw",
-			authRequiredMessage: "OpenClaw ACP requires authentication in the runtime VM; ensure OpenClaw host credentials are synced before starting Agent GUI",
-			permissionModeID: func(string) string {
-				// OpenClaw ACP maps session/set_mode modeId -> gateway thinkingLevel.
-				// It is not a permission-mode channel, so sending approve-all /
-				// approve-reads here is a protocol error.
-				return ""
-			},
-			initializeParams: func() map[string]any { return defaultACPInitializeParams(host) },
-			env:              func(session Session) []string { return openclawACPEnv(session, host) },
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
-	}
-}
-
-// openclawGatewayChatSessionKey selects the gateway sessionKey hint for OpenClaw GUI ACP.
-// Without it, openclaw acp falls back to "acp:<uuid>", which makes the gateway treat the chat as an
-// ACP-spawned session and require sessions.json metadata that this desktop flow never writes.
-func openclawGatewayChatSessionKey(session Session, host HostMetadata) string {
-	prefix := host.OpenClawSessionKeyPrefix
-	if strings.TrimSpace(session.AgentSessionID) != "" {
-		return fmt.Sprintf("%s%s", prefix, session.AgentSessionID)
-	}
-	return prefix + "desktop"
-}
 
 func (a *standardACPAdapter) applyProviderSessionMeta(params map[string]any, session Session) error {
 	if params == nil {
@@ -458,18 +222,6 @@ func mergeACPParamsMeta(params map[string]any, meta map[string]any) {
 	}
 }
 
-func claudeSystemPromptAppend(env []string) (string, error) {
-	path := sessionEnvValue(env, claudeSystemPromptFileEnv)
-	if strings.TrimSpace(path) == "" {
-		return "", nil
-	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read claude system prompt: %w", err)
-	}
-	return string(content), nil
-}
-
 func joinPromptSections(sections ...string) string {
 	nonEmpty := make([]string, 0, len(sections))
 	for _, section := range sections {
@@ -480,21 +232,6 @@ func joinPromptSections(sections ...string) string {
 	return strings.Join(nonEmpty, "\n\n")
 }
 
-func claudePluginDir(env []string) (string, error) {
-	path := sessionEnvValue(env, claudePluginDirEnv)
-	if strings.TrimSpace(path) == "" {
-		return "", nil
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("stat claude plugin dir: %w", err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("claude plugin dir is not a directory: %s", path)
-	}
-	return path, nil
-}
-
 func sessionEnvValue(env []string, key string) string {
 	prefix := key + "="
 	for _, item := range env {
@@ -503,20 +240,6 @@ func sessionEnvValue(env []string, key string) string {
 		}
 	}
 	return ""
-}
-
-func claudeCodeACPModeID(mode string) string {
-	if isClaudeCodePermissionModeID(mode) {
-		return strings.TrimSpace(mode)
-	}
-	return ""
-}
-
-func claudeCodeACPCommands() []AgentSessionCommand {
-	return []AgentSessionCommand{
-		{Name: "review"},
-		{Name: "compact"},
-	}
 }
 
 func standardACPInitialLiveState(provider string) acpLiveState {
@@ -532,39 +255,6 @@ func seedStandardACPInitialCommands(state *acpLiveState, provider string) {
 	if strings.TrimSpace(provider) == ProviderClaudeCode {
 		state.availableCommands = claudeCodeACPCommands()
 		state.commandsKnown = true
-	}
-}
-
-func NewClaudeCodeAdapter(transport ProcessTransport) *standardACPAdapter {
-	return NewClaudeCodeAdapterWithHostMetadata(transport, LegacyHostMetadata())
-}
-
-func NewClaudeCodeAdapterWithHostMetadata(transport ProcessTransport, host HostMetadata) *standardACPAdapter {
-	return newClaudeCodeAdapterWithHostMetadata(transport, host, nil)
-}
-
-func newClaudeCodeAdapterWithHostMetadata(
-	transport ProcessTransport,
-	host HostMetadata,
-	commandResolver ProviderCommandResolver,
-) *standardACPAdapter {
-	return &standardACPAdapter{
-		config: standardACPConfig{
-			provider:            ProviderClaudeCode,
-			adapterName:         "claude-agent-acp",
-			command:             []string{"claude-agent-acp"},
-			defaultTitle:        "Claude Agent",
-			defaultTitleAliases: []string{"Claude Code", ProviderClaudeCode},
-			authRequiredMessage: "Claude Agent ACP requires authentication in the runtime VM; sign in to the local Claude Code agent so its credentials can be synced, then retry this session.",
-			permissionModeID:    claudeCodeACPModeID,
-			initializeParams:    func() map[string]any { return claudeACPInitializeParams(host) },
-			failOnSetModeError:  true,
-			env:                 func(session Session) []string { return claudeACPEnv(session, host) },
-			commandResolver:     commandResolver,
-		},
-		transport: transport,
-		host:      host,
-		sessions:  make(map[string]*standardACPSession),
 	}
 }
 
@@ -671,6 +361,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		acpLiveState:     standardACPInitialLiveState(a.config.provider),
 		pendingApprovals: make(map[string]*pendingACPApproval),
 		backgroundAgents: make(map[string]standardACPBackgroundAgent),
+		permissionModeID: strings.TrimSpace(session.PermissionModeID),
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 
@@ -795,6 +486,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		acpLiveState:      standardACPInitialLiveState(a.config.provider),
 		pendingApprovals:  make(map[string]*pendingACPApproval),
 		backgroundAgents:  make(map[string]standardACPBackgroundAgent),
+		permissionModeID:  strings.TrimSpace(session.PermissionModeID),
 	}
 	if previousSession != nil {
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)
@@ -1764,7 +1456,38 @@ func (a *standardACPAdapter) ApplyPermissionMode(ctx context.Context, session Se
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		session.ProviderSessionID = acpSession.providerSessionID
 	}
+	// Track the live tier so auto-approve tiers (Cursor "full access") take
+	// effect on subsequent permission requests without a respawn.
+	a.setSessionPermissionModeID(session.AgentSessionID, session.PermissionModeID)
 	return a.applyPermissionMode(ctx, acpSession.client, session)
+}
+
+func (a *standardACPAdapter) setSessionPermissionModeID(agentSessionID string, permissionModeID string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if session := a.sessions[strings.TrimSpace(agentSessionID)]; session != nil {
+		session.permissionModeID = strings.TrimSpace(permissionModeID)
+	}
+}
+
+// autoApprovePermissionDecision resolves the decision the provider's
+// auto-approve tier applies to a permission request for this session, or ""
+// to prompt the user. Reads the live tier so a mid-session change is honored.
+func (a *standardACPAdapter) autoApprovePermissionDecision(agentSessionID string) string {
+	if a == nil || a.config.autoApprovePermissionDecision == nil {
+		return ""
+	}
+	a.mu.Lock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	permissionModeID := ""
+	if session != nil {
+		permissionModeID = session.permissionModeID
+	}
+	a.mu.Unlock()
+	return a.config.autoApprovePermissionDecision(permissionModeID)
 }
 
 func (a *standardACPAdapter) effectiveModeID(session Session) string {
@@ -2115,6 +1838,15 @@ func (a *standardACPAdapter) handleACPMessage(
 			err := errors.New("permission request outside active prompt turn is missing a turn id")
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 			return nil, err
+		}
+		// Auto-approve tiers (e.g. Cursor "full access") resolve the request
+		// from the live permission tier without prompting; the tool call still
+		// streams its own activity via session/update.
+		if decision := a.autoApprovePermissionDecision(session.AgentSessionID); decision != "" {
+			if optionID, ok := acpPermissionRequestDecisionOptionID(message.Params, decision); ok {
+				_ = client.Respond(ctx, message.ID, acpPermissionResponseResult(optionID), nil)
+				return nil, nil
+			}
 		}
 		if sessionLevelEmit {
 			emit([]activityshared.Event{newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
@@ -3137,72 +2869,6 @@ func (a *standardACPAdapter) deletePendingApproval(agentSessionID string, reques
 	a.mu.Unlock()
 }
 
-const (
-	geminiAuthMethodOAuthPersonal = "oauth-personal"
-	geminiAuthMethodAPIKey        = "gemini-api-key"
-)
-
-func geminiACPBeforeNewSession(
-	ctx context.Context,
-	client *acpClient,
-	_ Session,
-	initializeResult json.RawMessage,
-) error {
-	methodID := selectGeminiACPAuthMethod(initializeResult)
-	if methodID == "" {
-		return errors.New("gemini ACP initialize did not advertise an authentication method")
-	}
-	slog.Info("agent session gemini ACP authenticate starting",
-		"event", "agent_session.gemini.acp.authenticate.start",
-		"method_id", methodID,
-	)
-	_, err := client.CallWithTimeout(ctx, acpStartCallTimeout, acpMethodAuthenticate, map[string]any{
-		"methodId": methodID,
-	}, nil)
-	if err != nil {
-		slog.Warn("agent session gemini ACP authenticate failed",
-			"event", "agent_session.gemini.acp.authenticate.failed",
-			"method_id", methodID,
-			"error", err.Error(),
-		)
-		return err
-	}
-	slog.Info("agent session gemini ACP authenticate succeeded",
-		"event", "agent_session.gemini.acp.authenticate.succeeded",
-		"method_id", methodID,
-	)
-	return nil
-}
-
-func selectGeminiACPAuthMethod(initializeResult json.RawMessage) string {
-	var result struct {
-		AuthMethods []struct {
-			ID string `json:"id"`
-		} `json:"authMethods"`
-	}
-	if err := json.Unmarshal(initializeResult, &result); err != nil || len(result.AuthMethods) == 0 {
-		return geminiAuthMethodOAuthPersonal
-	}
-	ids := make([]string, 0, len(result.AuthMethods))
-	for _, method := range result.AuthMethods {
-		id := strings.TrimSpace(method.ID)
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return geminiAuthMethodOAuthPersonal
-	}
-	for _, preferred := range []string{geminiAuthMethodAPIKey, geminiAuthMethodOAuthPersonal} {
-		for _, id := range ids {
-			if id == preferred {
-				return id
-			}
-		}
-	}
-	return ids[0]
-}
-
 func standardACPEnv(session Session, host HostMetadata) []string {
 	env := []string{
 		codexAgentRoutingEnv,
@@ -3210,28 +2876,6 @@ func standardACPEnv(session Session, host HostMetadata) []string {
 		"NO_BROWSER=1",
 	}
 	env = append(env, workspaceEnv(session, host)...)
-	return env
-}
-
-func claudeACPEnv(session Session, host HostMetadata) []string {
-	env := standardACPEnv(session, host)
-	env = append(env, "IS_SANDBOX=1")
-	return env
-}
-
-func claudeCodeCustomModel(session Session) string {
-	model := strings.TrimSpace(session.SettingsValue().Model)
-	if model == "" || claudeCodeACPModelAliases[model] {
-		return ""
-	}
-	return model
-}
-
-func openclawACPEnv(session Session, host HostMetadata) []string {
-	env := standardACPEnv(session, host)
-	// OpenClaw enables Node's module compile cache before its ACP runtime starts.
-	// With routed ACP startup this can stall before JSON-RPC initialize responds.
-	env = append(env, "NODE_DISABLE_COMPILE_CACHE=1")
 	return env
 }
 
@@ -3246,27 +2890,6 @@ func defaultACPInitializeParams(host HostMetadata) map[string]any {
 			"terminal": false,
 			"_meta": map[string]any{
 				"terminal_output": true,
-			},
-		},
-		"clientInfo": host.clientInfoParams(),
-	}
-}
-
-func claudeACPInitializeParams(host HostMetadata) map[string]any {
-	return map[string]any{
-		"protocolVersion": acpProtocolVersion,
-		"clientCapabilities": map[string]any{
-			"fs": map[string]any{
-				"readTextFile":  true,
-				"writeTextFile": true,
-			},
-			"terminal": true,
-			"auth": map[string]any{
-				"terminal": true,
-			},
-			"_meta": map[string]any{
-				"terminal_output": true,
-				"terminal-auth":   true,
 			},
 		},
 		"clientInfo": host.clientInfoParams(),

@@ -395,6 +395,7 @@ func (e AgentTargetLaunchRefType) Valid() bool {
 const (
 	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
 	AgentTargetProviderCodex      AgentTargetProvider = "codex"
+	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetProvider enum.
@@ -403,6 +404,8 @@ func (e AgentTargetProvider) Valid() bool {
 	case AgentTargetProviderClaudeCode:
 		return true
 	case AgentTargetProviderCodex:
+		return true
+	case AgentTargetProviderCursor:
 		return true
 	default:
 		return false
@@ -1082,6 +1085,7 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 const (
 	WorkspaceAgentProviderClaudeCode WorkspaceAgentProvider = "claude-code"
 	WorkspaceAgentProviderCodex      WorkspaceAgentProvider = "codex"
+	WorkspaceAgentProviderCursor     WorkspaceAgentProvider = "cursor"
 	WorkspaceAgentProviderGemini     WorkspaceAgentProvider = "gemini"
 	WorkspaceAgentProviderHermes     WorkspaceAgentProvider = "hermes"
 	WorkspaceAgentProviderNexight    WorkspaceAgentProvider = "nexight"
@@ -1094,6 +1098,8 @@ func (e WorkspaceAgentProvider) Valid() bool {
 	case WorkspaceAgentProviderClaudeCode:
 		return true
 	case WorkspaceAgentProviderCodex:
+		return true
+	case WorkspaceAgentProviderCursor:
 		return true
 	case WorkspaceAgentProviderGemini:
 		return true
@@ -2537,6 +2543,7 @@ type DesktopAgentComposerDefaultsByAgentTarget map[string]DesktopAgentComposerDe
 type DesktopAgentComposerDefaultsByProvider struct {
 	ClaudeCode *DesktopAgentComposerDefaults `json:"claude-code,omitempty"`
 	Codex      *DesktopAgentComposerDefaults `json:"codex,omitempty"`
+	Cursor     *DesktopAgentComposerDefaults `json:"cursor,omitempty"`
 	Gemini     *DesktopAgentComposerDefaults `json:"gemini,omitempty"`
 	Hermes     *DesktopAgentComposerDefaults `json:"hermes,omitempty"`
 	Nexight    *DesktopAgentComposerDefaults `json:"nexight,omitempty"`
@@ -2553,6 +2560,7 @@ type DesktopAgentDockLayout string
 type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	ClaudeCode *bool `json:"claude-code,omitempty"`
 	Codex      *bool `json:"codex,omitempty"`
+	Cursor     *bool `json:"cursor,omitempty"`
 	Gemini     *bool `json:"gemini,omitempty"`
 	Hermes     *bool `json:"hermes,omitempty"`
 	Nexight    *bool `json:"nexight,omitempty"`
@@ -2595,6 +2603,7 @@ type DesktopPreferences struct {
 	DefaultAgentProvider                        WorkspaceAgentProvider                             `json:"defaultAgentProvider"`
 	DockIconStyle                               DesktopDockIconStyle                               `json:"dockIconStyle"`
 	DockPlacement                               DesktopDockPlacement                               `json:"dockPlacement"`
+	EnableCursorAgent                           bool                                               `json:"enableCursorAgent"`
 	FileDefaultOpenersByExtension               DesktopFileDefaultOpenersByExtension               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      DesktopLocale                                      `json:"locale"`
 	MinimizeAnimation                           DesktopMinimizeAnimation                           `json:"minimizeAnimation"`

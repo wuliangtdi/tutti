@@ -41,6 +41,7 @@ func (p DesktopPreferencesPublisher) PublishDesktopPreferencesUpdated(ctx contex
 			DefaultAgentProvider:        preferences.DefaultAgentProvider,
 			DockIconStyle:               preferences.DockIconStyle,
 			DockPlacement:               preferences.DockPlacement,
+			EnableCursorAgent:           preferences.EnableCursorAgent,
 			FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionPayloadFromBiz(
 				preferences.FileDefaultOpenersByExtension,
 			),
@@ -85,6 +86,7 @@ func NewPreferencesDesktopUpdateRequestedHandler(mutator PreferencesMutator) Int
 			DefaultAgentProvider:                        decoded.DefaultAgentProvider,
 			DockIconStyle:                               decoded.DockIconStyle,
 			DockPlacement:                               decoded.DockPlacement,
+			EnableCursorAgent:                           decoded.EnableCursorAgent,
 			FileDefaultOpenersByExtension:               decoded.FileDefaultOpenersByExtension,
 			Locale:                                      decoded.Locale,
 			MinimizeAnimation:                           decoded.MinimizeAnimation,
@@ -113,6 +115,7 @@ type decodedDesktopPreferencesMutationPayload struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	EnableCursorAgent                           bool
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	MinimizeAnimation                           string
@@ -154,6 +157,7 @@ func decodeDesktopPreferencesMutationPayload(payload []byte) (decodedDesktopPref
 		DefaultAgentProvider:        decoded.Preferences.DefaultAgentProvider,
 		DockIconStyle:               decoded.Preferences.DockIconStyle,
 		DockPlacement:               decoded.Preferences.DockPlacement,
+		EnableCursorAgent:           decoded.Preferences.EnableCursorAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromPayload(
 			decoded.Preferences.FileDefaultOpenersByExtension,
 		),

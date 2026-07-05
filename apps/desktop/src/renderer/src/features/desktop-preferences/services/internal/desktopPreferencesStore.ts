@@ -35,6 +35,7 @@ export function createDesktopPreferencesStore(input: {
   minimizeAnimation: DesktopMinimizeAnimation;
   sleepPreventionMode: DesktopSleepPreventionMode;
   showAppDeveloperSources: boolean;
+  enableCursorAgent: boolean;
   theme: DesktopThemeState;
   updateChannel: DesktopUpdateChannel;
   updatePolicy: DesktopUpdatePolicy;
@@ -51,6 +52,7 @@ export function createDesktopPreferencesStore(input: {
     changingMinimizeAnimation: null,
     changingSleepPreventionMode: null,
     changingShowAppDeveloperSources: null,
+    changingEnableCursorAgent: null,
     changingThemeSource: null,
     changingUpdateChannel: null,
     changingUpdatePolicy: null,
@@ -72,6 +74,7 @@ export function createDesktopPreferencesStore(input: {
     minimizeAnimation: input.minimizeAnimation,
     sleepPreventionMode: input.sleepPreventionMode,
     showAppDeveloperSources: input.showAppDeveloperSources,
+    enableCursorAgent: input.enableCursorAgent,
     theme: input.theme,
     updateChannel: input.updateChannel,
     updatePolicy: input.updatePolicy,

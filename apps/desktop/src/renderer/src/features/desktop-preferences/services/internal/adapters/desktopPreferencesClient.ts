@@ -252,6 +252,7 @@ function createPreferencesKey(
     preferences.locale,
     preferences.sleepPreventionMode,
     preferences.showAppDeveloperSources ? "app-sources:on" : "app-sources:off",
+    preferences.enableCursorAgent ? "cursor-agent:on" : "cursor-agent:off",
     preferences.themeSource,
     preferences.updateChannel,
     preferences.updatePolicy,
@@ -303,6 +304,7 @@ function preferencesEqual(
     left.sleepPreventionMode === right.sleepPreventionMode &&
     (left.showAppDeveloperSources ?? false) ===
       (right.showAppDeveloperSources ?? false) &&
+    (left.enableCursorAgent ?? false) === (right.enableCursorAgent ?? false) &&
     left.themeSource === right.themeSource &&
     left.updateChannel === right.updateChannel &&
     left.updatePolicy === right.updatePolicy &&
@@ -316,6 +318,7 @@ function preferencesEqual(
 const desktopAgentProviderKeys = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "gemini",
   "hermes",

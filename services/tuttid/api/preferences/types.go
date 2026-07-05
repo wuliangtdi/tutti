@@ -21,6 +21,7 @@ func GeneratedDesktopPreferencesFromBiz(value preferencesbiz.DesktopPreferences)
 		DefaultAgentProvider:                        tuttigenerated.WorkspaceAgentProvider(value.DefaultAgentProvider),
 		DockIconStyle:                               tuttigenerated.DesktopDockIconStyle(value.DockIconStyle),
 		DockPlacement:                               tuttigenerated.DesktopDockPlacement(value.DockPlacement),
+		EnableCursorAgent:                           value.EnableCursorAgent,
 		FileDefaultOpenersByExtension:               generatedFileDefaultOpenersByExtension(value.FileDefaultOpenersByExtension),
 		Locale:                                      tuttigenerated.DesktopLocale(value.Locale),
 		MinimizeAnimation:                           tuttigenerated.DesktopMinimizeAnimation(value.MinimizeAnimation),
@@ -49,6 +50,7 @@ func generatedAgentGUIConversationRailCollapsedByProvider(value map[string]bool)
 	return tuttigenerated.DesktopAgentGuiConversationRailCollapsedByProvider{
 		ClaudeCode: optionalBoolPointerFromMap(value, "claude-code"),
 		Codex:      optionalBoolPointerFromMap(value, "codex"),
+		Cursor:     optionalBoolPointerFromMap(value, "cursor"),
 		Gemini:     optionalBoolPointerFromMap(value, "gemini"),
 		Hermes:     optionalBoolPointerFromMap(value, "hermes"),
 		Nexight:    optionalBoolPointerFromMap(value, "nexight"),
@@ -75,6 +77,7 @@ func generatedAgentComposerDefaultsByProvider(value map[string]preferencesbiz.Ag
 	return tuttigenerated.DesktopAgentComposerDefaultsByProvider{
 		ClaudeCode: generatedAgentComposerDefaultsPointer(value["claude-code"]),
 		Codex:      generatedAgentComposerDefaultsPointer(value["codex"]),
+		Cursor:     generatedAgentComposerDefaultsPointer(value["cursor"]),
 		Gemini:     generatedAgentComposerDefaultsPointer(value["gemini"]),
 		Hermes:     generatedAgentComposerDefaultsPointer(value["hermes"]),
 		Nexight:    generatedAgentComposerDefaultsPointer(value["nexight"]),

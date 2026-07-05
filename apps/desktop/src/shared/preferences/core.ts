@@ -58,6 +58,8 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
+export const defaultDesktopEnableCursorAgent = false;
+
 export const desktopAgentConversationDetailModes = [
   "coding",
   "general"
@@ -162,6 +164,7 @@ export function normalizeDesktopAgentConversationDetailMode(
 export const desktopAgentProviders = [
   "claude-code",
   "codex",
+  "cursor",
   "nexight",
   "gemini",
   "hermes",

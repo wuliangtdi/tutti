@@ -6,7 +6,10 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -140,6 +143,10 @@ export function useWorkspaceWorkbenchShellRuntime({
         : undefined,
     [agentGuiProviderTargets]
   );
+  const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
+    () => (desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
+    [desktopPreferencesState.enableCursorAgent]
+  );
   const defaultAgentTargetId = useMemo(
     () =>
       resolveDefaultAgentTargetId({
@@ -188,6 +195,7 @@ export function useWorkspaceWorkbenchShellRuntime({
           defaultProviderTargetId: defaultAgentTargetId,
           providerTargets: resolvedAgentGuiProviderTargets,
           providerTargetsLoading: agentGuiProviderTargetsLoading,
+          comingSoonAgentProviders,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
           onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -267,7 +275,10 @@ export function useWorkspaceWorkbenchShellRuntime({
     return () => {
       disposed = true;
     };
-  }, [state.workspace.id, workbenchHostService]);
+    // comingSoonAgentProviders: the provider gate disables gated targets in
+    // the daemon target list, so a gate flip must reload it (the host service
+    // cache is invalidated by the same preference change).
+  }, [comingSoonAgentProviders, state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {
@@ -321,6 +332,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       defaultProviderTargetId: defaultAgentTargetId,
       providerTargets: resolvedAgentGuiProviderTargets,
       providerTargetsLoading: agentGuiProviderTargetsLoading,
+      comingSoonAgentProviders,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
       onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -334,6 +346,7 @@ export function useWorkspaceWorkbenchShellRuntime({
     appI18n,
     appCenterState.revision,
     agentGuiProviderTargetsLoading,
+    comingSoonAgentProviders,
     defaultAgentTargetId,
     resolvedAgentGuiProviderTargets,
     desktopPreferencesState.defaultAgentProvider,

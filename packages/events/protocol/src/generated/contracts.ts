@@ -53,6 +53,12 @@ export interface PreferencesDesktopPreferencesV1 {
       reasoningEffort?: string;
       speed?: string;
     };
+    cursor?: {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    };
     nexight?: {
       model?: string;
       permissionModeId?: string;
@@ -90,6 +96,7 @@ export interface PreferencesDesktopPreferencesV1 {
   agentGuiConversationRailCollapsedByProvider: {
     "claude-code"?: boolean;
     codex?: boolean;
+    cursor?: boolean;
     nexight?: boolean;
     gemini?: boolean;
     hermes?: boolean;
@@ -102,6 +109,7 @@ export interface PreferencesDesktopPreferencesV1 {
   defaultAgentProvider:
     | "claude-code"
     | "codex"
+    | "cursor"
     | "nexight"
     | "gemini"
     | "hermes"
@@ -116,6 +124,7 @@ export interface PreferencesDesktopPreferencesV1 {
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
+  enableCursorAgent: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";

@@ -1119,6 +1119,7 @@ function createDesktopPreferencesService(input: {
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
+    setEnableCursorAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setWorkbenchWindowSnapping:
@@ -1148,6 +1149,7 @@ function createPreferencesState(
     changingDockPlacement: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
+    changingEnableCursorAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1159,6 +1161,7 @@ function createPreferencesState(
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
+    enableCursorAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",

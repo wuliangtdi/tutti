@@ -160,6 +160,7 @@ import { formatAgentMentionMarkdown } from "./agentRichText/agentFileMentionExte
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import claudeCodeFlatFilledIconUrl from "../../app/renderer/assets/icons/agents/claudecode-flat-filled.svg";
 import codexFlatFilledIconUrl from "../../app/renderer/assets/icons/agents/codex-flat-filled.svg";
+import cursorFlatFilledIconUrl from "../../app/renderer/assets/icons/agents/cursor-flat-filled.svg";
 
 /**
  * 把 @ 面板里的任务/应用 mention 解析为引用 picker 的定位目标(sourceId + 语义 params)。
@@ -1574,6 +1575,7 @@ export function AgentGUINodeView({
               selectedProviderTarget={viewModel.selectedProviderTarget}
               providerTargets={viewModel.providerTargets}
               providerTargetsLoading={viewModel.providerTargetsLoading}
+              comingSoonProviders={viewModel.comingSoonProviders}
               onSelectConversationFilterTarget={
                 actions.selectConversationFilterTarget
               }
@@ -4382,6 +4384,7 @@ function conversationProjectsRenderEqual(
 const agentGUIProviderRailOrder: readonly AgentGUIProvider[] = [
   "codex",
   "claude-code",
+  "cursor",
   "nexight",
   "hermes",
   "openclaw",
@@ -4391,6 +4394,7 @@ const agentGUIProviderRailOrder: readonly AgentGUIProvider[] = [
 const agentGUIProviderRailDefaultProviders = [
   "codex",
   "claude-code",
+  "cursor",
   "nexight",
   "hermes",
   "openclaw"
@@ -4424,6 +4428,8 @@ function agentGUIConversationProviderIconUrl(
       return claudeCodeFlatFilledIconUrl;
     case "codex":
       return codexFlatFilledIconUrl;
+    case "cursor":
+      return cursorFlatFilledIconUrl;
     default:
       return null;
   }
@@ -4461,11 +4467,13 @@ function agentGUIProviderTargetMatchesConversationFilter(
 
 function agentGUIProviderRailTargets(
   providerTargets: AgentGUINodeViewModel["providerTargets"],
-  providerTargetsLoading: boolean
+  providerTargetsLoading: boolean,
+  comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"]
 ): AgentGUINodeViewModel["providerTargets"] {
   if (providerTargetsLoading) {
     return [];
   }
+  const comingSoon = new Set(comingSoonProviders);
   const source =
     providerTargets.length > 0 &&
     !agentGUIProviderRailTargetsAreFullLocalFallback(providerTargets)
@@ -4481,7 +4489,8 @@ function agentGUIProviderRailTargets(
   return [
     ...source,
     ...missingDefaultProviders.map((provider) =>
-      agentGUIProviderRailDisabledProviders.has(provider)
+      agentGUIProviderRailDisabledProviders.has(provider) ||
+      comingSoon.has(provider)
         ? createDisabledPlaceholderAgentGUIProviderTarget(provider)
         : createLocalAgentGUIProviderTarget(provider)
     )
@@ -4511,6 +4520,7 @@ interface AgentGUIProviderRailProps {
   selectedProviderTarget: AgentGUINodeViewModel["selectedProviderTarget"];
   providerTargets: AgentGUINodeViewModel["providerTargets"];
   providerTargetsLoading: AgentGUINodeViewModel["providerTargetsLoading"];
+  comingSoonProviders: AgentGUINodeViewModel["comingSoonProviders"];
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["conversationFilter"]
@@ -4524,13 +4534,19 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   selectedProviderTarget,
   providerTargets,
   providerTargetsLoading,
+  comingSoonProviders,
   onSelectConversationFilterTarget,
   onUpdateConversationFilter
 }: AgentGUIProviderRailProps): React.JSX.Element {
   "use memo";
   const railProviderTargets = useMemo(
-    () => agentGUIProviderRailTargets(providerTargets, providerTargetsLoading),
-    [providerTargets, providerTargetsLoading]
+    () =>
+      agentGUIProviderRailTargets(
+        providerTargets,
+        providerTargetsLoading,
+        comingSoonProviders
+      ),
+    [comingSoonProviders, providerTargets, providerTargetsLoading]
   );
   const providerTiles = useMemo(() => {
     const targets = [...railProviderTargets];

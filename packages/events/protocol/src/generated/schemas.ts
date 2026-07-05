@@ -20,6 +20,7 @@ export const preferencesDesktopPreferencesSchema = {
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
+    "enableCursorAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -48,6 +49,24 @@ export const preferencesDesktopPreferencesSchema = {
           }
         },
         codex: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
+        },
+        cursor: {
           type: "object",
           additionalProperties: false,
           properties: {
@@ -170,6 +189,9 @@ export const preferencesDesktopPreferencesSchema = {
         codex: {
           type: "boolean"
         },
+        cursor: {
+          type: "boolean"
+        },
         nexight: {
           type: "boolean"
         },
@@ -202,7 +224,15 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: ["claude-code", "codex", "nexight", "gemini", "hermes", "openclaw"]
+      enum: [
+        "claude-code",
+        "codex",
+        "cursor",
+        "nexight",
+        "gemini",
+        "hermes",
+        "openclaw"
+      ]
     },
     dockIconStyle: {
       type: "string",
@@ -232,6 +262,9 @@ export const preferencesDesktopPreferencesSchema = {
       enum: ["never", "whileAgentRunning", "always"]
     },
     showAppDeveloperSources: {
+      type: "boolean"
+    },
+    enableCursorAgent: {
       type: "boolean"
     },
     themeSource: {
@@ -1029,6 +1062,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1057,6 +1091,24 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               }
             },
             codex: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1179,6 +1231,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            cursor: {
+              type: "boolean"
+            },
             nexight: {
               type: "boolean"
             },
@@ -1214,6 +1269,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           enum: [
             "claude-code",
             "codex",
+            "cursor",
             "nexight",
             "gemini",
             "hermes",
@@ -1248,6 +1304,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
+          type: "boolean"
+        },
+        enableCursorAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1329,6 +1388,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1357,6 +1417,24 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               }
             },
             codex: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
               type: "object",
               additionalProperties: false,
               properties: {
@@ -1479,6 +1557,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            cursor: {
+              type: "boolean"
+            },
             nexight: {
               type: "boolean"
             },
@@ -1514,6 +1595,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           enum: [
             "claude-code",
             "codex",
+            "cursor",
             "nexight",
             "gemini",
             "hermes",
@@ -1548,6 +1630,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
+          type: "boolean"
+        },
+        enableCursorAgent: {
           type: "boolean"
         },
         themeSource: {

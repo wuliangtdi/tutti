@@ -33,6 +33,7 @@ type PutInput struct {
 	DefaultAgentProvider                        string
 	DockIconStyle                               string
 	DockPlacement                               string
+	EnableCursorAgent                           bool
 	FileDefaultOpenersByExtension               map[string]string
 	Locale                                      string
 	MinimizeAnimation                           string
@@ -91,6 +92,7 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		DefaultAgentProvider:                        agentproviderbiz.Normalize(input.DefaultAgentProvider),
 		DockIconStyle:                               strings.TrimSpace(input.DockIconStyle),
 		DockPlacement:                               strings.TrimSpace(input.DockPlacement),
+		EnableCursorAgent:                           input.EnableCursorAgent,
 		FileDefaultOpenersByExtension:               normalizeFileDefaultOpenersByExtension(input.FileDefaultOpenersByExtension),
 		Initialized:                                 true,
 		Locale:                                      strings.TrimSpace(input.Locale),

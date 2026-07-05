@@ -314,6 +314,8 @@ func legacyAgentTargetIDForProvider(provider string) string {
 		return "local:codex"
 	case "claude-code":
 		return "local:claude-code"
+	case "cursor":
+		return "local:cursor"
 	default:
 		return ""
 	}

@@ -4129,6 +4129,7 @@ components:
         - minimizeAnimation
         - sleepPreventionMode
         - showAppDeveloperSources
+        - enableCursorAgent
         - themeSource
         - updateChannel
         - updatePolicy
@@ -4153,6 +4154,8 @@ components:
           $ref: "#/components/schemas/DesktopDockIconStyle"
         dockPlacement:
           $ref: "#/components/schemas/DesktopDockPlacement"
+        enableCursorAgent:
+          type: boolean
         fileDefaultOpenersByExtension:
           $ref: "#/components/schemas/DesktopFileDefaultOpenersByExtension"
         locale:
@@ -4217,6 +4220,8 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         codex:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
+        cursor:
+          $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         nexight:
           $ref: "#/components/schemas/DesktopAgentComposerDefaults"
         gemini:
@@ -4236,6 +4241,8 @@ components:
         claude-code:
           type: boolean
         codex:
+          type: boolean
+        cursor:
           type: boolean
         nexight:
           type: boolean
@@ -4286,6 +4293,7 @@ components:
       enum:
         - codex
         - claude-code
+        - cursor
     AgentTargetSource:
       type: string
       enum:
@@ -5562,6 +5570,7 @@ components:
       enum:
         - claude-code
         - codex
+        - cursor
         - nexight
         - gemini
         - hermes

@@ -31,6 +31,9 @@ export function resolveDesktopAgentGUIProviderForAgentTarget(
   if (agentTargetId === "local:claude-code") {
     return "claude-code";
   }
+  if (agentTargetId === "local:cursor") {
+    return "cursor";
+  }
   return fallbackProvider;
 }
 

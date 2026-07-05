@@ -569,7 +569,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(actions.selectHomeComposerAgentTarget).not.toHaveBeenCalled();
   });
 
-  it("orders provider rail tiles as Codex, Claude Code, Tutti, Hermes, OpenClaw without visible provider labels", () => {
+  it("orders provider rail tiles as Codex, Claude Code, Cursor, Tutti, Hermes, OpenClaw without visible provider labels", () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
@@ -596,7 +596,15 @@ describe("AgentGUINodeView layout persistence", () => {
             tab.getAttribute("aria-label") ??
             tab.textContent?.replace(/\s+/gu, " ").trim()
         )
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
     expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
@@ -996,6 +1004,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(
       screen.getByRole("tab", { name: "Claude Code" })
     ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cursor" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Tutti" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Hermes" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OpenClaw" })).toBeInTheDocument();
@@ -1004,7 +1013,15 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.getByRole("tab", { name: "OpenClaw" })).not.toBeDisabled();
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
   });
 
   it("keeps the provider rail to the default agent tiles for static provider catalogs", () => {
@@ -1018,7 +1035,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
-    ).toEqual(["All", "Codex", "Claude Code", "Tutti", "Hermes", "OpenClaw"]);
+    ).toEqual([
+      "All",
+      "Codex",
+      "Claude Code",
+      "Cursor",
+      "Tutti",
+      "Hermes",
+      "OpenClaw"
+    ]);
   });
 
   it("falls back to All for avatar rail targets without an agent target id", () => {
@@ -3816,6 +3841,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    comingSoonProviders: [],
     conversationFilter: { kind: "all" },
     conversations: [],
     userProjects: [],

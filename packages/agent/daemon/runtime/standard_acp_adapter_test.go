@@ -251,6 +251,310 @@ func TestGeminiAdapterStartAppliesModelAndReasoningConfigOptions(t *testing.T) {
 	}
 }
 
+func TestCursorAdapterStartCreatesStandardACPSession(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-1")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "agent"
+
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	spec := transport.specs[0]
+	if got := strings.Join(spec.Command, " "); got != "cursor-agent acp" {
+		t.Fatalf("command = %q, want %q", got, "cursor-agent acp")
+	}
+	if len(events) != 1 || events[0].Type != activityshared.EventSessionStarted {
+		t.Fatalf("events = %#v, want session.started", events)
+	}
+	if events[0].ProviderSessionID != "cursor-session-1" {
+		t.Fatalf("provider session id = %q", events[0].ProviderSessionID)
+	}
+	if transport.conn.lastModeID() != "agent" {
+		t.Fatalf("mode id = %q, want agent", transport.conn.lastModeID())
+	}
+	if got := transport.conn.authenticatedMethodID(); got != "" {
+		t.Fatalf("authenticated method id = %q, want empty", got)
+	}
+}
+
+func TestCursorAdapterStartMapsPermissionTiersToACPModes(t *testing.T) {
+	t.Parallel()
+
+	for tier, wantMode := range map[string]string{
+		"read-only":   "plan",
+		"agent":       "agent",
+		"full-access": "agent",
+	} {
+		transport := newStandardACPTransport("Cursor Agent", "cursor-session-"+tier)
+		adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+		session := standardTestSession(ProviderCursor)
+		session.PermissionModeID = tier
+
+		if _, err := adapter.Start(context.Background(), session); err != nil {
+			t.Fatalf("Start(%s): %v", tier, err)
+		}
+		if transport.conn.lastModeID() != wantMode {
+			t.Fatalf("tier %q mode id = %q, want %q", tier, transport.conn.lastModeID(), wantMode)
+		}
+	}
+}
+
+func TestCursorAdapterStartSkipsSetModeForUnknownMode(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-unknown")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "yolo"
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if got := transport.conn.lastModeID(); got != "" {
+		t.Fatalf("mode id = %q, want no session/set_mode call", got)
+	}
+}
+
+func TestCursorAdapterNeverSpawnsWithForceFlag(t *testing.T) {
+	t.Parallel()
+
+	for _, tier := range []string{"read-only", "agent", "full-access"} {
+		transport := newStandardACPTransport("Cursor Agent", "cursor-session-"+tier)
+		adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+		session := standardTestSession(ProviderCursor)
+		session.PermissionModeID = tier
+
+		if _, err := adapter.Start(context.Background(), session); err != nil {
+			t.Fatalf("Start(%s): %v", tier, err)
+		}
+		// full-access uses live auto-approval, not a spawn flag, so the
+		// command is identical across tiers and never needs a respawn.
+		if got := strings.Join(transport.specs[0].Command, " "); got != "cursor-agent acp" {
+			t.Fatalf("tier %q command = %q, want plain cursor-agent acp", tier, got)
+		}
+	}
+}
+
+func TestCursorAdapterFullAccessAutoApprovesWithoutPrompt(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-1")
+	transport.conn.promptPermission = true
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "full-access"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-1"
+
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("run the build"), "", "turn-1", func(events []activityshared.Event) {
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+		}, nil)
+		execDone <- err
+	}()
+
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not finish; full-access must auto-approve without waiting for input")
+	}
+
+	if got := transport.conn.permissionOptionID(); got != "allow" {
+		t.Fatalf("permission option id = %q, want auto-approved allow", got)
+	}
+	mu.Lock()
+	events := ProjectActivityEventsToStreamEvents(session, emittedActivity)
+	mu.Unlock()
+	if hasStreamCallEvent(events, "approval", "waiting_approval") {
+		t.Fatal("full-access must not surface an approval prompt")
+	}
+}
+
+func TestCursorAdapterAgentTierPromptsForPermission(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-2")
+	transport.conn.promptPermission = true
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "agent"
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-2"
+
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("run the build"), "", "turn-1", func(events []activityshared.Event) {
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+		}, nil)
+		execDone <- err
+	}()
+
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		events := ProjectActivityEventsToStreamEvents(session, emittedActivity)
+		return hasStreamCallEvent(events, "approval", "waiting_approval")
+	})
+
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RequestID: "permission-1",
+		OptionID:  "reject",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not finish after permission response")
+	}
+	if got := transport.conn.permissionOptionID(); got != "reject" {
+		t.Fatalf("permission option id = %q, want the user's reject", got)
+	}
+}
+
+func TestCursorAutoApprovePermissionDecision(t *testing.T) {
+	t.Parallel()
+
+	if got := cursorAutoApprovePermissionDecision("full-access"); got != "approved" {
+		t.Fatalf("full-access decision = %q, want approved", got)
+	}
+	for _, tier := range []string{"agent", "read-only", "", "yolo"} {
+		if got := cursorAutoApprovePermissionDecision(tier); got != "" {
+			t.Fatalf("tier %q decision = %q, want prompt (empty)", tier, got)
+		}
+	}
+}
+
+func TestResolveACPPermissionDecisionOptionID(t *testing.T) {
+	t.Parallel()
+
+	options := []map[string]any{
+		{"optionId": "allow-once", "name": "Allow once"},
+		{"optionId": "allow-always", "name": "Allow always"},
+		{"optionId": "reject-once", "name": "Reject"},
+	}
+	if got, ok := resolveACPPermissionDecisionOptionID(options, "approved"); !ok || got != "allow-once" {
+		t.Fatalf("approved -> %q (ok=%v), want allow-once", got, ok)
+	}
+	if got, ok := resolveACPPermissionDecisionOptionID(options, "denied"); !ok || got != "reject-once" {
+		t.Fatalf("denied -> %q (ok=%v), want reject-once", got, ok)
+	}
+	if _, ok := resolveACPPermissionDecisionOptionID(nil, "approved"); ok {
+		t.Fatal("no options must not resolve")
+	}
+}
+
+func TestCursorAdapterStartUsesInjectedProviderCommand(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-resolved")
+	adapter := newCursorAdapterWithHostMetadata(
+		transport,
+		LegacyHostMetadata(),
+		func(_ context.Context, provider string) (ProviderCommand, error) {
+			if provider != ProviderCursor {
+				t.Fatalf("provider = %q, want %q", provider, ProviderCursor)
+			}
+			return ProviderCommand{Command: []string{"/home/user/.local/bin/agent", "acp"}}, nil
+		},
+	)
+	session := standardTestSession(ProviderCursor)
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want 1", len(transport.specs))
+	}
+	if got := strings.Join(transport.specs[0].Command, " "); got != "/home/user/.local/bin/agent acp" {
+		t.Fatalf("command = %q, want resolved cursor binary", got)
+	}
+}
+
+func TestCursorAdapterStartAppliesModelConfigOption(t *testing.T) {
+	t.Parallel()
+
+	// Mirrors cursor-agent 2026.07 session/new output: a `model` config
+	// option with parameterized ids in {value, name} entries.
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-model")
+	transport.conn.configOptions = []map[string]any{
+		{
+			"id":           "model",
+			"name":         "Model",
+			"category":     "model",
+			"type":         "select",
+			"currentValue": "composer-2.5[fast=true]",
+			"options": []any{
+				map[string]any{"value": "default[]", "name": "Auto"},
+				map[string]any{"value": "composer-2.5[fast=true]", "name": "composer-2.5"},
+				map[string]any{"value": "claude-sonnet-5[thinking=true,context=300k,effort=high]", "name": "claude-sonnet-5"},
+			},
+		},
+	}
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.Settings = &SessionSettings{Model: "claude-sonnet-5[thinking=true,context=300k,effort=high]"}
+
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	calls := transport.conn.setConfigOptionCalls()
+	if len(calls) != 1 {
+		t.Fatalf("config option calls = %#v, want one model update", calls)
+	}
+	if got, _ := calls[0]["configId"].(string); got != "model" {
+		t.Fatalf("config id = %q, want model", got)
+	}
+	if got, _ := calls[0]["value"].(string); got != "claude-sonnet-5[thinking=true,context=300k,effort=high]" {
+		t.Fatalf("config value = %q, want parameterized cursor model id", got)
+	}
+}
+
+func TestCursorACPModeID(t *testing.T) {
+	t.Parallel()
+
+	for mode, want := range map[string]string{
+		"read-only":   "plan",
+		"agent":       "agent",
+		"full-access": "agent",
+		" agent ":     "agent",
+		"":            "",
+		"yolo":        "",
+		"plan":        "",
+		"ask":         "",
+	} {
+		if got := cursorACPModeID(mode); got != want {
+			t.Fatalf("cursorACPModeID(%q) = %q, want %q", mode, got, want)
+		}
+	}
+}
+
 func TestHermesAdapterStartCreatesStandardACPSession(t *testing.T) {
 	t.Parallel()
 

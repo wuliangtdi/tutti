@@ -18,6 +18,7 @@
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
+    "enableCursorAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -29,6 +30,7 @@
       "properties": {
         "claude-code": { "$ref": "#/$defs/agentComposerDefaults" },
         "codex": { "$ref": "#/$defs/agentComposerDefaults" },
+        "cursor": { "$ref": "#/$defs/agentComposerDefaults" },
         "nexight": { "$ref": "#/$defs/agentComposerDefaults" },
         "gemini": { "$ref": "#/$defs/agentComposerDefaults" },
         "hermes": { "$ref": "#/$defs/agentComposerDefaults" },
@@ -45,6 +47,7 @@
       "properties": {
         "claude-code": { "type": "boolean" },
         "codex": { "type": "boolean" },
+        "cursor": { "type": "boolean" },
         "nexight": { "type": "boolean" },
         "gemini": { "type": "boolean" },
         "hermes": { "type": "boolean" },
@@ -72,6 +75,7 @@
       "enum": [
         "claude-code",
         "codex",
+        "cursor",
         "nexight",
         "gemini",
         "hermes",
@@ -106,6 +110,9 @@
       "enum": ["never", "whileAgentRunning", "always"]
     },
     "showAppDeveloperSources": {
+      "type": "boolean"
+    },
+    "enableCursorAgent": {
       "type": "boolean"
     },
     "themeSource": {

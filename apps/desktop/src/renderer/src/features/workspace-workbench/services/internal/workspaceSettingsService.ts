@@ -548,6 +548,25 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
   }
 
+  async changeEnableCursorAgent(enable: boolean): Promise<void> {
+    if (
+      this.desktopPreferences.store.enableCursorAgent === enable ||
+      this.desktopPreferences.store.changingEnableCursorAgent === enable
+    ) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setEnableCursorAgent(enable);
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.developer.enableCursorAgentSaveFailed"
+        )
+      });
+    }
+  }
+
   async clearDeveloperLogs(): Promise<void> {
     if (this.store.developerLogs.clearing) {
       return;
@@ -1165,6 +1184,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   changingMinimizeAnimation: null,
   changingSleepPreventionMode: null,
   changingShowAppDeveloperSources: null,
+  changingEnableCursorAgent: null,
   changingThemeSource: null,
   changingUpdateChannel: null,
   changingUpdatePolicy: null,
@@ -1177,6 +1197,7 @@ const noopDesktopPreferencesStore: DesktopPreferencesReadableStoreState = {
   minimizeAnimation: defaultDesktopMinimizeAnimation,
   sleepPreventionMode: "never",
   showAppDeveloperSources: false,
+  enableCursorAgent: false,
   theme: createNoopTheme("dark"),
   updateChannel: "rc",
   updatePolicy: "prompt",
@@ -1224,6 +1245,9 @@ const noopDesktopPreferences: DesktopPreferencesService = {
   },
   setShowAppDeveloperSources(show) {
     return Promise.resolve(show);
+  },
+  setEnableCursorAgent(enable) {
+    return Promise.resolve(enable);
   },
   setThemeSource(source) {
     return Promise.resolve(createNoopTheme(source));

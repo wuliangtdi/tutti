@@ -410,6 +410,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		DefaultAgentProvider:        defaultAgentProvider,
 		DockIconStyle:               dockIconStyle,
 		DockPlacement:               dockPlacement,
+		EnableCursorAgent:           request.Body.Preferences.EnableCursorAgent,
 		FileDefaultOpenersByExtension: fileDefaultOpenersByExtensionFromGenerated(
 			request.Body.Preferences.FileDefaultOpenersByExtension,
 		),
@@ -456,6 +457,7 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	result := map[string]bool{}
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "claude-code", value.ClaudeCode)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "codex", value.Codex)
+	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "gemini", value.Gemini)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "hermes", value.Hermes)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "nexight", value.Nexight)
@@ -480,6 +482,7 @@ func agentComposerDefaultsByProviderFromGenerated(
 	result := map[string]preferencesbiz.AgentComposerDefaults{}
 	setAgentComposerDefaultsFromGenerated(result, "claude-code", value.ClaudeCode)
 	setAgentComposerDefaultsFromGenerated(result, "codex", value.Codex)
+	setAgentComposerDefaultsFromGenerated(result, "cursor", value.Cursor)
 	setAgentComposerDefaultsFromGenerated(result, "gemini", value.Gemini)
 	setAgentComposerDefaultsFromGenerated(result, "hermes", value.Hermes)
 	setAgentComposerDefaultsFromGenerated(result, "nexight", value.Nexight)

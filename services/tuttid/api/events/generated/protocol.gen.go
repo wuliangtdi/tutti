@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:d270a7981989a456"
+	BusinessEventCatalogRevision = "sha256:c8cc9d6c0d853a47"
 )
 
 type Topic string
@@ -72,6 +72,12 @@ type PreferencesDesktopPreferences struct {
 			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
 			Speed            *string `json:"speed,omitempty"`
 		} `json:"codex,omitempty"`
+		Cursor *struct {
+			Model            *string `json:"model,omitempty"`
+			PermissionModeId *string `json:"permissionModeId,omitempty"`
+			ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
+			Speed            *string `json:"speed,omitempty"`
+		} `json:"cursor,omitempty"`
 		Nexight *struct {
 			Model            *string `json:"model,omitempty"`
 			PermissionModeId *string `json:"permissionModeId,omitempty"`
@@ -106,6 +112,7 @@ type PreferencesDesktopPreferences struct {
 	AgentGuiConversationRailCollapsedByProvider struct {
 		ClaudeCode *bool `json:"claude-code,omitempty"`
 		Codex      *bool `json:"codex,omitempty"`
+		Cursor     *bool `json:"cursor,omitempty"`
 		Nexight    *bool `json:"nexight,omitempty"`
 		Gemini     *bool `json:"gemini,omitempty"`
 		Hermes     *bool `json:"hermes,omitempty"`
@@ -123,6 +130,7 @@ type PreferencesDesktopPreferences struct {
 	MinimizeAnimation             string            `json:"minimizeAnimation"`
 	SleepPreventionMode           string            `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources       bool              `json:"showAppDeveloperSources"`
+	EnableCursorAgent             bool              `json:"enableCursorAgent"`
 	ThemeSource                   string            `json:"themeSource"`
 	UpdateChannel                 string            `json:"updateChannel"`
 	UpdatePolicy                  string            `json:"updatePolicy"`

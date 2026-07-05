@@ -107,6 +107,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   previewMode?: boolean;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   defaultProviderTargetId?: string | null;
   contextMentionProviders: NonNullable<
     AgentGUIProps["contextMentionProviders"]
@@ -175,6 +176,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.previewMode === next.previewMode &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
+    previous.comingSoonAgentProviders === next.comingSoonAgentProviders &&
     previous.defaultProviderTargetId === next.defaultProviderTargetId &&
     previous.contextMentionProviders === next.contextMentionProviders &&
     previous.runtimeApi === next.runtimeApi &&
@@ -237,6 +239,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   previewMode = false,
   providerTargets,
   providerTargetsLoading = false,
+  comingSoonAgentProviders,
   defaultProviderTargetId = null,
   contextMentionProviders,
   runtimeApi,
@@ -1077,6 +1080,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}
+        comingSoonProviders={comingSoonAgentProviders}
         providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}
         workspaceAgentProbes={workspaceAgentProbes}

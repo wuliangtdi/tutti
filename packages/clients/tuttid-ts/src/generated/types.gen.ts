@@ -281,6 +281,7 @@ export type DesktopPreferences = {
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  enableCursorAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -315,6 +316,7 @@ export type DesktopAgentDockLayout = "legacySplit" | "unified";
 export type DesktopAgentComposerDefaultsByProvider = {
   "claude-code"?: DesktopAgentComposerDefaults;
   codex?: DesktopAgentComposerDefaults;
+  cursor?: DesktopAgentComposerDefaults;
   nexight?: DesktopAgentComposerDefaults;
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
@@ -328,6 +330,7 @@ export type DesktopAgentComposerDefaultsByAgentTarget = {
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "claude-code"?: boolean;
   codex?: boolean;
+  cursor?: boolean;
   nexight?: boolean;
   gemini?: boolean;
   hermes?: boolean;
@@ -355,7 +358,7 @@ export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
 };
 
-export type AgentTargetProvider = "codex" | "claude-code";
+export type AgentTargetProvider = "codex" | "claude-code" | "cursor";
 
 export type AgentTargetSource = "system" | "user";
 
@@ -853,6 +856,7 @@ export type WorkspaceTerminalCloseGuardResponse = {
 export type WorkspaceAgentProvider =
   | "claude-code"
   | "codex"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"

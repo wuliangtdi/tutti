@@ -146,6 +146,7 @@ func NewDefaultControllerWithOptions(
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
 		NewCodexAppServerAdapterWithHostMetadata(transport, host),
+		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
 		NewGeminiAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
@@ -423,6 +424,8 @@ func defaultPermissionModeIDForProvider(provider string) string {
 		return "default"
 	case ProviderCodex, ProviderNexight:
 		return "auto"
+	case ProviderCursor:
+		return "agent"
 	case ProviderGemini, ProviderHermes:
 		return "yolo"
 	default:
@@ -462,6 +465,8 @@ func permissionModeIDAllowedForProvider(provider string, mode string) bool {
 		case "read-only", "auto", "full-access":
 			return true
 		}
+	case ProviderCursor:
+		return cursorACPModeID(mode) != ""
 	case ProviderGemini, ProviderHermes:
 		return strings.TrimSpace(mode) == "yolo"
 	}

@@ -171,9 +171,16 @@ export function WorkspaceAppCenterPane({
     () =>
       resolveAppCenterReadyAgentProviderOptions(
         agentProviderSnapshot.statuses,
-        agentsSnapshot.agentTargets
+        agentsSnapshot.agentTargets,
+        desktopPreferencesState.enableCursorAgent
+          ? undefined
+          : new Set(["cursor"])
       ),
-    [agentProviderSnapshot.statuses, agentsSnapshot.agentTargets]
+    [
+      agentProviderSnapshot.statuses,
+      agentsSnapshot.agentTargets,
+      desktopPreferencesState.enableCursorAgent
+    ]
   );
   const defaultFactoryAgentTargetId = useMemo(
     () =>
@@ -535,7 +542,8 @@ function resolveWorkspaceAppCategory(
 
 function resolveAppCenterReadyAgentProviderOptions(
   statuses: readonly AgentProviderStatus[],
-  agentTargets: readonly AgentTargetPresentation[]
+  agentTargets: readonly AgentTargetPresentation[],
+  hiddenProviders?: ReadonlySet<string>
 ): readonly AppCenterFactoryProviderOption[] {
   const readyProviders = new Set(
     statuses
@@ -549,6 +557,7 @@ function resolveAppCenterReadyAgentProviderOptions(
       if (
         !agentTargetId ||
         !readyProviders.has(provider) ||
+        hiddenProviders?.has(provider) === true ||
         isWorkspaceAgentGuiComingSoonProvider(provider)
       ) {
         return [];
