@@ -1,8 +1,12 @@
 package agent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -12,11 +16,23 @@ import (
 
 const defaultProviderAuthWatchInterval = 2 * time.Second
 
+// providerAuthFileMaxContentBytes caps how much of a watched file the watcher
+// is willing to read per change when computing a content fingerprint. Files
+// larger than this fall back to mtime+size semantics.
+const providerAuthFileMaxContentBytes = 32 << 20
+
 // ProviderAuthWatchEntry describes the on-disk auth/config files whose changes
 // invalidate the cached model catalog of one provider.
 type ProviderAuthWatchEntry struct {
 	Provider string
 	Paths    []string
+	// ContentFingerprint optionally reduces a watched file's bytes to the
+	// auth-relevant fingerprint for the given path. When set, a file whose
+	// mtime/size changed only reports a provider change if this fingerprint
+	// changed too. Claude Code needs this: ~/.claude.json is the CLI's general
+	// state file and is rewritten continuously while any session runs, but its
+	// auth-relevant fields only change on a real credential switch.
+	ContentFingerprint func(path string, data []byte) string
 }
 
 // DefaultProviderAuthWatchEntries returns the auth/config marker files for the
@@ -52,22 +68,73 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 			filepath.Join(claudeConfigDir, "settings.json"),
 			filepath.Join(claudeConfigDir, "auth.json"),
 		}
+		claudeStatePath := ""
 		if home != "" {
-			claudePaths = append(claudePaths, filepath.Join(home, ".claude.json"))
+			claudeStatePath = filepath.Join(home, ".claude.json")
+			claudePaths = append(claudePaths, claudeStatePath)
 		}
 		entries = append(entries, ProviderAuthWatchEntry{
-			Provider: agentprovider.ClaudeCode,
-			Paths:    claudePaths,
+			Provider:           agentprovider.ClaudeCode,
+			Paths:              claudePaths,
+			ContentFingerprint: claudeProviderAuthContentFingerprint(claudeStatePath),
 		})
 	}
 	return entries
+}
+
+// claudeAuthRelevantStateKeys lists the top-level ~/.claude.json fields that
+// identify the active credentials. Everything else in that file (history,
+// per-project state, telemetry counters, ...) churns while a session runs and
+// must not invalidate the model catalog.
+var claudeAuthRelevantStateKeys = []string{
+	"customApiKeyResponses",
+	"oauthAccount",
+	"primaryApiKey",
+	"userID",
+}
+
+// claudeProviderAuthContentFingerprint fingerprints ~/.claude.json by its
+// auth-relevant fields only, and every other watched Claude file by its full
+// contents (so a touch that rewrites identical bytes stays quiet).
+func claudeProviderAuthContentFingerprint(
+	claudeStatePath string,
+) func(path string, data []byte) string {
+	return func(path string, data []byte) string {
+		if claudeStatePath != "" && path == claudeStatePath {
+			if fingerprint, ok := jsonSubsetFingerprint(data, claudeAuthRelevantStateKeys); ok {
+				return fingerprint
+			}
+		}
+		sum := sha256.Sum256(data)
+		return hex.EncodeToString(sum[:])
+	}
+}
+
+// jsonSubsetFingerprint hashes the raw values of the given top-level keys of a
+// JSON object. Returns false when the payload is not a JSON object.
+func jsonSubsetFingerprint(data []byte, keys []string) (string, bool) {
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(data, &topLevel); err != nil {
+		return "", false
+	}
+	sorted := append([]string(nil), keys...)
+	sort.Strings(sorted)
+	hasher := sha256.New()
+	for _, key := range sorted {
+		hasher.Write([]byte(key))
+		hasher.Write([]byte{0})
+		hasher.Write(topLevel[key])
+		hasher.Write([]byte{0})
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), true
 }
 
 // ProviderAuthWatcher polls provider auth/config marker files and reports the
 // providers whose files changed since the previous poll. Polling (rather than
 // fsnotify) keeps the watcher robust against atomic rename rewrites, files
 // that do not exist yet, and directories created after startup; the per-tick
-// cost is a handful of stat calls.
+// cost is a handful of stat calls (file contents are only re-read when
+// mtime/size moved).
 type ProviderAuthWatcher struct {
 	Entries  []ProviderAuthWatchEntry
 	Interval time.Duration
@@ -85,6 +152,15 @@ type providerAuthFileFingerprint struct {
 	exists  bool
 	modTime time.Time
 	size    int64
+	// contentKey is the auth-relevant content fingerprint for paths with a
+	// ContentFingerprint, "" otherwise (or when reading failed).
+	contentKey string
+}
+
+func (f providerAuthFileFingerprint) statEqual(other providerAuthFileFingerprint) bool {
+	return f.exists == other.exists &&
+		f.modTime.Equal(other.modTime) &&
+		f.size == other.size
 }
 
 // Start begins polling in a background goroutine. The first poll only records
@@ -118,7 +194,7 @@ func (w *ProviderAuthWatcher) interval() time.Duration {
 
 func (w *ProviderAuthWatcher) run() {
 	defer close(w.done)
-	fingerprints := w.collectFingerprints()
+	fingerprints := w.collectFingerprints(nil)
 	ticker := time.NewTicker(w.interval())
 	defer ticker.Stop()
 	for {
@@ -126,7 +202,7 @@ func (w *ProviderAuthWatcher) run() {
 		case <-w.stop:
 			return
 		case <-ticker.C:
-			next := w.collectFingerprints()
+			next := w.collectFingerprints(fingerprints)
 			changed := changedProviders(w.Entries, fingerprints, next)
 			fingerprints = next
 			if len(changed) > 0 {
@@ -136,17 +212,49 @@ func (w *ProviderAuthWatcher) run() {
 	}
 }
 
-func (w *ProviderAuthWatcher) collectFingerprints() map[string]providerAuthFileFingerprint {
+func (w *ProviderAuthWatcher) collectFingerprints(
+	previous map[string]providerAuthFileFingerprint,
+) map[string]providerAuthFileFingerprint {
 	fingerprints := make(map[string]providerAuthFileFingerprint)
 	for _, entry := range w.Entries {
 		for _, path := range entry.Paths {
 			if _, ok := fingerprints[path]; ok {
 				continue
 			}
-			fingerprints[path] = statProviderAuthFile(path)
+			fingerprint := statProviderAuthFile(path)
+			if entry.ContentFingerprint != nil && fingerprint.exists {
+				prev, hasPrev := previous[path]
+				if hasPrev && fingerprint.statEqual(prev) {
+					// File untouched since last poll: keep the known content key
+					// without re-reading.
+					fingerprint.contentKey = prev.contentKey
+				} else {
+					fingerprint.contentKey = readProviderAuthContentKey(
+						path,
+						fingerprint.size,
+						entry.ContentFingerprint,
+					)
+				}
+			}
+			fingerprints[path] = fingerprint
 		}
 	}
 	return fingerprints
+}
+
+func readProviderAuthContentKey(
+	path string,
+	size int64,
+	contentFingerprint func(path string, data []byte) string,
+) string {
+	if size > providerAuthFileMaxContentBytes {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return contentFingerprint(path, data)
 }
 
 func statProviderAuthFile(path string) providerAuthFileFingerprint {
@@ -177,7 +285,7 @@ func changedProviders(
 			continue
 		}
 		for _, path := range entry.Paths {
-			if previous[path] == next[path] {
+			if !providerAuthFileChanged(previous[path], next[path]) {
 				continue
 			}
 			seen[provider] = struct{}{}
@@ -186,4 +294,13 @@ func changedProviders(
 		}
 	}
 	return changed
+}
+
+func providerAuthFileChanged(previous, next providerAuthFileFingerprint) bool {
+	// When both polls produced a content fingerprint, it alone decides: the
+	// file body churning without an auth-relevant change must stay quiet.
+	if previous.contentKey != "" && next.contentKey != "" {
+		return previous.contentKey != next.contentKey
+	}
+	return previous != next
 }

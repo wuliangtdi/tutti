@@ -8539,10 +8539,21 @@ export function useAgentGUINodeController({
         );
         return;
       }
+      // Read the queue before resuming: resumeQueue wakes the drain
+      // coordinator, which immediately races to send the queued head. A
+      // direct send issued alongside that drain loses the daemon's
+      // single-active-turn slot and the prompt is dropped, so when prompts
+      // are already queued the explicit send must join the queue behind them
+      // instead of racing the drain.
+      const hasQueuedPrompts =
+        agentQueuedPromptRuntime.getSessionSnapshot({
+          workspaceId,
+          agentSessionId
+        }).prompts.length > 0;
       // Any explicit user send lifts a user-stop hold on the queue.
       agentQueuedPromptRuntime.resumeQueue({ workspaceId, agentSessionId });
       if (
-        shouldQueuePromptLocally(agentSessionId) &&
+        (hasQueuedPrompts || shouldQueuePromptLocally(agentSessionId)) &&
         options?.bypassLocalQueue !== true
       ) {
         queuePromptLocally(

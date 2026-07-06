@@ -115,6 +115,105 @@ func TestDefaultProviderAuthWatchEntriesCoverCodexAndClaude(t *testing.T) {
 	}
 }
 
+func TestProviderAuthWatcherIgnoresNonAuthClaudeStateChurn(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, ".claude.json")
+	writeState := func(content string) {
+		t.Helper()
+		if err := os.WriteFile(statePath, []byte(content), 0o600); err != nil {
+			t.Fatalf("write claude state file: %v", err)
+		}
+	}
+	writeState(`{"oauthAccount":{"emailAddress":"a@b.c"},"history":["one"]}`)
+
+	changes := make(chan []string, 8)
+	watcher := &ProviderAuthWatcher{
+		Entries: []ProviderAuthWatchEntry{
+			{
+				Provider:           agentprovider.ClaudeCode,
+				Paths:              []string{statePath},
+				ContentFingerprint: claudeProviderAuthContentFingerprint(statePath),
+			},
+		},
+		Interval: 5 * time.Millisecond,
+		OnChange: func(providers []string) {
+			changes <- providers
+		},
+	}
+	watcher.Start()
+	defer watcher.Close()
+
+	// Non-auth churn (history grows, mtime/size change) must stay quiet.
+	time.Sleep(20 * time.Millisecond)
+	writeState(`{"oauthAccount":{"emailAddress":"a@b.c"},"history":["one","two","three"]}`)
+	select {
+	case providers := <-changes:
+		t.Fatalf("watcher reported %v for non-auth state churn", providers)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// A credential switch (oauthAccount changes) must fire.
+	writeState(`{"oauthAccount":{"emailAddress":"other@b.c"},"history":["one","two","three"]}`)
+	select {
+	case providers := <-changes:
+		if len(providers) != 1 || providers[0] != agentprovider.ClaudeCode {
+			t.Fatalf("OnChange providers = %v, want [claude-code]", providers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not report the credential switch")
+	}
+}
+
+func TestProviderAuthFileChangedPrefersContentKey(t *testing.T) {
+	previous := providerAuthFileFingerprint{
+		exists: true, modTime: time.UnixMilli(1000), size: 10, contentKey: "same",
+	}
+	next := providerAuthFileFingerprint{
+		exists: true, modTime: time.UnixMilli(2000), size: 99, contentKey: "same",
+	}
+	if providerAuthFileChanged(previous, next) {
+		t.Fatal("identical content keys must suppress mtime/size churn")
+	}
+	next.contentKey = "different"
+	if !providerAuthFileChanged(previous, next) {
+		t.Fatal("content key change must report")
+	}
+	// Missing content keys (no fingerprinter or read failure) keep the
+	// conservative mtime/size semantics.
+	previous.contentKey = ""
+	next.contentKey = ""
+	if !providerAuthFileChanged(previous, next) {
+		t.Fatal("stat change without content keys must report")
+	}
+}
+
+func TestJSONSubsetFingerprintTracksOnlySelectedKeys(t *testing.T) {
+	base, ok := jsonSubsetFingerprint(
+		[]byte(`{"oauthAccount":{"a":1},"history":[1,2,3]}`),
+		claudeAuthRelevantStateKeys,
+	)
+	if !ok {
+		t.Fatal("expected fingerprint for JSON object")
+	}
+	churned, ok := jsonSubsetFingerprint(
+		[]byte(`{"oauthAccount":{"a":1},"history":[1,2,3,4,5]}`),
+		claudeAuthRelevantStateKeys,
+	)
+	if !ok || churned != base {
+		t.Fatalf("non-auth churn changed fingerprint: %q vs %q", churned, base)
+	}
+	switched, ok := jsonSubsetFingerprint(
+		[]byte(`{"oauthAccount":{"a":2},"history":[1,2,3]}`),
+		claudeAuthRelevantStateKeys,
+	)
+	if !ok || switched == base {
+		t.Fatal("auth change did not change fingerprint")
+	}
+	if _, ok := jsonSubsetFingerprint([]byte(`not-json`), claudeAuthRelevantStateKeys); ok {
+		t.Fatal("expected failure for non-JSON payload")
+	}
+}
+
 func cloneFingerprints(fingerprints map[string]providerAuthFileFingerprint) map[string]providerAuthFileFingerprint {
 	cloned := make(map[string]providerAuthFileFingerprint, len(fingerprints))
 	for key, value := range fingerprints {

@@ -32,7 +32,7 @@ func logClaudeModelCatalogInvalidationDebug(stage string, payload map[string]any
 			"marshalError": err.Error(),
 		})
 	}
-	slog.Warn(claudeModelCatalogInvalidationDebugPrefix, "payload_json", string(encoded))
+	slog.Debug(claudeModelCatalogInvalidationDebugPrefix, "payload_json", string(encoded))
 }
 
 // claudeStartupSerializer serializes credential-touching Claude startups so that
