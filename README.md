@@ -247,7 +247,7 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 <!-- TODO: waitlist link for Tutti · VM -->
 
-Join the waitlist for Tutti · VM — coming soon.
+Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
