@@ -514,10 +514,12 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("const ready = true")).toBeTruthy();
     expect(
       screen.getByText("const ready = true").closest(".grid")?.className
-    ).toContain("agent-tool-diff__line");
+    ).toContain("border-l-[var(--state-success)]");
     expect(
       screen.getByText("const ready = true").closest(".grid")?.className
-    ).toContain("border-l-[var(--state-success)]");
+    ).toContain(
+      "bg-[color:color-mix(in_srgb,var(--state-success)_10%,transparent)]"
+    );
     expect(
       screen.getByText("const ready = false").closest(".grid")?.className
     ).toContain("border-l-[var(--state-danger)]");

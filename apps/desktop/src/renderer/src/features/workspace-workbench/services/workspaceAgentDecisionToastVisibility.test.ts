@@ -5,6 +5,7 @@ import { shouldShowWorkspaceAgentDecisionToast } from "./workspaceAgentDecisionT
 test("workspace agent decision toast shows when the window is focused and the message center is closed", () => {
   assert.equal(
     shouldShowWorkspaceAgentDecisionToast({
+      agentGuiSessionOpen: false,
       messageCenterOpen: false,
       windowForeground: true
     }),
@@ -15,6 +16,7 @@ test("workspace agent decision toast shows when the window is focused and the me
 test("workspace agent decision toast is suppressed when the window is not focused", () => {
   assert.equal(
     shouldShowWorkspaceAgentDecisionToast({
+      agentGuiSessionOpen: false,
       messageCenterOpen: false,
       windowForeground: false
     }),
@@ -25,6 +27,7 @@ test("workspace agent decision toast is suppressed when the window is not focuse
 test("workspace agent decision toast is suppressed when the message center is already open", () => {
   assert.equal(
     shouldShowWorkspaceAgentDecisionToast({
+      agentGuiSessionOpen: false,
       messageCenterOpen: true,
       windowForeground: true
     }),
@@ -35,8 +38,20 @@ test("workspace agent decision toast is suppressed when the message center is al
 test("workspace agent decision toast stays suppressed when both the message center is open and the window is unfocused", () => {
   assert.equal(
     shouldShowWorkspaceAgentDecisionToast({
+      agentGuiSessionOpen: false,
       messageCenterOpen: true,
       windowForeground: false
+    }),
+    false
+  );
+});
+
+test("workspace agent decision toast is suppressed when the session's own AgentGUI window is already open", () => {
+  assert.equal(
+    shouldShowWorkspaceAgentDecisionToast({
+      agentGuiSessionOpen: true,
+      messageCenterOpen: false,
+      windowForeground: true
     }),
     false
   );

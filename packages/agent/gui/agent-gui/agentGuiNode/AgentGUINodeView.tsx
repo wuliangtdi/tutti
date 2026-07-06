@@ -68,6 +68,7 @@ import { Button } from "../../app/renderer/components/ui/button";
 import {
   CreateChatIcon,
   FolderIcon,
+  FolderOpenLinedIcon,
   MoreHorizontalIcon
 } from "@tutti-os/ui-system/icons";
 import {
@@ -4686,6 +4687,9 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         onClick={selectAllProviders}
       >
         <AgentGUIUnifiedProviderIcon />
+        <span className={styles.providerRailTileLabel}>
+          {labels.conversationFilterAll}
+        </span>
       </button>
       <span aria-hidden="true" className={styles.providerRailSeparator} />
       {providerTargetsLoading
@@ -5416,77 +5420,93 @@ const AgentGUIConversationRailPane = memo(
         </ScrollArea>
         {railConfigProvider ? (
           <div className="shrink-0 px-2 py-1.5">
-            <Popover
-              onOpenChange={(open) => {
-                // Refresh the underlying probe on open, the same way the
-                // window-title info tooltip does (see AgentGUINode's
-                // handleAgentProbeInfoOpen) — otherwise a stale/empty fetch
-                // from before a provider finished installing sits here until
-                // something unrelated happens to refresh it.
-                if (open) {
-                  onAgentConfigMenuOpen?.();
-                }
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                  title={labels.agentConfig}
-                  disabled={previewMode}
-                >
-                  <EnvironmentLinedIcon
-                    aria-hidden="true"
-                    width={16}
-                    height={16}
-                  />
-                  <span>{labels.agentConfig}</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                side="top"
-                align="start"
-                className="w-[300px] max-w-[calc(100vw-32px)] gap-3 text-xs"
-                data-testid="agent-gui-config-menu"
+            {slashStatusLimits.length > 0 ? (
+              <Popover
+                onOpenChange={(open) => {
+                  // Refresh the underlying probe on open, the same way the
+                  // window-title info tooltip does (see AgentGUINode's
+                  // handleAgentProbeInfoOpen) — otherwise a stale/empty fetch
+                  // from before a provider finished installing sits here until
+                  // something unrelated happens to refresh it.
+                  if (open) {
+                    onAgentConfigMenuOpen?.();
+                  }
+                }}
               >
-                <div className="flex min-w-0 flex-col gap-3">
-                  {slashStatusLimits.length > 0 ? (
-                    <>
-                      <div className="flex min-w-0 flex-col gap-2">
-                        <span className="text-[13px] font-semibold leading-4">
-                          {labels.slashStatusLimits}
-                        </span>
-                        {slashStatusLimits.map((limit) => (
-                          <AgentUsageMeter
-                            key={limit.id}
-                            label={limit.label}
-                            value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                            percent={
-                              typeof limit.percentRemaining === "number" &&
-                              Number.isFinite(limit.percentRemaining)
-                                ? limit.percentRemaining
-                                : null
-                            }
-                          />
-                        ))}
-                      </div>
-                      <span className="h-px bg-[var(--border-1)]" />
-                    </>
-                  ) : null}
-                  <button
+                <PopoverTrigger asChild>
+                  <Button
                     type="button"
-                    data-testid="agent-gui-config-env-setup"
-                    className="nodrag -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-2 rounded-[6px] px-2 py-1 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                    variant="ghost"
+                    className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    title={labels.agentConfig}
                     disabled={previewMode}
-                    onClick={() => onOpenAgentEnvSetup()}
                   >
-                    <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
-                    <span>{labels.agentEnvSetup}</span>
-                  </button>
-                </div>
-              </PopoverContent>
-            </Popover>
+                    <EnvironmentLinedIcon
+                      aria-hidden="true"
+                      width={16}
+                      height={16}
+                    />
+                    <span>{labels.agentConfig}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
+                  data-testid="agent-gui-config-menu"
+                >
+                  <div className="flex min-w-0 flex-col gap-3">
+                    <div className="flex min-w-0 flex-col gap-2 p-2">
+                      <span className="text-[13px] font-semibold leading-4">
+                        {labels.slashStatusLimits}
+                      </span>
+                      {slashStatusLimits.map((limit) => (
+                        <AgentUsageMeter
+                          key={limit.id}
+                          label={limit.label}
+                          value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                          percent={
+                            typeof limit.percentRemaining === "number" &&
+                            Number.isFinite(limit.percentRemaining)
+                              ? limit.percentRemaining
+                              : null
+                          }
+                        />
+                      ))}
+                    </div>
+                    <div className="px-2">
+                      <span className="block h-px bg-[var(--border-1)]" />
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="agent-gui-config-env-setup"
+                      className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                      disabled={previewMode}
+                      onClick={() => onOpenAgentEnvSetup()}
+                    >
+                      <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+                      <span>{labels.agentEnvSetup}</span>
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex w-full items-center justify-start gap-2 text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                title={labels.agentEnvSetup}
+                disabled={previewMode}
+                onClick={() => onOpenAgentEnvSetup()}
+              >
+                <EnvironmentLinedIcon
+                  aria-hidden="true"
+                  width={16}
+                  height={16}
+                />
+                <span>{labels.agentEnvSetup}</span>
+              </Button>
+            )}
           </div>
         ) : null}
         <ConfirmationDialog
@@ -5698,10 +5718,17 @@ const AgentGUIConversationRailSection = memo(
                 className={styles.conversationSectionChevron}
               />
               <span className={styles.conversationSectionLabel}>
-                <FolderIcon
-                  aria-hidden="true"
-                  className={styles.conversationSectionLabelIcon}
-                />
+                {isSectionCollapsed ? (
+                  <FolderIcon
+                    aria-hidden="true"
+                    className={styles.conversationSectionLabelIcon}
+                  />
+                ) : (
+                  <FolderOpenLinedIcon
+                    aria-hidden="true"
+                    className={styles.conversationSectionLabelIcon}
+                  />
+                )}
                 <span>{section.label}</span>
               </span>
             </button>

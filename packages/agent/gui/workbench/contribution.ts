@@ -16,6 +16,7 @@ import {
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import { agentGuiDockIconUrls } from "../dockIcons.ts";
 import { resolveAgentGuiSessionProviderIconUrl } from "../agentGuiSessionProviderIconUrls.ts";
+import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 import { AgentGuiWorkbenchHeader } from "./header.ts";
 import {
   agentGuiWorkbenchDockIdentityFromIdentifier,
@@ -194,6 +195,9 @@ export function createAgentGuiWorkbenchContribution(
       {
         frame,
         instance: { mode: "multi" },
+        onBodyRenderErrorChange: ({ hasError, node }) => {
+          setAgentGuiWorkbenchBodyRenderError(node.id, hasError);
+        },
         renderBody: (context) =>
           input.renderBody(
             context as WorkbenchHostNodeBodyContext<
@@ -309,6 +313,7 @@ export function createAgentGuiWorkbenchContribution(
             displayMode,
             isConversationRailAutoCollapsed,
             isConversationRailCollapsed,
+            nodeId: node.id,
             providerRailWidthPx: agentGuiWorkbenchProviderRailWidthPx,
             title: headerTitle,
             windowActions: {

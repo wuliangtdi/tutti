@@ -163,7 +163,7 @@ import {
   MANAGED_AGENT_ICON_FALLBACK_URL,
   MANAGED_AGENT_ICON_URLS
 } from "../../shared/managedAgentIcons";
-import { agentColorfulUrl } from "../../managedAgentIconAssets";
+import { cursorColorfulUrl } from "../../managedAgentIconAssets";
 import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
 import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
 
@@ -803,7 +803,7 @@ function resolveComposerProviderTargetIconUrl(
   target: AgentGUIProviderTarget
 ): string {
   if (normalizeManagedAgentProvider(target.provider) === "cursor") {
-    return agentColorfulUrl;
+    return cursorColorfulUrl;
   }
   return target.iconUrl ?? resolveComposerProviderIconUrl(target.provider);
 }

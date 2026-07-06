@@ -8385,6 +8385,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin-top: 12px;
 }
 
+.agent-gui-node__provider-rail-tile-label {
+  max-width: 100%;
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .agent-gui-node__provider-rail-tile:has(
   + .agent-gui-node__provider-rail-separator
 ) {

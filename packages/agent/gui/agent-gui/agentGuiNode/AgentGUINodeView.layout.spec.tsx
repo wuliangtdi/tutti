@@ -254,7 +254,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(onConversationRailWidthChanged).not.toHaveBeenCalled();
   });
 
-  it("renders the provider rail as fixed-size icon-only tiles", () => {
+  it("renders the provider rail as fixed-size tiles with only the All tile labeled", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
     expect(css).toMatch(
@@ -278,7 +278,9 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(css).not.toMatch(
       /\.agent-gui-node__provider-rail-tile\[data-selected="true"\]\s+\.agent-gui-node__provider-rail-avatar\s*\{[^}]*border-radius:/s
     );
-    expect(css).not.toMatch(/\.agent-gui-node__provider-rail-tile-label/);
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-tile-label\s*\{[^}]*max-width:\s*100%;/s
+    );
     expect(css).not.toMatch(
       /\.agent-gui-node__provider-rail-tile\s*\{[^}]*grid-template-rows:\s*32px\s+(?:auto|28px);/s
     );
@@ -606,7 +608,7 @@ describe("AgentGUINodeView layout persistence", () => {
       "Hermes",
       "OpenClaw"
     ]);
-    expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("");
+    expect(screen.getByRole("tab", { name: "All" })).toHaveTextContent("All");
     expect(screen.getByRole("tab", { name: "Codex" })).toHaveTextContent("");
     expect(screen.getByRole("tab", { name: "Claude Code" })).toHaveTextContent(
       ""

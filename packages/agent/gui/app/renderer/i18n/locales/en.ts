@@ -561,7 +561,7 @@ export const en = {
       slashStatusSession: "Session",
       slashStatusBaseUrl: "Base URL",
       slashStatusContext: "Context",
-      slashStatusLimits: "Limits",
+      slashStatusLimits: "Usage Limits",
       slashStatusClose: "Close",
       slashStatusFiveHourLimit: "5h limit",
       slashStatusWeeklyLimit: "7d limit",

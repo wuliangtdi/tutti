@@ -69,6 +69,7 @@ import { shouldShowWorkspaceAgentDecisionToast } from "../services/workspaceAgen
 import { resolveWorkspaceAgentMessageCenterTrigger } from "../services/workspaceAgentMessageCenterTrigger";
 import { toggleWorkspaceAgentMessageCenter } from "../services/workspaceAgentMessageCenterToggle";
 import { registerWorkspaceMessageCenterOpenHandler } from "../services/workspaceMessageCenterCoordinator";
+import { isWorkspaceAgentGuiSessionOpen } from "../services/workspaceAgentGuiOpenSessionCoordinator";
 import { createWorkspaceAgentGuiSessionLaunchRequest } from "../services/workspaceAgentGuiLaunch";
 import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunchCoordinator";
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
@@ -492,6 +493,10 @@ function WorkspaceAgentMessageCenterAction({
       notifications.notify(osMessage);
       if (
         !shouldShowWorkspaceAgentDecisionToast({
+          agentGuiSessionOpen: isWorkspaceAgentGuiSessionOpen(
+            workspace.id,
+            item.agentSessionId
+          ),
           messageCenterOpen: open,
           windowForeground: windowForegroundVisibility.isForeground()
         })

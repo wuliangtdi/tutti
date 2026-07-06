@@ -477,6 +477,10 @@ export interface WorkbenchHostNodeDefinition<
     TExternalWorkspaceState
   >;
   instance?: WorkbenchHostNodeInstanceStrategy;
+  onBodyRenderErrorChange?: (input: {
+    hasError: boolean;
+    node: WorkbenchNode<WorkbenchHostNodeData>;
+  }) => void;
   renderBody: WorkbenchHostBodyRenderer<
     TExternalNodeState,
     TExternalWorkspaceState

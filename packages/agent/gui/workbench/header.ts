@@ -18,6 +18,7 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
+import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 
 const headerChromeIconButtonClassName =
   "agent-gui-workbench-header__icon-button";
@@ -48,6 +49,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationIconUrl?: string | null;
   providerRailWidthPx?: number | null;
   conversationTitle?: string | null;
+  nodeId: string;
   onCreateConversation?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   title?: string;
@@ -68,17 +70,21 @@ export function AgentGuiWorkbenchHeader({
   conversationIconUrl,
   providerRailWidthPx,
   conversationTitle,
+  nodeId,
   onCreateConversation,
   onToggleConversationRail,
   title: _title,
   windowActions,
   ...headerProps
 }: AgentGuiWorkbenchHeaderProps): ReactNode {
+  const hasBodyRenderError = useAgentGuiWorkbenchBodyRenderError(nodeId);
   const toggleLabel = isConversationRailCollapsed
     ? copy.expandConversationRail
     : copy.collapseConversationRail;
   const appTitle = _title?.trim() || copy.fallbackAgentLabel;
-  const sessionTitle = conversationTitle?.trim() || "";
+  const sessionTitle = hasBodyRenderError
+    ? ""
+    : conversationTitle?.trim() || "";
   const sessionIconUrl = conversationIconUrl?.trim() || "";
   const safeDisplayMode = displayMode ?? "floating";
   const safeWindowActions = windowActions ?? {

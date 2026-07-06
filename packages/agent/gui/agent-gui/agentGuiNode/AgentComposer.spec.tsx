@@ -14,7 +14,7 @@ import {
 } from "@tutti-os/workspace-user-project/i18n";
 import { AgentComposer } from "./AgentComposer";
 import { textPromptContent } from "./controller/agentGuiController.promptHelpers";
-import { agentColorfulUrl } from "../../managedAgentIconAssets";
+import { cursorColorfulUrl } from "../../managedAgentIconAssets";
 import {
   resetAgentActivityRuntimeForTests,
   setAgentActivityRuntimeForTests,
@@ -1305,7 +1305,7 @@ describe("AgentComposer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("uses Agent colorful artwork for Cursor in the provider switch menu", async () => {
+  it("uses Cursor colorful artwork for Cursor in the provider switch menu", async () => {
     const codexTarget = {
       targetId: "local:codex",
       agentTargetId: "local:codex",
@@ -1360,7 +1360,7 @@ describe("AgentComposer", () => {
     const trigger = screen.getByRole("combobox", { name: "切换 Provider" });
     expect(trigger.querySelector("img")).toHaveAttribute(
       "src",
-      agentColorfulUrl
+      cursorColorfulUrl
     );
 
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
@@ -1369,7 +1369,7 @@ describe("AgentComposer", () => {
       (await screen.findByRole("option", { name: "Cursor" })).querySelector(
         "img"
       )
-    ).toHaveAttribute("src", agentColorfulUrl);
+    ).toHaveAttribute("src", cursorColorfulUrl);
   });
 
   it("matches the browser-use slash capability by its English alias", async () => {
