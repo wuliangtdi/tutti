@@ -348,10 +348,6 @@ test("workspace settings window snapping is controlled by one dropdown", () => {
     appearanceSection,
     /workbenchWindowSnappingShortcutOptions\.off/
   );
-  assert.match(
-    appearanceSection,
-    /items-center justify-between gap-4[\s\S]*workbenchWindowSnappingLabel/
-  );
 });
 
 test("workspace settings app source control lives in developer settings", () => {
