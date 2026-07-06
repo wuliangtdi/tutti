@@ -130,6 +130,7 @@ export function agentGuiWorkbenchProviderFromLaunchRequest(
 }
 
 export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
+  agentTargetId?: string | null;
   agentSessionId?: string;
   openInNewWindow?: boolean;
   provider: unknown;
@@ -138,6 +139,9 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   return {
     dockEntryId: agentGuiWorkbenchDockEntryId(provider),
     payload: {
+      ...(input.agentTargetId?.trim()
+        ? { agentTargetId: input.agentTargetId.trim() }
+        : {}),
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
       ...(input.openInNewWindow ? { openInNewWindow: true } : {}),
       provider
@@ -235,7 +239,7 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
   const openInNewWindow = openInNewWindowFromLaunchPayload(request.payload);
   const instanceId = createAgentGuiWorkbenchInstanceId({
-    agentSessionId: openInNewWindow ? null : targetAgentSessionId,
+    agentSessionId: null,
     agentTargetId: openInNewWindow
       ? null
       : agentTargetIdFromLaunchPayload(request.payload),

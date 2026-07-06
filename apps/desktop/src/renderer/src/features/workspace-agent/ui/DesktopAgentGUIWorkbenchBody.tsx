@@ -811,6 +811,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       // Persistence is owned by handleUpdateNode (the single writer).
       onStateChange: DESKTOP_AGENT_GUI_NOOP,
       provider,
+      resolveAgentTargetProvider: (agentTargetId) =>
+        resolveDesktopAgentGUIProviderForAgentTarget(
+          agentTargetId,
+          providerTargets,
+          provider
+        ),
       workspaceId,
       updateNodeState: handleUpdateNode
     });
@@ -822,6 +828,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     handleOpenSessionActivationError,
     handleUpdateNode,
     provider,
+    providerTargets,
     workspaceId
   ]);
 

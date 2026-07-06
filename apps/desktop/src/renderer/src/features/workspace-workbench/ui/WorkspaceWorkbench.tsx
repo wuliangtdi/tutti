@@ -346,6 +346,7 @@ function ReadyWorkspaceWorkbench({
                     userProjectPath
                   })
                 : createWorkspaceAgentGuiSessionLaunchRequest({
+                    agentTargetId,
                     agentSessionId,
                     openInNewWindow,
                     provider
