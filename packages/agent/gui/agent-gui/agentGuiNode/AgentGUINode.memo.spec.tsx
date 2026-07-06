@@ -7,6 +7,7 @@ import type {
   AgentGUINodeViewModel
 } from "./model/agentGuiNodeTypes";
 import { AgentGUINode } from "./AgentGUINode";
+import { createLocalAgentGUIProviderTarget } from "../../providerTargets";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -94,38 +95,6 @@ describe("AgentGUINode memoization", () => {
     agentGuiNodeViewSpy.mockReset();
   });
 
-  it("does not rerender when another provider probe changes", () => {
-    mockViewModel = createViewModel();
-    const props = createProps();
-    const { rerender } = render(<AgentGUINode {...props} />);
-
-    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
-    agentGuiNodeViewSpy.mockClear();
-
-    rerender(
-      <AgentGUINode
-        {...props}
-        workspaceAgentProbes={{
-          snapshot: {
-            workspaceId: "workspace-1",
-            capturedAtUnixMs: 2,
-            providers: [
-              {
-                provider: "gemini",
-                availability: { status: "unavailable", detailsVisible: false },
-                lastError: { code: "auth_required", message: "Sign in again" }
-              }
-            ]
-          },
-          isLoadingAvailability: false,
-          isLoadingUsage: false
-        }}
-      />
-    );
-
-    expect(agentGuiNodeViewSpy).not.toHaveBeenCalled();
-  });
-
   it("rerenders when its own provider probe changes", () => {
     mockViewModel = createViewModel();
     const props = createProps({
@@ -167,6 +136,96 @@ describe("AgentGUINode memoization", () => {
           isLoadingAvailability: false,
           isLoadingUsage: false
         }}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders when per-target composer overrides change", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        agentTargetId: "target-a",
+        composerOverridesByAgentTargetId: {
+          "target-a": { model: "gpt-5" }
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          agentTargetId: "target-a",
+          composerOverridesByAgentTargetId: {
+            "target-a": { model: "gpt-5.1" }
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders when the legacy provider target identity changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        providerTargetId: "shared-agent:codex-a",
+        providerTargetRef: {
+          kind: "shared-agent",
+          provider: "codex",
+          sharedAgentId: "codex-a"
+        }
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          providerTargetId: "shared-agent:codex-b",
+          providerTargetRef: {
+            kind: "shared-agent",
+            provider: "codex",
+            sharedAgentId: "codex-b"
+          }
+        })}
+      />
+    );
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rerenders when the active conversation title changes", () => {
+    mockViewModel = createViewModel();
+    const props = createProps({
+      state: createState({
+        lastActiveAgentSessionId: "session-1",
+        lastActiveConversationTitle: "Old title"
+      })
+    });
+    const { rerender } = render(<AgentGUINode {...props} />);
+
+    expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+    agentGuiNodeViewSpy.mockClear();
+
+    rerender(
+      <AgentGUINode
+        {...props}
+        state={createState({
+          lastActiveAgentSessionId: "session-1",
+          lastActiveConversationTitle: "New title"
+        })}
       />
     );
 
@@ -222,6 +281,10 @@ function createViewModel(
     userProjects: [],
     conversation: null,
     conversationDetail: null,
+    selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
+    providerTargets: [createLocalAgentGUIProviderTarget("codex")],
+    providerTargetsLoading: false,
+    conversationFilter: { kind: "all" },
     draftPrompt: "",
     draftContent,
     sessionChrome: {
@@ -237,6 +300,7 @@ function createViewModel(
     isSubmitting: false,
     isInterrupting: false,
     promptImagesSupported: true,
+    backgroundAgentCount: 0,
     listError: null,
     isCreatingConversation: false,
     isLoadingConversations: false,

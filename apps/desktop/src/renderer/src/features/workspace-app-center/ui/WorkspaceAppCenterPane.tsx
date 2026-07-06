@@ -19,13 +19,18 @@ import type {
   AppCenterHostActions
 } from "@tutti-os/workspace-app-center/ui";
 import { AppCenterPanel } from "@tutti-os/workspace-app-center/ui";
-import { agentGuiDockIconUrls } from "@tutti-os/agent-gui";
+import {
+  agentGuiDockIconUrls,
+  localAgentGUIAgentTargetId
+} from "@tutti-os/agent-gui";
 import type { AgentProviderStatus } from "@tutti-os/client-tuttid-ts";
 import { useService } from "@tutti-os/infra/di";
 import {
   IAgentProviderStatusService,
+  IAgentsService,
   requestWorkspaceAgentGuiLaunch
 } from "@renderer/features/workspace-agent";
+import type { AgentTargetPresentation } from "@renderer/features/workspace-agent";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { normalizeDesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useTranslation } from "@renderer/i18n";
@@ -62,14 +67,20 @@ const designReviewAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/design-review.png",
   import.meta.url
 ).href;
-const documentSummarizerAppIconUrl = new URL(
-  "../../../assets/workspace-canvas/dock/default/apps/aisummary.png",
-  import.meta.url
-).href;
 const tuttiDeveloperIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/tutti.png",
   import.meta.url
 ).href;
+
+const communityAppDeveloperOverrides: Record<
+  string,
+  NonNullable<WorkspaceAppManifest["authors"]>[number]
+> = {
+  "group-chat": {
+    name: "svenzeng",
+    url: "https://github.com/tutti-os/tutti"
+  }
+};
 
 const comingSoonWorkspaceAppDefinitions = [
   {
@@ -113,13 +124,6 @@ const comingSoonWorkspaceAppDefinitions = [
     iconUrl: designReviewAppIconUrl,
     nameKey: "appCenter.comingSoonApps.designReview.name",
     tags: ["coming-soon", "product", "design"]
-  },
-  {
-    appId: "document-summarizer",
-    descriptionKey: "appCenter.comingSoonApps.documentSummarizer.description",
-    iconUrl: documentSummarizerAppIconUrl,
-    nameKey: "appCenter.comingSoonApps.documentSummarizer.name",
-    tags: ["coming-soon", "productivity", "summary", "document"]
   }
 ] as const;
 
@@ -132,7 +136,13 @@ export function WorkspaceAppCenterPane({
 }) {
   const { service, state } = useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
+  const agentsService = useService(IAgentsService);
   const agentProviderStatusService = useService(IAgentProviderStatusService);
+  const agentsSnapshot = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
+  );
   const agentProviderSnapshot = useSyncExternalStore(
     (listener) => agentProviderStatusService.subscribe(listener),
     () => agentProviderStatusService.getSnapshot(),
@@ -150,14 +160,39 @@ export function WorkspaceAppCenterPane({
     void service.refreshCatalog(workspaceId);
   }, [service, workspaceId]);
   useEffect(() => {
+    void agentsService.load();
+  }, [agentsService]);
+  useEffect(() => {
     void agentProviderStatusService.ensureLoaded({
       providers: [...workspaceAgentGuiProviders]
     });
   }, [agentProviderStatusService]);
   const factoryProviderOptions = useMemo(
     () =>
-      resolveAppCenterReadyAgentProviderOptions(agentProviderSnapshot.statuses),
-    [agentProviderSnapshot.statuses]
+      resolveAppCenterReadyAgentProviderOptions(
+        agentProviderSnapshot.statuses,
+        agentsSnapshot.agentTargets,
+        desktopPreferencesState.enableCursorAgent
+          ? undefined
+          : new Set(["cursor"])
+      ),
+    [
+      agentProviderSnapshot.statuses,
+      agentsSnapshot.agentTargets,
+      desktopPreferencesState.enableCursorAgent
+    ]
+  );
+  const defaultFactoryAgentTargetId = useMemo(
+    () =>
+      factoryProviderOptions.find(
+        (option) =>
+          option.provider === agentProviderSnapshot.defaultProvider &&
+          option.disabled !== true
+      )?.agentTargetId ??
+      factoryProviderOptions.find((option) => option.disabled !== true)
+        ?.agentTargetId ??
+      null,
+    [agentProviderSnapshot.defaultProvider, factoryProviderOptions]
   );
   const catalogPanelStatus =
     state.catalogStatus === "loading" || state.catalogStatus === "failed"
@@ -174,14 +209,19 @@ export function WorkspaceAppCenterPane({
   const loadFactoryProviderConfiguration = useMemo(
     () =>
       async (
-        provider: string
+        agentTargetId: string
       ): Promise<AppCenterFactoryProviderConfiguration> => {
+        const provider =
+          factoryProviderOptions.find(
+            (option) => option.agentTargetId === agentTargetId
+          )?.provider ?? "";
         return service.getFactoryProviderConfiguration({
+          agentTargetId,
           provider,
           workspaceId
         });
       },
-    [service, workspaceId]
+    [factoryProviderOptions, service, workspaceId]
   );
   const appCenterActions = useMemo<AppCenterHostActions>(
     () => ({
@@ -204,14 +244,25 @@ export function WorkspaceAppCenterPane({
       openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
       openAppPackageFolder: (appId) =>
         service.openAppPackageFolder({ appId, workspaceId }),
-      openFactoryJobAgentSession: async (agentSessionId, provider) => {
+      openExternalUrl: (url) => service.openExternalUrl(url),
+      openFactoryJobAgentSession: async (
+        agentSessionId,
+        provider,
+        agentTargetId
+      ) => {
         await requestWorkspaceAgentGuiLaunch({
           agentSessionId,
+          agentTargetId: agentTargetId?.trim() || null,
           provider: normalizeDesktopAgentGUIProvider(provider),
           workspaceId
         });
       },
-      modifyAppWithAgent: async (jobId, agentSessionId, provider) => {
+      modifyAppWithAgent: async (
+        jobId,
+        agentSessionId,
+        provider,
+        agentTargetId
+      ) => {
         const preparedJob = await service.prepareFactoryJobModification({
           jobId,
           workspaceId
@@ -220,6 +271,8 @@ export function WorkspaceAppCenterPane({
           return;
         }
         await requestWorkspaceAgentGuiLaunch({
+          agentTargetId:
+            preparedJob.agentTargetId?.trim() || agentTargetId?.trim() || null,
           agentSessionId: preparedJob.agentSessionId ?? agentSessionId,
           provider: normalizeDesktopAgentGUIProvider(
             preparedJob.provider ?? provider
@@ -236,12 +289,17 @@ export function WorkspaceAppCenterPane({
         if (!draftPrompt) {
           return;
         }
-        const provider = resolveDefaultAppFactoryProvider(
+        const defaultAgentTargetId = resolveDefaultAppFactoryProvider(
           factoryProviderOptions,
           agentProviderSnapshot.defaultProvider
         );
+        const provider =
+          factoryProviderOptions.find(
+            (option) => option.agentTargetId === defaultAgentTargetId
+          )?.provider ?? defaultAgentTargetId;
         const userProjectPath = request.projectDir.trim();
         await requestWorkspaceAgentGuiLaunch({
+          agentTargetId: defaultAgentTargetId,
           draftPrompt,
           provider: normalizeDesktopAgentGUIProvider(provider),
           ...(userProjectPath ? { userProjectPath } : {}),
@@ -328,7 +386,7 @@ export function WorkspaceAppCenterPane({
         activeAppTab={viewState.activeAppTab}
         catalogStatus={catalogPanelStatus}
         copy={copy}
-        defaultAgentProvider={agentProviderSnapshot.defaultProvider}
+        defaultAgentTargetId={defaultFactoryAgentTargetId}
         loadProviderConfiguration={loadFactoryProviderConfiguration}
         onActiveAppTabChange={handleActiveAppTabChange}
         officialDeveloperIconUrl={tuttiDeveloperIconUrl}
@@ -472,7 +530,10 @@ function resolveWorkspaceAppCategory(
     case "issue-manager":
     case "workspace-issue":
     case "workspace-issue-manager":
-    case "document-summarizer":
+    case "draw-topic-app":
+    case "answer-book":
+    case "app_answer_book":
+    case "idea-draw":
       return labels.tools;
     default:
       return null;
@@ -480,7 +541,9 @@ function resolveWorkspaceAppCategory(
 }
 
 function resolveAppCenterReadyAgentProviderOptions(
-  statuses: readonly AgentProviderStatus[]
+  statuses: readonly AgentProviderStatus[],
+  agentTargets: readonly AgentTargetPresentation[],
+  hiddenProviders?: ReadonlySet<string>
 ): readonly AppCenterFactoryProviderOption[] {
   const readyProviders = new Set(
     statuses
@@ -488,16 +551,40 @@ function resolveAppCenterReadyAgentProviderOptions(
       .map((status) => status.provider)
   );
 
-  return workspaceAgentGuiProviders
+  if (agentTargets.length === 0) {
+    return workspaceAgentGuiProviders.flatMap((provider) => {
+      const agentTargetId = localAgentGUIAgentTargetId(provider);
+      if (
+        !agentTargetId ||
+        !readyProviders.has(provider) ||
+        hiddenProviders?.has(provider) === true ||
+        isWorkspaceAgentGuiComingSoonProvider(provider)
+      ) {
+        return [];
+      }
+      return [
+        {
+          agentTargetId,
+          iconUrl: agentGuiDockIconUrls[provider],
+          label: resolveWorkspaceAgentGuiLabel(provider),
+          provider
+        }
+      ];
+    });
+  }
+
+  return agentTargets
     .filter(
-      (provider) =>
-        readyProviders.has(provider) &&
-        !isWorkspaceAgentGuiComingSoonProvider(provider)
+      (target) =>
+        target.enabled === true &&
+        readyProviders.has(target.provider) &&
+        !isWorkspaceAgentGuiComingSoonProvider(target.provider)
     )
-    .map((provider) => ({
-      iconUrl: agentGuiDockIconUrls[provider],
-      label: resolveWorkspaceAgentGuiLabel(provider),
-      provider
+    .map((target) => ({
+      agentTargetId: target.agentTargetId,
+      iconUrl: target.iconUrl || agentGuiDockIconUrls[target.provider],
+      label: target.name || resolveWorkspaceAgentGuiLabel(target.provider),
+      provider: target.provider
     }));
 }
 
@@ -576,7 +663,20 @@ function toWorkspaceAppManifest(
 function normalizeWorkspaceAppManifestAuthors(
   app: WorkspaceAppCenterApp
 ): NonNullable<WorkspaceAppManifest["authors"]> {
-  return (app.authors ?? [])
+  const developerOverride =
+    communityAppDeveloperOverrides[app.appId.trim().toLowerCase()];
+  const authors = developerOverride
+    ? [
+        developerOverride,
+        ...(app.authors ?? []).filter(
+          (author) =>
+            author.name.trim().toLowerCase() !==
+            developerOverride.name.toLowerCase()
+        )
+      ]
+    : (app.authors ?? []);
+
+  return authors
     .map((author) => {
       const name = author.name.trim();
       const avatarUrl = author.avatarUrl?.trim();

@@ -4,6 +4,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -11,7 +12,12 @@ import (
 	"testing"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+)
+
+const (
+	testAppServerPlanCollaborationInstructions    = "# Plan Mode (Conversational)\n\nPlan before implementing."
+	testAppServerDefaultCollaborationInstructions = "# Collaboration Mode: Default\n\nExecute with reasonable assumptions."
 )
 
 func testAppServerSession() Session {
@@ -61,25 +67,35 @@ type scriptedAppServerConnection struct {
 	accountReadError             bool
 	turnStatus                   string // completed (default) | failed | interrupted
 	turnError                    map[string]any
-	holdTurn                     bool // do not finish the turn until released
-	ignoreInterrupt              bool // ack turn/interrupt but never complete the turn (wedged codex)
-	hangInterrupt                bool // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	holdTurn                     bool              // do not finish the turn until released
+	steeredTurnStart             bool              // turn/start returns a queued stub turn (input steered into the running turn): no turn/started, no auto-completion
+	ignoreInterrupt              bool              // ack turn/interrupt but never complete the turn (wedged codex)
+	hangInterrupt                bool              // never even acknowledge the turn/interrupt RPC (fully wedged codex)
+	interruptTurnIDMismatch      string            // reject the first turn/interrupt with "expected active turn id X but found <this>"; a retry against the reported id succeeds
+	interruptAttempts            []string          // turnId requested on every turn/interrupt call, in order
+	childNicknames               map[string]string // thread/read agentNickname responses by threadId
 	turnStartEntered             chan struct{}
 	turnStartRelease             chan struct{}
+	threadName                   string
 	commandApproval              bool
 	userInputRequest             bool
+	compactSilent                bool          // stream turn/started+turn/completed for /compact but no contextCompaction item notifications
 	reviewInline                 bool          // stream review output as inline reasoning/command items
 	reviewInlineSummaryDelta     bool          // stream review reasoning via summaryTextDelta with empty completed summary
 	reviewHang                   bool          // respond to review/start but never complete the turn
+	foreignThreadNoise           bool          // emit subagent/foreign thread notifications during a parent turn
 	reviewStartEntered           chan struct{} // closed once review/start has responded
 	approvalResponse             map[string]any
 	goal                         map[string]any
 	goalStartsTurn               bool
 	goalTurnsStarted             int
 	goalCompletionAfterTurns     int
+	goalTurnFailAtTurn           int // goal-driven turn number (1-based) that settles as "failed" instead of "completed"
 	goalCleared                  bool
 	replayTokenUsageOnResume     bool // mirror real codex: emit token usage during thread/resume
+	threadResumeError            bool // fail thread/resume with an RPC error
 	closeOnce                    sync.Once
+	closeCount                   int
 }
 
 func (c *scriptedAppServerConnection) sendJSON(value map[string]any) {
@@ -103,6 +119,9 @@ func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
 }
 
 func (c *scriptedAppServerConnection) Close() error {
+	c.mu.Lock()
+	c.closeCount++
+	c.mu.Unlock()
 	c.closeOnce.Do(func() { close(c.recv) })
 	return nil
 }
@@ -200,16 +219,18 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"result": map[string]any{
 					"data": []any{
 						map[string]any{
-							"name":             "Plan",
-							"mode":             "plan",
-							"model":            nil,
-							"reasoning_effort": "medium",
+							"name":                   "Plan",
+							"mode":                   "plan",
+							"model":                  nil,
+							"reasoning_effort":       "medium",
+							"developer_instructions": testAppServerPlanCollaborationInstructions,
 						},
 						map[string]any{
-							"name":             "Pair",
-							"mode":             "default",
-							"model":            nil,
-							"reasoning_effort": nil,
+							"name":                   "Pair",
+							"mode":                   "default",
+							"model":                  nil,
+							"reasoning_effort":       nil,
+							"developer_instructions": testAppServerDefaultCollaborationInstructions,
 						},
 					},
 				},
@@ -253,12 +274,20 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				},
 			})
 		case appServerMethodThreadStart, appServerMethodThreadResume:
+			c.mu.Lock()
+			threadResumeError := c.threadResumeError && message.Method == appServerMethodThreadResume
+			replayTokenUsage := c.replayTokenUsageOnResume && message.Method == appServerMethodThreadResume
+			c.mu.Unlock()
+			if threadResumeError {
+				c.sendJSON(map[string]any{
+					"id":    message.ID,
+					"error": map[string]any{"code": -32000, "message": "resume rejected by test"},
+				})
+				continue
+			}
 			c.notify(appServerNotifyThreadStarted, map[string]any{
 				"thread": map[string]any{"id": "codex-thread-1"},
 			})
-			c.mu.Lock()
-			replayTokenUsage := c.replayTokenUsageOnResume && message.Method == appServerMethodThreadResume
-			c.mu.Unlock()
 			if replayTokenUsage {
 				// Real codex 0.140.0 replays thread/tokenUsage/updated during
 				// thread/resume so the GUI can show context fill before a new
@@ -286,9 +315,11 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 		case appServerMethodTurnStart:
 			c.mu.Lock()
 			hold := c.holdTurn
+			steered := c.steeredTurnStart
 			approval := c.commandApproval
 			userInput := c.userInputRequest
 			emitPlan := c.emitPlanItem
+			foreignThreadNoise := c.foreignThreadNoise
 			turnStartEntered := c.turnStartEntered
 			turnStartRelease := c.turnStartRelease
 			c.mu.Unlock()
@@ -297,6 +328,23 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			}
 			if turnStartRelease != nil {
 				<-turnStartRelease
+			}
+			if steered {
+				// Mirror real codex steering (live-verified against codex
+				// 0.142.5, TestLiveProtocolTurnStartDuringActiveTurn):
+				// turn/start while a turn is already running responds
+				// immediately with a NEW turn id in status inProgress, but
+				// the input is absorbed by the running turn ("turn-1") — no
+				// turn/started ever fires for the stub id and the only
+				// terminal notification is the running turn's turn/completed
+				// (sent by the test via completePendingTurn).
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"result": map[string]any{
+						"turn": map[string]any{"id": "turn-steer-stub", "status": "inProgress", "items": []any{}},
+					},
+				})
+				continue
 			}
 			// Mirror the real app-server: the RPC responds immediately with
 			// the inProgress turn; output streams as notifications.
@@ -310,6 +358,28 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 			})
+			if foreignThreadNoise {
+				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1", "itemId": "foreign-msg",
+					"delta": `{"n":7}`,
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "foreign-thread-1", "turnId": "foreign-turn-1",
+					"item": map[string]any{
+						"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`,
+					},
+				})
+				c.notify(appServerNotifyTurnCompleted, map[string]any{
+					"threadId": "foreign-thread-1",
+					"turn": map[string]any{
+						"id":     "foreign-turn-1",
+						"status": "completed",
+						"items": []any{
+							map[string]any{"type": "agentMessage", "id": "foreign-msg", "text": `{"n":7}`},
+						},
+					},
+				})
+			}
 			if approval {
 				c.sendJSON(map[string]any{
 					"id":     "approval-1",
@@ -399,21 +469,57 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					map[string]any{"step": "Run tests", "status": "inProgress"},
 				},
 			})
+			c.mu.Lock()
+			threadName := c.threadName
+			c.mu.Unlock()
+			if threadName == "" {
+				threadName = "Inspect repository structure"
+			}
 			c.notify(appServerNotifyThreadNameUpdated, map[string]any{
-				"threadId": "codex-thread-1", "threadName": "Inspect repository structure",
+				"threadId": "codex-thread-1", "threadName": threadName,
 			})
 			if hold {
 				continue
 			}
 			c.completePendingTurn()
+		case appServerMethodThreadRead:
+			c.mu.Lock()
+			nickname := c.childNicknames[asString(message.Params["threadId"])]
+			c.mu.Unlock()
+			thread := map[string]any{"id": message.Params["threadId"]}
+			if nickname != "" {
+				thread["agentNickname"] = nickname
+			}
+			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{"thread": thread}})
 		case appServerMethodTurnInterrupt:
 			c.mu.Lock()
 			c.turnStatus = "interrupted"
 			ignore := c.ignoreInterrupt
 			hang := c.hangInterrupt
+			mismatchTurnID := c.interruptTurnIDMismatch
+			requestedTurnID := asString(message.Params["turnId"])
+			c.interruptAttempts = append(c.interruptAttempts, requestedTurnID)
 			c.mu.Unlock()
 			if hang {
 				// Fully wedged codex: never even acknowledge the interrupt RPC.
+				continue
+			}
+			if mismatchTurnID != "" && requestedTurnID != mismatchTurnID {
+				// Mirror codex rejecting a stale expected turn id (live
+				// -32600 "invalid request" shape): the client's own turn
+				// bookkeeping raced ahead of what codex still considers
+				// active (e.g. a slow-to-terminate wait_agent call kept the
+				// real turn alive past our local cancel). Only the retry
+				// against the reported id (mismatchTurnID) is honored.
+				c.sendJSON(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code": -32600,
+						"message": fmt.Sprintf(
+							"expected active turn id %s but found %s", requestedTurnID, mismatchTurnID,
+						),
+					},
+				})
 				continue
 			}
 			c.sendJSON(map[string]any{"id": message.ID, "result": map[string]any{}})
@@ -432,14 +538,16 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-compact", "status": "inProgress", "items": []any{}},
 			})
-			c.notify(appServerNotifyItemStarted, map[string]any{
-				"threadId": "codex-thread-1", "turnId": "turn-compact",
-				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "inProgress"},
-			})
-			c.notify(appServerNotifyItemCompleted, map[string]any{
-				"threadId": "codex-thread-1", "turnId": "turn-compact",
-				"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "completed"},
-			})
+			if !c.compactSilent {
+				c.notify(appServerNotifyItemStarted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-compact",
+					"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "inProgress"},
+				})
+				c.notify(appServerNotifyItemCompleted, map[string]any{
+					"threadId": "codex-thread-1", "turnId": "turn-compact",
+					"item": map[string]any{"type": "contextCompaction", "id": "item-compact", "status": "completed"},
+				})
+			}
 			c.notify(appServerNotifyTurnCompleted, map[string]any{
 				"threadId": "codex-thread-1",
 				"turn":     map[string]any{"id": "turn-compact", "status": "completed", "items": []any{}},
@@ -486,6 +594,9 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 			if goalStartsTurn && goalTurnNumber > 0 {
 				turnID := fmt.Sprintf("turn-goal-%d", goalTurnNumber)
 				itemID := fmt.Sprintf("item-goal-%d", goalTurnNumber)
+				c.mu.Lock()
+				failThisTurn := c.goalTurnFailAtTurn > 0 && goalTurnNumber == c.goalTurnFailAtTurn
+				c.mu.Unlock()
 				messageText := "I'll work on the goal."
 				if goalStatus == "complete" && goalTurnNumber > 1 {
 					messageText = "Goal complete."
@@ -494,6 +605,22 @@ func (c *scriptedAppServerConnection) Send(data []byte) error {
 					"threadId": "codex-thread-1",
 					"turn":     map[string]any{"id": turnID, "status": "inProgress", "items": []any{}},
 				})
+				if failThisTurn {
+					// Simulate a mid-goal turn ending in a transient failure
+					// (a tool or model error) while the goal itself remains
+					// "active" per codex's own thread state: the turn
+					// settles failed but the goal is not paused/completed.
+					c.notify(appServerNotifyTurnCompleted, map[string]any{
+						"threadId": "codex-thread-1",
+						"turn": map[string]any{
+							"id":     turnID,
+							"status": "failed",
+							"items":  []any{},
+							"error":  map[string]any{"message": "transient tool failure"},
+						},
+					})
+					continue
+				}
 				c.notify(appServerNotifyAgentMessageDelta, map[string]any{
 					"threadId": "codex-thread-1", "turnId": turnID, "itemId": itemID, "delta": messageText,
 				})
@@ -773,6 +900,57 @@ func TestCodexAppServerAdapterWireFormatOmitsJSONRPCVersion(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterExecRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来 review"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	input, _ := turnStart["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/start input = %#v, want user prompt plus internal routing prompt", turnStart["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/start user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/start routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
+}
+
+func TestCodexAppServerAdapterDoesNotProjectInternalMentionRoutingTitle(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.threadName = tuttiMentionRoutingReminder
+	transport.conn.mu.Unlock()
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt("inspect repo"), "", "turn-internal-title", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	for _, event := range events {
+		if event.Type == activityshared.EventSessionUpdated && event.Payload.Title == tuttiMentionRoutingReminder {
+			t.Fatalf("events = %#v, want internal mention routing title excluded from title updates", events)
+		}
+	}
+}
+
 func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T) {
 	t.Parallel()
 
@@ -970,6 +1148,77 @@ func TestCodexAppServerAdapterResumeRequiresProviderSession(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterReleaseLiveSessionClosesClientAndKeepsProviderSession(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	events, err := adapter.Start(context.Background(), session)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session = applySessionEvents(session, events)
+	if session.ProviderSessionID == "" {
+		t.Fatalf("provider session id was not assigned")
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = false, want true before release")
+	}
+
+	if err := adapter.ReleaseLiveSession(context.Background(), session); err != nil {
+		t.Fatalf("ReleaseLiveSession: %v", err)
+	}
+	if adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = true, want false after release")
+	}
+	if session.ProviderSessionID != "codex-thread-1" {
+		t.Fatalf("provider session id = %q, want preserved caller session", session.ProviderSessionID)
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount == 0 {
+		t.Fatalf("connection close count = 0, want client closed")
+	}
+}
+
+func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.commandApproval = true
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "clean the build dir",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+	})
+
+	err := adapter.ReleaseLiveSession(context.Background(), session)
+	if !errors.Is(err, ErrLiveSessionBusy) {
+		t.Fatalf("ReleaseLiveSession error = %v, want ErrLiveSessionBusy", err)
+	}
+	if !adapter.HasLiveSession(session) {
+		t.Fatalf("HasLiveSession = false, want pending request to keep live session")
+	}
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RequestID: "approval-1",
+		OptionID:  "deny",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive after busy release: %v", err)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec did not finish after resolving pending approval")
+	}
+}
+
 // --- exec tests ---
 
 func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
@@ -1065,6 +1314,33 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 	if total, _ := acpInt64Value(contextWindow["totalTokens"]); total != 272000 {
 		t.Fatalf("usage totalTokens = %#v", usage)
+	}
+}
+
+func TestCodexAppServerAdapterExecIgnoresForeignThreadNotifications(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.foreignThreadNoise = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "spawn subagents",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var assistantText string
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant {
+			assistantText = event.Payload.Content
+		}
+	}
+	if assistantText != "I'll check the repo." {
+		t.Fatalf("assistant content = %q, want parent thread message", assistantText)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", events), `{"n":7}`) {
+		t.Fatalf("foreign thread payload leaked into parent events: %#v", events)
 	}
 }
 
@@ -1254,6 +1530,297 @@ func TestCodexAppServerAdapterCancelInterruptsActiveTurn(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterFetchesChildThreadNickname(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.mu.Lock()
+	transport.conn.childNicknames = map[string]string{"child-thread-1": "Euclid"}
+	transport.conn.mu.Unlock()
+	var mu sync.Mutex
+	var markers []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		markers = append(markers, events...)
+	})
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-1")
+
+	// Registering a child (parent collab item/started) must trigger an async
+	// thread/read: codex assigns spawned agents an agentNickname on the Thread
+	// object but never pushes it (no thread/name/updated for children).
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "turn-1", acpMessage{
+		Method: appServerNotifyItemStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turnId":   "turn-1",
+			"item": map[string]any{
+				"type":              "collabAgentToolCall",
+				"id":                "spawn-child-1",
+				"tool":              "spawnAgent",
+				"status":            "inProgress",
+				"receiverThreadIds": []any{"child-thread-1"},
+			},
+		}),
+	}, newACPTurnNormalizer(), nil)
+
+	waitForCondition(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, event := range markers {
+			if event.Payload.Metadata["messageKind"] == "subAgentName" &&
+				event.Payload.Metadata["subAgentName"] == "Euclid" &&
+				event.OwnerThreadID == "child-thread-1" &&
+				event.OwnerCallID == "spawn-child-1" &&
+				event.Payload.TurnID != "" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// Pins the terminal contract the settle-path inversion must preserve: a
+// normal turn emits exactly one turn-outcome event, delivered through the
+// emit sink before Exec returns.
+func TestCodexAppServerAdapterEmitsExactlyOneTurnOutcome(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var mu sync.Mutex
+	var streamed []activityshared.Event
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text",
+		Text: "inspect the repo",
+	}}, "", "turn-local-1", func(next []activityshared.Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		streamed = append(streamed, next...)
+	}, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	countOutcomes := func(list []activityshared.Event) int {
+		count := 0
+		for _, event := range list {
+			switch string(event.Type) {
+			case string(activityshared.EventTurnCompleted), string(activityshared.EventTurnFailed), EventTurnCanceled:
+				count++
+			}
+		}
+		return count
+	}
+	if got := countOutcomes(events); got != 1 {
+		t.Fatalf("returned turn outcome events = %d, want exactly 1", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if got := countOutcomes(streamed); got != 1 {
+		t.Fatalf("streamed turn outcome events = %d, want exactly 1", got)
+	}
+}
+
+// Pins the client-death terminal transition: when the app-server connection
+// dies mid-turn, the turn settles as failed instead of hanging.
+func TestCodexAppServerAdapterExecSteeredTurnSettlesOnRunningTurnCompletion(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.steeredTurnStart = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "stop refactoring, just report",
+		}}, "", "turn-local-2", nil, nil)
+		execDone <- events
+	}()
+	// The steered turn/start result binds the session to the steer stub id.
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-steer-stub"
+	})
+
+	// The running turn ("turn-1") absorbed the steered input and completes;
+	// no other terminal notification will ever arrive for the stub turn.
+	transport.conn.completePendingTurn()
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventTurnCompleted)
+		failed := eventsOfType(events, activityshared.EventTurnFailed)
+		canceled := eventsOfType(events, activityshared.EventType(EventTurnCanceled))
+		if len(completed)+len(failed)+len(canceled) != 1 {
+			t.Fatalf("terminal turn outcomes = completed:%d failed:%d canceled:%d, want exactly one",
+				len(completed), len(failed), len(canceled))
+		}
+		if len(completed) != 1 {
+			t.Fatalf("steered turn settled as %#v, want EventTurnCompleted", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec never settled: turn/completed for the running turn was dropped by the provider-turn-id guard")
+	}
+}
+
+func TestCodexAppServerAdapterConfirmActiveTurnStartedScopedToBoundID(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	adapter.setSessionActiveTurnID(session.AgentSessionID, "turn-bound")
+
+	// A turn/started for a different turn (e.g. racing with a steered
+	// turn/start rebinding the id in between) must not confirm the current
+	// binding — a stub confirmed by mistake would re-wedge the settle path.
+	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-other")
+	if adapter.sessionActiveTurnStartConfirmed(session.AgentSessionID) {
+		t.Fatalf("confirmation with a stale provider turn id must not confirm the bound id")
+	}
+
+	adapter.confirmSessionActiveTurnStarted(session.AgentSessionID, "turn-bound")
+	if !adapter.sessionActiveTurnStartConfirmed(session.AgentSessionID) {
+		t.Fatalf("confirmation with the bound provider turn id should confirm")
+	}
+}
+
+func TestCodexAppServerAdapterClientDeathSettlesTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	_ = transport.conn.Close()
+
+	select {
+	case events := <-execDone:
+		outcomes := 0
+		for _, event := range events {
+			if event.Type == activityshared.EventTurnFailed {
+				outcomes++
+			}
+		}
+		if outcomes != 1 {
+			t.Fatalf("turn outcome after client death = %#v, want one EventTurnFailed", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not settle after client death")
+	}
+}
+
+func TestCodexAppServerAdapterCancelInterruptsLinkedChildThreads(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "spawn-child-1",
+		"receiverThreadIds": []any{"child-thread-1", "child-thread-2"},
+	})
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long parent task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(cancelEvents) != 2 {
+		t.Fatalf("cancel child events = %#v, want two canceled markers", cancelEvents)
+	}
+	for _, event := range cancelEvents {
+		if event.Payload.Metadata["messageKind"] != "subAgentLifecycle" ||
+			event.Payload.Metadata["subAgentLifecycleStatus"] != "canceled" ||
+			event.OwnerThreadID == "" ||
+			event.OwnerCallID != "spawn-child-1" {
+			t.Fatalf("cancel child event = %#v", event)
+		}
+		// The activity store rejects turnless message updates, so a canceled
+		// marker without a turn id never reaches the GUI (observed live:
+		// "message_update ... is missing turnId").
+		if event.Payload.TurnID != "turn-1" {
+			t.Fatalf("cancel child event turn id = %q, want turn-1", event.Payload.TurnID)
+		}
+	}
+	waitForCondition(t, func() bool {
+		return len(appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)) == 3
+	})
+	requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+	byThread := map[string]map[string]any{}
+	for _, request := range requests {
+		byThread[asString(request["threadId"])] = request
+	}
+	if asString(byThread["codex-thread-1"]["turnId"]) != "turn-1" {
+		t.Fatalf("parent interrupt requests = %#v", requests)
+	}
+	if asString(byThread["child-thread-1"]["turnId"]) != "" ||
+		asString(byThread["child-thread-2"]["turnId"]) != "" {
+		t.Fatalf("child interrupt requests = %#v, want empty turnId startup interrupts", requests)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after interrupt")
+	}
+}
+
+func TestCodexAppServerAdapterCancelAfterTurnCompletedStillMarksChildrenCanceled(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.rememberAppServerChildThreads(session.AgentSessionID, "codex-thread-1", map[string]any{
+		"type":              "collabAgentToolCall",
+		"id":                "spawn-child-1",
+		"receiverThreadIds": []any{"child-thread-1"},
+	})
+
+	// Run a turn to completion so no active turn remains, but children keep
+	// running (spawned agents outlive the parent turn).
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "parent task",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == ""
+	})
+	if got := adapter.sessionActiveTurnID(session.AgentSessionID); got != "" {
+		t.Fatalf("active turn id after completion = %q, want empty", got)
+	}
+
+	cancelEvents, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(cancelEvents) != 1 {
+		t.Fatalf("cancel child events = %#v, want one canceled marker", cancelEvents)
+	}
+	// The last completed turn id keeps the marker acceptable to the activity
+	// store, which rejects turnless message updates.
+	if cancelEvents[0].Payload.TurnID != "turn-1" {
+		t.Fatalf("cancel marker turn id = %q, want turn-1 (last completed turn)", cancelEvents[0].Payload.TurnID)
+	}
+	_ = transport
+}
+
 func TestCodexAppServerAdapterCancelForceClosesWedgedTurn(t *testing.T) {
 	t.Parallel()
 
@@ -1352,6 +1919,79 @@ func TestCodexAppServerAdapterCancelForceCloseIsBoundedByGrace(t *testing.T) {
 	}
 }
 
+// TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID reproduces a
+// real production incident: our own turn bookkeeping settles a turn locally
+// as soon as its Go context is canceled (Cancel/interruptActiveTurn), without
+// waiting for the app-server to confirm the turn actually stopped. When a
+// slow-to-terminate tool call (live case: wait_agent blocking on several
+// dispatched sub-agents) keeps the real app-server turn alive past that
+// point, the *next* interrupt we send — aimed at the turn id we believe is
+// active — gets rejected with "expected active turn id X but found Y"
+// (live-captured, codex 0.142.5, JSON-RPC -32600). Left unhandled, the real
+// stale turn is never actually interrupted and keeps running/emitting items
+// on its own timeline, which is what left a session stuck reporting "regulat-
+// ing next step" long after the visible conversation looked finished. The
+// adapter must retry the interrupt against the turn id codex reports as
+// actually active.
+func TestCodexAppServerAdapterCancelRetriesInterruptOnStaleTurnID(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	// codex reports "turn-stale" as its real active turn, not the "turn-1" id
+	// our own bookkeeping expects — mirrors the daemon racing ahead of the
+	// app-server's turn teardown.
+	transport.conn.interruptTurnIDMismatch = "turn-stale"
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	cancelReturned := make(chan error, 1)
+	go func() {
+		_, err := adapter.Cancel(context.Background(), session, "user requested")
+		cancelReturned <- err
+	}()
+	select {
+	case err := <-cancelReturned:
+		if err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Cancel did not return")
+	}
+
+	waitForCondition(t, func() bool {
+		transport.conn.mu.Lock()
+		defer transport.conn.mu.Unlock()
+		return len(transport.conn.interruptAttempts) >= 2
+	})
+	transport.conn.mu.Lock()
+	attempts := append([]string(nil), transport.conn.interruptAttempts...)
+	transport.conn.mu.Unlock()
+	if len(attempts) != 2 || attempts[0] != "turn-1" || attempts[1] != "turn-stale" {
+		t.Fatalf("interrupt attempts = %#v, want [turn-1 turn-stale]", attempts)
+	}
+
+	select {
+	case events := <-execDone:
+		completed := eventsOfType(events, activityshared.EventTurnCompleted)
+		if len(completed) != 1 ||
+			completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
+			t.Fatalf("expected interrupted outcome, got %#v", events)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after retried interrupt")
+	}
+}
+
 func TestCodexAppServerAdapterCancelQueuesInterruptUntilTurnIDArrives(t *testing.T) {
 	t.Parallel()
 
@@ -1440,6 +2080,62 @@ func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
 	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser {
 		t.Fatalf("steer events = %#v, want single user message", events)
 	}
+	// The controller relies on this marker (turnSteeredIntoActiveTurn) to
+	// settle the steer submission's turn record: no terminal event will ever
+	// arrive for a steered turn id.
+	if steered, ok := messages[0].Payload.Metadata["steered"].(bool); !ok || !steered {
+		t.Fatalf("steer message metadata = %#v, want steered=true", messages[0].Payload.Metadata)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
+func TestCodexAppServerAdapterSteerRoutesAgentTargetMention(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, textPrompt("long task"), "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	prompt := "让 [@Codex](mention://agent-target/local:codex?workspaceId=workspace-1) 来看下"
+	events, err := adapter.Exec(context.Background(), session, textPrompt(prompt), "", "turn-agent-target-steer", nil, nil)
+	if err != nil {
+		t.Fatalf("steer Exec: %v", err)
+	}
+	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
+	if asString(steer["expectedTurnId"]) != "turn-1" {
+		t.Fatalf("turn/steer params = %#v", steer)
+	}
+	input, _ := steer["input"].([]any)
+	if len(input) != 2 {
+		t.Fatalf("turn/steer input = %#v, want user prompt plus internal routing prompt", steer["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if asString(first["text"]) != prompt {
+		t.Fatalf("turn/steer user text = %q, want %q", asString(first["text"]), prompt)
+	}
+	last, _ := input[len(input)-1].(map[string]any)
+	if asString(last["text"]) != tuttiMentionRoutingReminder {
+		t.Fatalf("turn/steer routing text = %q, want %q", asString(last["text"]), tuttiMentionRoutingReminder)
+	}
+
+	userContent := firstUserMessageContent(t, events)
+	if userContent != prompt || strings.Contains(userContent, "system-reminder") {
+		t.Fatalf("user activity content = %q, want original prompt only", userContent)
+	}
 
 	transport.conn.completePendingTurn()
 	select {
@@ -1519,6 +2215,129 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 	}
 	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) == 0 {
 		t.Fatalf("approval resolution missing call.completed: %#v", events)
+	}
+}
+
+func TestCodexAppServerAdapterServerRequestResolvedFailsPendingApprovalWithoutClaimingSuccess(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.commandApproval = true
+
+	var streamed []activityshared.Event
+	var streamedMu sync.Mutex
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "clean the build dir",
+		}}, "", "turn-local-1", func(next []activityshared.Event) {
+			streamedMu.Lock()
+			streamed = append(streamed, next...)
+			streamedMu.Unlock()
+		}, nil)
+		execDone <- events
+	}()
+
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+	})
+	if state := adapter.SessionState(session); state.PendingInteractive == nil {
+		t.Fatalf("pending interactive should be visible before serverRequest/resolved")
+	}
+
+	transport.conn.notify(appServerNotifyServerRequestResolved, map[string]any{
+		"threadId":  "codex-thread-1",
+		"requestId": "approval-1",
+	})
+	waitForCondition(t, func() bool {
+		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") == nil
+	})
+	// The provider resolved this request without ever telling tutti the
+	// decision, so we must not claim the underlying call succeeded (that
+	// previously rendered a phantom "completed" file-output card even
+	// though nothing was actually written). It should surface as failed.
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		return len(eventsOfType(streamed, activityshared.EventCallFailed)) > 0
+	})
+	streamedMu.Lock()
+	if completedCalls := eventsOfType(streamed, activityshared.EventCallCompleted); len(completedCalls) > 0 {
+		streamedMu.Unlock()
+		t.Fatalf("serverRequest/resolved with no known decision must not emit call.completed: %#v", completedCalls)
+	}
+	streamedMu.Unlock()
+	if state := adapter.SessionState(session); state.PendingInteractive != nil {
+		t.Fatalf("pending interactive after serverRequest/resolved = %#v, want nil", state.PendingInteractive)
+	}
+	transport.conn.mu.Lock()
+	response := transport.conn.approvalResponse
+	transport.conn.mu.Unlock()
+	if response != nil {
+		t.Fatalf("out-of-band resolved request should not send approval response, got %#v", response)
+	}
+
+	transport.conn.completePendingTurn()
+	events := <-execDone
+	if failedCalls := eventsOfType(events, activityshared.EventCallFailed); len(failedCalls) == 0 {
+		t.Fatalf("serverRequest/resolved missing call.failed: %#v", events)
+	}
+	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) > 0 {
+		t.Fatalf("serverRequest/resolved with no known decision must not emit call.completed: %#v", completedCalls)
+	}
+}
+
+func TestCodexAppServerAdapterUnsupportedServerRequestFailsCall(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	var streamed []activityshared.Event
+	var streamedMu sync.Mutex
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "run it",
+		}}, "", "turn-local-1", func(next []activityshared.Event) {
+			streamedMu.Lock()
+			streamed = append(streamed, next...)
+			streamedMu.Unlock()
+		}, nil)
+		execDone <- events
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	transport.conn.sendJSON(map[string]any{
+		"id":     "unsupported-1",
+		"method": "item/unknown/requestApproval",
+		"params": map[string]any{
+			"threadId": "codex-thread-1",
+			"turnId":   "turn-1",
+		},
+	})
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		return len(eventsOfType(streamed, activityshared.EventCallFailed)) > 0
+	})
+
+	events := <-execDone
+	failedCalls := eventsOfType(events, activityshared.EventCallFailed)
+	if len(failedCalls) == 0 {
+		t.Fatalf("unsupported server request missing call.failed: %#v", events)
+	}
+	errorPayload := payloadObject(failedCalls[0].Payload.Metadata["error"])
+	if got := asString(errorPayload["method"]); got != "item/unknown/requestApproval" {
+		t.Fatalf("unsupported request error method = %q", got)
+	}
+	transport.conn.mu.Lock()
+	response := transport.conn.approvalResponse
+	transport.conn.mu.Unlock()
+	if response == nil || payloadObject(response["error"]) == nil {
+		t.Fatalf("unsupported server request response = %#v, want JSON-RPC error", response)
 	}
 }
 
@@ -1627,13 +2446,75 @@ func TestCodexAppServerAdapterSlashCompact(t *testing.T) {
 	// "Context compacted." must arrive via item/completed through the
 	// session-level handler — not as a locally-emitted terminal message.
 	var gotCompactedBanner bool
-	for _, event := range events {
+	bannerIndex := -1
+	progressIndex := -1
+	terminalIndex := -1
+	for index, event := range events {
+		if event.Payload.Content == "Compacting context." && progressIndex == -1 {
+			progressIndex = index
+		}
 		if event.Payload.Content == "Context compacted." {
 			gotCompactedBanner = true
+			bannerIndex = index
+		}
+		if event.Type == activityshared.EventTurnCompleted && terminalIndex == -1 {
+			terminalIndex = index
 		}
 	}
 	if !gotCompactedBanner {
 		t.Fatalf("expected 'Context compacted.' banner in compact events; got %#v", events)
+	}
+	if progressIndex == -1 || progressIndex > bannerIndex {
+		t.Fatalf("compacting progress banner index = %d, completed banner index = %d, events = %#v", progressIndex, bannerIndex, events)
+	}
+	if terminalIndex == -1 || bannerIndex == -1 || bannerIndex > terminalIndex {
+		t.Fatalf("compact banner index = %d, terminal index = %d, events = %#v", bannerIndex, terminalIndex, events)
+	}
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("compact turn completed events = %d, want 1", len(completed))
+	}
+}
+
+// Codex app-server frequently finishes thread/compact/start (turn/started →
+// turn/completed) without ever streaming a contextCompaction item/started or
+// item/completed notification. This used to leave /compact completely
+// invisible in the transcript: no "Compacting context." banner (nothing
+// rendered while it ran) and no "Context compacted." banner (nothing showed
+// it finished either), because both banners were driven exclusively by the
+// server's item notifications. The client must show the progress banner up
+// front and settle it at turn completion even when the server stays silent.
+func TestCodexAppServerAdapterSlashCompactWhenServerStaysSilent(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.compactSilent = true
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/compact",
+	}}, "", "turn-local-1", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+
+	var progressCount, completedCount int
+	var progressMessageID, completedMessageID string
+	for _, event := range events {
+		switch event.Payload.Content {
+		case "Compacting context.":
+			progressCount++
+			progressMessageID = asString(event.Payload.Metadata["messageId"])
+		case "Context compacted.":
+			completedCount++
+			completedMessageID = asString(event.Payload.Metadata["messageId"])
+		}
+	}
+	if progressCount != 1 {
+		t.Fatalf("progress banners = %d, want exactly 1 (silent server must not leave /compact invisible); events = %#v", progressCount, events)
+	}
+	if completedCount != 1 {
+		t.Fatalf("completed banners = %d, want exactly 1 (silent server must still settle the banner); events = %#v", completedCount, events)
+	}
+	if progressMessageID == "" || progressMessageID != completedMessageID {
+		t.Fatalf("messageId mismatch: progress %q, completed %q", progressMessageID, completedMessageID)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
 		t.Fatalf("compact turn completed events = %d, want 1", len(completed))
@@ -1873,6 +2754,21 @@ func TestCodexAppServerAdapterSlashReviewDefaultsToUncommitted(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAdapterSlashReviewUncommittedKeyword(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/review uncommitted",
+	}}, "", "turn-local-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	review := appServerRequestParams(t, transport.conn, appServerMethodReviewStart)
+	if asString(payloadObject(review["target"])["type"]) != "uncommittedChanges" {
+		t.Fatalf("review target = %#v, want uncommittedChanges", review["target"])
+	}
+}
+
 func TestCodexAppServerAdapterSlashGoalSetsObjective(t *testing.T) {
 	t.Parallel()
 
@@ -1918,13 +2814,67 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	t.Parallel()
 
 	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
 	transport.conn.goalStartsTurn = true
 	transport.conn.goalCompletionAfterTurns = 2
+
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
 	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
 		Type: "text", Text: "/goal finish the DrawingML pass",
 	}}, "", "turn-local-goal", nil, nil)
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
+	}
+
+	// Exec settles after the goal's FIRST turn; continuation turns are
+	// codex-driven, nudged when codex does not self-continue, and adopted by
+	// the reducer as their own turns.
+	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
+		t.Fatalf("first goal turn completed events = %d, want 1", len(completed))
+	}
+	firstMessages := []string{}
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Role == activityshared.MessageRoleAssistant &&
+			event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+			firstMessages = append(firstMessages, event.Payload.Content)
+		}
+	}
+	if strings.Join(firstMessages, "\n") != "I'll work on the goal." {
+		t.Fatalf("first turn assistant messages = %#v", firstMessages)
+	}
+
+	// The continuation nudge re-sends goal/set; the mock then starts the
+	// second turn, which must be adopted and stream through the session sink.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		adoptedCompleted := ""
+		adoptedStarted := false
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnStarted && event.Payload.Metadata["goalContinuation"] == true {
+				adoptedStarted = true
+			}
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				adoptedCompleted = event.Payload.Content
+			}
+		}
+		sinkMu.Unlock()
+		if adoptedStarted && adoptedCompleted == "Goal complete." {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adopted continuation turn did not complete; started=%v message=%q", adoptedStarted, adoptedCompleted)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
@@ -1937,19 +2887,636 @@ func TestCodexAppServerAdapterSlashGoalContinuesUntilTerminalGoal(t *testing.T) 
 	if asString(goalSets[1]["objective"]) != "finish the DrawingML pass" {
 		t.Fatalf("continuation goal objective = %#v", goalSets[1])
 	}
+}
 
-	assistantMessages := []string{}
-	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
-		if event.Payload.Role == activityshared.MessageRoleAssistant &&
-			event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
-			assistantMessages = append(assistantMessages, event.Payload.Content)
-		}
-	}
-	if strings.Join(assistantMessages, "\n") != "I'll work on the goal.\nGoal complete." {
-		t.Fatalf("assistant messages = %#v", assistantMessages)
+// A mid-goal turn that settles failed (a transient tool/model error) while
+// codex's own thread state still reports the goal active must not strand the
+// goal: the continuation nudge has to fire on a failed settle exactly like it
+// does on a clean completion, or the goal stops advancing for good with no
+// further signal ("goal 执行一半不动了").
+func TestCodexAppServerAdapterGoalContinuesAfterMidGoalTurnFailure(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.goalContinuationGraceWindow = 50 * time.Millisecond
+	transport.conn.goalStartsTurn = true
+	transport.conn.goalTurnFailAtTurn = 2
+	transport.conn.goalCompletionAfterTurns = 3
+
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal finish the DrawingML pass",
+	}}, "", "turn-local-goal", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
 	}
 	if completed := eventsOfType(events, activityshared.EventTurnCompleted); len(completed) != 1 {
-		t.Fatalf("logical goal completed events = %d, want 1", len(completed))
+		t.Fatalf("first goal turn completed events = %d, want 1", len(completed))
+	}
+
+	// The second turn (adopted, codex-driven) settles failed. Without the
+	// fix, finalizeSettledTurn only nudged on a clean completion, so this
+	// failed settle would never schedule a continuation and the goal would
+	// hang here forever.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		failedSeen := false
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventTurnFailed {
+				failedSeen = true
+			}
+		}
+		sinkMu.Unlock()
+		if failedSeen {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("adopted continuation turn did not settle failed")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The nudge must still fire after the failed settle and drive the goal to
+	// its third, successful turn.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		sinkMu.Lock()
+		adoptedCompleted := ""
+		for _, event := range sinkEvents {
+			if event.Type == activityshared.EventMessageAppended &&
+				event.Payload.Role == activityshared.MessageRoleAssistant &&
+				event.Payload.Metadata["streamState"] == messageStreamStateCompleted {
+				adoptedCompleted = event.Payload.Content
+			}
+		}
+		sinkMu.Unlock()
+		if adoptedCompleted == "Goal complete." {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("goal did not continue past the failed turn to completion")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// initial /goal (turn 1) + nudge after turn 1 (turn 2, fails) + nudge
+	// after turn 2's failure (turn 3, completes the goal). The nudge
+	// scheduled after turn 3 sees the goal already "complete" and returns
+	// before sending a fourth RPC.
+	goalSets := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet)
+	if len(goalSets) != 3 {
+		t.Fatalf("goal/set requests = %d, want 3", len(goalSets))
+	}
+}
+
+// A server-initiated turn/started with no registered turn context and no goal
+// keeps the legacy drop behavior (stray turns such as compaction).
+func TestCodexAppServerAdapterUnownedTurnIgnoredWithoutGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-stray", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	if adapter.sessionActiveTurn(session.AgentSessionID) != nil {
+		t.Fatalf("stray turn without goal must not be adopted")
+	}
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	if len(sinkEvents) != 0 {
+		t.Fatalf("stray turn without goal emitted events: %#v", sinkEvents)
+	}
+}
+
+// A server-initiated turn/started while the goal is paused (Stop pressed) is
+// interrupted instead of adopted, so codex cannot keep running a stopped goal.
+func TestCodexAppServerAdapterUnownedTurnInterruptedForPausedGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "paused",
+	})
+
+	appSession := adapter.getSession(session.AgentSessionID)
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(appSession.client, session, "", acpMessage{
+		Method: appServerNotifyTurnStarted,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"turn":     map[string]any{"id": "turn-paused-goal", "status": "inProgress", "items": []any{}},
+		}),
+	}, nil, nil)
+
+	if adapter.sessionActiveTurn(session.AgentSessionID) != nil {
+		t.Fatalf("paused-goal turn must not be adopted")
+	}
+	waitForCondition(t, func() bool {
+		requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt)
+		for _, request := range requests {
+			if asString(request["turnId"]) == "turn-paused-goal" {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// Cancel must pause an active goal before interrupting the turn, so codex does
+// not auto-start the next goal turn right after the interrupt.
+func TestCodexAppServerAdapterCancelPausesActiveGoal(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "active",
+	})
+
+	execDone := make(chan struct{})
+	go func() {
+		defer close(execDone)
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	events, err := adapter.Cancel(context.Background(), session, "user requested")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	goalSet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalSet)
+	if asString(goalSet["status"]) != "paused" {
+		t.Fatalf("goal/set params = %#v, want paused status", goalSet)
+	}
+	if status := asString(adapter.sessionGoal(session.AgentSessionID)["status"]); status != "paused" {
+		t.Fatalf("in-memory goal status = %q, want paused", status)
+	}
+	foundGoalEvent := false
+	for _, event := range events {
+		if event.Type == activityshared.EventSessionUpdated &&
+			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			foundGoalEvent = true
+		}
+	}
+	if !foundGoalEvent {
+		t.Fatalf("Cancel events missing thread_goal_update, got %#v", events)
+	}
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Exec did not finish after interrupt")
+	}
+}
+
+// Mid-turn /goal commands are thread-level control operations: they must run
+// the goal RPC instead of being steered into the active turn as prompt text.
+func TestCodexAppServerAdapterMidTurnGoalClearDoesNotSteer(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish it",
+		"status":    "active",
+	})
+
+	execDone := make(chan struct{})
+	go func() {
+		defer close(execDone)
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "long task",
+		}}, "", "turn-local-1", nil, nil)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	events, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "/goal clear",
+	}}, "", "turn-local-2", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec /goal clear: %v", err)
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodTurnSteer); len(requests) != 0 {
+		t.Fatalf("mid-turn /goal clear must not steer, sent %#v", requests)
+	}
+	transport.conn.mu.Lock()
+	cleared := transport.conn.goalCleared
+	transport.conn.mu.Unlock()
+	if !cleared {
+		t.Fatalf("thread/goal/clear was not executed")
+	}
+	if goal := adapter.sessionGoal(session.AgentSessionID); len(goal) != 0 {
+		t.Fatalf("in-memory goal not cleared: %#v", goal)
+	}
+	steered := false
+	for _, event := range eventsOfType(events, activityshared.EventMessageAppended) {
+		if event.Payload.Metadata["goalControl"] == true {
+			steered = true
+		}
+	}
+	if !steered {
+		t.Fatalf("mid-turn /goal clear user message missing goalControl metadata: %#v", events)
+	}
+
+	transport.conn.completePendingTurn()
+	select {
+	case <-execDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("held turn did not finish")
+	}
+}
+
+// Goal control from the GUI must keep working while another turn holds the
+// controller's turn slot: the single-turn gate falls back to the adapter's
+// thread-level goal control instead of rejecting with "already has an
+// active turn".
+func TestControllerExecGoalControlWhileTurnActive(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.holdTurn = true
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("long task"),
+	}); err != nil {
+		t.Fatalf("Exec long task: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
+	})
+
+	// Goal control succeeds while the turn slot is occupied…
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("/goal clear"),
+	})
+	if err != nil {
+		t.Fatalf("Exec /goal clear: %v", err)
+	}
+	if !result.Accepted {
+		t.Fatalf("goal control result = %#v, want accepted", result)
+	}
+	if goal := adapter.sessionGoal(agentSessionID); len(goal) != 0 {
+		t.Fatalf("goal not cleared: %#v", goal)
+	}
+	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
+		t.Fatalf("running turn must survive goal control")
+	}
+
+	// …while ordinary prompts still hit the single-turn gate.
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("another prompt"),
+	}); !errors.Is(err, ErrSessionActiveTurn) {
+		t.Fatalf("mid-turn plain prompt error = %v, want ErrSessionActiveTurn", err)
+	}
+
+	transport.conn.completePendingTurn()
+}
+
+// Stop during a goal run: adapter.Cancel returns goal-pause events AFTER the
+// interrupted turn already settled and stored the canceled session. Those
+// events must apply to the CURRENT stored session — applying them to the
+// pre-cancel snapshot would resurrect the working state and wedge the GUI in
+// a permanent spinner (stop button dead, prompts queued forever).
+func TestControllerCancelDuringGoalKeepsSettledState(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.holdTurn = true
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("long task"),
+	}); err != nil {
+		t.Fatalf("Exec long task: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
+	})
+
+	if _, err := controller.Cancel(context.Background(), CancelInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Reason:         "user requested",
+	}); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if status := asString(adapter.sessionGoal(agentSessionID)["status"]); status != "paused" {
+		t.Fatalf("goal status after stop = %q, want paused", status)
+	}
+	waitForCondition(t, func() bool {
+		session, ok := controller.get("room-1", agentSessionID)
+		return ok &&
+			session.Status != SessionStatusWorking &&
+			session.TurnLifecycle != nil &&
+			session.TurnLifecycle.Phase == "settled"
+	})
+	// The settled state must STAY settled: the cancel's trailing goal events
+	// must not resurrect the pre-cancel working snapshot.
+	session, ok := controller.get("room-1", agentSessionID)
+	if !ok || session.Status == SessionStatusWorking {
+		t.Fatalf("session resurrected to working after cancel: %#v", session.Status)
+	}
+}
+
+// Metadata-only session updates (usage/goal refreshes) must not flap an
+// adopted turn's status back to ready mid-turn: adopted turns have no
+// controller turn record, so they don't get preserveActiveTurnStatus's
+// protection and rely on the sink's lifecycle guard.
+func TestControllerAdoptedTurnStatusSurvivesMetadataEvents(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	// Codex self-starts a goal continuation turn; the reducer adopts it.
+	transport.conn.notify(appServerNotifyTurnStarted, map[string]any{
+		"threadId": "codex-thread-1",
+		"turn":     map[string]any{"id": "turn-goal-1", "status": "inProgress", "items": []any{}},
+	})
+	waitForCondition(t, func() bool {
+		session, ok := controller.get("room-1", agentSessionID)
+		return ok && session.Status == SessionStatusWorking
+	})
+
+	// Usage and goal refreshes arrive every few seconds during a turn.
+	transport.conn.notify(appServerNotifyTokenUsage, map[string]any{
+		"threadId":   "codex-thread-1",
+		"tokenUsage": map[string]any{"total": map[string]any{"totalTokens": 42}},
+	})
+	transport.conn.notify(appServerNotifyThreadGoalUpdated, map[string]any{
+		"threadId": "codex-thread-1",
+		"goal": map[string]any{
+			"objective": "ship it marker",
+			"status":    "active",
+		},
+	})
+	waitForCondition(t, func() bool {
+		return asStringRaw(adapter.sessionGoal(agentSessionID)["objective"]) == "ship it marker"
+	})
+	session, ok := controller.get("room-1", agentSessionID)
+	if !ok || session.Status != SessionStatusWorking {
+		t.Fatalf("status flapped during adopted turn: %q", session.Status)
+	}
+
+	transport.conn.notify(appServerNotifyTurnCompleted, map[string]any{
+		"threadId": "codex-thread-1",
+		"turn":     map[string]any{"id": "turn-goal-1", "status": "completed", "items": []any{}},
+	})
+	waitForCondition(t, func() bool {
+		session, ok := controller.get("room-1", agentSessionID)
+		return ok && session.Status != SessionStatusWorking
+	})
+}
+
+// Direct goal control (banner buttons) is a session-level operation: no
+// prompt, no turn, works whether or not a turn is running.
+func TestControllerGoalControl(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.holdTurn = true
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:   "room-1",
+		Provider: ProviderCodex,
+		CWD:      "/workspace",
+		Title:    "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	agentSessionID := started.Session.AgentSessionID
+	adapter.applyGoalUpdate(agentSessionID, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+
+	// Pause with no turn running.
+	result, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlPause,
+	})
+	if err != nil {
+		t.Fatalf("GoalControl pause: %v", err)
+	}
+	if asString(result.Goal["status"]) != "paused" {
+		t.Fatalf("pause result goal = %#v, want paused", result.Goal)
+	}
+
+	// Resume and edit the objective while a turn is running.
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Content:        textPrompt("long task"),
+	}); err != nil {
+		t.Fatalf("Exec long task: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(agentSessionID) == "turn-1"
+	})
+	if _, err := controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlResume,
+	}); err != nil {
+		t.Fatalf("GoalControl resume: %v", err)
+	}
+	if status := asString(adapter.sessionGoal(agentSessionID)["status"]); status != "active" {
+		t.Fatalf("goal status after resume = %q, want active", status)
+	}
+	result, err = controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlSet,
+		Objective:      "ship it faster",
+	})
+	if err != nil {
+		t.Fatalf("GoalControl set: %v", err)
+	}
+	if asStringRaw(result.Goal["objective"]) != "ship it faster" {
+		t.Fatalf("set result goal = %#v, want updated objective", result.Goal)
+	}
+	if adapter.sessionActiveTurnID(agentSessionID) != "turn-1" {
+		t.Fatalf("running turn must survive goal control")
+	}
+
+	// Clear.
+	result, err = controller.GoalControl(context.Background(), GoalControlInput{
+		RoomID:         "room-1",
+		AgentSessionID: agentSessionID,
+		Action:         GoalControlClear,
+	})
+	if err != nil {
+		t.Fatalf("GoalControl clear: %v", err)
+	}
+	if len(result.Goal) != 0 {
+		t.Fatalf("clear result goal = %#v, want empty", result.Goal)
+	}
+	if goal := adapter.sessionGoal(agentSessionID); len(goal) != 0 {
+		t.Fatalf("goal not cleared: %#v", goal)
+	}
+
+	transport.conn.completePendingTurn()
+}
+
+// thread/goal/updated notifications must reach the GUI as session events even
+// while no turn is running (the banner refreshes off this signal).
+func TestCodexAppServerAdapterGoalUpdateNotificationEmitsSessionEvent(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	var sinkMu sync.Mutex
+	sinkEvents := []activityshared.Event{}
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		sinkMu.Lock()
+		defer sinkMu.Unlock()
+		sinkEvents = append(sinkEvents, events...)
+	})
+
+	reducer := newCodexAppServerReducer(adapter)
+	reducer.ReduceNotification(nil, session, "turn-1", acpMessage{
+		Method: appServerNotifyThreadGoalUpdated,
+		Params: mustJSONRawMessage(t, map[string]any{
+			"threadId": session.ProviderSessionID,
+			"goal": map[string]any{
+				"objective": "finish it",
+				"status":    "usageLimited",
+			},
+		}),
+	}, nil, nil)
+
+	sinkMu.Lock()
+	defer sinkMu.Unlock()
+	foundUpdate := false
+	foundNotice := false
+	for _, event := range sinkEvents {
+		if event.Type == activityshared.EventSessionUpdated &&
+			event.Payload.Metadata["acpSessionUpdate"] == "thread_goal_update" {
+			foundUpdate = true
+		}
+		if event.Type == activityshared.EventMessageAppended &&
+			strings.Contains(event.Payload.Content, "usage limit") {
+			foundNotice = true
+		}
+	}
+	if !foundUpdate {
+		t.Fatalf("missing thread_goal_update session event, got %#v", sinkEvents)
+	}
+	if !foundNotice {
+		t.Fatalf("missing usage-limited status notice, got %#v", sinkEvents)
+	}
+}
+
+// Start/Resume restore the thread's persisted goal so the banner survives
+// daemon restarts.
+func TestCodexAppServerAdapterStartRestoresGoal(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	adapter.SetSessionEventSink(func(string, []activityshared.Event) {})
+	transport.conn.mu.Lock()
+	transport.conn.goal = map[string]any{
+		"threadId":  "codex-thread-1",
+		"objective": "finish it",
+		"status":    "active",
+	}
+	transport.conn.mu.Unlock()
+	session := testAppServerSession()
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	waitForCondition(t, func() bool {
+		return asString(adapter.sessionGoal(session.AgentSessionID)["status"]) == "active"
+	})
+	goalGet := appServerRequestParams(t, transport.conn, appServerMethodThreadGoalGet)
+	if asString(goalGet["threadId"]) != "codex-thread-1" {
+		t.Fatalf("goal/get params = %#v", goalGet)
 	}
 }
 
@@ -2045,6 +3612,7 @@ func TestAppServerReviewTargetParsing(t *testing.T) {
 	}{
 		{name: "empty", args: "", want: map[string]any{"type": "uncommittedChanges"}},
 		{name: "blank", args: "   ", want: map[string]any{"type": "uncommittedChanges"}},
+		{name: "uncommitted keyword", args: "uncommitted", want: map[string]any{"type": "uncommittedChanges"}},
 		{name: "base branch", args: "base:main", want: map[string]any{"type": "baseBranch", "branch": "main"}},
 		{name: "base branch slashes", args: "base:feature/x", want: map[string]any{"type": "baseBranch", "branch": "feature/x"}},
 		{name: "commit", args: "commit:abc123", want: map[string]any{"type": "commit", "sha": "abc123"}},
@@ -2104,6 +3672,76 @@ func TestCodexAppServerAdapterReviewBannersEmitOnce(t *testing.T) {
 	}
 	if got := countNotice("contextCompaction", "Context compacted."); got != 1 {
 		t.Fatalf("context compaction banners = %d, want exactly 1", got)
+	}
+	if got := countNotice("contextCompaction", "Compacting context."); got != 1 {
+		t.Fatalf("context compaction progress banners = %d, want exactly 1", got)
+	}
+}
+
+// The in-progress banner and the completed banner must share one messageId so
+// the completed notice replaces the progress notice in place instead of
+// leaving a stale "Compacting context." row in the transcript.
+func TestCodexAppServerAdapterCompactionBannersShareMessageID(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-compact", RoomID: "room-compact"}
+	normalizer := newACPTurnNormalizer()
+	item := map[string]any{"type": "contextCompaction", "id": "item-compact-1"}
+
+	started := adapter.appServerItemEvents(session, "turn-1", item, false, normalizer)
+	completed := adapter.appServerItemEvents(session, "turn-1", item, true, normalizer)
+	if len(started) != 1 || len(completed) != 1 {
+		t.Fatalf("compaction events = %d started, %d completed, want 1 each", len(started), len(completed))
+	}
+	if got := started[0].Payload.Content; got != "Compacting context." {
+		t.Fatalf("started banner = %q, want %q", got, "Compacting context.")
+	}
+	if got := completed[0].Payload.Content; got != "Context compacted." {
+		t.Fatalf("completed banner = %q, want %q", got, "Context compacted.")
+	}
+	startedID := asString(started[0].Payload.Metadata["messageId"])
+	completedID := asString(completed[0].Payload.Metadata["messageId"])
+	if startedID == "" || startedID != completedID {
+		t.Fatalf("messageId mismatch: started %q, completed %q", startedID, completedID)
+	}
+}
+
+// A turn that dies mid-compaction must settle the in-progress banner in place;
+// otherwise the transcript keeps a live "Compacting context." row ticking
+// forever after the failure.
+func TestCodexAppServerAdapterCompactionBannerSettlesOnInterrupt(t *testing.T) {
+	t.Parallel()
+
+	adapter := &CodexAppServerAdapter{}
+	session := Session{Provider: "codex", AgentSessionID: "agent-compact", RoomID: "room-compact"}
+	normalizer := newACPTurnNormalizer()
+	item := map[string]any{"type": "contextCompaction", "id": "item-compact-1"}
+
+	started := adapter.appServerItemEvents(session, "turn-1", item, false, normalizer)
+	if len(started) != 1 {
+		t.Fatalf("compaction started events = %d, want 1", len(started))
+	}
+	terminal := normalizer.FinishInterrupted(session, "turn-1", "interrupted")
+	var settled *activityshared.Event
+	for index := range terminal {
+		if terminal[index].Payload.Content == "Context compaction interrupted." {
+			settled = &terminal[index]
+		}
+	}
+	if settled == nil {
+		t.Fatalf("expected interrupted compaction banner in terminal events; got %#v", terminal)
+	}
+	if got, want := asString(settled.Payload.Metadata["messageId"]), asString(started[0].Payload.Metadata["messageId"]); got != want || got == "" {
+		t.Fatalf("interrupted banner messageId = %q, want %q", got, want)
+	}
+	// Once settled, later terminal calls must not emit the banner again.
+	if again := normalizer.FinishFailed(session, "turn-1"); len(again) != 0 {
+		for _, event := range again {
+			if event.Payload.Content == "Context compaction interrupted." {
+				t.Fatalf("compaction banner settled twice: %#v", again)
+			}
+		}
 	}
 }
 
@@ -2400,6 +4038,67 @@ func TestCodexAppServerAdapterApplyPermissionModeUpdatesState(t *testing.T) {
 	}
 }
 
+// TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn
+// locks in the contract the composer UI's live permission-mode switch now
+// relies on: the app-server protocol has no RPC to change approval/sandbox
+// policy for a turn that's already running, so ApplyPermissionMode must still
+// succeed while a turn is in flight (rather than error or block), and the
+// new policy must only take effect starting with the *next* turn/start --
+// matching the "applies starting with your next message" copy shown to the
+// user when they change permission mode mid-turn.
+func TestCodexAppServerAdapterApplyPermissionModeSucceedsMidTurnAndAppliesNextTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.PermissionModeID = "read-only"
+	transport.conn.holdTurn = true
+
+	execDone := make(chan struct{})
+	go func() {
+		_, _ = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "go",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	firstTurnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	if asString(firstTurnStart["approvalPolicy"]) != "on-request" {
+		t.Fatalf("first turn/start approvalPolicy = %#v, want on-request", firstTurnStart["approvalPolicy"])
+	}
+
+	session.PermissionModeID = "full-access"
+	if err := adapter.ApplyPermissionMode(context.Background(), session); err != nil {
+		t.Fatalf("ApplyPermissionMode mid-turn: %v", err)
+	}
+
+	transport.conn.completePendingTurn()
+	<-execDone
+
+	// The turn that was already running is unaffected by the change: exactly
+	// one turn/start was sent for it.
+	if turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(turnStarts) != 1 {
+		t.Fatalf("turn/start calls = %d, want 1 before the next turn", len(turnStarts))
+	}
+
+	transport.conn.holdTurn = false
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "go again",
+	}}, "", "turn-local-2", nil, nil); err != nil {
+		t.Fatalf("Exec (second turn): %v", err)
+	}
+
+	turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
+	if len(turnStarts) != 2 {
+		t.Fatalf("turn/start calls = %d, want 2 after the next turn", len(turnStarts))
+	}
+	if asString(turnStarts[1]["approvalPolicy"]) != "never" {
+		t.Fatalf("second turn/start approvalPolicy = %#v, want never", turnStarts[1]["approvalPolicy"])
+	}
+}
+
 func TestCodexAppServerAdapterCloseShutsDownSession(t *testing.T) {
 	t.Parallel()
 
@@ -2479,6 +4178,49 @@ func TestCodexAppServerAdapterWarningNotificationsBecomeSystemNotices(t *testing
 	<-execDone
 }
 
+func TestCodexAppServerAdapterTerminalErrorNotificationFailsTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.conn.holdTurn = true
+
+	var events []activityshared.Event
+	var execErr error
+	execDone := make(chan struct{})
+	go func() {
+		events, execErr = adapter.Exec(context.Background(), session, []PromptContentBlock{{
+			Type: "text", Text: "go",
+		}}, "", "turn-local-1", nil, nil)
+		close(execDone)
+	}()
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
+	})
+
+	transport.conn.notify(appServerNotifyError, map[string]any{
+		"threadId":  "codex-thread-1",
+		"turnId":    "turn-1",
+		"willRetry": false,
+		"error":     map[string]any{"message": "model overloaded"},
+	})
+
+	select {
+	case <-execDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not unblock after terminal error notification")
+	}
+	if execErr != nil {
+		t.Fatalf("Exec: %v", execErr)
+	}
+	failed := eventsOfType(events, activityshared.EventTurnFailed)
+	if len(failed) != 1 {
+		t.Fatalf("turn failed events = %d, want 1; events = %#v", len(failed), events)
+	}
+	if got := asString(failed[0].Payload.Metadata["error"]); got != "model overloaded" {
+		t.Fatalf("turn failure error = %q, want model overloaded", got)
+	}
+}
+
 func TestCodexAppServerAdapterDefaultControllerUsesAppServerForCodex(t *testing.T) {
 	t.Parallel()
 
@@ -2489,8 +4231,8 @@ func TestCodexAppServerAdapterDefaultControllerUsesAppServerForCodex(t *testing.
 	}
 	if nexight := controller.adapter(ProviderNexight); nexight == nil {
 		t.Fatalf("nexight adapter missing")
-	} else if _, ok := nexight.(*CodexAdapter); !ok {
-		t.Fatalf("nexight adapter = %T, want ACP family adapter", nexight)
+	} else if _, ok := nexight.(*standardACPAdapter); !ok {
+		t.Fatalf("nexight adapter = %T, want standard ACP adapter", nexight)
 	}
 }
 
@@ -2547,42 +4289,66 @@ func TestCodexAppServerAdapterSendsCollaborationModeForPlanTurns(t *testing.T) {
 	if asString(settings["reasoning_effort"]) != "medium" {
 		t.Fatalf("collaborationMode settings = %#v, want preset reasoning effort", settings)
 	}
-	if value, ok := settings["developer_instructions"]; !ok || value != nil {
-		t.Fatalf("collaborationMode settings = %#v, want explicit null developer_instructions", settings)
+	if value := asString(settings["developer_instructions"]); value != testAppServerPlanCollaborationInstructions {
+		t.Fatalf("collaborationMode settings = %#v, want plan developer_instructions", settings)
 	}
 
-	session.Settings = &SessionSettings{PlanMode: false}
-	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+	defaultAdapter, defaultTransport, defaultSession := startedAppServerAdapter(t)
+	defaultSession.Settings = &SessionSettings{PlanMode: false}
+	if _, err := defaultAdapter.Exec(context.Background(), defaultSession, []PromptContentBlock{{
 		Type: "text", Text: "now build",
 	}}, "", "turn-plan-2", nil, nil); err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
-	turnStarts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
-	last := turnStarts[len(turnStarts)-1]
-	// Collaboration mode is sticky thread state on the codex side, so leaving
-	// plan mode must explicitly declare the default mode rather than omit the
-	// field (mirrors the codex TUI's SubmitUserMessageWithMode behavior).
-	exitMode, _ := last["collaborationMode"].(map[string]any)
+	defaultTurnStart := appServerRequestParams(t, defaultTransport.conn, appServerMethodTurnStart)
+	exitMode, _ := defaultTurnStart["collaborationMode"].(map[string]any)
 	if asString(exitMode["mode"]) != "default" {
-		t.Fatalf("turn/start collaborationMode = %#v, want explicit default mode after plan", last["collaborationMode"])
+		t.Fatalf("turn/start collaborationMode = %#v, want explicit default mode", defaultTurnStart["collaborationMode"])
 	}
 	exitSettings, _ := exitMode["settings"].(map[string]any)
 	if asString(exitSettings["model"]) != "gpt-5.1-codex" {
 		t.Fatalf("default collaborationMode settings = %#v, want default model", exitSettings)
 	}
+	if value := asString(exitSettings["developer_instructions"]); value != testAppServerDefaultCollaborationInstructions {
+		t.Fatalf("default collaborationMode settings = %#v, want default developer_instructions", exitSettings)
+	}
 
-	session.Settings = &SessionSettings{PlanMode: true, Model: "gpt-5.1-codex-mini", ReasoningEffort: "low"}
-	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+	overrideAdapter, overrideTransport, overrideSession := startedAppServerAdapter(t)
+	overrideSession.Settings = &SessionSettings{PlanMode: true, Model: "gpt-5.1-codex-mini", ReasoningEffort: "low"}
+	if _, err := overrideAdapter.Exec(context.Background(), overrideSession, []PromptContentBlock{{
 		Type: "text", Text: "plan again",
 	}}, "", "turn-plan-3", nil, nil); err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
-	turnStarts = appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart)
-	last = turnStarts[len(turnStarts)-1]
-	overrideMode, _ := last["collaborationMode"].(map[string]any)
+	overrideTurnStart := appServerRequestParams(t, overrideTransport.conn, appServerMethodTurnStart)
+	overrideMode, _ := overrideTurnStart["collaborationMode"].(map[string]any)
 	overrideSettings, _ := overrideMode["settings"].(map[string]any)
 	if asString(overrideSettings["model"]) != "gpt-5.1-codex-mini" || asString(overrideSettings["reasoning_effort"]) != "low" {
 		t.Fatalf("collaborationMode settings = %#v, want session overrides", overrideSettings)
+	}
+	if value := asString(overrideSettings["developer_instructions"]); value != testAppServerPlanCollaborationInstructions {
+		t.Fatalf("plan collaborationMode settings = %#v, want plan developer_instructions", overrideSettings)
+	}
+}
+
+func TestCodexAppServerAdapterDoesNotSendConversationDetailModeInstructionsPerTurn(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	session.Settings = &SessionSettings{ConversationDetailMode: AgentConversationDetailModeGeneral}
+	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
+		Type: "text", Text: "summarize this",
+	}}, "", "turn-general-1", nil, nil); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
+	collaborationMode, _ := turnStart["collaborationMode"].(map[string]any)
+	if asString(collaborationMode["mode"]) != "default" {
+		t.Fatalf("turn/start collaborationMode = %#v, want default mode", turnStart["collaborationMode"])
+	}
+	settings, _ := collaborationMode["settings"].(map[string]any)
+	if value := asString(settings["developer_instructions"]); value != testAppServerDefaultCollaborationInstructions {
+		t.Fatalf("collaborationMode settings = %#v, want default collaboration mode developer_instructions", settings)
 	}
 }
 

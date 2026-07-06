@@ -352,7 +352,11 @@ export function normalizeTaskSteps(call: AgentToolCallVM): TaskStepView[] {
       stringValue(step.tool_name) ??
       stringValue(step.name) ??
       null;
-    const name = toolName ? humanizeToolLabel(toolName) : `Step ${index + 1}`;
+    const name = toolName
+      ? humanizeToolLabel(toolName)
+      : translate("agentHost.agentTool.details.stepLabel", {
+          index: index + 1
+        });
     const status =
       stringValue(step.status) ??
       stringValue(optionRecord(step.toolResult)?.status) ??
@@ -677,6 +681,10 @@ export function humanizeToolLabel(name: string): string {
     case "subagent":
     case "agent":
       return translate("agentHost.agentTool.labels.delegateAgent");
+    case "closeagent":
+      return translate("agentHost.agentTool.labels.closeAgent");
+    case "wait":
+      return translate("agentHost.agentTool.labels.waitAgent");
     default:
       return name;
   }

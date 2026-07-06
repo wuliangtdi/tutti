@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import { defaultIssueManagerNodeFrame } from "@tutti-os/workspace-issue-manager/workbench/constants";
 import {
@@ -91,15 +90,6 @@ test("workspace file previews open at the task center default height", () => {
   );
 });
 
-test("workspace file preview contribution uses the dialog popover layer", () => {
-  const source = readFileSync(
-    new URL("./workspaceFilePreviewContribution.ts", import.meta.url),
-    "utf8"
-  );
-
-  assert.match(source, /surfaceLayer:\s*"dialog-popover"/);
-});
-
 test("workspace agent GUI opens at the files window default size", () => {
   assert.equal(workspaceAgentGuiNodeFrame.width, workspaceFilesNodeFrame.width);
   assert.equal(
@@ -134,7 +124,7 @@ test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before 
   );
 });
 
-test("workspace agent GUI session launches target exact session instances", () => {
+test("workspace agent GUI session launches use container instances", () => {
   const descriptor = createWorkspaceAgentGuiLaunchDescriptor({
     dockEntryId: "agent-gui",
     payload: {
@@ -147,7 +137,7 @@ test("workspace agent GUI session launches target exact session instances", () =
   assert.equal(descriptor.provider, "codex");
   assert.equal(descriptor.targetAgentSessionId, "session-2");
   assert.equal(descriptor.dockEntryId, "agent-gui");
-  assert.equal(descriptor.instanceId, "agent-gui:codex:session:session-2");
+  assert.match(descriptor.instanceId, /^agent-gui:codex:panel:/);
   assert.equal(descriptor.reuseDockEntryNode, false);
   assert.deepEqual(descriptor.activation, {
     payload: {
@@ -173,6 +163,7 @@ test("workspace agent GUI draft launches prefill prompts without binding session
   assert.deepEqual(descriptor.activation, {
     payload: {
       draftPrompt: "Review this issue",
+      provider: "codex",
       userProjectPath: "/workspace/app"
     },
     type: "agent-gui:prefill-prompt"

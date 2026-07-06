@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
 // mcpProtocolVersion is the MCP version advertised at initialize. We do NOT
@@ -61,7 +61,7 @@ func (s *browserSession) start(ctx context.Context, cwd string) error {
 	resolveCommand := s.command
 	if resolveCommand == nil {
 		resolveCommand = func(ctx context.Context) []string {
-			return resolveBrowserMCPCommand(ctx, nil)
+			return resolveBrowserMCPCommand(ctx, nil, nil)
 		}
 	}
 	command := resolveCommand(ctx)

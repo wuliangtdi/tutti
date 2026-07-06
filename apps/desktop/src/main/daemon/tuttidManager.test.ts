@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
 import {
   access,
   chmod,
@@ -16,8 +17,10 @@ import test from "node:test";
 import {
   isLikelyTuttidProcess,
   resolveBrowserMcpDaemonEnv,
+  resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
-  resolveManagedDaemonProcessEnv
+  resolveManagedDaemonProcessEnv,
+  signalProcessTree
 } from "./tuttidManager.ts";
 
 const repoRoot = resolve(
@@ -138,6 +141,93 @@ test("resolveBrowserMcpDaemonEnv points the daemon at a vendored bundle when pre
   }
 });
 
+test("resolveClaudeSDKSidecarDaemonEnv is a no-op in development", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND;
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: false,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeSDKSidecarDaemonEnv respects an explicit operator override", () => {
+  const previousEnv = { ...process.env };
+  try {
+    process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND = "/custom/sidecar";
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: true,
+      resourcesPath: join(tmpdir(), "tutti-resources")
+    });
+    assert.deepEqual(got, {});
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveClaudeSDKSidecarDaemonEnv points the daemon at a vendored bundle when present", async () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_COMMAND;
+    delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
+    const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-resources-"));
+    const entry = join(
+      resourcesPath,
+      "bin",
+      "claude-sdk-sidecar",
+      "src",
+      "main.ts"
+    );
+    await mkdir(dirname(entry), { recursive: true });
+    await writeFile(entry, "// stub\n");
+
+    const got = resolveClaudeSDKSidecarDaemonEnv({
+      isPackaged: true,
+      resourcesPath
+    });
+    assert.deepEqual(got, {
+      TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry
+    });
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () => {
+  const previousEnv = { ...process.env };
+  try {
+    delete process.env.TUTTI_APP_RUNTIME_ROOT;
+    delete process.env.TUTTI_APP_RUNTIME_CACHE_ROOT;
+    const endpoint = {
+      accessToken: "token",
+      boundAddr: null,
+      listenerInfoPath: "/tmp/listener.json",
+      pidPath: "/tmp/tuttid.pid",
+      requestedAddr: "127.0.0.1:0"
+    };
+    const got = resolveManagedDaemonProcessEnv({
+      endpoint,
+      logOutput: "file",
+      userShellEnv: {},
+      logDir: "/tmp/logs",
+      parentPID: 123,
+      sessionID: "session-1"
+    });
+    assert.equal(
+      got.TUTTI_APP_RUNTIME_CACHE_ROOT?.endsWith("/app-runtimes"),
+      true
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
 test("resolveLaunchSpec falls back to go run when no development binary exists", async (t) => {
   const previousEnv = { ...process.env };
   const binaryName = process.platform === "win32" ? "tuttid.exe" : "tuttid";
@@ -232,6 +322,53 @@ test("isLikelyTuttidProcess only matches tuttid executables", () => {
   assert.equal(isLikelyTuttidProcess(""), false);
 });
 
+// Regression coverage for the "lingering codex server processes" report:
+// stopStaleTuttid used to signal only the recovered pid, not its process
+// group, so a stale tuttid's own subprocesses (Codex app-server, etc.)
+// survived being reaped and kept running against the workspace indefinitely.
+// This spawns a detached leader (mirroring how ManagedTuttid.start spawns
+// tuttid) with a grandchild of its own, then asserts signalProcessTree kills
+// both in one shot instead of orphaning the grandchild.
+test("signalProcessTree kills the whole process group, not just the leader", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("process groups are POSIX-only; win32 falls back to a direct kill");
+    return;
+  }
+
+  const leader = spawn("sh", ["-c", "sleep 60 & wait"], {
+    detached: true,
+    stdio: "ignore"
+  });
+  const leaderPid = leader.pid;
+  assert.ok(leaderPid, "expected the leader process to have a pid");
+  leader.unref();
+
+  try {
+    const childPid = await waitForChildPid(leaderPid, 2_000);
+    assert.ok(
+      childPid,
+      "expected the leader to have spawned a grandchild (sleep) sharing its process group"
+    );
+
+    signalProcessTree(leaderPid, "SIGKILL");
+
+    assert.equal(
+      await waitForPidGone(leaderPid, 2_000),
+      true,
+      "leader should be dead after signalProcessTree"
+    );
+    assert.equal(
+      await waitForPidGone(childPid, 2_000),
+      true,
+      "grandchild should be dead too, not left running as an orphan"
+    );
+  } finally {
+    if (isPidRunning(leaderPid)) {
+      process.kill(leaderPid, "SIGKILL");
+    }
+  }
+});
+
 test("resolveManagedDaemonProcessEnv passes the shared desktop app version", () => {
   const previousEnv = { ...process.env };
 
@@ -311,4 +448,56 @@ async function developmentBinaryIsFresh(binaryPath: string): Promise<boolean> {
   } catch {
     return true;
   }
+}
+
+function isPidRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function directChildPid(parentPid: number): number | null {
+  const result = spawnSync("pgrep", ["-P", String(parentPid)], {
+    encoding: "utf8"
+  });
+  const pid = Number.parseInt(result.stdout.trim().split(/\s+/)[0] ?? "", 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+async function waitForChildPid(
+  parentPid: number,
+  timeoutMs: number
+): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pid = directChildPid(parentPid);
+    if (pid !== null) {
+      return pid;
+    }
+    await sleep(20);
+  }
+  return null;
+}
+
+async function waitForPidGone(
+  pid: number,
+  timeoutMs: number
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidRunning(pid)) {
+      return true;
+    }
+    await sleep(20);
+  }
+  return !isPidRunning(pid);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
 }

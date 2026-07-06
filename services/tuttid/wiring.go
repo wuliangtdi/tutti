@@ -9,14 +9,16 @@ import (
 	"net/http"
 	"time"
 
-	agentdaemon "github.com/tutti-os/tutti/packages/agentactivity/daemon"
+	agentdaemon "github.com/tutti-os/tutti/packages/agent/daemon"
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
+	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
+	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	appclicli "github.com/tutti-os/tutti/services/tuttid/service/cli/appcli"
@@ -39,12 +41,14 @@ import (
 )
 
 type tuttiWiring struct {
-	api               tuttiapi.DaemonAPI
-	appCenterService  *workspaceservice.AppCenterService
-	workspaceStore    *workspacedata.SQLiteStore
-	analyticsReporter reporterservice.Reporter
-	browserService    *browsersvc.Service
-	computerService   *computersvc.Service
+	api                 tuttiapi.DaemonAPI
+	appCenterService    *workspaceservice.AppCenterService
+	workspaceStore      *workspacedata.SQLiteStore
+	analyticsReporter   reporterservice.Reporter
+	browserService      *browsersvc.Service
+	computerService     *computersvc.Service
+	agentRuntime        *agentdaemon.Runtime
+	providerAuthWatcher *agentservice.ProviderAuthWatcher
 }
 
 type analyticsDebugEventPublisher struct {
@@ -143,18 +147,14 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	if agentsidecarservice.ComputerUseDefaultEnabled() {
 		w.computerService = computersvc.NewService()
 	}
-	api, appCenterService, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
+	api, appCenterService, agentRuntime, providerAuthWatcher, err := buildDaemonAPI(ctx, workspaceStore, nil, w.browserService, w.computerService)
 	if err != nil {
 		return err
 	}
+	w.providerAuthWatcher = providerAuthWatcher
 
 	analyticsConfig := tuttitypes.ResolveAnalyticsConfig()
-	var debugPublisher reporterservice.DebugPublisher
-	if analyticsConfig.Debug {
-		debugPublisher = analyticsDebugEventPublisher{
-			service: api.EventStreamService,
-		}
-	}
+	debugPublisher := resolveAnalyticsDebugPublisher(analyticsConfig, api.EventStreamService)
 	analyticsReporter, err := reporterservice.New(reporterservice.Config{
 		Analytics:      analyticsConfig,
 		DebugPublisher: debugPublisher,
@@ -167,7 +167,17 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 	w.analyticsReporter = analyticsReporter
 	w.api = api
 	w.appCenterService = appCenterService
+	w.agentRuntime = agentRuntime
 	return nil
+}
+
+func resolveAnalyticsDebugPublisher(analyticsConfig tuttitypes.AnalyticsConfig, service analyticsDebugEventStream) reporterservice.DebugPublisher {
+	if analyticsConfig.Disabled || service == nil {
+		return nil
+	}
+	return analyticsDebugEventPublisher{
+		service: service,
+	}
 }
 
 func attachAnalyticsReporter(api *tuttiapi.DaemonAPI, analyticsReporter reporterservice.Reporter) {
@@ -199,10 +209,11 @@ func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error)
 	return workspaceStore, nil
 }
 
-func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, error) {
+func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analyticsReporter reporterservice.Reporter, browserService *browsersvc.Service, computerService *computersvc.Service) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
 	issueStore, _ := store.(workspaceissues.Store)
 	preferencesStore, _ := store.(workspacedata.PreferencesStore)
+	agentTargetStore, _ := store.(workspacedata.AgentTargetStore)
 	managedCredentialsStore, _ := store.(workspacedata.ManagedCredentialsStore)
 	agentActivityRepo, _ := store.(workspacedata.AgentActivityStore)
 	userProjectStore, _ := store.(workspacedata.UserProjectStore)
@@ -214,6 +225,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	preferences := preferencesservice.Service{
 		Store:     preferencesStore,
 		Publisher: eventstreamservice.DesktopPreferencesPublisher{Service: events},
+	}
+	agentTargets := agenttargetservice.Service{
+		Store: agentTargetStore,
 	}
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
@@ -234,6 +248,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		ManagedRuntime:    managedRuntimeResolver,
 		RunOutcomes:       runOutcomes,
 	}
+	accountService := accountservice.NewService("")
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			inner: agentActivityProjection,
@@ -261,15 +276,21 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		},
 	})
 	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create agent runtime: %w", err)
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentSidecarPreparer := agentsidecarservice.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	userProjectService := userprojectservice.Service{
+		Store: userProjectStore,
+	}
 	agentSessionService := agentservice.NewService(
 		newAgentRuntimeAdapter(agentRuntime.Controller()),
 	)
 	agentSessionService.AnalyticsReporter = analyticsReporter
-	agentSessionService.ModelCatalog = agentservice.NewAgentModelCatalog()
+	agentModelCatalog := agentservice.NewAgentModelCatalog()
+	agentSessionService.ModelCatalog = agentModelCatalog
+	agentSessionService.AgentTargetStore = agentTargetStore
 	agentSessionService.SessionReader = agentActivityProjection
+	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{
@@ -319,7 +340,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	appCLIRegistry := appclicli.NewRegistry(workspaceService, appCenterService)
 	appCenterService.AppCLIRegistry = appCLIRegistry
 	if err := appCenterService.InitBuiltinPackages(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("initialize builtin workspace apps: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("initialize builtin workspace apps: %w", err)
 	}
 	appFactoryService := &workspaceservice.AppFactoryService{
 		Store:                 appFactoryStore,
@@ -328,6 +350,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		WorkspaceRootResolver: workspaceservice.FileService{Adapter: fileAdapter},
 		AppCenter:             appCenterService,
 		AgentSessionService:   agentSessionService,
+		AgentTargetStore:      agentTargetStore,
 		AgentMessageReader:    agentActivityProjection,
 		AgentSessionReader:    agentActivityProjection,
 		AgentSessionState:     agentActivityProjection,
@@ -338,7 +361,8 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentActivityProjection.SetSessionMessageObserver(appFactoryService)
 	agentActivityProjection.SetSessionStateObserver(appFactoryService)
 	if _, err := appFactoryService.ReconcileInterruptedJobs(ctx); err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("reconcile interrupted app factory jobs: %w", err)
 	}
 	if workspaces, err := workspaceService.List(ctx); err == nil {
 		for _, workspace := range workspaces {
@@ -369,17 +393,45 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	cliRegistry, err := cliservice.NewRegistryFromProviders(cliProviders...)
 	if err != nil {
-		return tuttiapi.DaemonAPI{}, nil, fmt.Errorf("create cli registry: %w", err)
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create cli registry: %w", err)
 	}
 	cliRegistry.AppCommands = appCLIRegistry
 	agentSidecarPreparer.CommandCatalog = cliRegistry
 
 	terminalService := &workspaceservice.TerminalService{}
 
-	return tuttiapi.DaemonAPI{
-		UserProjectService: userprojectservice.Service{
-			Store: userProjectStore,
+	// External credential switchers (for example cc-switch) rewrite provider
+	// auth/config files without notifying tuttid. Watch those files so cached
+	// model catalogs are dropped and the GUI hears about it immediately.
+	agentModelCatalogPublisher := eventstreamservice.AgentModelCatalogPublisher{Service: events}
+	providerAuthWatcher := &agentservice.ProviderAuthWatcher{
+		Entries: agentservice.DefaultProviderAuthWatchEntries(),
+		OnChange: func(providers []string) {
+			agentModelCatalog.Invalidate(providers...)
+			for _, provider := range providers {
+				agentSessionService.InvalidateLiveComposerModels(provider)
+			}
+			if err := agentModelCatalogPublisher.PublishAgentModelCatalogInvalidated(context.Background(), providers); err != nil {
+				slog.Warn("agent model catalog invalidation publish failed",
+					"event", "agent.model_catalog.invalidation_publish_failed",
+					"providers", providers,
+					"error", err,
+				)
+				return
+			}
+			slog.Info("agent provider auth files changed; model catalog invalidated",
+				"event", "agent.model_catalog.invalidated",
+				"providers", providers,
+			)
 		},
+	}
+	providerAuthWatcher.Start()
+
+	return tuttiapi.DaemonAPI{
+		AccountService:            accountService,
+		UserProjectService:        userProjectService,
+		AgentTargetService:        agentTargets,
 		PreferencesService:        preferences,
 		ManagedCredentialsService: managedCredentials,
 		EventStreamService:        events,
@@ -401,7 +453,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		IssueService:        issueService,
 		CLIRegistry:         cliRegistry,
 		AnalyticsReporter:   analyticsReporter,
-	}, appCenterService, nil
+	}, appCenterService, agentRuntime, providerAuthWatcher, nil
 }
 
 func (w *tuttiWiring) Close() error {
@@ -420,6 +472,12 @@ func (w *tuttiWiring) Close() error {
 	}
 	if w.computerService != nil {
 		w.computerService.Close()
+	}
+	if w.providerAuthWatcher != nil {
+		w.providerAuthWatcher.Close()
+	}
+	if w.agentRuntime != nil {
+		w.agentRuntime.Close()
 	}
 	var closeErr error
 	if w.analyticsReporter != nil {

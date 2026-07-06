@@ -8,12 +8,22 @@
   "payloadSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+    "required": [
+      "workspaceId",
+      "agentSessionId",
+      "eventType",
+      "data"
+    ],
     "oneOf": [
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -28,7 +38,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -44,6 +53,9 @@
                 "type": "string",
                 "minLength": 1
               },
+              "agentTargetId": {
+                "type": "string"
+              },
               "eventType": {
                 "const": "session_update"
               },
@@ -58,7 +70,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -73,7 +90,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -103,7 +119,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -118,7 +139,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -151,7 +171,6 @@
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "additionalProperties": false,
                   "required": [
                     "agentSessionId",
                     "id",
@@ -228,7 +247,12 @@
       {
         "type": "object",
         "additionalProperties": false,
-        "required": ["workspaceId", "agentSessionId", "eventType", "data"],
+        "required": [
+          "workspaceId",
+          "agentSessionId",
+          "eventType",
+          "data"
+        ],
         "properties": {
           "workspaceId": {
             "type": "string",
@@ -243,7 +267,6 @@
           },
           "data": {
             "type": "object",
-            "additionalProperties": false,
             "required": [
               "workspaceId",
               "agentSessionId",
@@ -271,6 +294,9 @@
                 "minimum": 0
               },
               "provider": {
+                "type": "string"
+              },
+              "agentTargetId": {
                 "type": "string"
               },
               "providerSessionId": {
@@ -302,10 +328,29 @@
                 "type": "integer",
                 "minimum": 0
               },
+              "runtimeContext": {
+                "type": "object"
+              },
+              "submitAvailability": {
+                "type": "object",
+                "required": [
+                  "state"
+                ],
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              },
               "turn": {
                 "type": "object",
-                "additionalProperties": false,
-                "required": ["turnId"],
+                "required": [
+                  "turnId"
+                ],
                 "properties": {
                   "turnId": {
                     "type": "string",
@@ -325,6 +370,21 @@
                   "completedAtUnixMs": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "submitAvailability": {
+                    "type": "object",
+                    "required": [
+                      "state"
+                    ],
+                    "properties": {
+                      "state": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
                   }
                 }
               }
@@ -341,6 +401,9 @@
       "agentSessionId": {
         "type": "string",
         "minLength": 1
+      },
+      "agentTargetId": {
+        "type": "string"
       },
       "eventType": {
         "type": "string",

@@ -9,6 +9,8 @@ export const preferencesDesktopPreferencesSchema = {
   required: [
     "agentComposerDefaultsByProvider",
     "agentGuiConversationRailCollapsedByProvider",
+    "agentConversationDetailMode",
+    "agentDockLayout",
     "appCatalogChannel",
     "defaultAgentProvider",
     "dockIconStyle",
@@ -18,6 +20,7 @@ export const preferencesDesktopPreferencesSchema = {
     "minimizeAnimation",
     "sleepPreventionMode",
     "showAppDeveloperSources",
+    "enableCursorAgent",
     "themeSource",
     "updateChannel",
     "updatePolicy"
@@ -39,6 +42,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -53,6 +59,27 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
+              type: "string"
+            }
+          }
+        },
+        cursor: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            model: {
+              type: "string"
+            },
+            permissionModeId: {
+              type: "string"
+            },
+            reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -69,6 +96,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -83,6 +113,9 @@ export const preferencesDesktopPreferencesSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -99,6 +132,9 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
           }
         },
@@ -114,7 +150,31 @@ export const preferencesDesktopPreferencesSchema = {
             },
             reasoningEffort: {
               type: "string"
+            },
+            speed: {
+              type: "string"
             }
+          }
+        }
+      }
+    },
+    agentComposerDefaultsByAgentTarget: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          model: {
+            type: "string"
+          },
+          permissionModeId: {
+            type: "string"
+          },
+          reasoningEffort: {
+            type: "string"
+          },
+          speed: {
+            type: "string"
           }
         }
       }
@@ -129,6 +189,9 @@ export const preferencesDesktopPreferencesSchema = {
         codex: {
           type: "boolean"
         },
+        cursor: {
+          type: "boolean"
+        },
         nexight: {
           type: "boolean"
         },
@@ -143,6 +206,14 @@ export const preferencesDesktopPreferencesSchema = {
         }
       }
     },
+    agentConversationDetailMode: {
+      type: "string",
+      enum: ["coding", "general"]
+    },
+    agentDockLayout: {
+      type: "string",
+      enum: ["legacySplit", "unified"]
+    },
     appCatalogChannel: {
       type: "string",
       enum: ["production", "staging"]
@@ -153,7 +224,15 @@ export const preferencesDesktopPreferencesSchema = {
     },
     defaultAgentProvider: {
       type: "string",
-      enum: ["claude-code", "codex", "nexight", "gemini", "hermes", "openclaw"]
+      enum: [
+        "claude-code",
+        "codex",
+        "cursor",
+        "nexight",
+        "gemini",
+        "hermes",
+        "openclaw"
+      ]
     },
     dockIconStyle: {
       type: "string",
@@ -183,6 +262,9 @@ export const preferencesDesktopPreferencesSchema = {
       enum: ["never", "whileAgentRunning", "always"]
     },
     showAppDeveloperSources: {
+      type: "boolean"
+    },
+    enableCursorAgent: {
       type: "boolean"
     },
     themeSource: {
@@ -225,6 +307,9 @@ export const preferencesDesktopPreferencesSchema = {
         },
         reasoningEffort: {
           type: "string"
+        },
+        speed: {
+          type: "string"
         }
       }
     }
@@ -245,6 +330,7 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
     "appId",
     "displayName",
     "description",
+    "agentTargetId",
     "provider",
     "model",
     "reasoningEffort",
@@ -288,6 +374,9 @@ export const workspaceWorkspaceAppFactoryJobSchema = {
       minLength: 1
     },
     description: {
+      type: ["string", "null"]
+    },
+    agentTargetId: {
       type: ["string", "null"]
     },
     provider: {
@@ -580,7 +669,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -595,6 +683,9 @@ export const agentActivityUpdatedPayloadSchema = {
             agentSessionId: {
               type: "string",
               minLength: 1
+            },
+            agentTargetId: {
+              type: "string"
             },
             eventType: {
               const: "session_update"
@@ -625,7 +716,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -670,7 +760,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -703,7 +792,6 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "array",
               items: {
                 type: "object",
-                additionalProperties: false,
                 required: [
                   "agentSessionId",
                   "id",
@@ -795,7 +883,6 @@ export const agentActivityUpdatedPayloadSchema = {
         },
         data: {
           type: "object",
-          additionalProperties: false,
           required: [
             "workspaceId",
             "agentSessionId",
@@ -823,6 +910,9 @@ export const agentActivityUpdatedPayloadSchema = {
               minimum: 0
             },
             provider: {
+              type: "string"
+            },
+            agentTargetId: {
               type: "string"
             },
             providerSessionId: {
@@ -854,9 +944,24 @@ export const agentActivityUpdatedPayloadSchema = {
               type: "integer",
               minimum: 0
             },
+            runtimeContext: {
+              type: "object"
+            },
+            submitAvailability: {
+              type: "object",
+              required: ["state"],
+              properties: {
+                state: {
+                  type: "string",
+                  minLength: 1
+                },
+                reason: {
+                  type: "string"
+                }
+              }
+            },
             turn: {
               type: "object",
-              additionalProperties: false,
               required: ["turnId"],
               properties: {
                 turnId: {
@@ -877,6 +982,19 @@ export const agentActivityUpdatedPayloadSchema = {
                 completedAtUnixMs: {
                   type: "integer",
                   minimum: 0
+                },
+                submitAvailability: {
+                  type: "object",
+                  required: ["state"],
+                  properties: {
+                    state: {
+                      type: "string",
+                      minLength: 1
+                    },
+                    reason: {
+                      type: "string"
+                    }
+                  }
                 }
               }
             }
@@ -894,6 +1012,9 @@ export const agentActivityUpdatedPayloadSchema = {
       type: "string",
       minLength: 1
     },
+    agentTargetId: {
+      type: "string"
+    },
     eventType: {
       type: "string",
       enum: [
@@ -904,6 +1025,26 @@ export const agentActivityUpdatedPayloadSchema = {
       ]
     },
     data: true
+  }
+} as const;
+
+export const agentModelCatalogInvalidatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["providers", "occurredAtUnixMs"],
+  properties: {
+    providers: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "string",
+        minLength: 1
+      }
+    },
+    occurredAtUnixMs: {
+      type: "integer",
+      minimum: 0
+    }
   }
 } as const;
 
@@ -953,6 +1094,8 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
       required: [
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
+        "agentConversationDetailMode",
+        "agentDockLayout",
         "appCatalogChannel",
         "defaultAgentProvider",
         "dockIconStyle",
@@ -962,6 +1105,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -983,6 +1127,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -997,6 +1144,27 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1013,6 +1181,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1027,6 +1198,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1043,6 +1217,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1058,7 +1235,31 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1073,6 +1274,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            cursor: {
+              type: "boolean"
+            },
             nexight: {
               type: "boolean"
             },
@@ -1087,6 +1291,14 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
             }
           }
         },
+        agentConversationDetailMode: {
+          type: "string",
+          enum: ["coding", "general"]
+        },
+        agentDockLayout: {
+          type: "string",
+          enum: ["legacySplit", "unified"]
+        },
         appCatalogChannel: {
           type: "string",
           enum: ["production", "staging"]
@@ -1100,6 +1312,7 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           enum: [
             "claude-code",
             "codex",
+            "cursor",
             "nexight",
             "gemini",
             "hermes",
@@ -1134,6 +1347,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
+          type: "boolean"
+        },
+        enableCursorAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1175,6 +1391,9 @@ export const preferencesDesktopUpdateRequestedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -1201,6 +1420,8 @@ export const preferencesDesktopUpdatedPayloadSchema = {
       required: [
         "agentComposerDefaultsByProvider",
         "agentGuiConversationRailCollapsedByProvider",
+        "agentConversationDetailMode",
+        "agentDockLayout",
         "appCatalogChannel",
         "defaultAgentProvider",
         "dockIconStyle",
@@ -1210,6 +1431,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
         "minimizeAnimation",
         "sleepPreventionMode",
         "showAppDeveloperSources",
+        "enableCursorAgent",
         "themeSource",
         "updateChannel",
         "updatePolicy"
@@ -1231,6 +1453,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1245,6 +1470,27 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
+                  type: "string"
+                }
+              }
+            },
+            cursor: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                model: {
+                  type: "string"
+                },
+                permissionModeId: {
+                  type: "string"
+                },
+                reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1261,6 +1507,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1275,6 +1524,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                   type: "string"
                 },
                 reasoningEffort: {
+                  type: "string"
+                },
+                speed: {
                   type: "string"
                 }
               }
@@ -1291,6 +1543,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
               }
             },
@@ -1306,7 +1561,31 @@ export const preferencesDesktopUpdatedPayloadSchema = {
                 },
                 reasoningEffort: {
                   type: "string"
+                },
+                speed: {
+                  type: "string"
                 }
+              }
+            }
+          }
+        },
+        agentComposerDefaultsByAgentTarget: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              model: {
+                type: "string"
+              },
+              permissionModeId: {
+                type: "string"
+              },
+              reasoningEffort: {
+                type: "string"
+              },
+              speed: {
+                type: "string"
               }
             }
           }
@@ -1321,6 +1600,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             codex: {
               type: "boolean"
             },
+            cursor: {
+              type: "boolean"
+            },
             nexight: {
               type: "boolean"
             },
@@ -1335,6 +1617,14 @@ export const preferencesDesktopUpdatedPayloadSchema = {
             }
           }
         },
+        agentConversationDetailMode: {
+          type: "string",
+          enum: ["coding", "general"]
+        },
+        agentDockLayout: {
+          type: "string",
+          enum: ["legacySplit", "unified"]
+        },
         appCatalogChannel: {
           type: "string",
           enum: ["production", "staging"]
@@ -1348,6 +1638,7 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           enum: [
             "claude-code",
             "codex",
+            "cursor",
             "nexight",
             "gemini",
             "hermes",
@@ -1382,6 +1673,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
           enum: ["never", "whileAgentRunning", "always"]
         },
         showAppDeveloperSources: {
+          type: "boolean"
+        },
+        enableCursorAgent: {
           type: "boolean"
         },
         themeSource: {
@@ -1423,6 +1717,9 @@ export const preferencesDesktopUpdatedPayloadSchema = {
               type: "string"
             },
             reasoningEffort: {
+              type: "string"
+            },
+            speed: {
               type: "string"
             }
           }
@@ -1692,6 +1989,7 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
         "appId",
         "displayName",
         "description",
+        "agentTargetId",
         "provider",
         "model",
         "reasoningEffort",
@@ -1735,6 +2033,9 @@ export const workspaceAppfactoryJobUpdatedPayloadSchema = {
           minLength: 1
         },
         description: {
+          type: ["string", "null"]
+        },
+        agentTargetId: {
           type: ["string", "null"]
         },
         provider: {
@@ -2170,6 +2471,7 @@ export const businessEventServerFrameSchema = {
 
 export const businessEventPayloadSchemas = {
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
+  "agent.model.catalog.invalidated": agentModelCatalogInvalidatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "preferences.desktop.update.requested":
     preferencesDesktopUpdateRequestedPayloadSchema,

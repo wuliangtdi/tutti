@@ -1,11 +1,20 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
-import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
+import { resolveAgentGuiSessionProviderIconUrl } from "@tutti-os/agent-gui/agentGuiSessionProviderIconUrls";
+import {
+  createAgentGuiWorkbenchContribution,
+  resolveAgentGuiUnifiedDockLaunchPayload,
+  type AgentGuiWorkbenchConversationIdentity
+} from "@tutti-os/agent-gui/workbench/contribution";
 import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "@tutti-os/agent-gui/workbench/types";
+import { isAgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -41,7 +50,6 @@ import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -52,13 +60,19 @@ export function createWorkspaceAgentGuiContribution(input: {
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
   >[0]["dockIconUrls"];
+  unifiedDockIconUrl?: Parameters<
+    typeof createAgentGuiWorkbenchContribution
+  >[0]["unifiedDockIconUrl"];
+  defaultAgentProvider?: string | null;
+  defaultProviderTargetId?: string | null;
   hostFilesApi: DesktopHostFilesApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
-  defaultProviderTargetId?: string | null;
+  providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -131,11 +145,16 @@ export function createWorkspaceAgentGuiContribution(input: {
       onCapabilitySettingsRequest: input.onCapabilitySettingsRequest,
       onLinkAction: handleLinkAction,
       onOpenAgentConversationWindow: async (request) => {
-        await requestWorkspaceAgentGuiLaunch(request);
+        await requestWorkspaceAgentGuiLaunch({
+          ...request,
+          openInNewWindow: true
+        });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
+      providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
@@ -175,7 +194,29 @@ export function createWorkspaceAgentGuiContribution(input: {
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent)
     },
     dockIconUrls: input.dockIconUrls,
+    unifiedDockIconUrl: input.unifiedDockIconUrl,
     frame: workspaceAgentGuiNodeFrame,
+    defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
+      ? input.defaultAgentProvider
+      : null,
+    defaultProviderTargetId: input.defaultProviderTargetId,
+    providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
+      input.agentProviderStatusService
+    ),
+    providerTargets: input.providerTargets,
+    providerTargetsLoading: input.providerTargetsLoading,
+    resolveDockLaunchPayload: () =>
+      resolveAgentGuiUnifiedDockLaunchPayload({
+        defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
+          ? input.defaultAgentProvider
+          : null,
+        defaultProviderTargetId: input.defaultProviderTargetId,
+        providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
+          input.agentProviderStatusService
+        ),
+        providerTargetsLoading: input.providerTargetsLoading,
+        targets: input.providerTargets
+      }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
     renderPreview: (context, helpers) =>
@@ -202,10 +243,27 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
-    resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
+    resolveDockPopupIdentity: (state) =>
+      resolveWorkspaceAgentGuiDockPopupIdentity(state, {
+        dockIconUrls: input.dockIconUrls,
+        providerTargets: input.providerTargets,
+        workspaceAgentActivityService: input.workspaceAgentActivityService,
+        workspaceId: input.workspaceId
+      }),
     workspaceId: input.workspaceId
   });
+}
+
+function resolveWorkspaceAgentGuiProviderAvailability(
+  service: AgentProviderStatusService
+): Partial<Record<AgentGuiWorkbenchProvider, boolean>> {
+  const availability: Partial<Record<AgentGuiWorkbenchProvider, boolean>> = {};
+  for (const status of service.getSnapshot().statuses) {
+    if (isAgentGuiWorkbenchProvider(status.provider)) {
+      availability[status.provider] = status.availability.status === "ready";
+    }
+  }
+  return availability;
 }
 
 function resolveWorkspaceAgentGuiDockPopupTitle(
@@ -225,12 +283,64 @@ function resolveWorkspaceAgentGuiDockPopupTitle(
   const provider =
     snapshot.sessions.find((item) => item.agentSessionId === agentSessionId)
       ?.provider ?? "codex";
-  return resolveAgentGuiWorkbenchSessionTitle({
-    agentSessionId,
-    fallbackTitle: state?.lastActiveConversationTitle,
-    provider,
-    snapshot
-  }).title;
+  return (
+    resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId,
+      fallbackTitle: state?.lastActiveConversationTitle ?? null,
+      provider,
+      snapshot
+    }).title ??
+    state?.lastActiveConversationTitle ??
+    null
+  );
+}
+
+function resolveWorkspaceAgentGuiDockPopupIdentity(
+  state: AgentGuiWorkbenchState | null,
+  input: {
+    dockIconUrls?: Parameters<
+      typeof createAgentGuiWorkbenchContribution
+    >[0]["dockIconUrls"];
+    providerTargets?: readonly AgentGUIProviderTarget[];
+    workspaceAgentActivityService: IWorkspaceAgentActivityService;
+    workspaceId: string;
+  }
+): AgentGuiWorkbenchConversationIdentity | null {
+  const agentSessionId = state?.lastActiveAgentSessionId?.trim() ?? "";
+  if (!agentSessionId) {
+    return null;
+  }
+  const snapshot = input.workspaceAgentActivityService.getSnapshot(
+    input.workspaceId
+  );
+  const session = snapshot.sessions.find(
+    (item) => item.agentSessionId === agentSessionId
+  );
+  const provider = isAgentGuiWorkbenchProvider(session?.provider)
+    ? session.provider
+    : "codex";
+  const title =
+    resolveAgentGuiWorkbenchSessionTitle({
+      agentSessionId,
+      fallbackTitle: state?.lastActiveConversationTitle ?? null,
+      provider,
+      snapshot
+    }).title ??
+    state?.lastActiveConversationTitle ??
+    null;
+  const targetIconUrl = session?.agentTargetId
+    ? input.providerTargets?.find(
+        (target) => target.agentTargetId === session.agentTargetId
+      )?.iconUrl
+    : null;
+  return {
+    iconUrl:
+      targetIconUrl ??
+      resolveAgentGuiSessionProviderIconUrl(provider) ??
+      input.dockIconUrls?.[provider] ??
+      null,
+    title
+  };
 }
 
 const dockPopupPreviewViewport = {

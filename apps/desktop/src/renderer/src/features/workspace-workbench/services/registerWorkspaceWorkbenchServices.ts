@@ -18,13 +18,17 @@ import type {
 } from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
+import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
+import { IAccountService } from "./accountService.interface";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
   browserApi?: DesktopBrowserApi;
+  isAgentProviderHidden?: (provider: string) => boolean;
+  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   computerUseApi: DesktopComputerUseApi;
   developerApi: DesktopDeveloperApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
@@ -51,10 +55,22 @@ export function registerWorkspaceWorkbenchServices(
   input: WorkspaceWorkbenchServiceRegistrationInput
 ): void {
   registry.register(
+    IAccountService,
+    new SyncDescriptor(AccountService, [
+      {
+        hostFilesApi: input.hostFilesApi,
+        tuttidClient: input.tuttidClient
+      }
+    ])
+  );
+  registry.register(
     IWorkspaceWorkbenchHostService,
     new SyncDescriptor(WorkspaceWorkbenchHostService, [
       {
         browserApi: input.browserApi,
+        isAgentProviderHidden: input.isAgentProviderHidden,
+        subscribeAgentProviderVisibility:
+          input.subscribeAgentProviderVisibility,
         computerUseApi: input.computerUseApi,
         dockPreviewCacheApi: input.dockPreviewCacheApi,
         eventStreamClient: input.eventStreamClient,

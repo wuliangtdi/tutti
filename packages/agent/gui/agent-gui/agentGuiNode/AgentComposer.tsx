@@ -6,9 +6,12 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type FormEvent
+  type FocusEvent as ReactFocusEvent,
+  type FormEvent,
+  type HTMLAttributes,
+  type JSX
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import type { UiLanguage } from "../../contexts/settings/domain/agentSettings";
 import type {
@@ -22,8 +25,7 @@ import type {
 import {
   Popover,
   PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger
+  PopoverContent
 } from "../../app/renderer/components/ui/popover";
 import { Spinner } from "../../app/renderer/components/ui/spinner";
 import {
@@ -36,7 +38,13 @@ import { ZoomableImage } from "../../app/renderer/components/ZoomableImage";
 import type { AgentConversationPromptVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import { AgentUsageMeter, agentUsageBarColor } from "./AgentUsageMeter";
 import { cn } from "../../app/renderer/lib/utils";
-import { AddIcon, Button, Select, SelectTrigger } from "@tutti-os/ui-system";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger
+} from "@tutti-os/ui-system";
 import { ListChecks, Target, X } from "lucide-react";
 import {
   createMentionPaletteStateAdapter,
@@ -144,13 +152,42 @@ import {
   USAGE_CRITICAL_PERCENT,
   USAGE_WARN_PERCENT
 } from "./model/agentUsageThresholds";
+import addLinedIconUrl from "../../app/renderer/assets/icons/add-lined-bold.svg";
+import atLinedIconUrl from "../../app/renderer/assets/icons/@-bold-lined.svg";
+import handoffLinedIconUrl from "../../app/renderer/assets/icons/handoff-lined.svg";
 import { useOptionalAgentActivityRuntime } from "../../agentActivityRuntime";
 import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentDroppedFileReferenceResolver } from "./model/agentDroppedFileReferences";
+import { resolvePermissionModeControlsDisabled } from "./model/composerModeSelection";
+import {
+  MANAGED_AGENT_ICON_FALLBACK_URL,
+  MANAGED_AGENT_ICON_URLS
+} from "../../shared/managedAgentIcons";
+import { cursorColorfulUrl } from "../../managedAgentIconAssets";
+import { normalizeManagedAgentProvider } from "../../shared/managedAgentProviders";
+import type { AgentGUIProvider, AgentGUIProviderTarget } from "../../types";
 
 export { formatSlashStatusTokenCount };
 
+type DotLottieElementProps = HTMLAttributes<HTMLElement> & {
+  autoplay?: boolean;
+  loop?: boolean;
+  src?: string;
+};
+
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements {
+      "dotlottie-wc": DotLottieElementProps;
+    }
+  }
+}
+
 const USAGE_POPOVER_HOVER_DELAY_MS = 120;
+const HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC =
+  "https://unpkg.com/@lottiefiles/dotlottie-wc@0.9.14/dist/dotlottie-wc.js";
+const HANDOFF_LOTTIE_ANIMATION_SRC =
+  "https://lottie.host/03d75946-52e5-4ccf-97df-174919a13ced/Av6piqVmPa.lottie";
 const DOCK_COMPOSER_INPUT_MIN_HEIGHT = 56;
 const DOCK_COMPOSER_TEXT_LINE_HEIGHT = 24;
 const DOCK_COMPOSER_MAX_VISIBLE_TEXT_LINES = 3.5;
@@ -186,15 +223,33 @@ export interface AgentComposerProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   disabled: boolean;
   disabledReason?: string | null;
+  /**
+   * False while submitting is about to start a brand-new conversation (no
+   * active conversation yet). Starting one is async (session creation +
+   * activation round trip), so the composer must NOT eagerly clear its own
+   * draft echo on submit in that case — the view would otherwise show a
+   * gap where the input is empty and nothing has happened yet. Defaults to
+   * true so existing/test call sites keep today's immediate-clear behavior.
+   */
+  hasActiveConversation?: boolean;
   submitDisabled: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  selectedProviderTarget?: AgentGUIProviderTarget | null;
+  providerTargets?: readonly AgentGUIProviderTarget[];
+  providerSelectReadonly?: boolean;
+  onProviderSelect?: (input: {
+    provider: AgentGUIProvider;
+    providerTargetId?: string | null;
+  }) => void;
+  onHandoffConversation?: (target: AgentGUIProviderTarget) => void;
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
+  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
@@ -203,9 +258,13 @@ export interface AgentComposerProps {
   uiLanguage?: UiLanguage;
   isActive?: boolean;
   previewMode?: boolean;
+  workspaceReferencePickerOpen?: boolean;
   promptImagesSupported?: boolean;
   composerFocusRequestSequence?: number | null;
   layoutMode?: "dock" | "hero";
+  providerSelectLabel?: string;
+  handoffLabel?: string;
+  handoffMenuLabel?: string;
   labels: {
     send: string;
     modelLabel: string;
@@ -336,9 +395,14 @@ export interface AgentComposerProps {
     fileMentionEmpty: string;
     fileMentionError: string;
     fileMentionTabHint: string;
+    mentionPalette: string;
     removeMention: string;
     addReference: string;
+    addContent: string;
     referenceWorkspaceFiles: string;
+    handoffConversation: string;
+    handoffConversationMenu: string;
+    providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;
     promptTipsPrefix: string;
@@ -524,6 +588,7 @@ function AgentUsageChip({
   const usagePopoverHoverTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const usagePopoverContentRef = useRef<HTMLDivElement | null>(null);
   const clampedPercent = Math.max(0, Math.min(100, percentUsed));
   const chipLabel = labels.usageChipLabel({ percent: clampedPercent });
   const showTokens = usedTokens !== null && totalTokens !== null;
@@ -580,6 +645,25 @@ function AgentUsageChip({
     },
     [closeUsagePopover, openUsagePopover]
   );
+  const handleUsageTriggerBlur = useCallback(
+    (event: ReactFocusEvent<HTMLButtonElement>) => {
+      const nextFocusTarget = event.relatedTarget;
+      if (
+        nextFocusTarget instanceof Node &&
+        usagePopoverContentRef.current?.contains(nextFocusTarget)
+      ) {
+        clearUsagePopoverHoverTimer();
+        clearUsagePopoverCloseTimer();
+        return;
+      }
+      closeUsagePopover();
+    },
+    [
+      clearUsagePopoverCloseTimer,
+      clearUsagePopoverHoverTimer,
+      closeUsagePopover
+    ]
+  );
 
   useEffect(
     () => () => {
@@ -598,8 +682,7 @@ function AgentUsageChip({
       )}
       data-testid="agent-gui-usage-chip"
       data-usage-level={usageLevel}
-      onBlur={tooltipsEnabled ? closeUsagePopover : undefined}
-      onClick={tooltipsEnabled ? openUsagePopover : undefined}
+      onBlur={tooltipsEnabled ? handleUsageTriggerBlur : undefined}
       onFocus={tooltipsEnabled ? openUsagePopoverAfterHoverDelay : undefined}
       onPointerEnter={(event) => {
         if (tooltipsEnabled && event.pointerType !== "touch") {
@@ -628,9 +711,10 @@ function AgentUsageChip({
       open={usagePopoverOpen}
       onOpenChange={handleUsagePopoverOpenChange}
     >
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverAnchor asChild>{trigger}</PopoverAnchor>
       {usagePopoverOpen ? (
         <PopoverContent
+          ref={usagePopoverContentRef}
           side="bottom"
           align="end"
           className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
@@ -676,7 +760,7 @@ const composerStyles = {
   footerGroup: styles.composerFooterLeft,
   footerGroupRight: styles.composerFooterRight,
   dropdownSurface:
-    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
+    "nodrag isolate rounded-[12px] border border-hairline bg-background-fronted p-[4px] text-foreground shadow-[var(--shadow-panel)] [-webkit-app-region:no-drag]"
 };
 
 const workspaceReferenceSelectValue = "__tutti_workspace_reference_idle__";
@@ -707,6 +791,22 @@ const MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR = [
   ".workbench-window__resize-handle",
   "#agent-gui-conversation-rail-resize"
 ].join(",");
+
+function resolveComposerProviderIconUrl(provider: AgentGUIProvider): string {
+  return (
+    MANAGED_AGENT_ICON_URLS[normalizeManagedAgentProvider(provider)] ??
+    MANAGED_AGENT_ICON_FALLBACK_URL
+  );
+}
+
+function resolveComposerProviderTargetIconUrl(
+  target: AgentGUIProviderTarget
+): string {
+  if (normalizeManagedAgentProvider(target.provider) === "cursor") {
+    return cursorColorfulUrl;
+  }
+  return target.iconUrl ?? resolveComposerProviderIconUrl(target.provider);
+}
 
 interface MentionPaletteFrame {
   height: number;
@@ -756,6 +856,130 @@ function hasInlineOverflow(element: HTMLElement | null): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+function AgentComposerMaskIcon({
+  iconUrl,
+  marker
+}: {
+  iconUrl: string;
+  marker?: "reference-add";
+}): JSX.Element {
+  return (
+    <span
+      aria-hidden
+      className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+      data-agent-reference-add-icon={
+        marker === "reference-add" ? "true" : undefined
+      }
+      style={{
+        WebkitMaskImage: `url("${iconUrl}")`,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskImage: `url("${iconUrl}")`,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain"
+      }}
+    />
+  );
+}
+
+const HANDOFF_SELECT_IDLE_VALUE = "__agent-handoff-idle__";
+
+let handoffLottiePlayerLoadPromise: Promise<boolean> | null = null;
+
+function loadHandoffLottiePlayer(): Promise<boolean> {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return Promise.resolve(false);
+  }
+  if (window.customElements?.get("dotlottie-wc")) {
+    return Promise.resolve(true);
+  }
+  if (handoffLottiePlayerLoadPromise) {
+    return handoffLottiePlayerLoadPromise;
+  }
+
+  handoffLottiePlayerLoadPromise = new Promise((resolve) => {
+    const existingScript = document.querySelector<HTMLScriptElement>(
+      'script[data-agent-gui-handoff-lottie="true"]'
+    );
+    const script = existingScript ?? document.createElement("script");
+
+    const handleLoad = () => {
+      resolve(Boolean(window.customElements?.get("dotlottie-wc")));
+    };
+    const handleError = () => {
+      resolve(false);
+    };
+
+    script.addEventListener("load", handleLoad, { once: true });
+    script.addEventListener("error", handleError, { once: true });
+
+    if (!existingScript) {
+      script.dataset.agentGuiHandoffLottie = "true";
+      script.src = HANDOFF_LOTTIE_PLAYER_SCRIPT_SRC;
+      script.type = "module";
+      document.head.append(script);
+    }
+  });
+
+  return handoffLottiePlayerLoadPromise;
+}
+
+function AgentComposerHandoffIcon({
+  disabled,
+  isPlaying
+}: {
+  disabled: boolean;
+  isPlaying: boolean;
+}): JSX.Element {
+  const [isLottieReady, setIsLottieReady] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    void loadHandoffLottiePlayer().then((isReady) => {
+      if (isMounted) {
+        setIsLottieReady(isReady);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const shouldShowAnimation = !disabled && isPlaying && isLottieReady;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={styles.composerHandoffIcon}
+      data-disabled={disabled ? "true" : undefined}
+      data-playing={shouldShowAnimation ? "true" : undefined}
+    >
+      <span
+        className={styles.composerHandoffStaticIcon}
+        style={{
+          WebkitMaskImage: `url("${handoffLinedIconUrl}")`,
+          WebkitMaskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskSize: "contain",
+          maskImage: `url("${handoffLinedIconUrl}")`,
+          maskPosition: "center",
+          maskRepeat: "no-repeat",
+          maskSize: "contain"
+        }}
+      />
+      <dotlottie-wc
+        autoplay
+        className={styles.composerHandoffAnimatedIcon}
+        data-active={shouldShowAnimation ? "true" : undefined}
+        loop
+        src={HANDOFF_LOTTIE_ANIMATION_SRC}
+      />
+    </span>
+  );
+}
+
 export function AgentComposer({
   workspaceId,
   workspacePath,
@@ -770,15 +994,22 @@ export function AgentComposer({
   availableSkills = EMPTY_PROVIDER_SKILLS,
   disabled,
   disabledReason,
+  hasActiveConversation = true,
   submitDisabled,
   placeholder,
   composerSettings,
   queuedPrompts,
   drainingQueuedPromptId,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  selectedProviderTarget = null,
+  providerTargets = [],
+  providerSelectReadonly = false,
+  onProviderSelect,
+  onHandoffConversation,
   canQueueWhileBusy,
   showStopButton,
   activePrompt,
+  backgroundAgentStatusText = null,
   activePromptKeyboardShortcutsEnabled = true,
   promptTips = EMPTY_PROMPT_TIPS,
   isInterrupting,
@@ -787,9 +1018,13 @@ export function AgentComposer({
   uiLanguage = "en",
   isActive = true,
   previewMode = false,
+  workspaceReferencePickerOpen = false,
   promptImagesSupported = true,
   composerFocusRequestSequence = null,
   layoutMode = "dock",
+  providerSelectLabel = "",
+  handoffLabel,
+  handoffMenuLabel,
   labels,
   workspaceUserProjectI18n,
   onDraftContentChange,
@@ -830,6 +1065,7 @@ export function AgentComposer({
   );
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
+  const [isHandoffIconPlaying, setIsHandoffIconPlaying] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [mentionHighlightedKey, setMentionHighlightedKey] = useState<
     string | null
@@ -1203,6 +1439,12 @@ export function AgentComposer({
 
   const settingsControlsDisabled =
     isSendingTurn || isSubmittingPrompt || showStopButton;
+  const permissionModeControlsDisabled = resolvePermissionModeControlsDisabled({
+    provider,
+    isSendingTurn,
+    isSubmittingPrompt,
+    showStopButton
+  });
   const composerControlsHardDisabled =
     isSelectedProjectMissing ||
     isSubmittingPrompt ||
@@ -1481,11 +1723,21 @@ export function AgentComposer({
       } else {
         onSubmit(submitContent);
       }
-      draftPromptRef.current = "";
-      draftImagesRef.current = [];
-      draftFilesRef.current = [];
-      setPaletteDraftPrompt("");
-      onDraftContentChange(emptyAgentComposerDraft());
+      // Starting a brand-new conversation (no active conversation yet) is
+      // async — session creation + activation round trip — before the view
+      // switches away from composer-home to show it. Skip the eager local
+      // clear in that case so the just-submitted text stays visible instead
+      // of leaving the composer blank with nothing happening;
+      // startConversation's resolution (see useAgentGUINodeController)
+      // authoritatively clears this same draft, or leaves it untouched on
+      // failure, once the view actually transitions.
+      if (hasActiveConversation) {
+        draftPromptRef.current = "";
+        draftImagesRef.current = [];
+        draftFilesRef.current = [];
+        setPaletteDraftPrompt("");
+        onDraftContentChange(emptyAgentComposerDraft());
+      }
     }
   );
 
@@ -1699,7 +1951,16 @@ export function AgentComposer({
       return makeAtPanelKeyDown({
         close: closeFileMentionPalette,
         commitSelection: () => {
-          createFileMentionPaletteAdapter().commitHighlighted();
+          // No highlighted/committable entry (e.g. the search has zero
+          // results): Enter has nothing to select, so treat it as
+          // dismissing the empty panel instead of a silent no-op. This
+          // matches Escape's behavior and mirrors the "clear the active
+          // mention context" contract — a second Enter afterwards then
+          // falls through to the normal submit handler.
+          const result = createFileMentionPaletteAdapter().commitHighlighted();
+          if (result.type === "none") {
+            closeFileMentionPalette();
+          }
         },
         cycleFilter: cycleFileMentionFilter,
         moveSelection: moveFileMentionSelection,
@@ -1764,7 +2025,7 @@ export function AgentComposer({
   );
 
   useEffect(() => {
-    if (!showPalette) {
+    if (!showPalette || workspaceReferencePickerOpen) {
       return;
     }
     const handleDocumentKeyDown = (event: KeyboardEvent): void => {
@@ -1795,7 +2056,7 @@ export function AgentComposer({
         capture: true
       });
     };
-  }, [handlePaletteKeyDown, showPalette]);
+  }, [handlePaletteKeyDown, showPalette, workspaceReferencePickerOpen]);
 
   const handleFileMentionSuggestionChange = useCallback(
     (state: AgentFileMentionSuggestionState | null): void => {
@@ -2143,22 +2404,22 @@ export function AgentComposer({
     ]
   );
 
-  // @ 面板里点任务/应用行的「查看产物」入口:关掉面板,打开引用 picker 并定位到该实体;
+  // @ 面板里点任务/应用行的「查看产物」入口:保留面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
   const handleOpenReferencesForEntity = useCallback(
     (entity: AgentContextMentionItem): void => {
-      clearActiveFileMentionTrigger();
-      closeFileMentionPalette();
       if (!onRequestWorkspaceReferences) {
         return;
       }
-      void onRequestWorkspaceReferences(entity).then((result) =>
-        applyReferencePickResult(result)
-      );
+      void onRequestWorkspaceReferences(entity).then((result) => {
+        if (result.files.length > 0 || result.mentionItems.length > 0) {
+          flushSync(clearActiveFileMentionTrigger);
+        }
+        return applyReferencePickResult(result);
+      });
     },
     [
       clearActiveFileMentionTrigger,
-      closeFileMentionPalette,
       applyReferencePickResult,
       onRequestWorkspaceReferences
     ]
@@ -2260,12 +2521,76 @@ export function AgentComposer({
   const composerClassName = isHeroLayout
     ? styles.composerHero
     : styles.composer;
+  const providerSwitchTargets = useMemo(
+    () => providerTargets.filter(Boolean),
+    [providerTargets]
+  );
+  const enabledProviderSwitchTargets = useMemo(
+    () => providerSwitchTargets.filter((target) => target.disabled !== true),
+    [providerSwitchTargets]
+  );
+  const selectedProviderTargetId =
+    selectedProviderTarget?.targetId ?? `local:${provider}`;
+  const selectedProviderSwitchTarget =
+    providerSwitchTargets.find(
+      (target) => target.targetId === selectedProviderTargetId
+    ) ??
+    providerSwitchTargets.find((target) => target.provider === provider) ??
+    selectedProviderTarget;
+  const providerMenuTargets =
+    selectedProviderSwitchTarget &&
+    !enabledProviderSwitchTargets.some(
+      (target) => target.targetId === selectedProviderSwitchTarget.targetId
+    )
+      ? [selectedProviderSwitchTarget, ...enabledProviderSwitchTargets]
+      : enabledProviderSwitchTargets;
+  const handoffMenuTargets = selectedProviderSwitchTarget
+    ? providerMenuTargets.filter((target) => {
+        if (target.disabled === true) {
+          return false;
+        }
+        if (target.targetId === selectedProviderSwitchTarget.targetId) {
+          return false;
+        }
+        const selectedAgentTargetId =
+          selectedProviderSwitchTarget.agentTargetId ??
+          selectedProviderSwitchTarget.targetId;
+        const targetAgentTargetId = target.agentTargetId ?? target.targetId;
+        return targetAgentTargetId !== selectedAgentTargetId;
+      })
+    : providerMenuTargets;
+  const selectedProviderLabel =
+    selectedProviderSwitchTarget?.label ??
+    selectedProviderTarget?.label ??
+    provider;
+  const effectiveHandoffLabel = handoffLabel || labels.handoffConversation;
+  const effectiveHandoffMenuLabel =
+    handoffMenuLabel || labels.handoffConversationMenu;
   const inputShellClassName = cn(
     styles.composerInputShell,
     isHeroLayout && styles.composerInputShellHero
   );
   const inputDisabled =
     isSelectedProjectMissing || (disabled && !canQueueWhileBusy);
+  const providerSelectDisabled =
+    providerSelectReadonly || composerControlsHardDisabled || inputDisabled;
+  const handoffDisabled =
+    composerControlsHardDisabled ||
+    inputDisabled ||
+    !onHandoffConversation ||
+    handoffMenuTargets.length === 0;
+  const showProviderSelect =
+    !isHeroLayout &&
+    selectedProviderSwitchTarget !== null &&
+    providerMenuTargets.length > 0;
+  const showHandoffSelect =
+    showProviderSelect && providerSelectReadonly && !previewMode;
+  const handleMentionPaletteButton = useCallback((): void => {
+    if (composerControlsHardDisabled || inputDisabled) {
+      return;
+    }
+    editorHandleRef.current?.openMentionPalette();
+  }, [composerControlsHardDisabled, inputDisabled]);
   const scheduleComposerFocus = useCallback(() => {
     if (inputDisabled) {
       return;
@@ -2883,6 +3208,15 @@ export function AgentComposer({
         )}
         data-edge-glow={showEdgeGlow ? "true" : undefined}
       >
+        {backgroundAgentStatusText ? (
+          <AgentChromeNotice
+            tone="muted"
+            role="status"
+            testId="agent-gui-composer-background-agent-status"
+            title={backgroundAgentStatusText}
+            icon={<Spinner className="h-3.5 w-3.5" />}
+          />
+        ) : null}
         {isSelectedProjectMissing ? (
           <AgentChromeNotice
             tone="danger"
@@ -3153,60 +3487,259 @@ export function AgentComposer({
           </Popover>
           <div className={styles.composerFooter}>
             <div className={composerStyles.footerGroup}>
-              {previewMode ? (
-                <button
-                  type="button"
-                  aria-label={labels.referenceWorkspaceFiles}
-                  title={labels.referenceWorkspaceFiles}
-                  className={cn(
-                    styles.composerMenuTrigger,
-                    styles.composerReferenceTrigger,
-                    "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&_svg]:shrink-0"
-                  )}
-                >
-                  <AddIcon
-                    aria-hidden
-                    className="size-3.5"
-                    data-agent-reference-add-icon="true"
-                  />
-                </button>
-              ) : (
+              <div className="inline-flex shrink-0 items-center gap-1">
+                {previewMode ? (
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={labels.referenceWorkspaceFiles}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerReferenceTrigger,
+                            "group w-auto justify-center text-[var(--agent-gui-text-secondary)]"
+                          )}
+                        >
+                          <AgentComposerMaskIcon
+                            iconUrl={addLinedIconUrl}
+                            marker="reference-add"
+                          />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <TooltipProvider delayDuration={120}>
+                    <Tooltip>
+                      <Select
+                        open={false}
+                        value={workspaceReferenceSelectValue}
+                        disabled={
+                          !onRequestWorkspaceReferences ||
+                          composerControlsHardDisabled
+                        }
+                        onOpenChange={(isOpen) => {
+                          if (isOpen) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                        onValueChange={(nextValue) => {
+                          if (nextValue === workspaceReferenceOptionValue) {
+                            void handleWorkspaceReferencePicker();
+                          }
+                        }}
+                      >
+                        <TooltipTrigger asChild>
+                          <SelectTrigger
+                            size="sm"
+                            aria-label={labels.referenceWorkspaceFiles}
+                            title={labels.referenceWorkspaceFiles}
+                            className={cn(
+                              styles.composerMenuTrigger,
+                              styles.composerReferenceTrigger,
+                              "group w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden"
+                            )}
+                          >
+                            <AgentComposerMaskIcon
+                              iconUrl={addLinedIconUrl}
+                              marker="reference-add"
+                            />
+                          </SelectTrigger>
+                        </TooltipTrigger>
+                      </Select>
+                      <TooltipContent side="top">
+                        {labels.addContent}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={labels.mentionPalette}
+                        disabled={composerControlsHardDisabled || inputDisabled}
+                        className={cn(
+                          styles.composerMenuTrigger,
+                          styles.composerReferenceTrigger,
+                          "group w-auto justify-center text-[var(--agent-gui-text-secondary)] disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0"
+                        )}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={handleMentionPaletteButton}
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-block size-3.5 bg-[var(--text-secondary)] transition-colors group-hover:bg-[var(--text-primary)] group-focus-visible:bg-[var(--text-primary)]"
+                          style={{
+                            WebkitMaskImage: `url("${atLinedIconUrl}")`,
+                            WebkitMaskPosition: "center",
+                            WebkitMaskRepeat: "no-repeat",
+                            WebkitMaskSize: "contain",
+                            maskImage: `url("${atLinedIconUrl}")`,
+                            maskPosition: "center",
+                            maskRepeat: "no-repeat",
+                            maskSize: "contain"
+                          }}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {labels.mentionPalette}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              {showHandoffSelect ? (
                 <Select
-                  open={false}
-                  value={workspaceReferenceSelectValue}
-                  disabled={
-                    !onRequestWorkspaceReferences ||
-                    composerControlsHardDisabled
-                  }
-                  onOpenChange={(isOpen) => {
-                    if (isOpen) {
-                      void handleWorkspaceReferencePicker();
+                  value={HANDOFF_SELECT_IDLE_VALUE}
+                  disabled={handoffDisabled}
+                  onValueChange={(nextTargetId) => {
+                    const target = handoffMenuTargets.find(
+                      (candidate) => candidate.targetId === nextTargetId
+                    );
+                    if (!target || target.disabled === true) {
+                      return;
                     }
-                  }}
-                  onValueChange={(nextValue) => {
-                    if (nextValue === workspaceReferenceOptionValue) {
-                      void handleWorkspaceReferencePicker();
-                    }
+                    onHandoffConversation?.(target);
                   }}
                 >
                   <SelectTrigger
                     size="sm"
-                    aria-label={labels.referenceWorkspaceFiles}
-                    title={labels.referenceWorkspaceFiles}
+                    aria-label={effectiveHandoffLabel}
+                    title={effectiveHandoffLabel}
+                    onBlur={() => {
+                      setIsHandoffIconPlaying(false);
+                    }}
+                    onFocus={() => {
+                      setIsHandoffIconPlaying(true);
+                    }}
+                    onMouseEnter={() => {
+                      setIsHandoffIconPlaying(true);
+                    }}
+                    onMouseLeave={() => {
+                      setIsHandoffIconPlaying(false);
+                    }}
                     className={cn(
                       styles.composerMenuTrigger,
-                      styles.composerReferenceTrigger,
-                      "w-auto justify-center text-[var(--agent-gui-text-secondary)] [&>svg:last-child]:hidden [&_svg]:shrink-0"
+                      styles.composerProviderSelect,
+                      styles.composerHandoffTrigger,
+                      "w-auto max-w-[180px] [&>svg:last-child]:hidden"
                     )}
                   >
-                    <AddIcon
-                      aria-hidden
-                      className="size-3.5"
-                      data-agent-reference-add-icon="true"
-                    />
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <AgentComposerHandoffIcon
+                        disabled={handoffDisabled}
+                        isPlaying={isHandoffIconPlaying}
+                      />
+                      <span className="min-w-0 truncate">
+                        {effectiveHandoffLabel}
+                      </span>
+                    </span>
                   </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className={cn(
+                      styles.composerMenuContent,
+                      styles.composerHandoffMenuContent,
+                      "min-w-[190px]"
+                    )}
+                    aria-label={effectiveHandoffMenuLabel}
+                  >
+                    {handoffMenuTargets.map((target) => (
+                      <SelectItem
+                        key={`${target.provider}:${target.targetId}`}
+                        value={target.targetId}
+                        className={cn(styles.composerMenuItem, "gap-2")}
+                        disabled={target.disabled === true}
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="size-4 shrink-0 rounded-[4px]"
+                            src={resolveComposerProviderTargetIconUrl(target)}
+                          />
+                          <span className="min-w-0 truncate">
+                            {target.label}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
-              )}
+              ) : showProviderSelect && selectedProviderSwitchTarget ? (
+                <Select
+                  value={selectedProviderSwitchTarget.targetId}
+                  disabled={providerSelectDisabled}
+                  onValueChange={(nextTargetId) => {
+                    const target = providerMenuTargets.find(
+                      (candidate) => candidate.targetId === nextTargetId
+                    );
+                    if (!target || target.disabled === true) {
+                      return;
+                    }
+                    onProviderSelect?.({
+                      provider: target.provider,
+                      providerTargetId: target.targetId
+                    });
+                  }}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label={providerSelectLabel}
+                    title={providerSelectLabel}
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      styles.composerProviderSelect,
+                      "w-auto max-w-[180px]"
+                    )}
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        className="size-4 shrink-0 rounded-[4px]"
+                        src={resolveComposerProviderTargetIconUrl(
+                          selectedProviderSwitchTarget
+                        )}
+                      />
+                      <span className="min-w-0 truncate">
+                        {selectedProviderLabel}
+                      </span>
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className={cn(styles.composerMenuContent, "min-w-[190px]")}
+                  >
+                    {providerMenuTargets.map((target) => (
+                      <SelectItem
+                        key={`${target.provider}:${target.targetId}`}
+                        value={target.targetId}
+                        className={cn(styles.composerMenuItem, "gap-2")}
+                        disabled={target.disabled === true}
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <img
+                            alt=""
+                            aria-hidden="true"
+                            className="size-4 shrink-0 rounded-[4px]"
+                            src={resolveComposerProviderTargetIconUrl(target)}
+                          />
+                          <span className="min-w-0 truncate">
+                            {target.label}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
               {composerSettings.supportsPlanMode &&
               composerSettings.draftSettings.planMode ? (
                 <button
@@ -3287,8 +3820,16 @@ export function AgentComposer({
                   totalTokens={usage.totalTokens}
                   tooltipsEnabled={!previewMode}
                   compactSupported={compactSupported ?? false}
+                  // Only guard against compacting mid-turn: isSendingTurn is
+                  // the narrow "a turn is actively executing right now"
+                  // signal. showStopButton alone (e.g. pending approval or
+                  // interrupting, with isSendingTurn false) must keep this
+                  // enabled -- that broader gate was the bug fixed by
+                  // 0e736412 and should not be reintroduced.
                   compactDisabled={
-                    !hasCompactableContext || composerControlsHardDisabled
+                    !hasCompactableContext ||
+                    composerControlsHardDisabled ||
+                    isSendingTurn
                   }
                   onCompact={() => onSubmit(textPromptContent("/compact"))}
                   labels={{
@@ -3303,7 +3844,7 @@ export function AgentComposer({
               {composerSettings.supportsPermissionMode ? (
                 <AgentPermissionModeDropdown
                   composerSettings={composerSettings}
-                  disabled={settingsControlsDisabled}
+                  disabled={permissionModeControlsDisabled}
                   previewMode={previewMode}
                   labels={{
                     permissionLabel: labels.permissionLabel,

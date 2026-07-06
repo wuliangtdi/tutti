@@ -3,6 +3,8 @@ import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
 import type {
   AgentActivityCancelSessionInput,
   AgentActivityCancelSessionResult,
+  AgentActivityGoalControlInput,
+  AgentActivityGoalControlResult,
   AgentActivityCreateSessionInput,
   AgentActivityDeleteSessionInput,
   AgentActivityDeleteSessionResult,
@@ -47,6 +49,36 @@ export interface WorkspaceAgentActivityListGeneratedFilesInput {
   workspaceId: string;
 }
 
+export interface WorkspaceAgentActivityListSessionsPageInput {
+  limit?: number;
+  searchQuery?: string;
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface WorkspaceAgentActivitySessionPageResult {
+  hasMore: boolean;
+  nextCursor?: string;
+  sessions: AgentActivitySession[];
+  workspaceId: string;
+}
+
+export type WorkspaceAgentActivityListSessionSectionsInput = Parameters<
+  NonNullable<AgentActivityRuntime["listSessionSections"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionsResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["listSessionSections"]>>
+>;
+
+export type WorkspaceAgentActivityListSessionSectionPageInput = Parameters<
+  NonNullable<AgentActivityRuntime["listSessionSectionPage"]>
+>[0];
+
+export type WorkspaceAgentActivitySessionSectionResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["listSessionSectionPage"]>>
+>;
+
 export interface WorkspaceAgentActivityEnsureSessionSynchronizedInput {
   afterVersion?: number;
   agentSessionId: string;
@@ -64,6 +96,11 @@ export interface WorkspaceAgentActivityAttachment {
   data: string;
 }
 
+export interface WorkspaceAgentModelCatalogInvalidatedEvent {
+  providers: string[];
+  occurredAtUnixMs: number;
+}
+
 export interface IWorkspaceAgentActivityService {
   readonly _serviceBrand: undefined;
 
@@ -71,6 +108,9 @@ export interface IWorkspaceAgentActivityService {
   cancelSession(
     input: AgentActivityCancelSessionInput
   ): Promise<AgentActivityCancelSessionResult>;
+  goalControl(
+    input: AgentActivityGoalControlInput
+  ): Promise<AgentActivityGoalControlResult>;
   createSession(
     input: AgentActivityCreateSessionInput
   ): Promise<AgentActivitySession>;
@@ -82,6 +122,7 @@ export interface IWorkspaceAgentActivityService {
     agentSessionId: string
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
+    agentTargetId?: string | null;
     cwd?: string | null;
     force?: boolean;
     provider?: string;
@@ -105,6 +146,15 @@ export interface IWorkspaceAgentActivityService {
   listAgentGeneratedFiles(
     input: WorkspaceAgentActivityListGeneratedFilesInput
   ): Promise<WorkspaceAgentGeneratedFileListResponse>;
+  listSessionsPage(
+    input: WorkspaceAgentActivityListSessionsPageInput
+  ): Promise<WorkspaceAgentActivitySessionPageResult>;
+  listSessionSections(
+    input: WorkspaceAgentActivityListSessionSectionsInput
+  ): Promise<WorkspaceAgentActivitySessionSectionsResult>;
+  listSessionSectionPage(
+    input: WorkspaceAgentActivityListSessionSectionPageInput
+  ): Promise<WorkspaceAgentActivitySessionSectionResult>;
   scanExternalSessionImports(
     workspaceId: string,
     request?: ExternalAgentImportScanRequest
@@ -120,6 +170,9 @@ export interface IWorkspaceAgentActivityService {
   onSessionEvent(
     workspaceId: string,
     listener: (event: unknown) => void
+  ): () => void;
+  onModelCatalogInvalidated(
+    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
   ): () => void;
   submitInteractive(
     input: AgentActivitySubmitInteractiveInput

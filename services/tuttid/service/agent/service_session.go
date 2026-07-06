@@ -11,6 +11,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -21,6 +22,7 @@ func runtimeResumeInputFromRuntimeSession(session RuntimeSession) RuntimeResumeI
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(session.Visible),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 
@@ -28,6 +30,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 	return RuntimeResumeInput{
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(session.ID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -38,6 +41,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(visibleFromRuntimeContext(session.RuntimeContext, true)),
+		RuntimeContext:    clonePayload(session.RuntimeContext),
 	}
 }
 
@@ -74,6 +78,8 @@ func serviceSession(session RuntimeSession, resumable bool) Session {
 	)
 	return Session{
 		ID:                 strings.TrimSpace(session.ID),
+		UserID:             strings.TrimSpace(session.UserID),
+		AgentTargetID:      strings.TrimSpace(session.AgentTargetID),
 		Provider:           normalizedProvider,
 		ProviderSessionID:  strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                strings.TrimSpace(session.Cwd),
@@ -117,6 +123,8 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 	return serviceSession(RuntimeSession{
 		ID:                strings.TrimSpace(session.ID),
 		WorkspaceID:       strings.TrimSpace(session.WorkspaceID),
+		UserID:            strings.TrimSpace(session.UserID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		Cwd:               strings.TrimSpace(session.Cwd),
@@ -128,7 +136,7 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		PinnedAtUnixMS:    session.PinnedAtUnixMS,
 		CreatedAtUnixMS:   createdAtUnixMS,
 		UpdatedAtUnixMS:   updatedAtUnixMS,
-		Visible:           session.Visible,
+		Visible:           visibleFromRuntimeContext(session.RuntimeContext, true),
 	}, resumable)
 }
 
@@ -146,15 +154,70 @@ func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {
+	if strings.TrimSpace(session.UserID) == "" {
+		session.UserID = strings.TrimSpace(persisted.UserID)
+	}
+	if strings.TrimSpace(session.AgentTargetID) == "" {
+		session.AgentTargetID = strings.TrimSpace(persisted.AgentTargetID)
+	}
 	if session.Settings == nil {
 		session.Settings = normalizeComposerSettingsPointerForProvider(session.Provider, &persisted.Settings)
 	}
 	session.PermissionConfig = composerPermissionConfig(session.Provider, permissionModeIDFromSettings(session.Settings), preferencesbiz.DefaultDesktopLocale)
 	if len(session.RuntimeContext) == 0 {
 		session.RuntimeContext = clonePayload(persisted.RuntimeContext)
+	} else {
+		session.RuntimeContext = mergeImportRuntimeContextFields(session.RuntimeContext, persisted.RuntimeContext)
 	}
 	session.PinnedAtUnixMS = persisted.PinnedAtUnixMS
 	return session
+}
+
+// importRuntimeContextFields are the import-classification markers written
+// once at import time (see external_import.go's ReportSessionState call).
+// They are a Tutti-app-level annotation, not part of the underlying provider
+// adapter's own runtime bookkeeping, so a live RuntimeSession's RuntimeContext
+// never sets them itself.
+var importRuntimeContextFields = []string{
+	"imported",
+	"externalImportNoProject",
+	"externalSourcePath",
+	"noProject",
+}
+
+// mergeImportRuntimeContextFields carries the import-classification markers
+// forward onto a live runtime session's RuntimeContext. Without this, once an
+// imported session is opened/resumed into a live RuntimeSession, its live
+// RuntimeContext is non-empty (it carries the adapter's own bookkeeping), so
+// the all-or-nothing swap above never runs — silently dropping
+// "imported": true from the projected Session. The frontend's unread-badge
+// guard depends on that flag staying set, so losing it made a read imported
+// Codex session's unread badge reappear once its runtime session activated.
+func mergeImportRuntimeContextFields(live map[string]any, persisted map[string]any) map[string]any {
+	if len(persisted) == 0 {
+		return live
+	}
+	merged := live
+	cloned := false
+	for _, key := range importRuntimeContextFields {
+		if _, ok := merged[key]; ok {
+			continue
+		}
+		value, ok := persisted[key]
+		if !ok {
+			continue
+		}
+		if !cloned {
+			next := make(map[string]any, len(live)+len(importRuntimeContextFields))
+			for k, v := range live {
+				next[k] = v
+			}
+			merged = next
+			cloned = true
+		}
+		merged[key] = clonePayloadValue(value)
+	}
+	return merged
 }
 
 func permissionModeIDFromSettings(settings *ComposerSettings) string {

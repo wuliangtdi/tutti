@@ -1,12 +1,16 @@
 import {
   createAgentActivityController,
   normalizeAgentActivityDisplayStatus,
+  setAgentActivityStoreDiagnosticSink,
   type AgentActivityAdapter,
   type AgentActivityCancelSessionResult,
+  type AgentActivityCreateSessionInput,
+  type AgentActivityGoalControlResult,
   type AgentActivityController,
   type AgentActivityMessage,
   type AgentActivityMessagePage,
   type AgentActivitySession,
+  type AgentActivityStatePatch,
   type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
@@ -37,7 +41,8 @@ import type {
   IWorkspaceAgentActivityService,
   WorkspaceAgentActivityListMessagesInput,
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
-  WorkspaceAgentActivityRetainSessionInput
+  WorkspaceAgentActivityRetainSessionInput,
+  WorkspaceAgentModelCatalogInvalidatedEvent
 } from "../workspaceAgentActivityService.interface.ts";
 import type { IAgentProviderStatusService } from "../agentProviderStatusService.interface.ts";
 import { planDecisionOps } from "@tutti-os/agent-gui/plan-decision-ops";
@@ -103,11 +108,42 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     string,
     DeletedSessionTombstone
   >();
+  private readonly modelCatalogInvalidatedListeners = new Set<
+    (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  >();
   private eventStreamConnectedOnce = false;
   private eventStreamStarted = false;
   private eventStreamWasDisconnected = false;
 
   constructor(dependencies: WorkspaceAgentActivityServiceDependencies) {
+    // Temporary instrumentation: surface activity-store anomalies (version
+    // regressions on unguarded write paths, stale-patch drops) in the desktop
+    // log so field exports show which channel overwrote what. The sink slot
+    // is process-global, so register once and take the workspace id from the
+    // event details (the store stamps it at the emit site) — a per-workspace
+    // closure would be overwritten by the next workspace and misattribute
+    // diagnostics.
+    setAgentActivityStoreDiagnosticSink((event, details) => {
+      const flatDetails: Record<string, string | number | boolean | null> = {};
+      for (const [key, value] of Object.entries(details)) {
+        flatDetails[key] =
+          value === null ||
+          typeof value === "string" ||
+          typeof value === "number" ||
+          typeof value === "boolean"
+            ? value
+            : JSON.stringify(value);
+      }
+      void dependencies.runtimeApi
+        .logTerminalDiagnostic({
+          details: flatDetails,
+          event: `agent.activity.store.${event}`,
+          level: "warn",
+          workspaceId:
+            typeof details.workspaceId === "string" ? details.workspaceId : null
+        })
+        .catch(() => {});
+    });
     this.dependencies = dependencies;
   }
 
@@ -126,7 +162,30 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     workspaceId: string,
     signal?: AbortSignal
   ): Promise<AgentActivitySnapshot> {
-    return this.controllerEntry(workspaceId).controller.load(signal);
+    const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    const entry = this.controllerEntry(normalizedWorkspaceId);
+    this.reportReconcileTrace({
+      agentSessionId: null,
+      traceEvent: "load.requested",
+      workspaceId: normalizedWorkspaceId,
+      fields: {
+        cachedSessionCount: entry.controller.getSnapshot().sessions.length
+      }
+    });
+    return entry.controller.load(signal).then((snapshot) => {
+      this.reportReconcileTrace({
+        agentSessionId: null,
+        traceEvent: "load.resolved",
+        workspaceId: normalizedWorkspaceId,
+        fields: {
+          newestSession: agentActivitySessionReconcileDiagnosticDetails(
+            snapshot.sessions[0] ?? null
+          ),
+          sessionCount: snapshot.sessions.length
+        }
+      });
+      return snapshot;
+    });
   }
 
   listSessionMessages(
@@ -159,6 +218,92 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         sessionCwd: input.sessionCwd?.trim() || undefined
       }
     );
+  }
+
+  async listSessionsPage(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionsPage"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionsPage"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessions(
+        workspaceId,
+        {
+          limit: input.limit,
+          searchQuery: input.searchQuery?.trim() || undefined
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      hasMore: false,
+      nextCursor: undefined,
+      sessions: response.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      ),
+      workspaceId: response.workspaceId
+    };
+  }
+
+  async listSessionSections(
+    input: Parameters<IWorkspaceAgentActivityService["listSessionSections"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionSections"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSections(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          limitPerSection: input.limitPerSection
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      sections: response.sections.map((section) => ({
+        hasMore: section.hasMore,
+        kind: section.kind,
+        nextCursor: section.nextCursor,
+        sectionKey: section.sectionKey,
+        sessions: section.sessions.map((session) =>
+          agentActivitySessionFromTuttidSession(workspaceId, session)
+        ),
+        userProject: section.userProject
+      })),
+      workspaceId: response.workspaceId
+    };
+  }
+
+  async listSessionSectionPage(
+    input: Parameters<
+      IWorkspaceAgentActivityService["listSessionSectionPage"]
+    >[0]
+  ): ReturnType<IWorkspaceAgentActivityService["listSessionSectionPage"]> {
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const response =
+      await this.dependencies.tuttidClient.listWorkspaceAgentSessionSectionPage(
+        workspaceId,
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          cursor: input.cursor?.trim() || undefined,
+          limit: input.limit,
+          sectionKey: input.sectionKey
+        },
+        {
+          signal: input.signal
+        }
+      );
+    return {
+      hasMore: response.section.hasMore,
+      kind: response.section.kind,
+      nextCursor: response.section.nextCursor,
+      sectionKey: response.section.sectionKey,
+      sessions: response.section.sessions.map((session) =>
+        agentActivitySessionFromTuttidSession(workspaceId, session)
+      ),
+      userProject: response.section.userProject
+    };
   }
 
   async scanExternalSessionImports(
@@ -208,7 +353,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId,
       session
     );
-    this.upsertAuthoritativeSession(activitySession);
+    this.upsertAuthoritativeSession(activitySession, "pin_result");
     return activitySession;
   }
 
@@ -262,7 +407,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       event: "activity_service.create.entered",
       metadata: input.metadata,
       provider: input.provider,
-      workspaceId: input.workspaceId
+      workspaceId: input.workspaceId,
+      fields: { agentTargetId: input.agentTargetId ?? null }
     });
     const entry = this.controllerEntry(input.workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -270,9 +416,17 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       event: "activity_service.create.adapter_requested",
       metadata: input.metadata,
       provider: input.provider,
-      workspaceId: input.workspaceId
+      workspaceId: input.workspaceId,
+      fields: { agentTargetId: input.agentTargetId ?? null }
     });
-    const session = await entry.adapter.createSession(input);
+    const sessionInput = withNoProjectRuntimeContext(
+      input,
+      this.dependencies.workspaceUserProjectService
+    );
+    const adapterInput = sessionInput.agentTargetId
+      ? { ...sessionInput, providerTargetRef: null }
+      : sessionInput;
+    const session = await entry.adapter.createSession(adapterInput);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       event: "activity_service.create.adapter_resolved",
@@ -281,7 +435,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId,
       fields: { sessionStatus: session.status }
     });
-    this.upsertAuthoritativeSession(session);
+    this.upsertAuthoritativeSession(session, "create_session_result");
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
       event: "activity_service.create.resolved",
@@ -306,7 +460,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       metadata: input.metadata,
       provider,
       workspaceId,
-      fields: { mode: input.mode }
+      fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
     });
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
@@ -332,7 +486,10 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         metadata: input.metadata,
         provider,
         workspaceId,
-        fields: { cwd: resolvedCwd?.cwd ?? null }
+        fields: {
+          agentTargetId: input.agentTargetId ?? null,
+          cwd: resolvedCwd?.cwd ?? null
+        }
       });
     }
     let session: AgentActivitySession;
@@ -344,11 +501,13 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         event: "activity_service.activate.create_requested",
         metadata: input.metadata,
         provider,
-        workspaceId
+        workspaceId,
+        fields: { agentTargetId: input.agentTargetId ?? null }
       });
       session = await this.createSession({
         workspaceId,
         agentSessionId: requestedAgentSessionId,
+        ...(input.agentTargetId ? { agentTargetId: input.agentTargetId } : {}),
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
@@ -357,8 +516,13 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
         provider,
-        providerTargetRef: input.providerTargetRef ?? null,
+        ...(input.agentTargetId
+          ? {}
+          : { providerTargetRef: input.providerTargetRef ?? null }),
         reasoningEffort: input.settings?.reasoningEffort ?? null,
+        ...(resolvedCwd?.noProject
+          ? { runtimeContext: { noProject: true } }
+          : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
         visible: input.visible ?? true
@@ -471,7 +635,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
             optimisticUpdatedAtUnixMs
           )
         : result.session;
-      this.upsertAuthoritativeSession(nextSession);
+      this.upsertAuthoritativeSession(nextSession, "send_input_result");
       return {
         ...result,
         session: nextSession
@@ -481,7 +645,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         previousSession &&
         !this.isSessionTombstoned(workspaceId, agentSessionId)
       ) {
-        entry.controller.upsertSession(previousSession);
+        this.upsertControllerSession({
+          agentSessionId,
+          session: previousSession,
+          source: "send_input_rollback",
+          workspaceId
+        });
       }
       throw error;
     }
@@ -505,7 +674,16 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivityCancelSessionResult> {
     const entry = this.controllerEntry(input.workspaceId);
     const result = await entry.adapter.cancelSession(input);
-    this.upsertAuthoritativeSession(result.session);
+    this.upsertAuthoritativeSession(result.session, "cancel_result");
+    return result;
+  }
+
+  async goalControl(
+    input: Parameters<AgentActivityAdapter["goalControl"]>[0]
+  ): Promise<AgentActivityGoalControlResult> {
+    const entry = this.controllerEntry(input.workspaceId);
+    const result = await entry.adapter.goalControl(input);
+    this.upsertAuthoritativeSession(result.session, "goal_control_result");
     return result;
   }
 
@@ -580,13 +758,15 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
   ): Promise<AgentActivitySession> {
     const activitySession = await this.fetchActivitySession(
       workspaceId,
-      agentSessionId
+      agentSessionId,
+      "get_session"
     );
-    this.upsertAuthoritativeSession(activitySession);
+    this.upsertAuthoritativeSession(activitySession, "get_session_result");
     return activitySession;
   }
 
   async getComposerOptions(input: {
+    agentTargetId?: string | null;
     cwd?: string | null;
     force?: boolean;
     provider?: string;
@@ -598,6 +778,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     return this.controllerEntry(
       input.workspaceId
     ).controller.loadComposerOptions({
+      agentTargetId: input.agentTargetId,
       provider,
       cwd: input.cwd,
       force: input.force,
@@ -678,7 +859,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     agentSessionId: string;
     cwd: string | null | undefined;
     workspaceId: string;
-  }): Promise<{ cwd: string | null }> {
+  }): Promise<{ cwd: string | null; noProject: boolean }> {
     const trimmed = input.cwd?.trim() ?? "";
     if (!trimmed) {
       const directory =
@@ -691,39 +872,130 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       this.dependencies.workspaceUserProjectService?.rememberNoProjectPath(
         directory?.path
       );
-      return { cwd: directory?.path ?? null };
+      return { cwd: directory?.path ?? null, noProject: true };
     }
     if (trimmed !== "/") {
-      return { cwd: trimmed };
+      return { cwd: trimmed, noProject: false };
     }
     const response =
       await this.dependencies.tuttidClient.listWorkspaceFileDirectory(
         input.workspaceId,
         {}
       );
-    return { cwd: response.root };
+    return { cwd: response.root, noProject: false };
   }
 
   private async fetchActivitySession(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    source: string
   ): Promise<AgentActivitySession> {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: `${source}.requested`,
+      workspaceId: normalizedWorkspaceId
+    });
     const session =
       await this.dependencies.tuttidClient.getWorkspaceAgentSession(
         normalizedWorkspaceId,
         agentSessionId
       );
-    return agentActivitySessionFromTuttidSession(
+    const activitySession = agentActivitySessionFromTuttidSession(
       normalizedWorkspaceId,
       session
     );
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: `${source}.resolved`,
+      workspaceId: normalizedWorkspaceId,
+      fields: {
+        incomingSession:
+          agentActivitySessionReconcileDiagnosticDetails(activitySession)
+      }
+    });
+    return activitySession;
   }
 
-  private upsertAuthoritativeSession(session: AgentActivitySession): void {
+  private upsertAuthoritativeSession(
+    session: AgentActivitySession,
+    source: string
+  ): void {
     const workspaceId = normalizeWorkspaceId(session.workspaceId);
     this.clearSessionTombstone(workspaceId, session.agentSessionId);
-    this.controllerEntry(workspaceId).controller.upsertSession(session);
+    this.upsertControllerSession({
+      agentSessionId: session.agentSessionId,
+      session,
+      source,
+      workspaceId
+    });
+  }
+
+  private upsertControllerSession(input: {
+    agentSessionId: string;
+    session: AgentActivitySession;
+    source: string;
+    workspaceId: string;
+  }): void {
+    const entry = this.controllerEntry(input.workspaceId);
+    const beforeSession =
+      entry.controller
+        .getSnapshot()
+        .sessions.find(
+          (session) => session.agentSessionId === input.agentSessionId
+        ) ?? null;
+    this.reportReconcileTrace({
+      agentSessionId: input.agentSessionId,
+      traceEvent: input.source,
+      workspaceId: input.workspaceId,
+      fields: {
+        beforeSession:
+          agentActivitySessionReconcileDiagnosticDetails(beforeSession),
+        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
+          input.session
+        )
+      }
+    });
+    entry.controller.upsertSession(input.session);
+    const afterSession =
+      entry.controller
+        .getSnapshot()
+        .sessions.find(
+          (session) => session.agentSessionId === input.agentSessionId
+        ) ?? null;
+    this.reportReconcileTrace({
+      agentSessionId: input.agentSessionId,
+      traceEvent: `${input.source}.applied`,
+      workspaceId: input.workspaceId,
+      fields: {
+        afterSession:
+          agentActivitySessionReconcileDiagnosticDetails(afterSession)
+      }
+    });
+  }
+
+  private reportReconcileTrace(input: {
+    agentSessionId: string | null;
+    traceEvent: string;
+    workspaceId: string;
+    fields?: Record<string, unknown>;
+  }): void {
+    try {
+      void this.dependencies.runtimeApi
+        .logTerminalDiagnostic({
+          details: {
+            agentSessionId: input.agentSessionId,
+            traceEvent: input.traceEvent,
+            ...(input.fields ?? {})
+          },
+          event: "agent.activity.reconcile.trace",
+          level: "info",
+          workspaceId: input.workspaceId
+        })
+        .catch(() => {});
+    } catch {
+      // Diagnostic logging must not affect agent activity reconciliation.
+    }
   }
 
   private markSessionDeleted(input: {
@@ -777,6 +1049,33 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
   }
 
+  onModelCatalogInvalidated(
+    listener: (event: WorkspaceAgentModelCatalogInvalidatedEvent) => void
+  ): () => void {
+    this.modelCatalogInvalidatedListeners.add(listener);
+    return () => {
+      this.modelCatalogInvalidatedListeners.delete(listener);
+    };
+  }
+
+  private handleModelCatalogInvalidated(
+    event: WorkspaceAgentModelCatalogInvalidatedEvent
+  ): void {
+    // Drop cached composer options in every workspace controller first so a
+    // listener-triggered (or later non-forced) load refetches from the daemon.
+    for (const entry of this.controllerEntries.values()) {
+      entry.controller.invalidateComposerOptions({
+        providers: event.providers
+      });
+    }
+    for (const listener of this.modelCatalogInvalidatedListeners) {
+      listener({
+        providers: [...event.providers],
+        occurredAtUnixMs: event.occurredAtUnixMs
+      });
+    }
+  }
+
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.dependencies.eventStreamClient;
     if (!eventStreamClient) {
@@ -806,6 +1105,14 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       return;
     }
     this.eventStreamStarted = true;
+    // Global (scope-less) topic: the daemon invalidates its model catalog when
+    // provider auth/config files change on disk (for example via cc-switch).
+    eventStreamClient.subscribe("agent.model.catalog.invalidated", (event) => {
+      this.handleModelCatalogInvalidated({
+        providers: [...event.payload.providers],
+        occurredAtUnixMs: event.payload.occurredAtUnixMs
+      });
+    });
     eventStreamClient.subscribeConnectionState((state) => {
       if (state === "disconnected") {
         if (this.eventStreamConnectedOnce) {
@@ -1071,14 +1378,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     const messages =
       entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
-    const session = await this.fetchActivitySession(
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: "reconcile.combined.messages_requested",
       workspaceId,
-      agentSessionId
-    );
-    if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
-      entry.controller.removeSession(agentSessionId);
-      return;
-    }
+      fields: { afterVersion }
+    });
     const page = await entry.controller.listSessionMessages({
       agentSessionId,
       afterVersion
@@ -1087,10 +1392,34 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       entry.controller.removeSession(agentSessionId);
       return;
     }
-    entry.controller.upsertSession(session);
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: "reconcile.combined.messages_resolved",
+      workspaceId,
+      fields: {
+        afterVersion,
+        latestVersion: page.latestVersion,
+        messageCount: page.messages.length
+      }
+    });
     for (const message of page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
+    const session = await this.fetchActivitySession(
+      workspaceId,
+      agentSessionId,
+      "reconcile.combined.state_fetch"
+    );
+    if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
+      entry.controller.removeSession(agentSessionId);
+      return;
+    }
+    this.upsertControllerSession({
+      agentSessionId,
+      session,
+      source: "reconcile.combined.state_upsert",
+      workspaceId
+    });
     const reconciledMessages =
       entry.controller.getSnapshot().sessionMessagesById[agentSessionId] ??
       page.messages;
@@ -1111,6 +1440,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     const messages =
       entry.controller.getSnapshot().sessionMessagesById[agentSessionId];
     const afterVersion = reconcileAfterVersion(messages ?? []);
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: "reconcile.messages.requested",
+      workspaceId,
+      fields: { afterVersion }
+    });
     const page = await entry.controller.listSessionMessages({
       agentSessionId,
       afterVersion
@@ -1119,6 +1454,16 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       entry.controller.removeSession(agentSessionId);
       return;
     }
+    this.reportReconcileTrace({
+      agentSessionId,
+      traceEvent: "reconcile.messages.resolved",
+      workspaceId,
+      fields: {
+        afterVersion,
+        latestVersion: page.latestVersion,
+        messageCount: page.messages.length
+      }
+    });
     for (const message of page.messages) {
       this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
     }
@@ -1133,7 +1478,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     }
     const session = await this.fetchActivitySession(
       workspaceId,
-      agentSessionId
+      agentSessionId,
+      "reconcile.state_fetch"
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       this.controllerEntry(workspaceId).controller.removeSession(
@@ -1141,7 +1487,12 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       );
       return;
     }
-    this.controllerEntry(workspaceId).controller.upsertSession(session);
+    this.upsertControllerSession({
+      agentSessionId,
+      session,
+      source: "reconcile.state_upsert",
+      workspaceId
+    });
     const messages =
       this.controllerEntry(workspaceId).controller.getSnapshot()
         .sessionMessagesById[agentSessionId] ?? [];
@@ -1168,8 +1519,28 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       workspaceId: input.workspaceId
     });
     if (!result.applied) {
+      this.reportReconcileTrace({
+        agentSessionId: input.agentSessionId,
+        traceEvent: "inline.not_applied",
+        workspaceId: input.workspaceId,
+        fields: { eventType: input.eventType }
+      });
       return false;
     }
+    this.reportReconcileTrace({
+      agentSessionId: input.agentSessionId,
+      traceEvent: "inline.applied",
+      workspaceId: input.workspaceId,
+      fields: {
+        eventType: input.eventType,
+        incomingSession: agentActivitySessionReconcileDiagnosticDetails(
+          result.session
+        ),
+        statePatch: agentActivityStatePatchReconcileDiagnosticDetails(
+          result.statePatch
+        )
+      }
+    });
     for (const message of result.messages) {
       this.emitSessionEvent(
         input.workspaceId,
@@ -1228,6 +1599,58 @@ function reportAgentSubmitTraceDiagnostic(
   } catch {
     // Diagnostic logging must not affect agent submission.
   }
+}
+
+function agentActivitySessionReconcileDiagnosticDetails(
+  session: AgentActivitySession | null
+): Record<string, unknown> | null {
+  if (!session) {
+    return null;
+  }
+  return {
+    activeTurnId: session.turnLifecycle?.activeTurnId ?? null,
+    agentSessionId: session.agentSessionId,
+    currentPhase: session.currentPhase ?? null,
+    lastEventUnixMs: session.lastEventUnixMs ?? null,
+    messageVersion: session.messageVersion ?? null,
+    outcome: session.turnLifecycle?.outcome ?? null,
+    provider: session.provider,
+    status: session.status ?? null,
+    submitAvailabilityReason: session.submitAvailability?.reason ?? null,
+    submitAvailabilityState: session.submitAvailability?.state ?? null,
+    turnPhase: session.turnLifecycle?.phase ?? null,
+    updatedAtUnixMs: session.updatedAtUnixMs ?? null
+  };
+}
+
+function agentActivityStatePatchReconcileDiagnosticDetails(
+  patch: AgentActivityStatePatch | null
+): Record<string, unknown> | null {
+  if (!patch) {
+    return null;
+  }
+  return {
+    activeTurnId: patch.turn?.activeTurnId ?? null,
+    agentSessionId: patch.agentSessionId,
+    currentPhase: patch.currentPhase ?? null,
+    lastEventUnixMs: patch.lastEventUnixMs ?? patch.occurredAtUnixMs ?? null,
+    outcome: patch.turn?.outcome ?? null,
+    provider: patch.provider ?? null,
+    status: patch.lifecycleStatus ?? null,
+    submitAvailabilityReason:
+      patch.submitAvailability?.reason ??
+      patch.turn?.submitAvailability?.reason ??
+      null,
+    submitAvailabilityState:
+      patch.submitAvailability?.state ??
+      patch.turn?.submitAvailability?.state ??
+      null,
+    topLevelSubmitAvailabilityState: patch.submitAvailability?.state ?? null,
+    turnId: patch.turn?.turnId ?? null,
+    turnPhase: patch.turn?.phase ?? null,
+    turnSubmitAvailabilityState: patch.turn?.submitAvailability?.state ?? null,
+    updatedAtUnixMs: patch.occurredAtUnixMs ?? null
+  };
 }
 
 function stringMetadata(
@@ -1418,6 +1841,9 @@ function hostStatePatchEventFromSession(
       provider: session.provider,
       providerSessionId: session.providerSessionId ?? undefined,
       runtimeContext: session.runtimeContext ?? undefined,
+      ...(session.pendingInteractive !== undefined
+        ? { pendingInteractive: session.pendingInteractive }
+        : {}),
       title: session.title,
       ...(inferredTurnState
         ? {
@@ -1451,6 +1877,27 @@ function hostMessageEventFromCore(message: AgentActivityMessage): unknown {
       workspaceId: message.workspaceId
     },
     eventType: "message_update"
+  };
+}
+
+function withNoProjectRuntimeContext<T extends AgentActivityCreateSessionInput>(
+  input: T,
+  workspaceUserProjectService:
+    | Pick<IWorkspaceUserProjectService, "isNoProjectPath">
+    | undefined
+): T {
+  const cwd = input.cwd?.trim() ?? "";
+  const noProject =
+    !cwd || workspaceUserProjectService?.isNoProjectPath(cwd) === true;
+  if (!noProject) {
+    return input;
+  }
+  return {
+    ...input,
+    runtimeContext: {
+      ...(input.runtimeContext ?? {}),
+      noProject: true
+    }
   };
 }
 

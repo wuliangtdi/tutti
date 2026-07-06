@@ -726,6 +726,10 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
         writes.push(provider);
         return provider;
       },
+      onSetAgentConversationDetailMode: async (mode) => {
+        writes.push(mode);
+        return mode;
+      },
       onSetThemeSource: async (source) => {
         writes.push(source);
         return createTheme(source);
@@ -737,9 +741,10 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   await service.changeLocale("zh-CN");
   await service.changeDockPlacement("left");
   await service.changeDefaultAgentProvider("claude-code");
+  await service.changeAgentConversationDetailMode("general");
   await service.changeThemeSource("dark");
 
-  assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "dark"]);
+  assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
@@ -970,17 +975,72 @@ test("WorkspaceSettingsService keeps reporter clock separate from App Center inj
   ]);
 });
 
+test("WorkspaceSettingsService passes driver restarts through to the client", async () => {
+  let restartCalls = 0;
+  const restartResult = {
+    result: { success: true, output: "" },
+    status: {
+      installed: true,
+      permissions: {
+        accessibility: true,
+        screenRecording: true,
+        screenRecordingCapturable: true,
+        source: "driver-daemon" as const
+      },
+      authorization: "authorized" as const
+    }
+  };
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        restartComputerUseDriver: async () => {
+          restartCalls += 1;
+          return restartResult;
+        }
+      })
+    },
+    createDesktopPreferencesService({
+      state: createPreferencesState({})
+    }),
+    createNotificationRecorder().service
+  );
+
+  assert.deepEqual(await service.restartComputerUseDriver(), restartResult);
+  assert.equal(restartCalls, 1);
+});
+
 function createWorkspaceSettingsClient(
   overrides: Partial<DesktopWorkspaceSettingsClient>
 ): DesktopWorkspaceSettingsClient {
   return {
     checkComputerUseStatus: async () => ({
       installed: false,
-      permissions: null
+      permissions: null,
+      authorization: "unknown",
+      reason: "not-installed"
     }),
     installComputerUse: async () => ({ success: false, output: "" }),
     uninstallComputerUse: async () => ({ success: false, output: "" }),
     grantComputerUsePermissions: async () => ({ success: false, output: "" }),
+    startComputerUsePermissionGrant: async () => ({
+      id: "computer-use-permission-grant",
+      running: false,
+      startedAtUnixMs: 0,
+      elapsedMs: 0,
+      result: { success: false, output: "" }
+    }),
+    getComputerUsePermissionGrantStatus: async () => null,
+    logComputerUsePermissionDiagnostic: async () => {},
+    openComputerUsePermissionSettings: async () => undefined,
+    restartComputerUseDriver: async () => ({
+      result: { success: false, output: "" },
+      status: {
+        installed: false,
+        permissions: null,
+        authorization: "unknown",
+        reason: "not-installed"
+      }
+    }),
     clearLogs: async () => ({
       clearedFiles: 0,
       clearedPaths: [],
@@ -1021,6 +1081,7 @@ function createWorkspaceSettingsClient(
 
 function createDesktopPreferencesService(input: {
   onSetDefaultAgentProvider?: IDesktopPreferencesService["setDefaultAgentProvider"];
+  onSetAgentConversationDetailMode?: IDesktopPreferencesService["setAgentConversationDetailMode"];
   onSetAppCatalogChannel?: IDesktopPreferencesService["setAppCatalogChannel"];
   onSetBrowserUseConnectionMode?: IDesktopPreferencesService["setBrowserUseConnectionMode"];
   onSetDockIconStyle?: IDesktopPreferencesService["setDockIconStyle"];
@@ -1038,10 +1099,12 @@ function createDesktopPreferencesService(input: {
   return {
     _serviceBrand: undefined,
     store: input.state,
-    rememberAgentComposerDefaults: async () => {},
+    rememberAgentComposerDefaultsForAgentTarget: async () => {},
     rememberAgentGuiConversationRailCollapsed: async () => {},
     setAppCatalogChannel:
       input.onSetAppCatalogChannel ?? (async (channel) => channel),
+    setAgentConversationDetailMode:
+      input.onSetAgentConversationDetailMode ?? (async (mode) => mode),
     setBrowserUseConnectionMode:
       input.onSetBrowserUseConnectionMode ?? (async (mode) => mode),
     setDefaultAgentProvider:
@@ -1056,6 +1119,7 @@ function createDesktopPreferencesService(input: {
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
+    setEnableCursorAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setWorkbenchWindowSnapping:
@@ -1072,16 +1136,20 @@ function createPreferencesState(
 ): DesktopPreferencesReadableStoreState {
   return {
     agentComposerDefaultsByProvider: {},
+    agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
+    agentConversationDetailMode: "coding",
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
     changingAppCatalogChannel: null,
+    changingAgentConversationDetailMode: null,
     changingBrowserUseConnectionMode: null,
     changingDefaultAgentProvider: null,
     changingDockIconStyle: null,
     changingDockPlacement: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
+    changingEnableCursorAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1093,6 +1161,7 @@ function createPreferencesState(
     dockPlacement: "bottom",
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
+    enableCursorAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",

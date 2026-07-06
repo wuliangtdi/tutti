@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { createElement, isValidElement, cloneElement, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   MouseEvent as ReactMouseEvent,
   ReactElement,
@@ -16,6 +17,14 @@ import type {
   AgentHostRuntimeApi
 } from "./host/agentHostApi";
 import { installReactRenderLoopConsoleTrap } from "./test/reactRenderLoopConsoleTrap";
+
+const originalConsoleInfo = console.info.bind(console);
+console.info = (...args: unknown[]) => {
+  if (isSuppressedAgentGuiDiagnostic(args)) {
+    return;
+  }
+  originalConsoleInfo(...args);
+};
 
 class TestResizeObserver implements ResizeObserver {
   observe(): void {}
@@ -35,6 +44,8 @@ if (!document.elementFromPoint) {
   document.elementFromPoint = () => document.body;
 }
 
+globalThis.Event = window.Event;
+globalThis.CustomEvent = window.CustomEvent;
 HTMLCanvasElement.prototype.getContext = () => null;
 Element.prototype.scrollIntoView = () => undefined;
 Element.prototype.scrollTo = () => undefined;
@@ -143,6 +154,18 @@ vi.mock("react-medium-image-zoom", () => ({
       },
       labelUnzoom
     );
+    const modal = isOpen
+      ? createPortal(
+          createElement(
+            "span",
+            { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
+            ZoomContent
+              ? ZoomContent({ buttonUnzoom, img: modalImage, modalState })
+              : [modalImage, buttonUnzoom]
+          ),
+          document.body
+        )
+      : null;
 
     return createElement(
       "span",
@@ -166,15 +189,7 @@ vi.mock("react-medium-image-zoom", () => ({
           labelZoom
         )
       ),
-      isOpen
-        ? createElement(
-            "span",
-            { role: "dialog", className: classDialog, "data-rmiz-modal": "" },
-            ZoomContent
-              ? ZoomContent({ buttonUnzoom, img: modalImage, modalState })
-              : [modalImage, buttonUnzoom]
-          )
-        : null
+      modal
     );
   }
 }));
@@ -260,4 +275,12 @@ function installTestAgentHostApi(): void {
     }
   });
   setAgentHostApiForTests(testAgentHostApi);
+}
+
+function isSuppressedAgentGuiDiagnostic(args: readonly unknown[]): boolean {
+  const [prefix] = args;
+  return (
+    prefix === "[agent-gui] mention-lifecycle" ||
+    prefix === "[agent-gui] mention-search"
+  );
 }

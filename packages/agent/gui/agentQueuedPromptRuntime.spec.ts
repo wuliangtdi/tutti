@@ -201,6 +201,42 @@ describe("AgentQueuedPromptRuntime", () => {
     ).toEqual([]);
   });
 
+  it("keeps deprecated owner-wide claim release for compatibility", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    enqueue(runtime, "workspace-1", "session-1", ["p1"]);
+    enqueue(runtime, "workspace-1", "session-2", ["p2"]);
+
+    expect(
+      runtime.claimNextToDrain({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1",
+        ownerId: "owner-1"
+      })
+    ).not.toBeNull();
+    expect(
+      runtime.claimNextToDrain({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-2",
+        ownerId: "owner-1"
+      })
+    ).not.toBeNull();
+
+    runtime.releaseOwner("owner-1");
+
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-1"
+      }).claim
+    ).toBeNull();
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "workspace-1",
+        agentSessionId: "session-2"
+      }).claim
+    ).toBeNull();
+  });
+
   it("does not remove or promote a prompt while it is claimed", () => {
     const runtime = createAgentQueuedPromptRuntime();
     enqueue(runtime, "workspace-1", "session-1", ["p1", "p2"]);
@@ -297,30 +333,14 @@ describe("AgentQueuedPromptRuntime", () => {
     vi.useRealTimers();
   });
 
-  it("releases claims when an owner unmounts or a lease expires", () => {
+  it("releases claims when a lease expires", () => {
     vi.useFakeTimers();
     const runtime = createAgentQueuedPromptRuntime();
     enqueue(runtime, "workspace-1", "session-1", ["p1"]);
-    enqueue(runtime, "workspace-1", "session-2", ["p2"]);
-
-    const releasedByOwner = runtime.claimNextToDrain({
-      workspaceId: "workspace-1",
-      agentSessionId: "session-1",
-      ownerId: "owner-1"
-    });
-    expect(releasedByOwner).not.toBeNull();
-    runtime.releaseOwner("owner-1");
-    expect(
-      runtime.claimNextToDrain({
-        workspaceId: "workspace-1",
-        agentSessionId: "session-1",
-        ownerId: "owner-2"
-      })?.prompt.id
-    ).toBe("p1");
 
     const leased = runtime.claimNextToDrain({
       workspaceId: "workspace-1",
-      agentSessionId: "session-2",
+      agentSessionId: "session-1",
       ownerId: "owner-1",
       leaseMs: 10
     });
@@ -329,10 +349,100 @@ describe("AgentQueuedPromptRuntime", () => {
     expect(
       runtime.claimNextToDrain({
         workspaceId: "workspace-1",
-        agentSessionId: "session-2",
+        agentSessionId: "session-1",
         ownerId: "owner-2"
       })?.prompt.id
-    ).toBe("p2");
+    ).toBe("p1");
     vi.useRealTimers();
+  });
+});
+
+
+describe("queue suspension (user stop)", () => {
+  it("suspends and resumes a queue with prompts", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBe("user_stop");
+    runtime.resumeQueue({ workspaceId: "ws-1", agentSessionId: "session-1" });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBeNull();
+  });
+
+  it("keeps suspension across later enqueues", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p2")
+    });
+    expect(
+      runtime.getSessionSnapshot({
+        workspaceId: "ws-1",
+        agentSessionId: "session-1"
+      }).suspendReason
+    ).toBe("user_stop");
+  });
+
+  it("suspending an empty queue is a no-op", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    expect(Object.keys(runtime.getSnapshot().queuesByKey)).toEqual([]);
+  });
+
+  it("promotePrompt clears suspension (explicit send-now intent)", () => {
+    const runtime = createAgentQueuedPromptRuntime();
+    runtime.enqueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      prompt: prompt("p1")
+    });
+    runtime.suspendQueue({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      reason: "user_stop"
+    });
+    runtime.promotePrompt({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1",
+      promptId: "p1"
+    });
+    const queue = runtime.getSessionSnapshot({
+      workspaceId: "ws-1",
+      agentSessionId: "session-1"
+    });
+    expect(queue.suspendReason).toBeNull();
+    expect(queue.sendNextPromptId).toBe("p1");
   });
 });

@@ -3,6 +3,7 @@ package issuemanager
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -230,18 +231,38 @@ func TestIssueListCommandUsesStartupWorkspace(t *testing.T) {
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueListCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"topic-id": workspaceissues.DefaultTopicID, "status": "closed", "search": "startup", "page-size": "25"},
+		Input:      map[string]any{"topic-id": workspaceissues.DefaultTopicID, "status": "completed", "search": "startup", "page-size": "25"},
 		OutputMode: cliservice.OutputModeTable,
 		Context:    cliservice.InvokeContext{Source: "cli"},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if issues.workspaceID != "workspace-1" || issues.topicID != workspaceissues.DefaultTopicID || issues.status != "closed" || issues.search != "startup" || issues.pageSize != 25 {
+	if issues.workspaceID != "workspace-1" || issues.topicID != workspaceissues.DefaultTopicID || issues.status != "completed" || issues.search != "startup" || issues.pageSize != 25 {
 		t.Fatalf("recorded input = %#v", issues)
 	}
 	if len(output.Rows) != 1 || output.Rows[0]["id"] != "ISS-1" {
 		t.Fatalf("rows = %#v", output.Rows)
+	}
+}
+
+func TestIssueListCommandAdvertisesAndValidatesStatusAndPageSize(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newIssueListCommand()
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	status := properties["status"].(map[string]any)
+	if !reflect.DeepEqual(status["enum"], []string{"all", "not_started", "running", "pending_acceptance", "completed", "failed", "canceled"}) {
+		t.Fatalf("status schema = %#v", status)
+	}
+	pageSize := properties["page-size"].(map[string]any)
+	if pageSize["minimum"] != int64(1) || pageSize["maximum"] != int64(100) {
+		t.Fatalf("page-size schema = %#v", pageSize)
+	}
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"topic-id": workspaceissues.DefaultTopicID, "status": "open"},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), `invalid input "status": must be one of all, not_started, running, pending_acceptance, completed, failed, canceled`) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -432,6 +453,27 @@ func TestRunCompleteParsesFlexibleOutputs(t *testing.T) {
 	}
 }
 
+func TestRunCompleteCommandAdvertisesAndValidatesStatus(t *testing.T) {
+	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeIssueManager{}, nil).newRunCompleteCommand()
+	properties := command.Capability.InputSchema["properties"].(map[string]any)
+	status := properties["status"].(map[string]any)
+	if !reflect.DeepEqual(status["enum"], []string{"completed", "failed", "canceled"}) {
+		t.Fatalf("status schema = %#v", status)
+	}
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"issue-id": "ISS-1",
+			"task-id":  "TASK-1",
+			"run-id":   "RUN-1",
+			"status":   "running",
+		},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), `invalid input "status": must be one of completed, failed, canceled`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 	issues := &fakeIssueManager{}
 	command := NewProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, issues, nil).newIssueRunCreateCommand()
@@ -441,15 +483,15 @@ func TestIssueRunCreateDoesNotRequireTaskID(t *testing.T) {
 			AgentSessionID: "SESSION-1",
 		},
 		Input: map[string]any{
-			"issue-id":       "ISS-1",
-			"agent-provider": "codex",
-			"agent-user-id":  "local",
+			"issue-id":        "ISS-1",
+			"agent-target-id": "local:codex",
+			"agent-user-id":   "local",
 		},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if issues.created.AgentProvider != "codex" || issues.created.AgentSessionID != "SESSION-1" || issues.created.AgentUserID != "local" {
+	if issues.created.AgentTargetID != "local:codex" || issues.created.AgentSessionID != "SESSION-1" || issues.created.AgentUserID != "local" {
 		t.Fatalf("created = %#v", issues.created)
 	}
 	run := output.Value["run"].(map[string]any)
@@ -478,9 +520,9 @@ func TestTaskRunCreateDefaultsAgentSessionIDFromInvokeContext(t *testing.T) {
 			AgentSessionID: "SESSION-CONTEXT",
 		},
 		Input: map[string]any{
-			"issue-id":       "ISS-1",
-			"task-id":        "TASK-1",
-			"agent-provider": "codex",
+			"issue-id":        "ISS-1",
+			"task-id":         "TASK-1",
+			"agent-target-id": "local:codex",
 		},
 	})
 	if err != nil {

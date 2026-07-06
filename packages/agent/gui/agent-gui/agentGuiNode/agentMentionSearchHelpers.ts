@@ -79,7 +79,19 @@ export function buildSessionMentionItem(input: {
       providerId: "agent-session",
       entityId: input.session.agentSessionId,
       label: mentionTitle,
-      scope: { workspaceId: input.workspaceId }
+      scope: {
+        workspaceId: input.workspaceId,
+        // Captures the mentioned session's OWN agent provider (e.g.
+        // "claude-code") so opening the mention later can restore it. Without
+        // this, resolveWorkspaceMentionLinkAction() has no provider to put on
+        // the resulting open-agent-session action, and callers were falling
+        // back to defaulting it from the CURRENT/viewing node's own provider
+        // — which is wrong whenever a session is mentioned across providers
+        // (e.g. a Codex conversation @-mentioning a Claude Code session) and
+        // could overwrite the target session's stored cwd/visibility with
+        // data reported under the wrong provider context.
+        ...(sessionProvider ? { agentProvider: sessionProvider } : {})
+      }
     }),
     workspaceId: input.workspaceId,
     targetId: input.session.agentSessionId,
@@ -218,6 +230,7 @@ export const AGENT_MENTION_FILTER_TAB_ORDER = [
   "session",
   "file",
   "issue",
+  "agent",
   "app"
 ] as const satisfies readonly AgentMentionFilterId[];
 
@@ -248,6 +261,8 @@ export function groupIdsForFilter(
   filter: AgentMentionFilterId
 ): AgentMentionGroupId[] {
   switch (filter) {
+    case "agent":
+      return ["agents"];
     case "app":
       return ["apps"];
     case "file":
@@ -273,6 +288,9 @@ export function shouldShowEmptyGroup(
   }
   if (groupId === "apps") {
     return filter === "app";
+  }
+  if (groupId === "agents") {
+    return filter === "agent";
   }
   if (groupId === "my_sessions") {
     return filter === "session";

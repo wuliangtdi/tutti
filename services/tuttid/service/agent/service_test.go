@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
@@ -21,10 +23,11 @@ import (
 
 func TestServiceCreatesAndListsSessions(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		Title:          stringRef("Migration smoke"),
 		InitialContent: TextPromptContent("hello"),
@@ -62,14 +65,343 @@ func TestServiceCreatesAndListsSessions(t *testing.T) {
 	}
 }
 
+func TestServiceCreateResolvesProviderFromAgentTarget(t *testing.T) {
+	runtime := newFakeRuntime()
+	// Service.Create validates the Claude composer model via a hidden live
+	// discovery session (composer_live_model_discovery.go); without a
+	// populated RuntimeContext the poll loop never sees model options and
+	// spins until the test's own timeout kills it. Supply one immediately so
+	// discovery resolves on its first check, matching the pattern used by
+	// TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel below.
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			session.RuntimeContext = map[string]any{
+				"configOptions": []any{
+					map[string]any{
+						"id": "model",
+						"options": []any{
+							map[string]any{"value": "default", "name": "Default"},
+						},
+					},
+				},
+			}
+		}
+		return session
+	}
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{
+		targets: map[string]agenttargetbiz.Target{
+			agenttargetbiz.IDLocalClaudeCode: {
+				ID:            agenttargetbiz.IDLocalClaudeCode,
+				Provider:      "claude-code",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("claude-code"),
+				Name:          "Claude Code",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		// Pin the model explicitly so resolveCreateSessionModel never falls
+		// through to composerDefaultModel's readClaudeCodeConfiguredDefaultModel,
+		// which reads the *real* local Claude Code CLI config file on the
+		// machine running the test — making the test's behavior depend on
+		// whatever model happens to be configured on the developer's machine.
+		Model:          stringPointer("default"),
+		InitialContent: TextPromptContent("hello target"),
+		ProviderTargetRef: map[string]any{
+			"kind":     "local_cli",
+			"provider": "codex",
+			"targetId": "wrong-target",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Provider != "claude-code" || session.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("session provider/target = %q/%q, want claude-code/%s", session.Provider, session.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
+	}
+	// Service.Create's Claude composer model validation runs a hidden
+	// (Visible=false) discovery session start in addition to the real,
+	// user-facing session start — assert against the visible one specifically
+	// rather than assuming index/count, so this doesn't re-break if discovery
+	// internals change again.
+	var visibleStart *RuntimeStartInput
+	for i := range runtime.startCalls {
+		call := runtime.startCalls[i]
+		if call.Visible == nil || *call.Visible {
+			visibleStart = &runtime.startCalls[i]
+			break
+		}
+	}
+	if visibleStart == nil {
+		t.Fatalf("start calls = %#v, want one visible (user-facing) start call", runtime.startCalls)
+	}
+	if got := visibleStart.Provider; got != "claude-code" {
+		t.Fatalf("runtime provider = %q, want claude-code", got)
+	}
+	if got := visibleStart.AgentTargetID; got != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime agent target id = %q, want %s", got, agenttargetbiz.IDLocalClaudeCode)
+	}
+	ref := visibleStart.ProviderTargetRef
+	if ref["kind"] != agenttargetbiz.LaunchRefTypeLocalCLI ||
+		ref["provider"] != "claude-code" ||
+		ref["targetId"] != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("runtime provider target ref = %#v, want daemon-derived local_cli claude target", ref)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargetInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		input       CreateSessionInput
+		targets     map[string]agenttargetbiz.Target
+		errContains string
+	}{
+		{
+			name: "missing target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-missing",
+				AgentTargetID:  "missing-target",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target not found",
+		},
+		{
+			name: "disabled target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-disabled",
+				AgentTargetID:  "disabled-codex",
+				Provider:       "codex",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				"disabled-codex": {
+					ID:            "disabled-codex",
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Disabled Codex",
+					Enabled:       false,
+					Source:        agenttargetbiz.SourceUser,
+				},
+			},
+			errContains: "agent target is disabled",
+		},
+		{
+			name: "provider mismatch",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-mismatch",
+				AgentTargetID:  agenttargetbiz.IDLocalCodex,
+				Provider:       "claude-code",
+				InitialContent: TextPromptContent("hello"),
+			},
+			targets: map[string]agenttargetbiz.Target{
+				agenttargetbiz.IDLocalCodex: {
+					ID:            agenttargetbiz.IDLocalCodex,
+					Provider:      "codex",
+					LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+					Name:          "Codex",
+					Enabled:       true,
+					Source:        agenttargetbiz.SourceSystem,
+				},
+			},
+			errContains: "provider does not match agent target",
+		},
+		{
+			name: "missing launch authority",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-no-authority",
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: ErrInvalidArgument.Error(),
+		},
+		{
+			name: "provider target ref without agent target",
+			input: CreateSessionInput{
+				AgentSessionID: "target-session-provider-ref",
+				Provider:       "codex",
+				ProviderTargetRef: map[string]any{
+					"kind":     "shared-agent",
+					"provider": "codex",
+					"targetId": "shared-agent:codex-1",
+				},
+				InitialContent: TextPromptContent("hello"),
+			},
+			errContains: "agent target id is required",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := NewService(runtime)
+			service.AgentTargetStore = fakeAgentTargetStore{targets: tc.targets}
+
+			_, err := service.Create(context.Background(), "ws-1", tc.input)
+			if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), tc.errContains) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument containing %q", err, tc.errContains)
+			}
+			if len(runtime.startCalls) != 0 {
+				t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
+			}
+		})
+	}
+}
+
+func TestServiceCreatePassesNormalizedConversationDetailModeToRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "empty defaults to coding", mode: "", want: "coding"},
+		{name: "general is preserved", mode: "general", want: "general"},
+		{name: "invalid defaults to coding", mode: "daily", want: "coding"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			runtime := newFakeRuntime()
+			service := newTestService(runtime)
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID:         "session-" + strings.ReplaceAll(tc.name, " ", "-"),
+				AgentTargetID:          agenttargetbiz.IDLocalCodex,
+				Provider:               "codex",
+				ConversationDetailMode: tc.mode,
+				InitialContent:         TextPromptContent("hello"),
+			})
+			if err != nil {
+				t.Fatalf("Create returned error: %v", err)
+			}
+			if len(runtime.startCalls) != 1 {
+				t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+			}
+			if got := runtime.startCalls[0].ConversationDetailMode; got != tc.want {
+				t.Fatalf("runtime conversationDetailMode = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetLookup{
+		targets: map[string]agenttargetbiz.Target{
+			"local-codex": {
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "target-session-1",
+		AgentTargetID:  "local-codex",
+		Provider:       "codex",
+		ProviderTargetRef: map[string]any{
+			"kind":     "client-supplied",
+			"provider": "codex",
+			"targetId": "ignored-client-ref",
+		},
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if got := runtime.startCalls[0].Provider; got != "codex" {
+		t.Fatalf("runtime provider = %q, want codex", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "local_cli" {
+		t.Fatalf("provider target ref kind = %#v, want local_cli", got)
+	}
+	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
+		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
+	}
+}
+
+func TestServiceCreateRejectsInvalidAgentTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		agentTargetID   string
+		requestProvider string
+		target          agenttargetbiz.Target
+	}{
+		{
+			name:            "disabled target",
+			agentTargetID:   "local-codex",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       false,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "request provider mismatch",
+			agentTargetID:   "local-codex",
+			requestProvider: "claude-code",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+		{
+			name:            "target not found",
+			agentTargetID:   "missing-target",
+			requestProvider: "codex",
+			target: agenttargetbiz.Target{
+				ID:            "local-codex",
+				Provider:      "codex",
+				LaunchRefJSON: agenttargetbiz.MustLocalCLILaunchRefJSON("codex"),
+				Name:          "Codex",
+				Enabled:       true,
+				Source:        agenttargetbiz.SourceSystem,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := NewService(newFakeRuntime())
+			service.AgentTargetStore = fakeAgentTargetLookup{
+				targets: map[string]agenttargetbiz.Target{
+					tc.target.ID: tc.target,
+				},
+			}
+
+			_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+				AgentSessionID: "target-session-invalid",
+				AgentTargetID:  tc.agentTargetID,
+				Provider:       tc.requestProvider,
+				InitialContent: TextPromptContent("hello"),
+			})
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+}
+
 func TestServiceCreateReportsNodeResults(t *testing.T) {
 	runtime := newFakeRuntime()
 	reporter := &recordingAgentAnalyticsReporter{}
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.AnalyticsReporter = reporter
 
 	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	}); err != nil {
@@ -143,6 +475,80 @@ func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testi
 	if result.ImportedSessions != 0 || result.ImportedProjects != 0 {
 		t.Fatalf("import result = %#v, want nothing imported", result)
 	}
+}
+
+// TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport
+// covers the case where a project's only session is a real, valid import
+// candidate but the store write itself fails (a transient error, a write
+// timeout, etc.). Previously ImportExternalSessions recorded the project path
+// as "valid" before attempting the import, so a failed write still surfaced
+// the project in ProjectPaths — and since registerExternalImportUserProjects
+// registers every path ProjectPaths contains, that produced a folder card
+// with no chats under it. The project must only be reported once at least one
+// of its sessions actually lands in the store without error.
+func TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project-a")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-a.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-a", "cwd": project},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-a-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "A prompt"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = failingReportSessionMessagesStore{Repository: store}
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
+		t.Fatalf("import result = %#v, want no registered project paths when the only session fails to import", result)
+	}
+	if result.ImportedSessions != 0 || result.ImportedMessages != 0 {
+		t.Fatalf("import result = %#v, want nothing counted as imported", result)
+	}
+	if len(result.Errors) == 0 {
+		t.Fatalf("import result = %#v, want the store failure recorded as an import error", result)
+	}
+}
+
+// failingReportSessionMessagesStore wraps a real agentactivitybiz.Repository
+// but forces ReportSessionMessages to fail, simulating a transient store
+// error (write timeout, disk full, etc.) after the session shell itself may
+// already have been created by ReportSessionState.
+type failingReportSessionMessagesStore struct {
+	agentactivitybiz.Repository
+}
+
+func (failingReportSessionMessagesStore) ReportSessionMessages(context.Context, agentactivitybiz.SessionMessageReport) (agentactivitybiz.MessageReportResult, error) {
+	return agentactivitybiz.MessageReportResult{}, errors.New("simulated store failure")
 }
 
 func TestServiceExternalImportValidProjectPaths(t *testing.T) {
@@ -296,6 +702,168 @@ func TestExternalSessionProjectPathUsesGitRoot(t *testing.T) {
 	}
 }
 
+// writeExternalImportGitWorktreeFixture creates a fake main git checkout and
+// a linked worktree of it, matching the on-disk layout `git worktree add`
+// produces (a `.git` *file* at the worktree root pointing at
+// "<main>/.git/worktrees/<name>", whose own `commondir` file points back at
+// the shared/main .git directory), so tests can exercise worktree-to-main
+// resolution without shelling out to a real git binary.
+func writeExternalImportGitWorktreeFixture(t *testing.T, root string, name string) (mainRoot string, worktreeRoot string) {
+	t.Helper()
+	mainRoot = filepath.Join(root, "main-checkout")
+	worktreeRoot = filepath.Join(root, "worktrees", name)
+	worktreeMetaDir := filepath.Join(mainRoot, ".git", "worktrees", name)
+	if err := os.MkdirAll(filepath.Join(mainRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create main .git dir error = %v", err)
+	}
+	if err := os.MkdirAll(worktreeMetaDir, 0o755); err != nil {
+		t.Fatalf("create worktree metadata dir error = %v", err)
+	}
+	if err := os.MkdirAll(worktreeRoot, 0o755); err != nil {
+		t.Fatalf("create worktree root error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeMetaDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+		t.Fatalf("write commondir error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeMetaDir, "gitdir"), []byte(filepath.Join(worktreeRoot, ".git")+"\n"), 0o644); err != nil {
+		t.Fatalf("write gitdir error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(worktreeRoot, ".git"), []byte("gitdir: "+worktreeMetaDir+"\n"), 0o644); err != nil {
+		t.Fatalf("write worktree .git pointer error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(mainRoot); ok {
+		mainRoot = canonical
+	}
+	if canonical, ok := canonicalExistingDir(worktreeRoot); ok {
+		worktreeRoot = canonical
+	}
+	return mainRoot, worktreeRoot
+}
+
+func TestResolveExternalImportWorktreeCwdResolvesToMainCheckout(t *testing.T) {
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+	nested := filepath.Join(worktreeRoot, "apps", "foo")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("create nested worktree dir error = %v", err)
+	}
+
+	resolvedRoot, ok := resolveExternalImportWorktreeCwd(worktreeRoot)
+	if !ok || resolvedRoot != mainRoot {
+		t.Fatalf("resolveExternalImportWorktreeCwd(root) = %q, %v; want main checkout %q", resolvedRoot, ok, mainRoot)
+	}
+
+	resolvedNested, ok := resolveExternalImportWorktreeCwd(nested)
+	wantNested := filepath.Join(mainRoot, "apps", "foo")
+	if !ok || resolvedNested != wantNested {
+		t.Fatalf("resolveExternalImportWorktreeCwd(nested) = %q, %v; want %q", resolvedNested, ok, wantNested)
+	}
+
+	// A normal (non-worktree) checkout must be left unresolved: its `.git`
+	// is a real directory, not a worktree pointer file.
+	normalRoot := filepath.Join(root, "normal-repo")
+	if err := os.MkdirAll(filepath.Join(normalRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create normal repo .git dir error = %v", err)
+	}
+	if _, ok := resolveExternalImportWorktreeCwd(normalRoot); ok {
+		t.Fatalf("resolveExternalImportWorktreeCwd(normalRoot) resolved a normal checkout, want unresolved")
+	}
+}
+
+func TestExternalSessionProjectPathResolvesLinkedWorktreeToMainCheckout(t *testing.T) {
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+
+	got, ok := externalSessionProjectPath(externalImportedSession{
+		Provider: "codex",
+		Cwd:      worktreeRoot,
+	})
+	if !ok || got != mainRoot {
+		t.Fatalf(
+			"externalSessionProjectPath() = %q, %v; want the main checkout root %q, not the ephemeral worktree path %q",
+			got, ok, mainRoot, worktreeRoot,
+		)
+	}
+}
+
+// TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProject
+// reproduces the reported bug: a Codex session that ran inside a per-task
+// worktree of the user's "tsh" project (e.g.
+// ~/.codex/worktrees/8db5/tsh, a linked worktree of ~/Documents/New
+// project/tsh) got imported and stranded in the ungrouped "对话" bucket
+// instead of being grouped under the already-registered "tsh" project,
+// because the worktree checkout's own `.git` file made it look like an
+// independent project root distinct from the main checkout. Once resolved,
+// the imported session's project path — and its persisted cwd, which the
+// GUI uses to group conversations under project folders — must match the
+// main checkout, not the worktree.
+func TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProject(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	mainRoot, worktreeRoot := writeExternalImportGitWorktreeFixture(t, root, "8db5-tsh")
+
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatalf("create home error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "worktree-session.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "worktree-session", "cwd": worktreeRoot},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "worktree-session-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Send greeting"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	// The user already has "tsh" registered as a project at the main
+	// checkout — the same setup as the report, where the real project
+	// existed and stayed empty ("暂无对话") while the worktree-run session
+	// surfaced in the general conversations list instead.
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: mainRoot}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	if len(result.ProjectPaths) != 1 || result.ProjectPaths[0] != mainRoot {
+		t.Fatalf(
+			"import result ProjectPaths = %#v, want [%q] (the main checkout), not the ephemeral worktree path %q",
+			result.ProjectPaths, mainRoot, worktreeRoot,
+		)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "worktree-session"))
+	if err != nil {
+		t.Fatalf("Get imported worktree session error = %v", err)
+	}
+	if session.Cwd != mainRoot {
+		t.Fatalf(
+			"session.Cwd = %q, want it resolved to the main checkout %q so the GUI groups the conversation under the existing project instead of the ungrouped bucket",
+			session.Cwd, mainRoot,
+		)
+	}
+}
+
 func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -416,6 +984,142 @@ func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing
 	}
 	if session.RuntimeContext["externalImportNoProject"] != true {
 		t.Fatalf("runtime context = %#v, want externalImportNoProject true", session.RuntimeContext)
+	}
+}
+
+func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "codex-model.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "codex-model", "cwd": project},
+		},
+		map[string]any{
+			"timestamp": now,
+			"type":      "turn_context",
+			"payload":   map[string]any{"turn_id": "turn-1", "cwd": project, "model": "gpt-5.4", "effort": "xhigh"},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "codex-model-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Use my usual settings"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: project}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-model"))
+	if err != nil {
+		t.Fatalf("Get imported Codex session error = %v", err)
+	}
+	if session.Settings.Model != "gpt-5.4" {
+		t.Fatalf("settings.Model = %q, want imported turn_context model", session.Settings.Model)
+	}
+	if session.Settings.ReasoningEffort != "xhigh" {
+		t.Fatalf("settings.ReasoningEffort = %q, want imported turn_context effort", session.Settings.ReasoningEffort)
+	}
+}
+
+func TestServiceScanCountsAndImportsSessionWithDeletedWorkingDirectory(t *testing.T) {
+	// Regression: a session whose recorded cwd no longer exists (a deleted
+	// git worktree, a cleaned-up temp dir) used to be silently dropped from
+	// the scan entirely — not counted in ScannedSessions, not offered for
+	// import, and not appearing in SkippedSessions either (it never got that
+	// far). That both undercounts what scan reports (eW5WPl sub-issue 1) and
+	// can make a substantial real conversation look empty/vanished (uOivri),
+	// since it never surfaces anywhere for the user to see or import.
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	deletedCwd := filepath.Join(root, "deleted-project")
+	if err := os.MkdirAll(deletedCwd, 0o755); err != nil {
+		t.Fatalf("create then delete cwd error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(deletedCwd); ok {
+		deletedCwd = canonical
+	}
+	if err := os.RemoveAll(deletedCwd); err != nil {
+		t.Fatalf("remove cwd error = %v", err)
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "deleted-cwd.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "deleted-cwd", "cwd": deletedCwd},
+		},
+		map[string]any{"timestamp": now, "type": "response_item", "payload": map[string]any{
+			"type": "message", "id": "deleted-cwd-1", "role": "user",
+			"content": []any{map[string]any{"type": "input_text", "text": "Still real content"}},
+		}},
+	)
+
+	service := NewService(newFakeRuntime())
+	scan, err := service.ScanExternalImports(ctx, ExternalImportScanInput{})
+	if err != nil {
+		t.Fatalf("ScanExternalImports error = %v", err)
+	}
+	if scan.ScannedSessions != 1 || scan.SkippedSessions != 0 {
+		t.Fatalf("scan = %#v, want the deleted-cwd session counted as scanned, not skipped", scan)
+	}
+	if len(scan.Sessions) != 1 || scan.Sessions[0].ProjectPath != deletedCwd {
+		t.Fatalf("scan sessions = %#v, want one session grouped under its original deleted cwd %q", scan.Sessions, deletedCwd)
+	}
+
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects: []ExternalImportProjectSelection{{Path: root}},
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
+		t.Fatalf("import result = %#v, want the deleted-cwd session imported", result)
+	}
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "deleted-cwd"))
+	if err != nil {
+		t.Fatalf("Get imported deleted-cwd session error = %v", err)
+	}
+	if session.Cwd != deletedCwd {
+		t.Fatalf("session cwd = %q, want original deleted cwd %q preserved", session.Cwd, deletedCwd)
 	}
 }
 
@@ -625,6 +1329,9 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if value(importedSession.Title) != "Plan the import" {
 		t.Fatalf("imported session title = %q, want first user message", value(importedSession.Title))
 	}
+	if importedSession.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("imported Codex agent target id = %q, want %s", importedSession.AgentTargetID, agenttargetbiz.IDLocalCodex)
+	}
 	importedMessages, err := service.ListMessages(ctx, "ws-1", codexAID, ListMessagesInput{Limit: 10})
 	if err != nil {
 		t.Fatalf("ListMessages imported session error = %v", err)
@@ -669,6 +1376,13 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	}
 	if rerun.ImportedSessions != 2 || rerun.ImportedMessages != 3 {
 		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
+	}
+	claudeSession, err := service.Get(ctx, "ws-1", externalImportedSessionID("claude-code", "claude-a"))
+	if err != nil {
+		t.Fatalf("Get imported Claude Code session error = %v", err)
+	}
+	if claudeSession.AgentTargetID != agenttargetbiz.IDLocalClaudeCode {
+		t.Fatalf("imported Claude Code agent target id = %q, want %s", claudeSession.AgentTargetID, agenttargetbiz.IDLocalClaudeCode)
 	}
 	finalRerun, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
 		Projects: []ExternalImportProjectSelection{{Path: projectA}},
@@ -726,20 +1440,24 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
+	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result: agentsidecarservice.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
 		},
+		input: &prepareInput,
 	}
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		AgentSessionID: "11111111-1111-4111-8111-111111111111",
-		Cwd:            &cwd,
-		Provider:       "codex",
-		InitialContent: TextPromptContent("hello"),
+		AgentSessionID:         "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:          agenttargetbiz.IDLocalCodex,
+		Cwd:                    &cwd,
+		Provider:               "codex",
+		ConversationDetailMode: "general",
+		InitialContent:         TextPromptContent("hello"),
 	})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -757,11 +1475,14 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	if len(start.Env) != 1 || start.Env[0] != "CODEX_HOME=/prepared/codex-home" {
 		t.Fatalf("runtime env = %#v, want prepared env", start.Env)
 	}
+	if prepareInput.ConversationDetailMode != "general" {
+		t.Fatalf("prepare conversationDetailMode = %q, want general", prepareInput.ConversationDetailMode)
+	}
 }
 
 func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -778,9 +1499,10 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "codex",
-		Model:    stringRef("gpt-6"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+		Provider:      "codex",
+		Model:         stringRef("gpt-6"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -802,7 +1524,7 @@ func TestServiceCreateRejectsInvalidCatalogModelBeforePreparingRuntime(t *testin
 
 func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.setLiveComposerModelOptions("claude-code", "ws-1", "/repo", time.Now().UTC(), []ComposerConfigOptionValue{
 		{Value: "default", Label: "Default"},
 		{Value: "sonnet", Label: "Sonnet"},
@@ -813,9 +1535,10 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("not-a-claude-model"),
-		Cwd:      stringRef("/repo"),
+		AgentTargetID: agenttargetbiz.IDLocalClaudeCode,
+		Provider:      "claude-code",
+		Model:         stringRef("not-a-claude-model"),
+		Cwd:           stringRef("/repo"),
 	})
 	if err == nil {
 		t.Fatal("Create returned nil error, want invalid model error")
@@ -835,68 +1558,9 @@ func TestServiceCreateRejectsInvalidCachedClaudeModelBeforePreparingRuntime(t *t
 	}
 }
 
-func TestServiceCreateDiscoversClaudeModelsBeforeStartingInvalidModel(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Visible == nil || *input.Visible {
-			t.Fatalf("discovery start visible = %#v, want hidden draft session", input.Visible)
-		}
-		if input.Model != "" {
-			t.Fatalf("discovery start model = %q, want empty model", input.Model)
-		}
-		session.RuntimeContext = map[string]any{
-			"configOptions": []any{
-				map[string]any{
-					"id": "model",
-					"options": []any{
-						map[string]any{"value": "default", "name": "Default"},
-						map[string]any{"value": "sonnet", "name": "Sonnet"},
-						map[string]any{"value": "mimo-v2.5-pro", "name": "MIMO V2.5 Pro"},
-					},
-				},
-			},
-		}
-		return session
-	}
-	service := NewService(runtime)
-	var prepareInput agentsidecarservice.PrepareInput
-	var cleanupCalls []agentsidecarservice.CleanupInput
-	service.RuntimePreparer = fakeRuntimePreparer{
-		input:        &prepareInput,
-		cleanupCalls: &cleanupCalls,
-	}
-
-	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
-		Provider: "claude-code",
-		Model:    stringRef("MiniMax-M2.7"),
-		Cwd:      stringRef("/repo"),
-	})
-	if err == nil {
-		t.Fatal("Create returned nil error, want invalid model error")
-	}
-	var invalidModel *InvalidModelError
-	if !errors.As(err, &invalidModel) {
-		t.Fatalf("Create error = %T %[1]v, want InvalidModelError", err)
-	}
-	if invalidModel.Provider != "claude-code" ||
-		invalidModel.Model != "MiniMax-M2.7" ||
-		!slices.Equal(invalidModel.AvailableModels, []string{"default", "sonnet", "mimo-v2.5-pro"}) {
-		t.Fatalf("invalid model error = %#v", invalidModel)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want only hidden discovery session", len(runtime.startCalls))
-	}
-	if prepareInput.Provider != "claude-code" || prepareInput.Model != "" {
-		t.Fatalf("discovery prepare input = %#v, want claude-code without requested model", prepareInput)
-	}
-	if len(cleanupCalls) == 0 {
-		t.Fatal("cleanup calls = 0, want discovery runtime cleanup")
-	}
-}
-
 func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.ModelCatalog = fakeModelCatalog{
 		result: AgentModelCatalogResult{
 			Provider: "codex",
@@ -914,6 +1578,7 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "33333333-3333-4333-8333-333333333333",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -937,11 +1602,12 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "claude-code",
@@ -962,26 +1628,20 @@ func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 
 func TestServiceCreateClampsPlanModeForProvidersWithoutCapability(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	planMode := true
 
-	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "22222222-2222-4222-8222-222222222222",
 		InitialContent: TextPromptContent("hello"),
 		PlanMode:       &planMode,
 		Provider:       "gemini",
 	})
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
+	if !errors.Is(err, ErrInvalidArgument) || !strings.Contains(err.Error(), "agent target id is required") {
+		t.Fatalf("Create error = %v, want missing agent target ErrInvalidArgument", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
-	}
-	if runtime.startCalls[0].PlanMode {
-		t.Fatal("runtime start plan mode = true, want clamped to false for gemini")
-	}
-	if session.Settings == nil || session.Settings.PlanMode {
-		t.Fatalf("session settings = %#v, want plan mode clamped to false", session.Settings)
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want 0", len(runtime.startCalls))
 	}
 }
 
@@ -989,7 +1649,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 	startErr := errors.New("start failed")
 	runtime := newFakeRuntime()
 	runtime.startErr = startErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -998,6 +1658,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "codex",
 	})
@@ -1013,7 +1674,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenStartFails(t *testing.T) {
 
 func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	prepareInput := (*agentsidecarservice.PrepareInput)(nil)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: prepareInput,
@@ -1021,6 +1682,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		InitialContent: []PromptContentBlock{{
 			Type:     "image",
 			MimeType: "image/png",
@@ -1038,7 +1700,7 @@ func TestServiceCreateRejectsInvalidContentBeforePreparingRuntime(t *testing.T) 
 
 func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	var prepareInput agentsidecarservice.PrepareInput
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
@@ -1065,6 +1727,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1096,7 +1759,7 @@ func TestServiceCreateChecksProviderAdapterBeforePreparingRuntime(t *testing.T) 
 func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "claude-code",
@@ -1116,6 +1779,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		InitialContent: TextPromptContent("hello"),
 		Provider:       "claude-code",
 	})
@@ -1129,7 +1793,7 @@ func TestServiceCreateDoesNotTreatAuthRequiredAsInstallNeeded(t *testing.T) {
 
 func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	checker := &fakeProviderAvailabilityChecker{
 		result: []ProviderAvailability{{
 			Provider: "codex",
@@ -1141,6 +1805,7 @@ func TestServiceCreateCachesProviderAvailabilityCheck(t *testing.T) {
 	for _, sessionID := range []string{"session-1", "session-2"} {
 		_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 			AgentSessionID: sessionID,
+			AgentTargetID:  agenttargetbiz.IDLocalCodex,
 			InitialContent: TextPromptContent("hello"),
 			Provider:       "codex",
 		})
@@ -1227,7 +1892,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 	execErr := errors.New("exec failed")
 	runtime := newFakeRuntime()
 	runtime.execErr = execErr
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1236,6 +1901,7 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -1257,10 +1923,11 @@ func TestServiceCreateCleansPreparedRuntimeWhenInitialPromptFails(t *testing.T) 
 
 func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID:       "session-1",
+		AgentTargetID:        agenttargetbiz.IDLocalCodex,
 		Provider:             "codex",
 		InitialContent:       TextPromptContent("real automation prompt"),
 		InitialDisplayPrompt: "Run Automation",
@@ -1295,11 +1962,12 @@ func TestServiceCreatePassesInitialDisplayPromptToRuntime(t *testing.T) {
 func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1323,12 +1991,36 @@ func TestServiceCreateEmptySessionDoesNotExec(t *testing.T) {
 	}
 }
 
-func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
+func TestServiceCreateClaudeModelValidationUsesOnlyCachedLiveModels(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 
 	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
+		Provider:       "claude-code",
+		Model:          stringRef("custom-claude-model"),
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want only real session start", len(runtime.startCalls))
+	}
+	if got := runtime.startCalls[0].AgentSessionID; got != "session-1" {
+		t.Fatalf("started session id = %q, want real session id", got)
+	}
+}
+
+func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("ordinary prompt"),
 	})
@@ -1346,10 +2038,11 @@ func TestServiceCreateDoesNotPassDerivedPromptToRuntime(t *testing.T) {
 func TestServiceUpdateVisibleUpdatesRuntimeSession(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	visible := false
 	created, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "session-1",
+		AgentTargetID:  agenttargetbiz.IDLocalClaudeCode,
 		Provider:       "claude-code",
 		Visible:        &visible,
 	})
@@ -1417,10 +2110,55 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 }
 
+func TestServiceSendInputWaitsForClaudeStartupSlotBeforeExec(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		Visible:     true,
+	}
+	service := NewService(runtime)
+	if err := service.claudeStartup().acquire(context.Background()); err != nil {
+		t.Fatalf("acquire startup lock: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.SendInput(context.Background(), "ws-1", "session-1", SendInput{
+			Content: TextPromptContent("hello"),
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("SendInput completed while startup slot held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if len(runtime.execCalls) != 0 {
+		t.Fatalf("exec calls = %d, want blocked while startup slot held", len(runtime.execCalls))
+	}
+	service.claudeStartup().release()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("SendInput error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("SendInput did not continue after startup slot release")
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1 after startup slot release", len(runtime.execCalls))
+	}
+}
+
 func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1430,6 +2168,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1454,7 +2193,7 @@ func TestServiceCreateGeneratesSessionIDBeforePreparingRuntime(t *testing.T) {
 func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput agentsidecarservice.PrepareInput
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		input: &prepareInput,
 		result: agentsidecarservice.PreparedRuntime{
@@ -1464,6 +2203,7 @@ func TestServiceCreatePassesExtraSkillsToRuntimePreparer(t *testing.T) {
 	cwd := "/user/workdir"
 
 	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1547,7 +2287,7 @@ func TestServiceGetSkillBundleRequiresRenderer(t *testing.T) {
 
 func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	cleanupCalls := make([]agentsidecarservice.CleanupInput, 0)
 	service.RuntimePreparer = fakeRuntimePreparer{
 		result:       agentsidecarservice.PreparedRuntime{Cwd: "/prepared/workdir"},
@@ -1556,6 +2296,7 @@ func TestServiceDeleteCleansPreparedRuntime(t *testing.T) {
 	cwd := "/user/workdir"
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
 		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Cwd:            &cwd,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
@@ -1638,6 +2379,48 @@ func TestServiceGetsComposerOptionsWithoutStartingRuntime(t *testing.T) {
 	capabilities, ok := options.RuntimeContext["capabilities"].([]string)
 	if !ok || !slices.Contains(capabilities, "imageInput") {
 		t.Fatalf("capabilities = %#v, want imageInput", options.RuntimeContext["capabilities"])
+	}
+}
+
+func TestServiceGetComposerOptionsResolvesProviderFromAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.CapabilityLister = &recordingComposerCapabilityLister{}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttargetbiz.IDLocalCodex,
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.Provider != "codex" {
+		t.Fatalf("provider = %q, want codex", options.Provider)
+	}
+	if options.RuntimeContext["agentTargetId"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("runtimeContext agentTargetId = %#v, want %q", options.RuntimeContext["agentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestServiceGetComposerOptionsDoesNotCarryConversationDetailMode(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Settings: ComposerSettings{
+			ConversationDetailMode: "general",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if got := options.EffectiveSettings.ConversationDetailMode; got != "" {
+		t.Fatalf("effectiveSettings.conversationDetailMode = %q, want empty", got)
+	}
+	payload := ComposerSettingsToMap(options.EffectiveSettings)
+	if _, ok := payload["conversationDetailMode"]; ok {
+		t.Fatalf("effectiveSettings payload includes conversationDetailMode: %#v", payload)
 	}
 }
 
@@ -1909,12 +2692,19 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 	if !ok || len(configOptions) < 1 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	if configOptions[0]["id"] != "effort" {
-		t.Fatalf("first config option = %#v, want effort", configOptions[0])
+	var reasoningOption map[string]any
+	for _, option := range configOptions {
+		if option["id"] == "effort" {
+			reasoningOption = option
+			break
+		}
 	}
-	reasoningOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if reasoningOption == nil {
+		t.Fatalf("configOptions = %#v, want effort option", configOptions)
+	}
+	reasoningOptions, ok := reasoningOption["options"].([]map[string]string)
 	if !ok {
-		t.Fatalf("reasoning options = %#v", configOptions[0]["options"])
+		t.Fatalf("reasoning options = %#v", reasoningOption["options"])
 	}
 	for _, option := range reasoningOptions {
 		if option["value"] == "minimal" {
@@ -1923,7 +2713,7 @@ func TestServiceGetsComposerOptionsNormalizesClaudeMinimalReasoningEffort(t *tes
 	}
 }
 
-func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
+func TestServiceGetsComposerOptionsUsesClaudeStaticModelsWithoutModelCatalog(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
@@ -1944,27 +2734,34 @@ func TestServiceGetsComposerOptionsSkipsClaudeStaticModelCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "default" {
+		t.Fatalf("effectiveSettings.model = %q, want static default", options.EffectiveSettings.Model)
 	}
 	if options.EffectiveSettings.ReasoningEffort != "high" {
 		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
 	}
-	if options.RuntimeContext["modelCatalogSource"] != nil {
-		t.Fatalf("modelCatalogSource = %#v, want nil", options.RuntimeContext["modelCatalogSource"])
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	for _, option := range configOptions {
-		if option["id"] == "model" {
-			t.Fatalf("configOptions = %#v, want no static Claude model option", configOptions)
+	if configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
+	}
+	modelOptions, ok := configOptions[0]["options"].([]map[string]string)
+	if !ok || len(modelOptions) != 4 {
+		t.Fatalf("model options = %#v, want Claude static aliases", configOptions[0]["options"])
+	}
+	for _, option := range modelOptions {
+		if option["value"] == "test-ignored" {
+			t.Fatalf("model options = %#v, want no daemon ModelCatalog models for Claude", modelOptions)
 		}
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedModel(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeWithoutWorkspaceUsesStaticModels(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := NewService(runtime)
 
@@ -1978,34 +2775,70 @@ func TestGetComposerOptionsClaudeCodeWithoutWorkspaceClearsUnverifiedSelectedMod
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty without live model verification", options.EffectiveSettings.Model)
+	if options.EffectiveSettings.Model != "claude-sonnet-4-20250514" {
+		t.Fatalf("effectiveSettings.model = %q, want requested custom model", options.EffectiveSettings.Model)
 	}
-	if options.RuntimeContext["model"] != nil {
-		t.Fatalf("runtime model = %#v, want nil without live model verification", options.RuntimeContext["model"])
+	if options.RuntimeContext["model"] != "claude-sonnet-4-20250514" {
+		t.Fatalf("runtime model = %#v, want requested custom model", options.RuntimeContext["model"])
 	}
-	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want no unverified Claude model config", options.ModelConfig)
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 5 {
+		t.Fatalf("modelConfig = %#v, want static Claude models plus requested custom model", options.ModelConfig)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
 	if !ok || len(configOptions) == 0 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
-	for _, option := range configOptions {
-		if option["id"] == "model" {
-			t.Fatalf("configOptions = %#v, want no unverified Claude model option", configOptions)
-		}
+	if configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want static Claude model option first", configOptions)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeIncludesSettingsJSONModel(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	if err := os.WriteFile(filepath.Join(configDir, "settings.json"), []byte(`{"model":"claude-opus-4-6"}`), 0o600); err != nil {
+		t.Fatalf("write Claude settings: %v", err)
+	}
+	runtime := newFakeRuntime()
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "claude-code",
+		Cwd:      "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.EffectiveSettings.Model != "claude-opus-4-6" {
+		t.Fatalf("effectiveSettings.model = %q, want settings.json model", options.EffectiveSettings.Model)
+	}
+	found := false
+	for _, option := range options.ModelConfig.Options {
+		if option.Value == "claude-opus-4-6" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("modelConfig options = %#v, want settings.json model included", options.ModelConfig.Options)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeReusesRunningSessionLiveModels(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2023,8 +2856,7 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
@@ -2036,11 +2868,11 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery", len(runtime.startCalls))
 	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %d, want no hidden discovery cleanup", len(runtime.closeCalls))
 	}
 	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
 		t.Fatalf("modelConfig = %#v, want discovered model options", options.ModelConfig)
@@ -2057,14 +2889,12 @@ func TestGetComposerOptionsClaudeCodeDiscoversLiveModels(t *testing.T) {
 func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		if input.Model != "" {
-			t.Fatalf("discovery start model = %q, want empty model", input.Model)
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2077,8 +2907,7 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
@@ -2122,57 +2951,189 @@ func TestGetComposerOptionsClaudeCodeLiveModelsSanitizesUnsupportedSelectedModel
 	}
 }
 
-func TestGetComposerOptionsClaudeCodeDeletesHiddenDiscoverySession(t *testing.T) {
+func TestGetComposerOptionsClaudeCodeSkipsDiscoveryBesideRunningSession(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	persisted := fakeSessionReader{sessions: map[string]PersistedSession{}}
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"capabilities": []any{"imageInput"},
+		},
+	}
+	service := NewService(runtime)
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery next to running session", len(runtime.startCalls))
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 4 {
+		t.Fatalf("modelConfig = %#v, want static Claude model config when running session has no models", options.ModelConfig)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "claude-static" {
+		t.Fatalf("modelCatalogSource = %#v, want claude-static", options.RuntimeContext["modelCatalogSource"])
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeSkipsStaleRunningSessionModelsAfterInvalidation(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:              "session-1",
+		WorkspaceID:     "ws-1",
+		Provider:        "claude-code",
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 100,
+		RuntimeContext: map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "sonnet",
+					"options": []any{
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+						map[string]any{"name": "Opus", "value": "opus"},
+					},
+				},
+			},
+		},
+	}
 	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
 		if input.Provider != "claude-code" {
-			return session
+			t.Fatalf("start provider = %q, want claude-code", input.Provider)
 		}
 		session.RuntimeContext = map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
-					"currentValue": "default",
+					"currentValue": "MiniMax-M2.7",
 					"options": []any{
-						map[string]any{"name": "Default", "value": "default"},
+						map[string]any{"name": "MiniMax M2.7", "value": "MiniMax-M2.7"},
 					},
 				},
 			},
 		}
-		persisted.sessions[input.WorkspaceID+":"+session.ID] = PersistedSession{
-			ID:          session.ID,
-			WorkspaceID: input.WorkspaceID,
-			Provider:    input.Provider,
-			Visible:     session.Visible,
+		return session
+	}
+	service := NewService(runtime)
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+
+	service.InvalidateLiveComposerModels("claude-code")
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want hidden discovery after invalidation", len(runtime.startCalls))
+	}
+	if got := options.ModelConfig.CurrentValue; got != "MiniMax-M2.7" {
+		t.Fatalf("current model = %q, want MiniMax-M2.7", got)
+	}
+	if len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "MiniMax-M2.7" {
+		t.Fatalf("model options = %#v, want freshly discovered MiniMax model", options.ModelConfig.Options)
+	}
+}
+
+func TestGetComposerOptionsClaudeCodeStartsHiddenDiscoveryOnceAndDeletesLater(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
+		if input.Provider != "claude-code" {
+			t.Fatalf("start provider = %q, want claude-code", input.Provider)
+		}
+		if input.Visible == nil || *input.Visible {
+			t.Fatalf("visible = %#v, want hidden discovery session", input.Visible)
+		}
+		if input.RuntimeContext["hiddenLiveModelDiscovery"] != true {
+			t.Fatalf("runtime context = %#v, want hidden discovery marker", input.RuntimeContext)
+		}
+		session.RuntimeContext = map[string]any{
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "sonnet",
+					"options": []any{
+						map[string]any{"name": "Sonnet", "value": "sonnet"},
+						map[string]any{"name": "Opus", "value": "opus"},
+					},
+				},
+			},
 		}
 		return session
 	}
 	service := NewService(runtime)
-	service.SessionReader = persisted
+	service.LiveModelDiscoveryDeleteDelay = 50 * time.Millisecond
 
-	if _, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		Provider:    "claude-code",
 		WorkspaceID: "ws-1",
 		Cwd:         "/repo",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("GetComposerOptions returned error: %v", err)
 	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want one hidden discovery", len(runtime.startCalls))
 	}
-	if len(persisted.sessions) != 0 {
-		t.Fatalf("persisted sessions = %#v, want hidden discovery session deleted", persisted.sessions)
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %#v, want no immediate hidden discovery cleanup", runtime.closeCalls)
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 2 {
+		t.Fatalf("modelConfig = %#v, want discovered Claude model config", options.ModelConfig)
+	}
+	if options.RuntimeContext["modelCatalogSource"] != "acp-live-discovery" {
+		t.Fatalf("modelCatalogSource = %#v, want acp-live-discovery", options.RuntimeContext["modelCatalogSource"])
+	}
+
+	second, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider:    "claude-code",
+		WorkspaceID: "ws-1",
+		Cwd:         "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions second returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want hidden discovery only once", len(runtime.startCalls))
+	}
+	if !second.ModelConfig.Configurable || len(second.ModelConfig.Options) != 2 {
+		t.Fatalf("second modelConfig = %#v, want cached discovered model config", second.ModelConfig)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for len(runtime.closeCalls) == 0 {
+		select {
+		case <-deadline:
+			t.Fatalf("close calls = %#v, want delayed hidden discovery cleanup", runtime.closeCalls)
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if runtime.closeCalls[0].AgentSessionID != runtime.startCalls[0].AgentSessionID {
+		t.Fatalf("close calls = %#v, want delayed cleanup for hidden discovery session %q", runtime.closeCalls, runtime.startCalls[0].AgentSessionID)
 	}
 }
 
 func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
-		}
-		session.RuntimeContext = map[string]any{
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
 			"configOptions": []any{
 				map[string]any{
 					"id":           "model",
@@ -2182,13 +3143,12 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 					},
 				},
 			},
-		}
-		return session
+		},
 	}
 	service := NewService(runtime)
 
-	for range 2 {
-		_, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+	for index := range 2 {
+		options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 			Provider:    "claude-code",
 			WorkspaceID: "ws-1",
 			Cwd:         "/repo",
@@ -2196,164 +3156,18 @@ func TestGetComposerOptionsClaudeCodeLiveModelsUsesCache(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetComposerOptions returned error: %v", err)
 		}
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1 with cache", len(runtime.startCalls))
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1 with cache", len(runtime.closeCalls))
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsFailedStartupReturnsQuickly(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider != "claude-code" {
-			return session
+		if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 1 {
+			t.Fatalf("modelConfig = %#v, want cached live models", options.ModelConfig)
 		}
-		session.Status = "failed"
-		session.LastError = "auth failed"
-		return session
-	}
-	service := NewService(runtime)
-	startedAt := time.Now()
-
-	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-failed",
-		Cwd:         "/repo",
-		Settings: ComposerSettings{
-			Model: "claude-sonnet-4-20250514",
-		},
-	})
-	if err != nil {
-		t.Fatalf("GetComposerOptions returned error: %v", err)
-	}
-	if elapsed := time.Since(startedAt); elapsed >= 400*time.Millisecond {
-		t.Fatalf("GetComposerOptions elapsed = %s, want failed discovery to return quickly", elapsed)
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1", len(runtime.closeCalls))
-	}
-	if options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 0 {
-		t.Fatalf("modelConfig = %#v, want no unverified Claude model config after failed discovery", options.ModelConfig)
-	}
-	if options.EffectiveSettings.Model != "" {
-		t.Fatalf("effectiveSettings.model = %q, want empty after failed live model verification", options.EffectiveSettings.Model)
-	}
-	if options.RuntimeContext["model"] != nil {
-		t.Fatalf("runtime model = %#v, want nil after failed live model verification", options.RuntimeContext["model"])
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsPropagatesCallerCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runtime := newFakeRuntime()
-	closed := make(chan struct{})
-	runtime.closeHook = func(RuntimeCloseInput) {
-		select {
-		case <-closed:
-		default:
-			close(closed)
+		if index == 0 {
+			delete(runtime.sessions, "ws-1:session-1")
 		}
 	}
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider == "claude-code" {
-			cancel()
-		}
-		return session
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("start calls = %d, want no hidden discovery", len(runtime.startCalls))
 	}
-	service := NewService(runtime)
-
-	_, err := service.GetComposerOptions(ctx, ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-canceled",
-		Cwd:         "/repo",
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("GetComposerOptions error = %v, want context canceled", err)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1", len(runtime.startCalls))
-	}
-	select {
-	case <-closed:
-	case <-time.After(time.Second):
-		t.Fatal("runtime close was not called after caller cancellation")
-	}
-	if len(runtime.closeCalls) != 1 {
-		t.Fatalf("close calls = %d, want 1 even on caller cancellation", len(runtime.closeCalls))
-	}
-}
-
-func TestGetComposerOptionsClaudeCodeLiveModelsSharedDiscoveryHonorsCallerCancellation(t *testing.T) {
-	runtime := newFakeRuntime()
-	firstStarted := make(chan struct{})
-	firstClosed := make(chan struct{})
-	runtime.closeHook = func(RuntimeCloseInput) {
-		select {
-		case <-firstClosed:
-		default:
-			close(firstClosed)
-		}
-	}
-	runtime.startHook = func(input RuntimeStartInput, session RuntimeSession) RuntimeSession {
-		if input.Provider == "claude-code" {
-			select {
-			case <-firstStarted:
-			default:
-				close(firstStarted)
-			}
-		}
-		return session
-	}
-	service := NewService(runtime)
-	firstCtx, cancelFirst := context.WithCancel(context.Background())
-	defer cancelFirst()
-	firstDone := make(chan error, 1)
-	go func() {
-		_, err := service.GetComposerOptions(firstCtx, ComposerOptionsInput{
-			Provider:    "claude-code",
-			WorkspaceID: "ws-shared-canceled",
-			Cwd:         "/repo",
-		})
-		firstDone <- err
-	}()
-
-	select {
-	case <-firstStarted:
-	case <-time.After(time.Second):
-		t.Fatal("first live model discovery did not start")
-	}
-
-	secondCtx, cancelSecond := context.WithCancel(context.Background())
-	cancelSecond()
-	_, err := service.GetComposerOptions(secondCtx, ComposerOptionsInput{
-		Provider:    "claude-code",
-		WorkspaceID: "ws-shared-canceled",
-		Cwd:         "/repo",
-	})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("GetComposerOptions error = %v, want context canceled for shared caller", err)
-	}
-	if len(runtime.startCalls) != 1 {
-		t.Fatalf("start calls = %d, want 1 shared live model discovery", len(runtime.startCalls))
-	}
-
-	cancelFirst()
-	select {
-	case err := <-firstDone:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("first GetComposerOptions error = %v, want context canceled", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("first live model discovery did not stop after cancellation")
-	}
-	select {
-	case <-firstClosed:
-	case <-time.After(time.Second):
-		t.Fatal("shared live model discovery did not close after cancellation")
+	if len(runtime.closeCalls) != 0 {
+		t.Fatalf("close calls = %d, want no hidden discovery cleanup", len(runtime.closeCalls))
 	}
 }
 
@@ -2376,6 +3190,36 @@ func TestServiceGetsComposerOptionsLeavesUnresolvedProviderModelUnset(t *testing
 	if capabilities, ok := options.RuntimeContext["capabilities"].([]string); ok &&
 		slices.Contains(capabilities, "imageInput") {
 		t.Fatalf("capabilities = %#v, want no imageInput", options.RuntimeContext["capabilities"])
+	}
+}
+
+func TestServiceSessionNormalizesStaleClaudeSDKImageCapability(t *testing.T) {
+	session := serviceSession(RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Settings: &ComposerSettings{
+			Model: "haiku",
+		},
+		RuntimeContext: map[string]any{
+			"adapter":      "claude-agent-sdk",
+			"capabilities": []any{"compact", "tokenUsage", "rateLimits", "planMode", "interrupt", "review"},
+		},
+		Status:          "ready",
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}, true)
+
+	capabilities, ok := session.RuntimeContext["capabilities"].([]any)
+	hasImageInput := false
+	for _, capability := range capabilities {
+		if capability == "imageInput" {
+			hasImageInput = true
+			break
+		}
+	}
+	if !ok || !hasImageInput {
+		t.Fatalf("capabilities = %#v, want imageInput", session.RuntimeContext["capabilities"])
 	}
 }
 
@@ -2700,6 +3544,38 @@ func TestActivityProjectionReportsFailedRuntimeNodeResult(t *testing.T) {
 		if got := event.Params[key]; got != want {
 			t.Fatalf("params[%q] = %#v, want %#v in %#v", key, got, want, event.Params)
 		}
+	}
+}
+
+func TestActivityProjectionSkipsFailedRuntimeNodeResultWhenStateNotApplied(t *testing.T) {
+	repo := &activityProjectionRepoStub{
+		stateResult: agentactivitybiz.StateReportResult{
+			Accepted:        true,
+			StateApplied:    false,
+			LastEventUnixMS: 200,
+		},
+	}
+	reporter := &recordingAgentAnalyticsReporter{}
+	projection := NewActivityProjection(repo)
+	projection.SetAnalyticsReporter(reporter)
+
+	_, err := projection.ReportSessionState(context.Background(), agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		Source: agentsessionstore.EventSource{
+			Provider: "codex",
+		},
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			LifecycleStatus:  "failed",
+			LastError:        "network connection disconnected",
+			OccurredAtUnixMS: 150,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	if len(reporter.events) != 0 {
+		t.Fatalf("analytics events = %d, want 0: %#v", len(reporter.events), reporter.events)
 	}
 }
 
@@ -3068,7 +3944,6 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	list, err := service.ListFiltered(context.Background(), "ws-1", ListSessionsInput{
 		SearchQuery: "mention",
 		Limit:       1,
-		VisibleOnly: true,
 	})
 	if err != nil {
 		t.Fatalf("ListFiltered returned error: %v", err)
@@ -3081,6 +3956,149 @@ func TestServiceListFilteredMatchesSearchVisibilityLimitAndUpdatedOrder(t *testi
 	}
 }
 
+func TestServiceListDeletesStalePersistedHiddenLiveModelDiscoverySession(t *testing.T) {
+	reader := fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:hidden": {
+				ID:          "hidden",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Cwd:         "/",
+				RuntimeContext: map[string]any{
+					"visible": false,
+				},
+				UpdatedAtUnixMS: time.UnixMilli(5000).UnixMilli(),
+			},
+			"ws-1:session-1": {
+				ID:              "session-1",
+				WorkspaceID:     "ws-1",
+				Provider:        "claude-code",
+				Visible:         true,
+				UpdatedAtUnixMS: time.UnixMilli(4000).UnixMilli(),
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	list, err := service.List(context.Background(), "ws-1")
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != "session-1" {
+		t.Fatalf("sessions = %#v, want only session-1", list)
+	}
+	if _, ok := reader.sessions["ws-1:hidden"]; ok {
+		t.Fatal("hidden discovery session still persisted, want deleted")
+	}
+}
+
+func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testing.T) {
+	reader := &fakeSectionReader{
+		pages: map[string]agentactivitybiz.SessionSectionPage{
+			"project:/workspace/project": {
+				SectionKey: "project:/workspace/project",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "project-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/workspace/project",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 5000,
+				}},
+				HasMore:    true,
+				NextCursor: "5000|project-session",
+			},
+			"conversations": {
+				SectionKey: "conversations",
+				Sessions: []agentactivitybiz.Session{{
+					ID:              "chat-session",
+					WorkspaceID:     "ws-1",
+					Provider:        "codex",
+					Cwd:             "/scratch/session",
+					Status:          "completed",
+					CreatedAtUnixMS: 1000,
+					UpdatedAtUnixMS: 4000,
+				}},
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:    "project-1",
+		Path:  "/workspace/project",
+		Label: "Project",
+	}}}
+
+	page, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+		AgentTargetID:   "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSections returned error: %v", err)
+	}
+	if len(page.Sections) != 2 {
+		t.Fatalf("sections = %d, want 2", len(page.Sections))
+	}
+	if page.Sections[0].Kind != "project" || page.Sections[0].SectionKey != "project:/workspace/project" {
+		t.Fatalf("project section = %#v", page.Sections[0])
+	}
+	if got, want := sessionIDs(page.Sections[0].Sessions), []string{"project-session"}; !slices.Equal(got, want) {
+		t.Fatalf("project sessions = %#v, want %#v", got, want)
+	}
+	if !page.Sections[0].HasMore || page.Sections[0].NextCursor != "5000|project-session" {
+		t.Fatalf("project page state = hasMore %v cursor %q", page.Sections[0].HasMore, page.Sections[0].NextCursor)
+	}
+	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
+		t.Fatalf("conversations section = %#v", page.Sections[1])
+	}
+	if reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader agentTargetID = %q, want claude-target", reader.lastInput.AgentTargetID)
+	}
+}
+
+func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
+	reader := &fakeSectionReader{}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID:         "project-1",
+		Path:       "/workspace/project",
+		Label:      "Project",
+		SectionKey: "project:/workspace/project",
+	}}}
+
+	section, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
+		SectionKey:    "project:/workspace/project",
+		Cursor:        "4000|middle",
+		Limit:         2,
+		AgentTargetID: "claude-target",
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSectionPage returned error: %v", err)
+	}
+	if section.Kind != "project" || section.SectionKey != "project:/workspace/project" {
+		t.Fatalf("section = %#v", section)
+	}
+	if reader.lastInput.SectionKey != "project:/workspace/project" ||
+		reader.lastInput.CursorUpdatedAtMS != 4000 ||
+		reader.lastInput.CursorSessionID != "middle" ||
+		reader.lastInput.Limit != 2 ||
+		reader.lastInput.AgentTargetID != "claude-target" {
+		t.Fatalf("reader input = %#v", reader.lastInput)
+	}
+}
+
+func sessionIDs(sessions []Session) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	return ids
+}
+
 func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 	service := NewService(newFakeRuntime())
 	service.SessionReader = fakeSessionReader{
@@ -3088,6 +4106,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-1": {
 				ID:              "session-1",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-1",
 				Provider:        "codex",
 				Status:          "working",
 				Title:           "Active work",
@@ -3097,6 +4116,7 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 			"ws-1:session-2": {
 				ID:              "session-2",
 				WorkspaceID:     "ws-1",
+				UserID:          "user-2",
 				Provider:        "claude",
 				Status:          "completed",
 				Title:           "Done",
@@ -3110,11 +4130,11 @@ func TestServiceListsActivePeersFromCanonicalSessionStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListActivePeers returned error: %v", err)
 	}
-	if len(peers.Agents) != 1 || peers.Agents[0].Session.ID != "session-1" {
+	if len(peers.Agents) != 1 {
 		t.Fatalf("peers = %#v", peers)
 	}
-	if peers.Agents[0].SelfRelation != "unknown" {
-		t.Fatalf("self relation = %q", peers.Agents[0].SelfRelation)
+	if peers.Agents[0].Session.ID != "session-1" || peers.Agents[0].SelfRelation != "unknown" {
+		t.Fatalf("peers = %#v", peers)
 	}
 	if peers.SelfKnown || !peers.MayIncludeSelf || peers.Warning != "SELF_IDENTITY_UNAVAILABLE" {
 		t.Fatalf("peer identity metadata = %#v", peers)
@@ -3147,8 +4167,9 @@ func TestServiceDeletesPersistedSession(t *testing.T) {
 
 func TestServiceDeleteClosesRuntimeSession(t *testing.T) {
 	runtime := newFakeRuntime()
-	service := NewService(runtime)
+	service := newTestService(runtime)
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
 		Provider:       "codex",
 		InitialContent: TextPromptContent("hello"),
 	})
@@ -3499,14 +4520,25 @@ func TestServiceReconcilesOpenToolCallBeforeSubmittingInteractive(t *testing.T) 
 	}
 }
 
-func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing.T) {
+func TestServiceReconcilesGhostOpenApprovalWhileBackgroundAgentsAreLive(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = RuntimeSession{
-		ID:                "session-1",
-		WorkspaceID:       "ws-1",
-		Provider:          "codex",
-		ProviderSessionID: "provider-session-1",
-		Status:            "ready",
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": float64(1),
+				"items": []any{
+					map[string]any{
+						"agentId":         "agent-1",
+						"parentToolUseId": "toolu-agent",
+						"status":          "running",
+					},
+				},
+			},
+		},
 	}
 	reconciled := make([]PersistedSession, 0)
 	service := NewService(runtime)
@@ -3514,29 +4546,97 @@ func TestServiceReconcilesStalePersistedTurnWhenRuntimeSessionIsReady(t *testing
 		reconciled: &reconciled,
 		sessions: map[string]PersistedSession{
 			"ws-1:session-1": {
-				ID:                "session-1",
-				WorkspaceID:       "ws-1",
-				Provider:          "codex",
-				ProviderSessionID: "provider-session-1",
-				Status:            "waiting",
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "idle",
 			},
 		},
 	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
 
-	if _, err := service.SubmitInteractive(
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
+	}
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want ghost open approval cleared", reconciled)
+	}
+}
+
+func TestServiceSubmitInteractiveReconcilesStaleLiveRequestError(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.submitInteractiveErr = errors.New(`interactive request "permission-1" is no longer live`)
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "ready",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "active",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			AgentSessionID: "session-1",
+			Messages: []SessionMessage{{
+				MessageID: "approval-1",
+				TurnID:    "turn-1",
+				Role:      "assistant",
+				Kind:      "tool_call",
+				Status:    "waiting_approval",
+				Payload: map[string]any{
+					"input":  map[string]any{"requestId": "permission-1"},
+					"status": "waiting_approval",
+				},
+			}},
+		},
+	}
+
+	session, err := service.SubmitInteractive(
 		context.Background(),
 		"ws-1",
 		"session-1",
 		"permission-1",
-		SubmitInteractiveInput{OptionID: stringRef("approve")},
-	); err != nil {
+		SubmitInteractiveInput{OptionID: stringRef("allow")},
+	)
+	if err != nil {
 		t.Fatalf("SubmitInteractive returned error: %v", err)
 	}
-	if len(reconciled) != 1 {
-		t.Fatalf("reconciled = %#v, want stale ready runtime session reconciled", reconciled)
+	if session.ID != "session-1" {
+		t.Fatalf("session ID = %q, want session-1", session.ID)
 	}
-	if len(runtime.submitInteractiveCalls) != 0 {
-		t.Fatalf("submit interactive calls = %#v, want skipped stale live request", runtime.submitInteractiveCalls)
+	if len(reconciled) != 1 || reconciled[0].ID != "session-1" {
+		t.Fatalf("reconciled = %#v, want stale approval cleared after no-longer-live", reconciled)
 	}
 }
 
@@ -3610,6 +4710,58 @@ func TestServiceGetReconcilesStalePersistedTurn(t *testing.T) {
 	}
 }
 
+func TestServiceGetReconcilesRuntimeWaitingWithoutLivePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "waiting",
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	reader := fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "active",
+				CurrentPhase: "waiting_approval",
+			},
+		},
+	}
+	service.SessionReader = reader
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	_, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if len(reconciled) != 1 {
+		t.Fatalf("reconciled = %#v, want stale waiting runtime session reconciled", reconciled)
+	}
+	persisted := reader.sessions["ws-1:session-1"]
+	if persisted.Status == "waiting" || persisted.CurrentPhase == "waiting_approval" {
+		t.Fatalf("persisted session = %#v, want stale waiting cleared", persisted)
+	}
+}
+
 func TestServiceReconcilesStalePersistedTurnBeforeCanceling(t *testing.T) {
 	runtime := newFakeRuntime()
 	reconciled := make([]PersistedSession, 0)
@@ -3672,6 +4824,245 @@ func TestServiceReconcilesPhaseOnlyStalePersistedTurnBeforeCanceling(t *testing.
 	}
 	if len(runtime.cancelCalls) != 0 {
 		t.Fatalf("cancel calls = %#v, want skipped stale runtime cancel", runtime.cancelCalls)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.TurnLifecycle == nil || session.TurnLifecycle.Phase != "waiting_approval" {
+		t.Fatalf("turn lifecycle = %#v, want live waiting approval", session.TurnLifecycle)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceEnsureRuntimeSessionDoesNotReconcileLiveRuntimeWaitingApprovalTurn(t *testing.T) {
+	runtime := newFakeRuntime()
+	activeTurnID := "synthetic-turn-1"
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		TurnLifecycle: &TurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting_approval",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "ExitPlanMode"},
+				},
+			}},
+		},
+	}
+
+	ensured, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("ensureRuntimeSessionResult returned error: %v", err)
+	}
+	if ensured.StaleTurnReconciled {
+		t.Fatal("stale turn reconciled = true, want false for live waiting approval turn")
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live runtime turn", reconciled)
+	}
+}
+
+func TestServiceEnsureRuntimeSessionDeletesStalePersistedHiddenLiveModelDiscoverySession(t *testing.T) {
+	reader := fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:hidden": {
+				ID:          "hidden",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Cwd:         "/",
+				RuntimeContext: map[string]any{
+					"visible": false,
+				},
+			},
+		},
+	}
+	service := NewService(newFakeRuntime())
+	service.SessionReader = reader
+
+	_, err := service.ensureRuntimeSessionResult(context.Background(), "ws-1", "hidden")
+	if !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("ensureRuntimeSessionResult error = %v, want %v", err, ErrSessionNotFound)
+	}
+	if _, ok := reader.sessions["ws-1:hidden"]; ok {
+		t.Fatal("hidden discovery session still persisted, want deleted")
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimePendingInteractive(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		PendingInteractive: &RuntimeInteractivePrompt{
+			Kind:      "exit-plan",
+			RequestID: "plan-1",
+			ToolName:  "ExitPlanMode",
+			Status:    "waiting",
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:           "session-1",
+				WorkspaceID:  "ws-1",
+				Provider:     "claude-code",
+				Status:       "ready",
+				CurrentPhase: "idle",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "waiting_approval",
+				Payload: map[string]any{
+					"input": map[string]any{
+						"requestId": "plan-1",
+						"toolName":  "ExitPlanMode",
+					},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.Status != "created" {
+		t.Fatalf("session status = %q, want live runtime status", session.Status)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile for live pending interactive", reconciled)
+	}
+}
+
+func TestServiceGetDoesNotReconcileLiveRuntimeBackgroundAgent(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		WorkspaceID: "ws-1",
+		Provider:    "claude-code",
+		Status:      "created",
+		RuntimeContext: map[string]any{
+			"backgroundAgents": map[string]any{
+				"count": 1,
+				"items": []any{map[string]any{
+					"parentToolUseId": "call-agent-1",
+					"status":          "running",
+				}},
+			},
+		},
+	}
+	reconciled := make([]PersistedSession, 0)
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{
+		reconciled: &reconciled,
+		sessions: map[string]PersistedSession{
+			"ws-1:session-1": {
+				ID:          "session-1",
+				WorkspaceID: "ws-1",
+				Provider:    "claude-code",
+				Status:      "ready",
+			},
+		},
+	}
+	service.MessageReader = fakeMessageReader{
+		page: SessionMessagesPage{
+			Messages: []SessionMessage{{
+				TurnID: "synthetic-turn-1",
+				Kind:   "tool_call",
+				Status: "streaming",
+				Payload: map[string]any{
+					"input": map[string]any{"toolName": "Read"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Get(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if session.RuntimeContext["backgroundAgents"] == nil {
+		t.Fatalf("runtime context = %#v, want backgroundAgents preserved", session.RuntimeContext)
+	}
+	if len(reconciled) != 0 {
+		t.Fatalf("reconciled = %#v, want no stale reconcile while background agent is running", reconciled)
 	}
 }
 
@@ -3860,12 +5251,29 @@ type fakeRuntime struct {
 	resumeCalls            []RuntimeResumeInput
 	sessions               map[string]RuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
+	submitInteractiveErr   error
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, RuntimeSession) RuntimeSession
 	closeHook              func(RuntimeCloseInput)
 	validateErr            error
 	validateCalls          []RuntimeExecInput
+}
+
+type fakeAgentTargetStore struct {
+	err     error
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetStore) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	if f.err != nil {
+		return agenttargetbiz.Target{}, f.err
+	}
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type fakeRuntimePreparer struct {
@@ -3943,6 +5351,20 @@ func writeAgentServiceJSONL(t *testing.T, path string, items ...map[string]any) 
 	}
 }
 
+func newTestService(runtime RuntimeController) *Service {
+	service := NewService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	return service
+}
+
+func defaultTestAgentTargets() map[string]agenttargetbiz.Target {
+	targets := make(map[string]agenttargetbiz.Target)
+	for _, target := range agenttargetbiz.DefaultSystemTargets(0) {
+		targets[target.ID] = target
+	}
+	return targets
+}
+
 type fakeMessageReader struct {
 	lastLimit  *int
 	lastTurnID *string
@@ -3968,6 +5390,40 @@ func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Con
 type fakeSessionReader struct {
 	reconciled *[]PersistedSession
 	sessions   map[string]PersistedSession
+}
+
+type fakeSectionReader struct {
+	fakeSessionReader
+	lastInput agentactivitybiz.ListSessionSectionInput
+	pages     map[string]agentactivitybiz.SessionSectionPage
+}
+
+func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
+	f.lastInput = input
+	if f.pages == nil {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page, ok := f.pages[input.SectionKey]
+	if !ok {
+		return agentactivitybiz.SessionSectionPage{
+			WorkspaceID: input.WorkspaceID,
+			SectionKey:  input.SectionKey,
+		}, true
+	}
+	page.WorkspaceID = input.WorkspaceID
+	page.SectionKey = input.SectionKey
+	return page, true
+}
+
+type fakeUserProjectReader struct {
+	projects []userprojectbiz.Project
+}
+
+func (f fakeUserProjectReader) List(context.Context) ([]userprojectbiz.Project, error) {
+	return f.projects, nil
 }
 
 func (f fakeMessageReader) ListSessionMessages(
@@ -4000,6 +5456,10 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 		return f.cancelResult, nil
 	}
 	return RuntimeCancelResult{AgentSessionID: input.AgentSessionID, Canceled: true}, nil
+}
+
+func (*fakeRuntime) GoalControl(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalControlResult, error) {
+	return RuntimeGoalControlResult{AgentSessionID: input.AgentSessionID}, nil
 }
 
 func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
@@ -4044,6 +5504,9 @@ func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExec
 
 func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) error {
 	f.submitInteractiveCalls = append(f.submitInteractiveCalls, input)
+	if f.submitInteractiveErr != nil {
+		return f.submitInteractiveErr
+	}
 	return nil
 }
 
@@ -4079,6 +5542,7 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Runti
 	f.resumeCalls = append(f.resumeCalls, input)
 	session := RuntimeSession{
 		ID:                input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
 		Provider:          input.Provider,
 		ProviderSessionID: input.ProviderSessionID,
 		Cwd:               input.Cwd,
@@ -4183,18 +5647,21 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Runtime
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	session := RuntimeSession{
-		ID:       id,
-		Provider: input.Provider,
-		Cwd:      input.Cwd,
+		ID:            id,
+		AgentTargetID: input.AgentTargetID,
+		Provider:      input.Provider,
+		Cwd:           input.Cwd,
 		Settings: &ComposerSettings{
-			Model:            input.Model,
-			PermissionModeID: input.PermissionModeID,
-			PlanMode:         input.PlanMode,
-			ReasoningEffort:  input.ReasoningEffort,
+			Model:                  input.Model,
+			PermissionModeID:       input.PermissionModeID,
+			PlanMode:               input.PlanMode,
+			ReasoningEffort:        input.ReasoningEffort,
+			ConversationDetailMode: input.ConversationDetailMode,
 		},
 		Status:          "ready",
 		Title:           input.Title,
 		Visible:         input.Visible == nil || *input.Visible,
+		RuntimeContext:  clonePayload(input.RuntimeContext),
 		WorkspaceID:     input.WorkspaceID,
 		CreatedAtUnixMS: now,
 		UpdatedAtUnixMS: now,
@@ -4210,6 +5677,18 @@ func (*fakeRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func()
 	events := make(chan RuntimeStreamEvent)
 	close(events)
 	return events, func() {}, true
+}
+
+type fakeAgentTargetLookup struct {
+	targets map[string]agenttargetbiz.Target
+}
+
+func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (agenttargetbiz.Target, error) {
+	target, ok := f.targets[strings.TrimSpace(id)]
+	if !ok {
+		return agenttargetbiz.Target{}, workspacedata.ErrAgentTargetNotFound
+	}
+	return target, nil
 }
 
 type activityProjectionRepoStub struct {
@@ -4234,6 +5713,10 @@ func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (
 
 func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agentactivitybiz.Session, bool, error) {
 	return nil, false, nil
+}
+
+func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
+	return agentactivitybiz.SessionSectionPage{}, false, nil
 }
 
 func (*activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

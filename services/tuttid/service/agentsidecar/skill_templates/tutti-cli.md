@@ -1,6 +1,6 @@
 ---
 name: tutti-cli
-description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links, Tutti CLI command syntax, and daemon context lookup when no more specific Tutti skill applies; also serves as the command reference for injected Tutti skills.
+description: Use for `mention://agent-session/<sessionId>?workspaceId=...` links, `mention://agent-target/<targetId>?workspaceId=...` links, Tutti CLI command syntax, and daemon context lookup when no more specific Tutti skill applies; also serves as the command reference for injected Tutti skills.
 ---
 
 # Tutti CLI
@@ -11,12 +11,12 @@ Use this skill as the routing and operating contract for the local Tutti CLI. It
 
 Classify the request before invoking any Tutti CLI command:
 
-1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke the `issue-manager` skill and use this skill only as its CLI reference.
-2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke the `workspace-app` skill and use this skill as its command reference.
-3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`.
+1. Workspace issue work uses `issue ...`. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
+2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
+3. Agent session work uses `agent ...`, `codex ...`, or `claude ...`. For `mention://agent-session/<sessionId>?workspaceId=...`, start with `agent session-summary --session-id <session-id> --json`. For `mention://agent-target/<targetId>?workspaceId=...`, choose the `agent`, `codex`, or `claude` workflow implied by the user's prompt; do not assume launch-only behavior.
 4. Browser automation uses `browser ...`.
 5. macOS desktop automation uses `computer ...`.
-6. If none match, read the command guide below before guessing.
+6. If none match, read `command-guide.md` before guessing.
 
 Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.
 
@@ -24,9 +24,10 @@ Completion criterion: every Tutti CLI call must be traceable to a routed family,
 
 Tutti mention links are internal handoffs. Parse them as data; do not open them with a browser, WebFetch, or web search.
 
-- `mention://workspace-issue/<issueId>?workspaceId=...`: use `issue-manager`.
-- `mention://workspace-app/<appId>?workspaceId=...`: use `workspace-app`.
+- `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
+- `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
 - `mention://agent-session/<sessionId>?workspaceId=...`: use this skill and run `agent session-summary --session-id <session-id> --json`.
+- `mention://agent-target/<targetId>?workspaceId=...`: use this skill and choose the `agent`, `codex`, or `claude` CLI workflow from the user's prompt. This can mean starting a new session, inspecting active peers or historical sessions, or another agent workflow; it is not launch-only.
 - Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
 Agent session summary JSON is compact and includes session context plus recent messages.
@@ -35,7 +36,7 @@ Agent session summary JSON is compact and includes session context plus recent m
 
 Use this protocol for every Tutti CLI command:
 
-1. Read the command guide entry for the family or command. Treat the guide as a snapshot, not a complete or permanent CLI manual.
+1. Read `command-guide.md` for the family or command. Treat the guide as a snapshot, not a complete or permanent CLI manual.
 2. If exact flags are unclear for a known command, re-check current CLI help such as `{{CLI_COMMAND}} <scope> --help` before guessing.
 3. If app-specific commands look missing or stale, refresh the command guide or skill bundle capability reference that preserves `App id:` metadata before deciding the app has no CLI support. Do not use CLI help alone to map a workspace app id to a CLI scope.
 4. Prefer `--json` whenever output becomes reasoning context, workflow state, or input to another command.
@@ -65,7 +66,7 @@ When you use a command guide example for reasoning, workflow state, or follow-up
 
 ## Dynamic Command Snapshot
 
-The command guide below is rendered when this agent runtime or skill bundle is prepared. It is a current snapshot, not a stable inventory of every command the daemon may expose later.
+`command-guide.md` is rendered when this agent runtime or skill bundle is prepared. It is a current snapshot, not a stable inventory of every command the daemon may expose later.
 
 Builtin command families are relatively stable. Workspace app command families are dynamic: an app command appears only after the app is installed, enabled, and active enough for Tutti to register its CLI capabilities. App commands may change after app install, reload, start, stop, daemon restart, or agent session refresh.
 
@@ -77,7 +78,7 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 ## Family Reference
 
-`issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `issue-manager`, not this skill.
+`issue ...` covers issue topics, issues, tasks, and issue/task run reporting. Workflow sequencing belongs to `$issue-manager`, not this skill.
 
 `agent ...`, `codex ...`, and `claude ...` cover provider discovery, composer options, session start/open/send/cancel, active peers, and session context recovery.
 
@@ -85,17 +86,17 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 `computer ...` drives the daemon-owned macOS desktop session. Prefer it over generic desktop automation when Tutti computer context is requested.
 
-Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `workspace-app` for app mention interpretation and command selection; `workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
+Workspace app scopes are discovered from command guide or capability metadata that preserves `App id:`. Use `$workspace-app` for app mention interpretation and command selection; `$workspace-app` is a skill and mention kind, not a CLI scope. Use CLI help only after the scope is known.
 
 ## Issue Guardrails
 
-Issue execution sequencing belongs to the `issue-manager` skill. Do not use this command reference alone to decide whether an issue-level execution should call `issue run create` or iterate child tasks with `issue task run create`.
+Issue execution sequencing belongs to `$issue-manager`. Do not use this command reference alone to decide whether an issue-level execution should call `issue run create` or iterate child tasks with `issue task run create`.
 
 For workspace issue breakdowns, use issue/task inspection commands plus `issue task create-batch` for multiple new child tasks, `issue task create` for one new child task, or `issue task update` for existing child tasks. `issue run create`, `issue task run create`, and their matching `complete` commands are execution-mode commands only; do not use them for breakdown-only work.
 
 ## Workspace Issue Run Reporting
 
-When creating issue runs, pass `--agent-provider` from the current AgentGUI runtime metadata below. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
+When creating issue runs, pass `--agent-target-id` from the current AgentGUI runtime metadata below. Do not pass `--agent-provider` for new runs; the daemon derives provider metadata from the target. Do not pass `--agent-session-id` during normal AgentGUI execution; the Tutti CLI binds the run to the current AgentGUI session from the runtime context. Use `--agent-session-id` only as a manual fallback if the CLI explicitly reports the session id is missing.
 
 When completing issue runs, include `--outputs` whenever the execution created or materially updated deliverable files. `--outputs` is a JSON array string; each item must include `path`, and may also include `displayName`, `title`, `mediaType`, `sizeBytes`, or `outputId`.
 
@@ -111,9 +112,16 @@ If the execution produced no file or URL artifact, complete the run with a clear
 
 The Tutti CLI communicates with the local Tutti daemon over localhost/IPC. Run Tutti CLI commands in an execution environment that can access the user's local host daemon and the injected Tutti CLI path. If your provider offers multiple command environments or permission modes, choose the one that permits localhost/IPC access for this CLI. Do not modify global sandbox settings yourself. If no such environment is available, explain that the local Tutti daemon is not accessible from the current execution environment.
 
-## Commands
+## Command Reference
 
-{{COMMAND_GUIDE}}
+Available first-level `{{CLI_COMMAND}}` subcommands:
+
+{{COMMAND_SUMMARY}}
+
+For syntax/flags, use `{{CLI_COMMAND}} <scope> --help` or `{{CLI_COMMAND}} <scope> <command> --help`.
+
+For app id mapping, read this skill's `command-guide.md`; it preserves `App id:` metadata.
 
 The current AgentGUI session is `{{AGENT_SESSION_ID}}`.
+The current AgentGUI agent target id is `{{AGENT_TARGET_ID}}`.
 The current AgentGUI provider is `{{AGENT_PROVIDER}}`.

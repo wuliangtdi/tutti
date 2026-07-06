@@ -8,6 +8,7 @@ export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
   | "agent.activity.updated"
+  | "agent.model.catalog.invalidated"
   | "analytics.debug.reported"
   | "preferences.desktop.update.requested"
   | "preferences.desktop.updated"
@@ -45,46 +46,71 @@ export interface PreferencesDesktopPreferencesV1 {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     codex?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
+    };
+    cursor?: {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
     };
     nexight?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     gemini?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     hermes?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
     openclaw?: {
       model?: string;
       permissionModeId?: string;
       reasoningEffort?: string;
+      speed?: string;
     };
   };
+  agentComposerDefaultsByAgentTarget?: Record<
+    string,
+    {
+      model?: string;
+      permissionModeId?: string;
+      reasoningEffort?: string;
+      speed?: string;
+    }
+  >;
   agentGuiConversationRailCollapsedByProvider: {
     "claude-code"?: boolean;
     codex?: boolean;
+    cursor?: boolean;
     nexight?: boolean;
     gemini?: boolean;
     hermes?: boolean;
     openclaw?: boolean;
   };
+  agentConversationDetailMode: "coding" | "general";
+  agentDockLayout: "legacySplit" | "unified";
   appCatalogChannel: "production" | "staging";
   browserUseConnectionMode?: "isolated" | "autoConnect";
   defaultAgentProvider:
     | "claude-code"
     | "codex"
+    | "cursor"
     | "nexight"
     | "gemini"
     | "hermes"
@@ -99,6 +125,7 @@ export interface PreferencesDesktopPreferencesV1 {
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
+  enableCursorAgent: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";
@@ -124,6 +151,7 @@ export interface WorkspaceWorkspaceAppFactoryJobV1 {
   appId: string | null;
   displayName: string;
   description: string | null;
+  agentTargetId: string | null;
   provider: string | null;
   model: string | null;
   reasoningEffort: string | null;
@@ -191,6 +219,7 @@ export type AgentActivityUpdatedPayloadV1 =
       data: {
         workspaceId: string;
         agentSessionId: string;
+        agentTargetId?: string;
         eventType: "session_update";
         lastEventUnixMs: number;
       };
@@ -245,6 +274,7 @@ export type AgentActivityUpdatedPayloadV1 =
         lastEventUnixMs: number;
         occurredAtUnixMs?: number;
         provider?: string;
+        agentTargetId?: string;
         providerSessionId?: string;
         model?: string;
         cwd?: string;
@@ -254,6 +284,11 @@ export type AgentActivityUpdatedPayloadV1 =
         lastError?: string;
         startedAtUnixMs?: number;
         endedAtUnixMs?: number;
+        runtimeContext?: Record<string, unknown>;
+        submitAvailability?: {
+          state: string;
+          reason?: string;
+        };
         turn?: {
           turnId: string;
           phase?: string;
@@ -261,9 +296,18 @@ export type AgentActivityUpdatedPayloadV1 =
           fileChanges?: unknown;
           startedAtUnixMs?: number;
           completedAtUnixMs?: number;
+          submitAvailability?: {
+            state: string;
+            reason?: string;
+          };
         };
       };
     };
+
+export interface AgentModelCatalogInvalidatedPayloadV1 {
+  providers: readonly string[];
+  occurredAtUnixMs: number;
+}
 
 export interface AnalyticsDebugReportedPayloadV1 {
   events: readonly {
@@ -324,6 +368,12 @@ export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type AgentModelCatalogInvalidatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.model.catalog.invalidated",
+  AgentModelCatalogInvalidatedPayloadV1,
+  1
+>;
+
 export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   "analytics.debug.reported",
   AnalyticsDebugReportedPayloadV1,
@@ -371,6 +421,7 @@ export type ClientToServerEventTopic = "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
   | "agent.activity.updated"
+  | "agent.model.catalog.invalidated"
   | "analytics.debug.reported"
   | "preferences.desktop.updated"
   | "workspace.app.updated"
@@ -382,6 +433,7 @@ export type ClientToServerEventV1 = PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
   | AgentActivityUpdatedEventV1
+  | AgentModelCatalogInvalidatedEventV1
   | AnalyticsDebugReportedEventV1
   | PreferencesDesktopUpdatedEventV1
   | WorkspaceAppUpdatedEventV1

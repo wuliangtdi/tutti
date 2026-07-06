@@ -21,6 +21,37 @@ export type TrackEvent = {
   };
 };
 
+export type AccountUserInfo = {
+  user_id: string;
+  name?: string | null;
+  email?: string | null;
+  avatar?: string | null;
+};
+
+export type AccountUserInfoResponse = {
+  user: AccountUserInfo | null;
+};
+
+export type AccountLoginStartResponse = {
+  attempt_id: string;
+  login_url: string;
+  expires_at: number;
+};
+
+export type AccountLoginStatusValue =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "expired";
+
+export type AccountLoginStatusResponse = {
+  attempt_id: string;
+  status: AccountLoginStatusValue;
+  expires_at: number;
+  error?: string | null;
+  user?: AccountUserInfo | null;
+};
+
 export type CliOutputMode = "table" | "json" | "plain" | "markdown";
 
 /**
@@ -241,12 +272,16 @@ export type DesktopAppCatalogChannel = "production" | "staging";
 
 export type DesktopPreferences = {
   agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
+  agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
   agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
+  agentConversationDetailMode: DesktopAgentConversationDetailMode;
+  agentDockLayout: DesktopAgentDockLayout;
   appCatalogChannel: DesktopAppCatalogChannel;
   browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
   defaultAgentProvider: WorkspaceAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
+  enableCursorAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   locale: DesktopLocale;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -271,20 +306,31 @@ export type DesktopAgentComposerDefaults = {
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
+  speed?: string;
 };
+
+export type DesktopAgentConversationDetailMode = "coding" | "general";
+
+export type DesktopAgentDockLayout = "legacySplit" | "unified";
 
 export type DesktopAgentComposerDefaultsByProvider = {
   "claude-code"?: DesktopAgentComposerDefaults;
   codex?: DesktopAgentComposerDefaults;
+  cursor?: DesktopAgentComposerDefaults;
   nexight?: DesktopAgentComposerDefaults;
   gemini?: DesktopAgentComposerDefaults;
   hermes?: DesktopAgentComposerDefaults;
   openclaw?: DesktopAgentComposerDefaults;
 };
 
+export type DesktopAgentComposerDefaultsByAgentTarget = {
+  [key: string]: DesktopAgentComposerDefaults;
+};
+
 export type DesktopAgentGuiConversationRailCollapsedByProvider = {
   "claude-code"?: boolean;
   codex?: boolean;
+  cursor?: boolean;
   nexight?: boolean;
   gemini?: boolean;
   hermes?: boolean;
@@ -310,6 +356,32 @@ export type DesktopPreferencesStateResponse = {
 
 export type PutDesktopPreferencesRequest = {
   preferences: DesktopPreferences;
+};
+
+export type AgentTargetProvider = "codex" | "claude-code" | "cursor";
+
+export type AgentTargetSource = "system" | "user";
+
+export type AgentTargetLaunchRef = {
+  type: "local_cli";
+  provider: AgentTargetProvider;
+};
+
+export type AgentTarget = {
+  id: string;
+  provider: AgentTargetProvider;
+  launchRef: AgentTargetLaunchRef;
+  name: string;
+  iconKey?: string | null;
+  enabled: boolean;
+  source: AgentTargetSource;
+  sortOrder: number;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type ListAgentTargetsResponse = {
+  targets: Array<AgentTarget>;
 };
 
 export type ListWorkspacesResponse = {
@@ -645,6 +717,7 @@ export type WorkspaceAppFactoryJob = {
   appId: string | null;
   displayName: string;
   description: string | null;
+  agentTargetId: string | null;
   provider: string | null;
   model: string | null;
   reasoningEffort: string | null;
@@ -662,6 +735,10 @@ export type CreateWorkspaceAppFactoryJobRequest = {
   prompt: string;
   displayName: string;
   description?: string;
+  agentTargetId: string;
+  /**
+   * @deprecated
+   */
   provider?: string;
   model?: string;
   permissionModeId?: string;
@@ -779,6 +856,7 @@ export type WorkspaceTerminalCloseGuardResponse = {
 export type WorkspaceAgentProvider =
   | "claude-code"
   | "codex"
+  | "cursor"
   | "nexight"
   | "gemini"
   | "hermes"
@@ -846,7 +924,7 @@ export type GetAgentProviderComposerOptionsRequest = {
   settings?: AgentSessionComposerSettings;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsRequest = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
   locale?: DesktopLocale;
   settings?: AgentSessionComposerSettings;
 };
@@ -1068,6 +1146,10 @@ export type AgentProviderStatusListResponse = {
 
 export type WorkspaceAgentSession = {
   id: string;
+  /**
+   * Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
+   */
+  agentTargetId?: string | null;
   provider: WorkspaceAgentProvider;
   providerSessionId?: string | null;
   cwd: string | null;
@@ -1177,6 +1259,30 @@ export type WorkspaceAgentSessionListResponse = {
   sessions: Array<WorkspaceAgentSession>;
 };
 
+export type WorkspaceAgentSessionSectionKind = "conversations" | "project";
+
+export type WorkspaceAgentSessionSection = {
+  kind: WorkspaceAgentSessionSectionKind;
+  sectionKey: string;
+  userProject?: UserProject;
+  sessions: Array<WorkspaceAgentSession>;
+  hasMore: boolean;
+  /**
+   * Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+   */
+  nextCursor?: string;
+};
+
+export type WorkspaceAgentSessionSectionsResponse = {
+  workspaceId: string;
+  sections: Array<WorkspaceAgentSessionSection>;
+};
+
+export type WorkspaceAgentSessionSectionPageResponse = {
+  workspaceId: string;
+  section: WorkspaceAgentSessionSection;
+};
+
 export type ExternalAgentImportScanRequest = {
   providers?: Array<WorkspaceAgentProvider>;
   /**
@@ -1266,9 +1372,25 @@ export type UpdateWorkspaceAgentSessionVisibilityRequest = {
   visible: boolean;
 };
 
+export type WorkspaceAgentSessionGoalControlRequest = {
+  action: "pause" | "resume" | "clear" | "set";
+  objective?: string;
+};
+
+export type WorkspaceAgentSessionGoalControlResponse = {
+  session: WorkspaceAgentSession;
+  goal?: {
+    [key: string]: unknown;
+  };
+};
+
 export type CreateWorkspaceAgentSessionRequest = {
   agentSessionId: string;
-  provider: WorkspaceAgentProvider;
+  /**
+   * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
+   */
+  agentTargetId: string;
+  provider?: WorkspaceAgentProvider;
   initialContent: Array<AgentPromptContentBlock>;
   /**
    * Optional display-only text for the first turn (e.g. a folder bundle shown as one chip while initialContent carries the expanded files).
@@ -1281,7 +1403,7 @@ export type CreateWorkspaceAgentSessionRequest = {
     [key: string]: unknown;
   };
   /**
-   * Opaque host-owned provider target reference. It is not authority; trusted launchers must re-authenticate and resolve it before invoking a provider.
+   * Deprecated opaque host-owned provider target reference. It is not launch authority; the daemon derives the trusted provider target ref from the stored agent target identified by agentTargetId.
    */
   providerTargetRef?: {
     [key: string]: unknown;
@@ -1291,6 +1413,12 @@ export type CreateWorkspaceAgentSessionRequest = {
   permissionModeId?: string | null;
   model?: string | null;
   reasoningEffort?: string | null;
+  /**
+   * Optional durable runtime context hints for session classification and provider startup.
+   */
+  runtimeContext?: {
+    [key: string]: unknown;
+  } | null;
   speed?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
@@ -1376,6 +1504,7 @@ export type UserProject = {
   id: string;
   path: string;
   label: string;
+  sectionKey: string;
   createdAtUnixMs: number;
   updatedAtUnixMs: number;
   lastUsedAtUnixMs?: number;
@@ -1418,6 +1547,7 @@ export type SubmitWorkspaceAgentInteractiveRequest = {
 export type WorkspaceAgentSessionEventEnvelope = {
   seq: number;
   agentSessionId: string;
+  agentTargetId?: string | null;
   type: string;
   occurredAt: string;
   payload: {
@@ -1743,6 +1873,7 @@ export type IssueManagerRun = {
   workspaceId: string;
   requesterUserId: string;
   agentUserId: string;
+  agentTargetId: string;
   agentSessionId: string;
   agentProvider: string;
   status: IssueManagerStatus;
@@ -1963,7 +2094,11 @@ export type AddIssueManagerContextRefsRequest = {
 
 export type CreateIssueManagerRunRequest = {
   runId?: string;
-  agentProvider: string;
+  agentTargetId: string;
+  /**
+   * Legacy display/provider analytics hint. New run authority is agentTargetId.
+   */
+  agentProvider?: string;
   agentUserId?: string;
   agentSessionId?: string;
   executionDirectory?: string;
@@ -2130,6 +2265,151 @@ export type TrackEventsResponses = {
    */
   202: unknown;
 };
+
+export type StartAccountLoginData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/login/start";
+};
+
+export type StartAccountLoginErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type StartAccountLoginError =
+  StartAccountLoginErrors[keyof StartAccountLoginErrors];
+
+export type StartAccountLoginResponses = {
+  /**
+   * Login attempt started
+   */
+  200: AccountLoginStartResponse;
+};
+
+export type StartAccountLoginResponse =
+  StartAccountLoginResponses[keyof StartAccountLoginResponses];
+
+export type GetAccountLoginStatusData = {
+  body?: never;
+  path?: never;
+  query: {
+    attempt_id: string;
+  };
+  url: "/v1/account/login/status";
+};
+
+export type GetAccountLoginStatusErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountLoginStatusError =
+  GetAccountLoginStatusErrors[keyof GetAccountLoginStatusErrors];
+
+export type GetAccountLoginStatusResponses = {
+  /**
+   * Login attempt status
+   */
+  200: AccountLoginStatusResponse;
+};
+
+export type GetAccountLoginStatusResponse =
+  GetAccountLoginStatusResponses[keyof GetAccountLoginStatusResponses];
+
+export type GetAccountUserInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user_info";
+};
+
+export type GetAccountUserInfoErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountUserInfoError =
+  GetAccountUserInfoErrors[keyof GetAccountUserInfoErrors];
+
+export type GetAccountUserInfoResponses = {
+  /**
+   * Current account user, if signed in
+   */
+  200: AccountUserInfoResponse;
+};
+
+export type GetAccountUserInfoResponse =
+  GetAccountUserInfoResponses[keyof GetAccountUserInfoResponses];
+
+export type LogoutAccountData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/account/logout";
+};
+
+export type LogoutAccountErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type LogoutAccountError = LogoutAccountErrors[keyof LogoutAccountErrors];
+
+export type LogoutAccountResponses = {
+  /**
+   * Account signed out
+   */
+  204: void;
+};
+
+export type LogoutAccountResponse =
+  LogoutAccountResponses[keyof LogoutAccountResponses];
 
 export type ListCliCapabilitiesData = {
   body?: never;
@@ -2562,6 +2842,45 @@ export type AttachEventStreamResponses = {
    */
   200: unknown;
 };
+
+export type ListAgentTargetsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/agent-targets";
+};
+
+export type ListAgentTargetsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListAgentTargetsError =
+  ListAgentTargetsErrors[keyof ListAgentTargetsErrors];
+
+export type ListAgentTargetsResponses = {
+  /**
+   * Agent Targets
+   */
+  200: ListAgentTargetsResponse;
+};
+
+export type ListAgentTargetsResponse2 =
+  ListAgentTargetsResponses[keyof ListAgentTargetsResponses];
 
 export type ListWorkspacesData = {
   body?: never;
@@ -4069,17 +4388,17 @@ export type CreateWorkspaceAppFactoryJobResponses = {
 export type CreateWorkspaceAppFactoryJobResponse =
   CreateWorkspaceAppFactoryJobResponses[keyof CreateWorkspaceAppFactoryJobResponses];
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsData = {
-  body?: GetWorkspaceAppFactoryProviderComposerOptionsRequest;
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsData = {
+  body?: GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest;
   path: {
     workspaceID: string;
-    provider: WorkspaceAgentProvider;
+    agentTargetID: string;
   };
   query?: never;
-  url: "/v1/workspaces/{workspaceID}/app-factory/providers/{provider}/composer-options";
+  url: "/v1/workspaces/{workspaceID}/app-factory/agent-targets/{agentTargetID}/composer-options";
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsErrors = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -4106,18 +4425,18 @@ export type GetWorkspaceAppFactoryProviderComposerOptionsErrors = {
   503: ApiErrorResponse;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsError =
-  GetWorkspaceAppFactoryProviderComposerOptionsErrors[keyof GetWorkspaceAppFactoryProviderComposerOptionsErrors];
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsError =
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors[keyof GetWorkspaceAppFactoryAgentTargetComposerOptionsErrors];
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsResponses = {
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses = {
   /**
-   * App Factory provider composer options
+   * App Factory agent target composer options
    */
   200: AgentProviderComposerOptionsResponse;
 };
 
-export type GetWorkspaceAppFactoryProviderComposerOptionsResponse =
-  GetWorkspaceAppFactoryProviderComposerOptionsResponses[keyof GetWorkspaceAppFactoryProviderComposerOptionsResponses];
+export type GetWorkspaceAppFactoryAgentTargetComposerOptionsResponse =
+  GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses[keyof GetWorkspaceAppFactoryAgentTargetComposerOptionsResponses];
 
 export type DeleteWorkspaceAppFactoryJobData = {
   body?: never;
@@ -4526,7 +4845,6 @@ export type ListWorkspaceAgentSessionsData = {
   query?: {
     searchQuery?: string;
     limit?: number;
-    visibleOnly?: boolean;
   };
   url: "/v1/workspaces/{workspaceID}/agent-sessions";
 };
@@ -4619,6 +4937,121 @@ export type CreateWorkspaceAgentSessionResponses = {
 
 export type CreateWorkspaceAgentSessionResponse =
   CreateWorkspaceAgentSessionResponses[keyof CreateWorkspaceAgentSessionResponses];
+
+export type ListWorkspaceAgentSessionSectionsData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: {
+    limitPerSection?: number;
+    /**
+     * Optional agent target filter applied before section pagination and hasMore calculation.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections";
+};
+
+export type ListWorkspaceAgentSessionSectionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentSessionSectionsError =
+  ListWorkspaceAgentSessionSectionsErrors[keyof ListWorkspaceAgentSessionSectionsErrors];
+
+export type ListWorkspaceAgentSessionSectionsResponses = {
+  /**
+   * Workspace agent session sections
+   */
+  200: WorkspaceAgentSessionSectionsResponse;
+};
+
+export type ListWorkspaceAgentSessionSectionsResponse =
+  ListWorkspaceAgentSessionSectionsResponses[keyof ListWorkspaceAgentSessionSectionsResponses];
+
+export type ListWorkspaceAgentSessionSectionPageData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query: {
+    sectionKey: string;
+    /**
+     * Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+     */
+    cursor?: string;
+    limit?: number;
+    /**
+     * Optional agent target filter applied before section pagination and hasMore calculation.
+     */
+    agentTargetId?: string;
+  };
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections/page";
+};
+
+export type ListWorkspaceAgentSessionSectionPageErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceAgentSessionSectionPageError =
+  ListWorkspaceAgentSessionSectionPageErrors[keyof ListWorkspaceAgentSessionSectionPageErrors];
+
+export type ListWorkspaceAgentSessionSectionPageResponses = {
+  /**
+   * Workspace agent session section page
+   */
+  200: WorkspaceAgentSessionSectionPageResponse;
+};
+
+export type ListWorkspaceAgentSessionSectionPageResponse =
+  ListWorkspaceAgentSessionSectionPageResponses[keyof ListWorkspaceAgentSessionSectionPageResponses];
 
 export type ScanWorkspaceExternalAgentSessionImportsData = {
   body?: ExternalAgentImportScanRequest;
@@ -5412,6 +5845,56 @@ export type CancelWorkspaceAgentSessionResponses = {
 
 export type CancelWorkspaceAgentSessionResponse =
   CancelWorkspaceAgentSessionResponses[keyof CancelWorkspaceAgentSessionResponses];
+
+export type GoalControlWorkspaceAgentSessionData = {
+  body: WorkspaceAgentSessionGoalControlRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/goal";
+};
+
+export type GoalControlWorkspaceAgentSessionErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GoalControlWorkspaceAgentSessionError =
+  GoalControlWorkspaceAgentSessionErrors[keyof GoalControlWorkspaceAgentSessionErrors];
+
+export type GoalControlWorkspaceAgentSessionResponses = {
+  /**
+   * Workspace agent session goal updated
+   */
+  200: WorkspaceAgentSessionGoalControlResponse;
+};
+
+export type GoalControlWorkspaceAgentSessionResponse =
+  GoalControlWorkspaceAgentSessionResponses[keyof GoalControlWorkspaceAgentSessionResponses];
 
 export type SendWorkspaceAgentSessionInputData = {
   body: SendWorkspaceAgentSessionInputRequest;

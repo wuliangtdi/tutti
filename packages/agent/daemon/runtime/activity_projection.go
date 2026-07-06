@@ -1,11 +1,10 @@
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentruntime
 
 import (
 	"strings"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func ReportableActivityEvents(events []activityshared.Event) []activityshared.Event {
@@ -61,6 +60,7 @@ func eventSourceFromSession(session Session) agentsessionstore.EventSource {
 		Provider:          strings.TrimSpace(session.Provider),
 		ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 		AgentID:           strings.TrimSpace(session.AgentSessionID),
+		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		CWD:               strings.TrimSpace(session.CWD),
 		SessionOrigin:     agentsessionstore.WorkspaceAgentSessionOriginRuntime,
 	}

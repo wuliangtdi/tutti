@@ -14,9 +14,11 @@ import {
   useContext,
   memo,
   useMemo,
+  useRef,
   useState
 } from "react";
-import { useTranslation } from "../i18n/index";
+import { Check, Copy } from "lucide-react";
+import { translate, useTranslation } from "../i18n/index";
 import { ZoomableImage } from "../app/renderer/components/ZoomableImage";
 import { cn } from "../app/renderer/lib/utils";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
@@ -55,6 +57,12 @@ import {
 import { resolveAgentWorkspaceFileVisualKind } from "./workspaceFileVisualKind";
 import { stabilizeStreamingMarkdownTail } from "./streamingMarkdownTailStabilizer";
 import { useStreamingVisibleText } from "./useStreamingVisibleText";
+import { managedAgentRoundedIconUrl } from "./managedAgentIcons";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations,
+  type AgentMessageMarkdownAgentTarget
+} from "./AgentTargetPresentationContext";
 
 const COLLAPSED_LINE_LIMIT = 8;
 const APPROX_CHARS_PER_LINE = 34;
@@ -109,6 +117,7 @@ interface AgentMessageMarkdownProps {
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   workspaceLinkContext?: AgentMessageMarkdownWorkspaceLinkContext | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   collapsible?: boolean;
   expandLabel?: string;
   className?: string;
@@ -128,6 +137,7 @@ export interface AgentMessageMarkdownWorkspaceAppIcon {
 
 const EMPTY_WORKSPACE_APP_ICONS: readonly AgentMessageMarkdownWorkspaceAppIcon[] =
   [];
+const EMPTY_AGENT_TARGETS: readonly AgentMessageMarkdownAgentTarget[] = [];
 
 type MarkdownDomProps<Tag extends keyof JSX.IntrinsicElements> =
   ComponentPropsWithoutRef<Tag> & {
@@ -146,6 +156,7 @@ export function AgentMessageMarkdown({
   onLinkAction,
   workspaceLinkContext = null,
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+  agentTargets,
   collapsible = false,
   expandLabel,
   className,
@@ -158,6 +169,8 @@ export function AgentMessageMarkdown({
 }: AgentMessageMarkdownProps): JSX.Element {
   "use memo";
   const { t } = useTranslation();
+  const contextAgentTargets = useAgentTargetPresentations();
+  const effectiveAgentTargets = agentTargets ?? contextAgentTargets;
   const visibleContent = useStreamingVisibleText(content, {
     enabled: streaming,
     frameMs: STREAMING_MARKDOWN_FRAME_MS,
@@ -248,6 +261,7 @@ export function AgentMessageMarkdown({
           {...props}
           onLinkClick={handleLinkClick}
           workspaceAppIcons={workspaceAppIcons}
+          agentTargets={effectiveAgentTargets}
           previewMode={previewMode}
         />
       ),
@@ -262,9 +276,17 @@ export function AgentMessageMarkdown({
       ),
       ul: MarkdownUnorderedList,
       ol: MarkdownOrderedList,
-      li: MarkdownListItem
+      li: MarkdownListItem,
+      pre: MarkdownPre
     }),
-    [enableImageZoom, handleLinkClick, inline, previewMode, workspaceAppIcons]
+    [
+      effectiveAgentTargets,
+      enableImageZoom,
+      handleLinkClick,
+      inline,
+      previewMode,
+      workspaceAppIcons
+    ]
   );
 
   return (
@@ -603,12 +625,14 @@ function MarkdownLink({
   onClick: _onClick,
   onLinkClick,
   workspaceAppIcons,
+  agentTargets,
   previewMode,
   href,
   ...props
 }: MarkdownDomProps<"a"> & {
   onLinkClick?: (href: string) => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   previewMode?: boolean;
 }): JSX.Element {
   "use memo";
@@ -619,6 +643,7 @@ function MarkdownLink({
         targetHref,
         textFromReactNode(props.children),
         workspaceAppIcons ?? [],
+        agentTargets ?? EMPTY_AGENT_TARGETS,
         t("agentHost.agentGui.workspaceAppFactoryMentionFallback")
       )
     : null;
@@ -852,6 +877,7 @@ function MentionLink({
       data-agent-mention-icon-url={mention.iconUrl}
       data-agent-mention-href={href}
       data-agent-mention-kind={mention.kind}
+      data-agent-reference-source={mention.referenceSource}
       aria-label={mention.label}
       role="link"
       tabIndex={0}
@@ -866,7 +892,8 @@ function MentionLink({
       }}
     >
       {mention.kind === "workspace-app" ||
-      mention.kind === "workspace-reference" ? (
+      mention.kind === "workspace-reference" ||
+      mention.kind === "agent-target" ? (
         <span
           className="grid h-4 w-4 shrink-0 place-items-center overflow-hidden rounded-[4px] bg-block"
           aria-hidden="true"
@@ -1611,17 +1638,20 @@ function markdownUrlTransform(value: string): string {
 
 type MentionKind =
   | "session"
+  | "agent-target"
   | "workspace-app"
   | "workspace-reference"
   | "workspace-app-factory"
   | "workspace-issue";
 
 interface ParsedMentionLink {
+  agentProviderId?: string;
   appId?: string;
   kind: MentionKind;
   label: string;
   iconUrl?: string;
   participant: string;
+  referenceSource?: string;
   summary: string;
   /** 引用文件数量(workspace-reference 专用,来自 href 的 count 参数)。 */
   fileCount?: number;
@@ -1631,6 +1661,7 @@ function parseMentionLink(
   href: string,
   rawLabel: string,
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[] = [],
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[] = EMPTY_AGENT_TARGETS,
   appFactoryFallbackLabel = "Create app"
 ): ParsedMentionLink | null {
   const mention = parseRichTextMentionHref(href, rawLabel);
@@ -1649,9 +1680,12 @@ function parseMentionLink(
             ? "workspace-app-factory"
             : resource === "workspace-issue"
               ? "workspace-issue"
-              : resource;
+              : resource === "agent-target"
+                ? "agent-target"
+                : resource;
   if (
     kind !== "session" &&
+    kind !== "agent-target" &&
     kind !== "workspace-app" &&
     kind !== "workspace-reference" &&
     kind !== "workspace-app-factory" &&
@@ -1686,6 +1720,25 @@ function parseMentionLink(
       summary: ""
     };
   }
+  if (kind === "agent-target") {
+    const workspaceId = mention.scope?.workspaceId?.trim() || "";
+    const target = resolveAgentTargetPresentation({
+      agentTargetId: entityId,
+      agentTargets,
+      workspaceId
+    });
+    const agentProviderId = target?.provider?.trim() || undefined;
+    const targetLabel = target?.name?.trim() || label;
+    return {
+      agentProviderId,
+      kind,
+      label: targetLabel,
+      iconUrl:
+        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId),
+      participant: targetLabel,
+      summary: ""
+    };
+  }
   if (kind === "workspace-reference") {
     const source = mention.scope?.source?.trim() ?? "";
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
@@ -1703,6 +1756,7 @@ function parseMentionLink(
       iconUrl: mention.scope?.icon?.trim() || appIconUrl,
       fileCount: referenceFileCountFromParam(mention.scope?.count ?? null),
       participant: label,
+      referenceSource: source || undefined,
       summary: ""
     };
   }
@@ -1872,4 +1926,50 @@ function textFromReactNode(node: ReactNode): string {
     return node.map(textFromReactNode).join("");
   }
   return "";
+}
+
+function MarkdownPre({
+  children,
+  ...props
+}: MarkdownDomProps<"pre">): JSX.Element {
+  "use memo";
+  const preRef = useRef<HTMLPreElement>(null);
+  const [copied, setCopied] = useState(false);
+  const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCopy = useCallback(() => {
+    const text = preRef.current?.textContent?.trim();
+    if (!text) {
+      return;
+    }
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      if (copyResetRef.current) {
+        clearTimeout(copyResetRef.current);
+      }
+      copyResetRef.current = setTimeout(() => setCopied(false), 1500);
+    });
+  }, []);
+
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        data-testid="markdown-code-copy"
+        className="absolute right-1.5 top-1.5 z-10 inline-flex size-5 items-center justify-center rounded-[4px] text-[var(--text-tertiary)] opacity-0 transition-opacity hover:bg-[var(--transparency-hover)] hover:text-[var(--text-secondary)] group-hover:opacity-100"
+        aria-label={translate("agentHost.agentGui.copyCode")}
+        title={translate("agentHost.agentGui.copyCode")}
+        onClick={handleCopy}
+      >
+        {copied ? (
+          <Check size={13} strokeWidth={2} aria-hidden="true" />
+        ) : (
+          <Copy size={13} strokeWidth={2} aria-hidden="true" />
+        )}
+      </button>
+      <pre {...props} ref={preRef}>
+        {children}
+      </pre>
+    </div>
+  );
 }

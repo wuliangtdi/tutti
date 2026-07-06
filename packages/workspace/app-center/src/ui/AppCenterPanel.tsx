@@ -40,6 +40,8 @@ import type {
 } from "../contracts/viewModel.ts";
 import type { WorkspaceAppLocalRepairRequest } from "../contracts/host.ts";
 import {
+  isCommunityRecommendedApp,
+  sortCommunityApps,
   sortMyAppsByCreatedDesc,
   sortRecommendedApps,
   sortRecommendedAppsForAllTab
@@ -64,7 +66,7 @@ type FactoryTemplateID =
   | "system"
   | "news"
   | "gomoku";
-export type AppCenterAppTab = "recommended" | "my";
+export type AppCenterAppTab = "recommended" | "community" | "my";
 type RecommendedCategoryTabID =
   | "all"
   | "product-design"
@@ -142,10 +144,10 @@ export interface AppCenterPanelProps {
   readonly catalogStatus?: "failed" | "loading";
   readonly className?: string;
   readonly copy: AppCenterI18nRuntime;
-  readonly defaultAgentProvider?: string | null;
+  readonly defaultAgentTargetId?: string | null;
   readonly errorMessage?: string;
   readonly loadProviderConfiguration?: (
-    provider: string
+    agentTargetId: string
   ) => Promise<AppCenterFactoryProviderConfiguration>;
   readonly onActiveAppTabChange?: (tab: AppCenterAppTab) => void;
   readonly officialDeveloperIconUrl?: string | null;
@@ -162,7 +164,7 @@ export function AppCenterPanel({
   catalogStatus,
   className,
   copy,
-  defaultAgentProvider = null,
+  defaultAgentTargetId = null,
   errorMessage,
   loadProviderConfiguration,
   onActiveAppTabChange,
@@ -212,8 +214,9 @@ export function AppCenterPanel({
       providerOptions
         .map((option) => {
           const provider = option.provider.trim();
+          const agentTargetId = option.agentTargetId.trim();
           const label = option.label.trim() || provider;
-          if (!provider || !label) {
+          if (!agentTargetId || !provider || !label) {
             return null;
           }
           return {
@@ -225,6 +228,7 @@ export function AppCenterPanel({
               ? { iconUrl: option.iconUrl.trim() }
               : {}),
             label,
+            agentTargetId,
             provider
           };
         })
@@ -234,7 +238,7 @@ export function AppCenterPanel({
   const [selectedProvider, setSelectedProvider] = useState(() =>
     resolveDefaultAppFactoryProvider(
       normalizedProviderOptions,
-      defaultAgentProvider
+      defaultAgentTargetId
     )
   );
   const [uncontrolledActiveAppTab, setUncontrolledActiveAppTab] =
@@ -247,13 +251,13 @@ export function AppCenterPanel({
       resolveSelectedAppFactoryProvider(
         current,
         normalizedProviderOptions,
-        defaultAgentProvider
+        defaultAgentTargetId
       )
     );
-  }, [defaultAgentProvider, normalizedProviderOptions]);
+  }, [defaultAgentTargetId, normalizedProviderOptions]);
   const selectedProviderOption =
     normalizedProviderOptions.find(
-      (option) => option.provider === selectedProvider
+      (option) => option.agentTargetId === selectedProvider
     ) ?? null;
   useEffect(() => {
     if (!factoryDialogOpen) {
@@ -261,8 +265,8 @@ export function AppCenterPanel({
       setProviderConfigurationStatus("idle");
       return;
     }
-    const provider = selectedProviderOption?.provider?.trim() ?? "";
-    if (!provider || !loadProviderConfiguration) {
+    const agentTargetId = selectedProviderOption?.agentTargetId?.trim() ?? "";
+    if (!agentTargetId || !loadProviderConfiguration) {
       setProviderConfiguration(null);
       setProviderConfigurationStatus("ready");
       return;
@@ -270,7 +274,7 @@ export function AppCenterPanel({
     let canceled = false;
     setProviderConfiguration(null);
     setProviderConfigurationStatus("loading");
-    void loadProviderConfiguration(provider)
+    void loadProviderConfiguration(agentTargetId)
       .then((configuration) => {
         if (canceled) {
           return;
@@ -292,7 +296,7 @@ export function AppCenterPanel({
     factoryDialogOpen,
     loadProviderConfiguration,
     selectedProvider,
-    selectedProviderOption?.provider
+    selectedProviderOption?.agentTargetId
   ]);
   const modelOptions = providerConfiguration?.modelOptions ?? [];
   const permissionModeOptions =
@@ -349,7 +353,7 @@ export function AppCenterPanel({
     setSelectedProvider(
       resolveDefaultAppFactoryProvider(
         normalizedProviderOptions,
-        defaultAgentProvider
+        defaultAgentTargetId
       )
     );
     setSelectedModel("");
@@ -387,7 +391,7 @@ export function AppCenterPanel({
       ...(selectedPermissionModeId.trim()
         ? { permissionModeId: selectedPermissionModeId.trim() }
         : {}),
-      provider: selectedProviderOption.provider,
+      agentTargetId: selectedProviderOption.agentTargetId,
       prompt: normalizedPrompt,
       ...(selectedReasoningEffort.trim()
         ? { reasoningEffort: selectedReasoningEffort.trim() }
@@ -399,6 +403,7 @@ export function AppCenterPanel({
     setPrompt(copy.t(template.promptKey));
   };
   const openFactoryJobAgentSession = (job: {
+    agentTargetId?: string | null;
     agentSessionId?: string | null;
     provider?: string | null;
   }): void => {
@@ -406,7 +411,11 @@ export function AppCenterPanel({
     if (!agentSessionId) {
       return;
     }
-    void actions.openFactoryJobAgentSession?.(agentSessionId, job.provider);
+    void actions.openFactoryJobAgentSession?.(
+      agentSessionId,
+      job.provider,
+      job.agentTargetId
+    );
   };
   const loadLocalApp = (): void => {
     void Promise.resolve(actions.loadLocalApp?.()).then((request) => {
@@ -488,12 +497,16 @@ export function AppCenterPanel({
     viewModel.apps.filter((app) => app.sourceKind === "local")
   );
   const recommendedSourceApps = viewModel.apps.filter(
-    (app) => app.sourceKind !== "local"
+    (app) => app.sourceKind !== "local" && !isCommunityRecommendedApp(app.id)
+  );
+  const communitySourceApps = viewModel.apps.filter(
+    (app) => app.sourceKind !== "local" && isCommunityRecommendedApp(app.id)
   );
   const recommendedApps = sortRecommendedApps(recommendedSourceApps);
   const recommendedAppsForAllTab = sortRecommendedAppsForAllTab(
     recommendedSourceApps
   );
+  const communityApps = sortCommunityApps(communitySourceApps);
   const recommendedCategoryTabs = createRecommendedCategoryTabs(
     recommendedApps,
     copy
@@ -509,15 +522,23 @@ export function AppCenterPanel({
           (app) => app.category === activeRecommendedCategoryLabel
         );
   const activeApps =
-    activeAppTab === "recommended" ? activeRecommendedApps : myApps;
+    activeAppTab === "recommended"
+      ? activeRecommendedApps
+      : activeAppTab === "community"
+        ? communityApps
+        : myApps;
   const activeAppTabTitle =
     activeAppTab === "recommended"
       ? copy.t("labels.recommendedApps")
-      : copy.t("labels.myApps");
+      : activeAppTab === "community"
+        ? copy.t("labels.communityApps")
+        : copy.t("labels.myApps");
   const activeAppEmptyMessage =
     activeAppTab === "recommended"
       ? copy.t("messages.recommendedAppsEmpty")
-      : copy.t("messages.myAppsEmpty");
+      : activeAppTab === "community"
+        ? copy.t("messages.communityAppsEmpty")
+        : copy.t("messages.myAppsEmpty");
   const pendingDeleteAppInstalled = pendingDeleteApp?.installed ?? false;
   const deleteAppConfirmLabel = copy.t(
     pendingDeleteAppInstalled
@@ -573,6 +594,10 @@ export function AppCenterPanel({
                 {
                   label: copy.t("labels.recommendedApps"),
                   value: "recommended"
+                },
+                {
+                  label: copy.t("labels.communityApps"),
+                  value: "community"
                 },
                 {
                   label: copy.t("labels.myApps"),
@@ -1087,7 +1112,7 @@ function FactoryProviderSelect({
   triggerClassName?: string;
 }): ReactElement {
   const selectedOption =
-    options.find((option) => option.provider === selectedProvider) ?? null;
+    options.find((option) => option.agentTargetId === selectedProvider) ?? null;
   const placeholder =
     options.length > 0
       ? copy.t("factory.messages.noAgentProviders")
@@ -1133,9 +1158,9 @@ function FactoryProviderSelect({
           options.map((option) => (
             <SelectItem
               disabled={option.disabled === true}
-              key={option.provider}
+              key={option.agentTargetId}
               title={option.disabledReason}
-              value={option.provider}
+              value={option.agentTargetId}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <AppCenterAgentProviderIcon iconUrl={option.iconUrl} />

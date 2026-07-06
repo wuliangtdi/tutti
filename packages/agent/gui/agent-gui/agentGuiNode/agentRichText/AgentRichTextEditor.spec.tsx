@@ -743,7 +743,7 @@ describe("AgentRichTextEditor", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("opens file mention suggestions only after start or whitespace", async () => {
+  it("does not open file mention suggestions after pasted at queries", async () => {
     const onFileMentionSuggestionChange = vi.fn();
     const rendered = render(
       <AgentRichTextEditor
@@ -760,9 +760,12 @@ describe("AgentRichTextEditor", () => {
       clipboardData: clipboard("@readme")
     });
     await waitFor(() =>
-      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
-        expect.objectContaining({ query: "readme", text: "@readme" })
+      expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveTextContent(
+        "@readme"
       )
+    );
+    expect(onFileMentionSuggestionChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ query: "readme", text: "@readme" })
     );
 
     onFileMentionSuggestionChange.mockClear();
@@ -786,6 +789,57 @@ describe("AgentRichTextEditor", () => {
     );
     expect(onFileMentionSuggestionChange).not.toHaveBeenCalledWith(
       expect.objectContaining({ query: "b.com" })
+    );
+  });
+
+  it("opens file mention suggestions after pasting a bare at trigger", async () => {
+    const onFileMentionSuggestionChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={onFileMentionSuggestionChange}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard("@")
+    });
+
+    await waitFor(() =>
+      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "", text: "@" })
+      )
+    );
+  });
+
+  it("opens file mention suggestions from the imperative mention palette handle", async () => {
+    const ref = createRef<AgentRichTextEditorHandle>();
+    const onFileMentionSuggestionChange = vi.fn();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value=""
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onFileMentionSuggestionChange={onFileMentionSuggestionChange}
+      />
+    );
+
+    await screen.findByRole("textbox", { name: "Prompt" });
+    act(() => {
+      ref.current?.openMentionPalette();
+    });
+
+    await waitFor(() =>
+      expect(onFileMentionSuggestionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ query: "", text: "@" })
+      )
     );
   });
 
@@ -1288,6 +1342,34 @@ describe("AgentRichTextEditor", () => {
         '[data-agent-mention-app-icon="true"] .tsh-agent-object-token__kind-icon'
       )
     ).not.toBeNull();
+  });
+
+  it("renders agent target mention chips from markdown hrefs", async () => {
+    render(
+      <AgentRichTextEditor
+        value="[@Claude Code](mention://agent-target/local:claude-code?workspaceId=workspace-1)"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await waitFor(() =>
+      expect(
+        editor.querySelector('[data-agent-mention-kind="agent-target"]')
+      ).not.toBeNull()
+    );
+
+    const agentMention = editor.querySelector(
+      '[data-agent-mention-kind="agent-target"]'
+    );
+    expect(agentMention).toHaveTextContent("Claude Code");
+    expect(agentMention).toHaveAttribute(
+      "data-agent-mention-kind",
+      "agent-target"
+    );
   });
 
   it("renders image file mention chips with dock preview thumbnails", async () => {

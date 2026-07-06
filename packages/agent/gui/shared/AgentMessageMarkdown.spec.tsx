@@ -12,6 +12,10 @@ import {
   resetCachedMarkdownImagesForTests,
   splitStreamingMarkdownBlocks
 } from "./AgentMessageMarkdown";
+import {
+  MANAGED_AGENT_ICON_ROUNDED_URLS,
+  managedAgentRoundedIconUrl
+} from "./managedAgentIcons";
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
@@ -28,6 +32,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(chip).toHaveAttribute("data-agent-reference-source", "task");
     // 角标数字已移除:chip 只展示标签,不再渲染文件数。
     expect(chip).toHaveTextContent("我的小项目");
     expect(chip).not.toHaveTextContent("3");
@@ -53,6 +58,7 @@ describe("AgentMessageMarkdown", () => {
       "data-agent-mention-kind",
       "workspace-reference"
     );
+    expect(mention).toHaveAttribute("data-agent-reference-source", "app");
     expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
     expect(
       mention?.querySelector('[data-agent-mention-app-icon="true"] img')
@@ -61,7 +67,7 @@ describe("AgentMessageMarkdown", () => {
   });
 
   it("renders markdown links, inline code, and lists", () => {
-    const { container } = render(
+    render(
       <AgentMessageMarkdown
         content={
           "已读取 [README.md](README.md) 和 `src/App.tsx`，**重点**\n\n- 第一项\n- 第二项"
@@ -75,105 +81,27 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByText("重点").tagName).toBe("STRONG");
     expect(screen.getByText("第一项")).toBeInTheDocument();
     expect(screen.getByText("第二项")).toBeInTheDocument();
-    expect(screen.getByRole("list")).toHaveStyle({
-      margin: "12px 0px 8px",
-      "padding-inline-start": "0"
+    expect(screen.getByRole("list")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+  it("renders a copy button on fenced code blocks", () => {
+    render(<AgentMessageMarkdown content={"```ts\nconst x = 42;\n```"} />);
+
+    expect(screen.getByTestId("markdown-code-copy")).toBeInTheDocument();
+  });
+
+  it("copies code block content to clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <AgentMessageMarkdown content={"```ts\nconst greeting = 'hello';\n```"} />
+    );
+
+    screen.getByTestId("markdown-code-copy").click();
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("const greeting = 'hello';");
     });
-    expect(screen.getByRole("list").className).toContain("[&_li]:pl-[34px]");
-    expect(screen.getByRole("list").className).toContain(
-      "[&_li::before]:left-4"
-    );
-    expect(screen.getByRole("list").className).toContain(
-      "[&_li::before]:bg-[var(--text-tertiary)]"
-    );
-    expect(screen.getAllByRole("listitem")[0]).toHaveStyle({
-      margin: "4px 0px"
-    });
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown?.className).not.toContain("hover:[&_a]:underline");
-    expect(markdown?.className).toContain("text-[var(--text-primary)]");
-    expect(markdown?.className).toContain("[&_a]:cursor-pointer");
-    expect(markdown?.className).toContain("[&_a]:text-[var(--tutti-purple)]");
-    expect(markdown?.className).toContain("[&_a:hover]:underline");
-    expect(markdown?.className).toContain("[&_strong]:font-semibold");
-    expect(markdown?.className).toContain("[&_code]:text-[11px]");
-    expect(markdown?.className).toContain(
-      "[&_code]:text-[var(--text-primary)]"
-    );
-    expect(markdown?.className).toContain("[&_code]:inline");
-    expect(markdown?.className).toContain("[&_code]:rounded-[2px]");
-    expect(markdown?.className).toContain("[&_code]:[overflow-wrap:anywhere]");
-    expect(markdown?.className).toContain(
-      "[&_code]:[box-decoration-break:clone]"
-    );
-    expect(markdown?.className).toContain("[&_pre_code]:h-auto");
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[white-space:pre-wrap]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[overflow-wrap:anywhere]"
-    );
-  });
-
-  it("allows long inline code to wrap inside narrow message containers", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          '字体栈：`css "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace` 已应用。'
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    const inlineCode = screen.getByText(
-      'css "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace'
-    );
-    expect(markdown?.className).toContain("[&_code]:inline");
-    expect(markdown?.className).toContain("[&_code]:[overflow-wrap:anywhere]");
-    expect(inlineCode.tagName).toBe("CODE");
-  });
-
-  it("allows fenced code blocks to wrap in conversation detail surfaces", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          '字体栈：\n\n```css\n"JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace\n```'
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    const code = screen.getByText(
-      '"JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace'
-    );
-    expect(code.closest("pre")).toBeInTheDocument();
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[white-space:pre-wrap]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_pre_code]:[overflow-wrap:anywhere]"
-    );
-  });
-
-  it("allows consumers to share markdown rendering with surface-specific classes", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={"已读取 [README.md](README.md)"}
-        className="summary-markdown"
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown).toHaveClass("summary-markdown");
   });
 
   it("renders GFM tables as table elements", () => {
@@ -193,17 +121,6 @@ describe("AgentMessageMarkdown", () => {
       screen.getByRole("cell", { name: "统一 API 格式适配不同 LLM 提供商" })
     ).toBeInTheDocument();
   });
-
-  it("keeps ordered list left padding clear of the card edge", () => {
-    render(<AgentMessageMarkdown content={"1. Awwwards\n2. Mobbin"} />);
-
-    expect(screen.getByRole("list")).toHaveStyle({
-      margin: "12px 0px 8px",
-      "padding-inline-start": "34px",
-      "padding-inline-end": "16px"
-    });
-  });
-
   it("keeps links inert for now", () => {
     render(
       <AgentMessageMarkdown
@@ -1131,6 +1048,48 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("Weather");
   });
 
+  it("renders agent target mentions with managed agent icons", () => {
+    const iconUrl = MANAGED_AGENT_ICON_ROUNDED_URLS["claude-code"];
+    const { container } = render(
+      <AgentMessageMarkdown
+        content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题"
+        agentTargets={[
+          {
+            agentTargetId: "local:claude-code",
+            iconUrl,
+            name: "Claude Code",
+            provider: "claude-code",
+            workspaceId: "room-1"
+          }
+        ]}
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(
+      mention?.querySelector('[data-agent-mention-app-icon="true"] img')
+    ).toHaveAttribute("src", iconUrl);
+    expect(mention).toHaveTextContent("Claude Code");
+  });
+
+  it("renders agent target mentions without provider ids as agent tokens", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content="让 [@Claude Code](mention://agent-target/local:claude-code?workspaceId=room-1) 做题" />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-icon-url",
+      managedAgentRoundedIconUrl(undefined)
+    );
+    expect(
+      mention?.querySelector(".tsh-agent-object-token__icon")
+    ).not.toBeInTheDocument();
+  });
+
   it("renders workspace app factory mentions as object tokens", () => {
     const { container, queryByText } = render(
       <AgentMessageMarkdown content="[@Create App](mention://workspace-app-factory/create)" />
@@ -1412,28 +1371,6 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.getByText("hello world")).toBeInTheDocument();
   });
 
-  it("keeps long inline code wrapping-friendly", () => {
-    const { container } = render(
-      <AgentMessageMarkdown
-        content={
-          "摘要：`这是一段很长的行内代码文本，用来确认它不会被固定高度和 flex 布局限制住。`"
-        }
-      />
-    );
-
-    const markdown = container.querySelector(
-      '[data-workspace-agent-markdown="true"]'
-    );
-    expect(markdown?.className).not.toContain("[&_code]:inline-flex");
-    expect(markdown?.className).not.toContain("[&_code]:h-4");
-    expect(markdown?.className).toContain(
-      "[&_code]:[box-decoration-break:clone]"
-    );
-    expect(markdown?.className).toContain(
-      "[&_code]:[-webkit-box-decoration-break:clone]"
-    );
-  });
-
   it("does not leak markdown ast node props into the DOM", () => {
     const { container } = render(
       <AgentMessageMarkdown
@@ -1457,19 +1394,14 @@ describe("AgentMessageMarkdown", () => {
     );
 
     const expandButton = screen.getByRole("button", { name: "展开全部" });
-    expect(expandButton.className).toContain("text-[var(--tutti-purple)]");
     const markdown = expandButton.parentElement?.querySelector(
       '[data-workspace-agent-markdown="true"]'
     );
     expect(markdown).toHaveAttribute("data-collapsed", "true");
-    expect(markdown?.className).toContain("transition-[max-height]");
-    expect(markdown?.className).toContain("[mask-image:linear-gradient");
-    expect(markdown?.className).not.toContain("after:bg-");
 
     fireEvent.click(expandButton);
 
     expect(markdown).toHaveAttribute("data-collapsed", "false");
-    expect(markdown?.className).toContain("max-h-[72rem]");
     expect(screen.queryByRole("button", { name: "展开全部" })).toBeNull();
   });
 

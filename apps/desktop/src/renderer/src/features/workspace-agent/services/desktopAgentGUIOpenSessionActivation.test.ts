@@ -100,8 +100,6 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   assert.equal(nodeState.lastActiveAgentSessionId, "session-2");
   assert.deepEqual(stateChanges, [
     {
-      composerOverrides: null,
-      composerOverridesByProvider: null,
       conversationRailCollapsed: false,
       conversationRailWidthPx: null,
       lastActiveAgentSessionId: "session-2"
@@ -143,6 +141,46 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       sequence: 11
     }
   ]);
+});
+
+test("consumeDesktopAgentGUIOpenSessionActivation clears stale cross-provider targets", async () => {
+  let nodeState: DesktopAgentGUINodeState = {
+    agentTargetId: "local:claude-code",
+    provider: "claude-code",
+    lastActiveAgentSessionId: "session-claude-1"
+  };
+  const agentActivityRuntime = {
+    async activateSession() {
+      return {};
+    }
+  } as unknown as Pick<AgentActivityRuntime, "activateSession">;
+
+  const consumed = consumeDesktopAgentGUIOpenSessionActivation({
+    activation: {
+      payload: { agentSessionId: "session-codex-1" },
+      sequence: 12,
+      type: desktopAgentGUIOpenSessionActivationType
+    },
+    agentActivityRuntime,
+    handledSequence: null,
+    markHandled: () => {},
+    nodeId: "node-1",
+    onStateChange: () => {},
+    provider: "codex",
+    resolveAgentTargetProvider: (agentTargetId) =>
+      agentTargetId === "local:claude-code" ? "claude-code" : null,
+    workspaceId: "workspace-1",
+    updateNodeState: (updater) => {
+      nodeState = updater(nodeState);
+    }
+  });
+
+  await Promise.resolve();
+
+  assert.equal(consumed, true);
+  assert.equal(nodeState.lastActiveAgentSessionId, "session-codex-1");
+  assert.equal(nodeState.provider, "codex");
+  assert.equal(nodeState.agentTargetId, null);
 });
 
 test("consumeDesktopAgentGUIOpenSessionActivation reports activation errors after selecting the session", async () => {

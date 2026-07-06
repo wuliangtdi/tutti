@@ -6,8 +6,9 @@ import (
 	"sync"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // defaultIdleTTL shuts a workspace's browser (and its Chrome) down after a
@@ -20,6 +21,7 @@ const defaultIdleTTL = 5 * time.Minute
 type Service struct {
 	transport            agentruntime.ProcessTransport
 	preferences          PreferencesReader
+	managedRuntime       managedruntime.ProfileResolver
 	idleTTL              time.Duration
 	autoConnectPreflight func() error
 
@@ -41,6 +43,7 @@ func NewService(preferences ...PreferencesReader) *Service {
 	return &Service{
 		transport:            agentruntime.NewLocalProcessTransport(),
 		preferences:          reader,
+		managedRuntime:       managedruntime.DefaultResolver{},
 		idleTTL:              defaultIdleTTL,
 		autoConnectPreflight: validateAutoConnectChromeReady,
 		sessions:             make(map[string]*browserSession),
@@ -84,10 +87,36 @@ func (s *Service) CallTool(ctx context.Context, workspaceID, cwd, tool string, a
 		return ToolResult{}, err
 	}
 	result, err := session.callTool(ctx, tool, args)
+	if err != nil && tool != "new_page" && isBrowserPageGoneError(err) {
+		// The browser process is still alive and connected (so the process-exit
+		// recovery below never triggers), but it has zero open pages/tabs — most
+		// commonly because the user closed the automated browser window
+		// themselves rather than through Tutti. chrome-devtools-mcp does not
+		// auto-create a page in that state, so every page-scoped call would
+		// otherwise fail forever with the same error. Open a fresh page to
+		// restore a live session, then retry the original call once.
+		if _, healErr := session.callTool(ctx, "new_page", map[string]any{"url": "about:blank"}); healErr == nil {
+			result, err = session.callTool(ctx, tool, args)
+		}
+	}
 	if err != nil && session.client != nil && session.client.isClosed() {
 		s.Shutdown(workspaceID)
 	}
 	return result, err
+}
+
+// isBrowserPageGoneError reports whether err is chrome-devtools-mcp's error for
+// a page-scoped tool call made after the selected page (or all pages) closed
+// out from under the browser, e.g. because the user manually closed the
+// automated browser window. See McpContext#getSelectedMcpPage in the vendored
+// chrome-devtools-mcp package.
+func isBrowserPageGoneError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "the selected page has been closed") ||
+		strings.Contains(msg, "no page selected")
 }
 
 func (s *Service) getOrCreate(workspaceID, connectionMode string) *browserSession {
@@ -106,7 +135,7 @@ func (s *Service) getOrCreate(workspaceID, connectionMode string) *browserSessio
 }
 
 func (s *Service) resolveCommand(ctx context.Context) []string {
-	return resolveBrowserMCPCommand(ctx, s.preferences)
+	return resolveBrowserMCPCommand(ctx, s.preferences, s.managedRuntime)
 }
 
 func (s *Service) resetIdle(workspaceID string, session *browserSession) {

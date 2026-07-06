@@ -82,6 +82,17 @@ Rules:
 - slower cross-workspace validation belongs here rather than in `pre-commit`
 - if a check is too expensive for `pre-commit`, keep it in `pre-push` and CI
 
+For PR branches that often need rebasing or force-pushing, use
+`pnpm push:checked` instead of running `pnpm check:full` and `git push`
+manually. It fetches the configured remote branch first and stops before
+`check:full` if the remote already has commits not present locally. After
+`check:full` passes, it pushes `HEAD` with an explicit
+`--force-with-lease=<remote-ref>:<fetched-sha>` and disables the Husky
+`pre-push` hook for that child push to avoid rerunning the same full gate.
+If another contributor pushes during `check:full`, the explicit lease still
+rejects the push. The command requires a clean worktree so the validation run
+matches the pushed `HEAD`.
+
 ## Changed-Aware Validation
 
 Use `pnpm check:changed` as the preferred local iteration check before running
@@ -92,6 +103,11 @@ under `.tmp/check-runs`.
 Failure output prints an 80-line tail by default. Use
 `pnpm check:changed -- --tail-lines <n>` when a larger or smaller tail is more
 useful; full logs remain in `.tmp/check-runs`.
+
+When the changed set includes deleted package test files, `check:changed` should
+not pass those missing paths to Vitest as explicit targets. Deleting source files
+should still keep the surrounding package validation active so typecheck can
+catch broken imports.
 
 ## UI Boundary Enforcement
 

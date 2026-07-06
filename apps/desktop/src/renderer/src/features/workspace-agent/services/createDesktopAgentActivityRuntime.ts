@@ -1,4 +1,5 @@
 import type { AgentActivityRuntime } from "@tutti-os/agent-gui";
+import { resolveSubmitAvailability } from "@tutti-os/agent-activity-core";
 import type {
   AgentActivityMessage,
   AgentActivityMessagePage,
@@ -267,6 +268,7 @@ export function createDesktopAgentActivityRuntime(
       }
       return result;
     },
+    goalControl: (input) => workspaceAgentActivityService.goalControl(input),
     createSession: (input) =>
       workspaceAgentActivityService.createSession(input),
     deleteSession: (input) =>
@@ -290,6 +292,12 @@ export function createDesktopAgentActivityRuntime(
     },
     listAgentGeneratedFiles: (input) =>
       workspaceAgentActivityService.listAgentGeneratedFiles(input),
+    listSessionsPage: (input) =>
+      workspaceAgentActivityService.listSessionsPage(input),
+    listSessionSections: (input) =>
+      workspaceAgentActivityService.listSessionSections(input),
+    listSessionSectionPage: (input) =>
+      workspaceAgentActivityService.listSessionSectionPage(input),
     async load(workspaceId, signal) {
       const snapshot = await workspaceAgentActivityService.load(
         workspaceId,
@@ -638,7 +646,9 @@ function agentActivitySessionDiagnosticDetails(
 function agentActivitySessionIsBusy(session: AgentActivitySession): boolean {
   const status = session.status;
   const phase = session.turnLifecycle?.phase;
-  const submitState = session.submitAvailability?.state;
+  // Derive from the turn lifecycle when present (ADR 0008); the wire
+  // submitAvailability is only trusted for lifecycle-less records.
+  const submitState = resolveSubmitAvailability(session).state;
   return (
     status === "queued" ||
     status === "working" ||

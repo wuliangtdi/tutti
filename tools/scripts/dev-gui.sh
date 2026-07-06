@@ -266,6 +266,9 @@ NODE
 prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
+  fi
 }
 
 resolve_required_node_major() {
@@ -312,11 +315,13 @@ ensure_node_runtime() {
 
 ensure_pnpm() {
   local required_pnpm_version
+  local required_pnpm_semver
   local current_pnpm_version=""
   local corepack_bin_dir
   local resolved_pnpm_version
 
   required_pnpm_version="$(resolve_required_pnpm_version)"
+  required_pnpm_semver="${required_pnpm_version%%+*}"
 
   if command_exists corepack; then
     corepack_bin_dir="$(dirname "$(command -v corepack)")"
@@ -328,7 +333,7 @@ ensure_pnpm() {
     current_pnpm_version="$(pnpm --version)"
   fi
 
-  if [[ "${current_pnpm_version}" == "${required_pnpm_version}" ]]; then
+  if [[ "${current_pnpm_version}" == "${required_pnpm_semver}" ]]; then
     log "pnpm ${current_pnpm_version}"
     return
   fi
@@ -345,7 +350,7 @@ ensure_pnpm() {
   hash -r
 
   resolved_pnpm_version="$(pnpm --version)"
-  if [[ "${resolved_pnpm_version}" != "${required_pnpm_version}" ]]; then
+  if [[ "${resolved_pnpm_version}" != "${required_pnpm_semver}" ]]; then
     fail "pnpm ${required_pnpm_version} installation did not succeed; found ${resolved_pnpm_version:-unknown version}."
   fi
 

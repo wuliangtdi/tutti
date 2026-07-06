@@ -4,18 +4,32 @@ export {
   projectCoreSessionStatus,
   type AgentActivitySnapshotProjection
 } from "./shared/agentActivitySnapshotProjection";
+export {
+  getAgentCustomMentionKind,
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests,
+  type AgentCustomMentionChipContext,
+  type AgentCustomMentionIdentity,
+  type AgentCustomMentionKindDefinition,
+  type AgentCustomMentionPresentation
+} from "./shared/agentCustomMentionKinds";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets,
+  createSharedAgentGUIProviderTarget,
+  localAgentGUIAgentTargetId,
   localAgentGUIProviderTargetId,
   normalizeAgentGUIProviderTargets,
   resolveAgentGUIProviderTarget
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderReadinessGateAction,
+  AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
   AgentGUIProviderTargetRef
 } from "./types";
@@ -30,6 +44,10 @@ export {
   resolveAgentGUIExpandedWindowFrame,
   shouldAutoCollapseAgentGUIConversationRail
 } from "./agent-gui/agentGuiNode/model/agentGuiRailLayout";
+export type {
+  AgentGUISidebarFooterContext,
+  AgentGUISidebarFooterRenderer
+} from "./agent-gui/agentGuiNode/AgentGUINodeView";
 export {
   AGENT_CONTEXT_MENTION_PROVIDER_IDS,
   type AgentContextMentionProviderId,

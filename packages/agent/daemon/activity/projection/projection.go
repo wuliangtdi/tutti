@@ -6,6 +6,8 @@ type SessionSnapshot struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	UserID            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -29,6 +31,8 @@ type SessionStateReport struct {
 	WorkspaceID       string
 	AgentSessionID    string
 	Origin            string
+	UserID            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Model             string
@@ -71,6 +75,8 @@ func ProjectSessionState(
 		WorkspaceID:       strings.TrimSpace(report.WorkspaceID),
 		AgentSessionID:    strings.TrimSpace(report.AgentSessionID),
 		Origin:            strings.TrimSpace(report.Origin),
+		UserID:            strings.TrimSpace(report.UserID),
+		AgentTargetID:     strings.TrimSpace(report.AgentTargetID),
 		Provider:          strings.TrimSpace(report.Provider),
 		ProviderSessionID: strings.TrimSpace(report.ProviderSessionID),
 		Model:             strings.TrimSpace(report.Model),
@@ -95,6 +101,12 @@ func ProjectSessionState(
 		}
 		if session.Origin == "" {
 			session.Origin = existing.Origin
+		}
+		if session.UserID == "" {
+			session.UserID = existing.UserID
+		}
+		if session.AgentTargetID == "" {
+			session.AgentTargetID = existing.AgentTargetID
 		}
 		if session.Provider == "" {
 			session.Provider = existing.Provider
@@ -250,10 +262,19 @@ func ProjectMessageUpdate(
 		}
 		message.Payload["text"] = stringValue(message.Payload["text"]) + update.ContentDelta
 	}
+	message.Payload = clearStaleToolPayloadForStatus(message.Kind, message.Status, message.Payload)
 	if message.Payload == nil {
 		message.Payload = map[string]any{}
 	}
 	return message, true
+}
+
+func clearStaleToolPayloadForStatus(kind string, status string, payload map[string]any) map[string]any {
+	if strings.TrimSpace(kind) != "tool_call" || strings.TrimSpace(status) != "completed" || len(payload) == 0 {
+		return payload
+	}
+	delete(payload, "error")
+	return payload
 }
 
 func firstNonZeroInt64(values ...int64) int64 {
@@ -300,8 +321,24 @@ func mergeSessionRuntimeState(
 		incomingEventUnixMS < existingLastEventUnixMS {
 		return existingStatus, existingCurrentPhase
 	}
-	existingCanonical := CanonicalSessionStatus(existingStatus, existingCurrentPhase)
-	if isTerminalSessionStatus(existingCanonical) {
+	// Freeze runtime state only once the *session* itself has reached a
+	// terminal lifecycle status (completed/failed/canceled/errored) — that
+	// is permanent and must never be reopened by a later, stray patch.
+	//
+	// This intentionally checks the raw lifecycle status rather than
+	// CanonicalSessionStatus(existingStatus, existingCurrentPhase), which
+	// also folds a single failed *turn* (currentPhase == "failed") into
+	// "failed" for display purposes. A turn failing does not end the
+	// session — the session's own lifecycle status stays "active" (see
+	// reporter.go's EventTurnFailed handling) so more turns can still run.
+	// Freezing on the canonical (turn-inclusive) status would permanently
+	// lock a session's badge on "failed" the moment any single turn errors,
+	// even after a later turn on the same session starts and completes
+	// successfully — that later, genuinely newer state is exactly what
+	// should win. See
+	// TestProjectSessionStateRecoversAfterTurnFailureWhenSessionStaysActive
+	// and TestProjectSessionStateClearsFailedPhaseAfterLaterTurnCompletes.
+	if isTerminalSessionStatus(existingStatus) {
 		return existingStatus, existingCurrentPhase
 	}
 	return incomingStatus, incomingCurrentPhase

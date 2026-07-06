@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -35,6 +36,17 @@ func TestComposerProviderCapabilitiesDefaults(t *testing.T) {
 	}
 	if got := composerProviderCapabilities("unknown"); got != nil {
 		t.Fatalf("unknown provider defaults = %v, want nil", got)
+	}
+}
+
+func TestComposerProviderCapabilitiesOmitUnavailableComputerUse(t *testing.T) {
+	t.Setenv("TUTTI_COMPUTER_USE", "")
+	t.Setenv("TUTTI_COMPUTER_MCP_COMMAND", filepath.Join(t.TempDir(), "missing-cua-driver"))
+
+	for _, provider := range []string{"claude-code", "codex", "gemini", "openclaw"} {
+		if got := composerProviderCapabilities(provider); slices.Contains(got, "computerUse") {
+			t.Fatalf("%s defaults = %v, want no computerUse when cua-driver is unavailable", provider, got)
+		}
 	}
 }
 
@@ -105,6 +117,35 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 	}
 }
 
+func TestComposerPermissionConfigForCursor(t *testing.T) {
+	t.Parallel()
+	config := composerPermissionConfig("cursor", "", "en")
+	if !config.Configurable {
+		t.Fatal("cursor permission config must be configurable")
+	}
+	if config.DefaultValue != "agent" {
+		t.Fatalf("cursor default permission mode = %q, want agent", config.DefaultValue)
+	}
+	ids := make([]string, 0, len(config.Modes))
+	for _, mode := range config.Modes {
+		ids = append(ids, mode.ID)
+	}
+	if !slices.Equal(ids, []string{"read-only", "agent", "full-access"}) {
+		t.Fatalf("cursor permission mode ids = %v, want [read-only agent full-access]", ids)
+	}
+	if got := normalizePermissionModeIDForProvider("cursor", "yolo"); got != "agent" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, yolo) = %q, want agent", got)
+	}
+	// Pre-tier execution-mode ids persisted by earlier sessions fall back to
+	// the default tier instead of leaking through.
+	if got := normalizePermissionModeIDForProvider("cursor", "plan"); got != "agent" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, plan) = %q, want agent fallback", got)
+	}
+	if got := normalizePermissionModeIDForProvider("cursor", "full-access"); got != "full-access" {
+		t.Fatalf("normalizePermissionModeIDForProvider(cursor, full-access) = %q, want full-access", got)
+	}
+}
+
 func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	t.Parallel()
 	// Pins the backend configurable flags so the GUI can derive support from
@@ -117,6 +158,7 @@ func TestComposerConfigConfigurableTruthTable(t *testing.T) {
 	}{
 		{"claude-code", false, true, true},
 		{"codex", true, true, true},
+		{"cursor", true, false, true},
 		{"gemini", true, true, false},
 		{"hermes", false, false, false},
 		{"nexight", false, false, true},

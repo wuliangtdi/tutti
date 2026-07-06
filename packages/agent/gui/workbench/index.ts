@@ -3,15 +3,19 @@ export {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
   agentGuiWorkbenchDefaultCopy,
   agentGuiWorkbenchDefaultNodeFrame,
+  buildAgentGuiDockEntries,
   createAgentGuiWorkbenchContribution,
+  resolveAgentGuiUnifiedDockLaunchPayload,
   resolveAgentGuiWorkbenchContributionCopy
 } from "./contribution.ts";
 export type {
+  AgentGuiWorkbenchProviderAvailability,
   AgentGuiWorkbenchContributionCopy,
   AgentGuiWorkbenchContributionCopyOverrides,
   AgentGuiWorkbenchConversationRailToggleDetail,
   AgentGuiWorkbenchNewConversationDetail,
   AgentGuiWorkbenchRenderBodyHelpers,
+  BuildAgentGuiDockEntriesInput,
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
@@ -29,10 +33,12 @@ export {
 } from "./providerCatalog.ts";
 export {
   agentGuiWorkbenchDockEntryId,
+  agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchInstanceId,
   agentGuiWorkbenchProviderFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchTypeId,
+  agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,

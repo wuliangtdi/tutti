@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 // appServerReviewTarget maps the `/review` slash-command args onto a codex
@@ -15,6 +15,7 @@ import (
 // free-form instructions can never be misread as a structured choice:
 //
 //	(empty)            -> uncommittedChanges
+//	uncommitted        -> uncommittedChanges (review picker default)
 //	base:<branch>      -> baseBranch
 //	commit:<sha>       -> commit
 //	custom:<text>      -> custom
@@ -26,6 +27,9 @@ import (
 func appServerReviewTarget(args string) map[string]any {
 	args = strings.TrimSpace(args)
 	if args == "" {
+		return map[string]any{"type": "uncommittedChanges"}
+	}
+	if strings.EqualFold(args, "uncommitted") {
 		return map[string]any{"type": "uncommittedChanges"}
 	}
 	if keyword, rest, ok := strings.Cut(args, ":"); ok {
@@ -95,7 +99,7 @@ func (a *CodexAppServerAdapter) execReviewSlashCommand(
 		// configured with model_reasoning_summary=none (for example spark).
 		"summary": appServerReviewReasoningSummary(),
 	}
-	result, err := appSession.client.Call(ctx, appServerMethodReviewStart, params,
+	result, err := appSession.client.ReviewStart(ctx, params,
 		a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, errPermissionRequestCanceled) {

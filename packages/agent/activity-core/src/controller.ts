@@ -35,6 +35,7 @@ export interface AgentActivityController {
       force?: boolean;
     }
   ): Promise<AgentActivityComposerOptions>;
+  invalidateComposerOptions(input?: { providers?: readonly string[] }): void;
   listSessionMessages(input: {
     agentSessionId: string;
     afterVersion?: number;
@@ -79,10 +80,14 @@ export function createAgentActivityController({
     Promise<AgentActivityComposerOptions>
   >();
   const composerOptionsLoadVersions = new Map<string, number>();
-  const composerOptionsCwdByProvider = new Map<string, string>();
+  const composerOptionsCwdByCacheKey = new Map<string, string>();
   const activeComposerOptionsLoadCwds = new Map<string, string>();
   const normalizeComposerCwd = (cwd: string | null | undefined): string =>
     (cwd ?? "").trim();
+  const composerOptionsProviderCacheKey = (provider: string): string =>
+    `provider:${provider}`;
+  const composerOptionsTargetCacheKey = (agentTargetId: string): string =>
+    `target:${agentTargetId}`;
   const autoRetainedStreamReleases = new Map<string, () => void>();
   const retainedStreams = new Map<string, RetainedSessionStream>();
   let snapshot: AgentActivitySnapshot =
@@ -123,6 +128,16 @@ export function createAgentActivityController({
         const sessionDataUnchanged =
           areShallowObjectArraysEqual(current.sessions, nextSessions) &&
           areShallowObjectArraysEqual(current.presences, nextPresences);
+        if (!sessionDataUnchanged) {
+          for (const nextSession of nextSessions) {
+            const existing = current.sessions.find(
+              (item) => item.agentSessionId === nextSession.agentSessionId
+            );
+            if (existing) {
+              reportSessionVersionRegression("load", existing, nextSession);
+            }
+          }
+        }
         const source = sessionDataUnchanged
           ? current
           : {
@@ -146,28 +161,39 @@ export function createAgentActivityController({
       if (!provider) {
         throw new Error("Agent composer options provider is required.");
       }
+      const agentTargetId =
+        typeof input.agentTargetId === "string" && input.agentTargetId.trim()
+          ? input.agentTargetId.trim()
+          : null;
+      const primaryCacheKey = agentTargetId
+        ? composerOptionsTargetCacheKey(agentTargetId)
+        : composerOptionsProviderCacheKey(provider);
       const requestedCwd = normalizeComposerCwd(input.cwd);
       if (!input.force) {
-        const cached = snapshot.composerOptionsByProvider?.[provider];
+        const cached = agentTargetId
+          ? snapshot.composerOptionsByAgentTargetId?.[agentTargetId]
+          : snapshot.composerOptionsByProvider?.[provider];
         if (
           cached &&
-          composerOptionsCwdByProvider.get(provider) === requestedCwd
+          composerOptionsCwdByCacheKey.get(primaryCacheKey) === requestedCwd
         ) {
           return cloneAgentActivityComposerOptions(cached);
         }
       }
-      const existingLoad = activeComposerOptionsLoads.get(provider);
+      const existingLoad = activeComposerOptionsLoads.get(primaryCacheKey);
       if (
         existingLoad &&
         !input.force &&
-        activeComposerOptionsLoadCwds.get(provider) === requestedCwd
+        activeComposerOptionsLoadCwds.get(primaryCacheKey) === requestedCwd
       ) {
         return existingLoad.then(cloneAgentActivityComposerOptions);
       }
-      const loadVersion = (composerOptionsLoadVersions.get(provider) ?? 0) + 1;
-      composerOptionsLoadVersions.set(provider, loadVersion);
+      const loadVersion =
+        (composerOptionsLoadVersions.get(primaryCacheKey) ?? 0) + 1;
+      composerOptionsLoadVersions.set(primaryCacheKey, loadVersion);
       const load = adapter
         .loadComposerOptions({
+          agentTargetId,
           workspaceId,
           provider,
           cwd: input.cwd,
@@ -180,18 +206,30 @@ export function createAgentActivityController({
             provider,
             loadedAtUnixMs: options.loadedAtUnixMs || Date.now()
           });
-          if (composerOptionsLoadVersions.get(provider) !== loadVersion) {
+          if (
+            composerOptionsLoadVersions.get(primaryCacheKey) !== loadVersion
+          ) {
             return cloneAgentActivityComposerOptions(normalizedOptions);
           }
-          composerOptionsCwdByProvider.set(provider, requestedCwd);
+          composerOptionsCwdByCacheKey.set(primaryCacheKey, requestedCwd);
           updateSnapshot((current) => {
-            const currentOptions =
-              current.composerOptionsByProvider?.[provider];
+            const currentOptions = agentTargetId
+              ? current.composerOptionsByAgentTargetId?.[agentTargetId]
+              : current.composerOptionsByProvider?.[provider];
             if (
               currentOptions &&
               areComposerOptionsEqual(currentOptions, normalizedOptions)
             ) {
               return current;
+            }
+            if (agentTargetId) {
+              return {
+                ...current,
+                composerOptionsByAgentTargetId: {
+                  ...current.composerOptionsByAgentTargetId,
+                  [agentTargetId]: normalizedOptions
+                }
+              };
             }
             return {
               ...current,
@@ -204,14 +242,55 @@ export function createAgentActivityController({
           return cloneAgentActivityComposerOptions(normalizedOptions);
         })
         .finally(() => {
-          if (activeComposerOptionsLoads.get(provider) === load) {
-            activeComposerOptionsLoads.delete(provider);
-            activeComposerOptionsLoadCwds.delete(provider);
+          if (activeComposerOptionsLoads.get(primaryCacheKey) === load) {
+            activeComposerOptionsLoads.delete(primaryCacheKey);
+            activeComposerOptionsLoadCwds.delete(primaryCacheKey);
           }
         });
-      activeComposerOptionsLoads.set(provider, load);
-      activeComposerOptionsLoadCwds.set(provider, requestedCwd);
+      activeComposerOptionsLoads.set(primaryCacheKey, load);
+      activeComposerOptionsLoadCwds.set(primaryCacheKey, requestedCwd);
       return load.then(cloneAgentActivityComposerOptions);
+    },
+    invalidateComposerOptions(input) {
+      // Drop the freshness markers, not the cached options themselves: the
+      // composer keeps rendering the last known list while the next
+      // loadComposerOptions call misses the cache and refetches.
+      const providers = input?.providers?.length
+        ? new Set(input.providers)
+        : null;
+      const matchesProvider = (provider: string | null | undefined): boolean =>
+        providers === null || (!!provider && providers.has(provider));
+      const staleCacheKeys = new Set<string>();
+      for (const provider of Object.keys(
+        snapshot.composerOptionsByProvider ?? {}
+      )) {
+        if (matchesProvider(provider)) {
+          staleCacheKeys.add(composerOptionsProviderCacheKey(provider));
+        }
+      }
+      for (const [agentTargetId, options] of Object.entries(
+        snapshot.composerOptionsByAgentTargetId ?? {}
+      )) {
+        if (matchesProvider(options?.provider)) {
+          staleCacheKeys.add(composerOptionsTargetCacheKey(agentTargetId));
+        }
+      }
+      for (const cacheKey of composerOptionsCwdByCacheKey.keys()) {
+        // Provider cache keys may have no snapshot entry yet (load in flight);
+        // match them directly so those are invalidated too.
+        if (providers === null) {
+          staleCacheKeys.add(cacheKey);
+          continue;
+        }
+        for (const provider of providers) {
+          if (cacheKey === composerOptionsProviderCacheKey(provider)) {
+            staleCacheKeys.add(cacheKey);
+          }
+        }
+      }
+      for (const cacheKey of staleCacheKeys) {
+        composerOptionsCwdByCacheKey.delete(cacheKey);
+      }
     },
     async listSessionMessages({
       agentSessionId,
@@ -254,7 +333,9 @@ export function createAgentActivityController({
       if (session.workspaceId && session.workspaceId !== snapshot.workspaceId) {
         return;
       }
-      updateSnapshot((current) => upsertSnapshotSession(current, session));
+      updateSnapshot((current) =>
+        upsertSnapshotSession(current, session, "upsert_session")
+      );
     },
     applyActivityUpdatedEvent(event) {
       const result = applyActivityUpdatedEvent(snapshot, event);
@@ -452,7 +533,8 @@ export function createEmptyAgentActivitySnapshot(
     sessions: [],
     presences: [],
     sessionMessagesById: {},
-    composerOptionsByProvider: {}
+    composerOptionsByProvider: {},
+    composerOptionsByAgentTargetId: {}
   };
 }
 
@@ -463,6 +545,14 @@ export function cloneAgentActivitySnapshot(
     workspaceId: snapshot.workspaceId,
     sessions: snapshot.sessions.map(cloneAgentActivitySession),
     presences: snapshot.presences.map((presence) => ({ ...presence })),
+    composerOptionsByAgentTargetId: Object.fromEntries(
+      Object.entries(snapshot.composerOptionsByAgentTargetId ?? {}).map(
+        ([agentTargetId, options]) => [
+          agentTargetId,
+          cloneAgentActivityComposerOptions(options)
+        ]
+      )
+    ),
     composerOptionsByProvider: Object.fromEntries(
       Object.entries(snapshot.composerOptionsByProvider ?? {}).map(
         ([provider, options]) => [
@@ -529,6 +619,14 @@ function cloneAgentActivitySession(
     submitAvailability: session.submitAvailability
       ? { ...session.submitAvailability }
       : session.submitAvailability,
+    pendingInteractive:
+      session.pendingInteractive === null
+        ? null
+        : session.pendingInteractive
+          ? (cloneJSONValue(
+              session.pendingInteractive
+            ) as AgentActivitySession["pendingInteractive"])
+          : session.pendingInteractive,
     runtimeContext: cloneJSONRecord(session.runtimeContext)
   };
 }
@@ -728,10 +826,24 @@ function applyActivityUpdatedStatePatch(
     snapshot.sessions.find(
       (session) => session.agentSessionId === canonicalPatchSessionId
     ) ?? null;
-  if (
-    !existingSession ||
-    isStaleStatePatch(existingSession, canonicalStatePatch)
-  ) {
+  if (!existingSession) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  if (isStaleStatePatch(existingSession, canonicalStatePatch)) {
+    reportAgentActivityStoreDiagnostic("state_patch_dropped_stale", {
+      agentSessionId: canonicalPatchSessionId,
+      workspaceId: input.workspaceId,
+      patchKey:
+        canonicalStatePatch.lastEventUnixMs ??
+        canonicalStatePatch.occurredAtUnixMs ??
+        null,
+      sessionKey:
+        existingSession.lastEventUnixMs ??
+        existingSession.updatedAtUnixMs ??
+        null,
+      patchTurnPhase: canonicalStatePatch.turn?.phase ?? null,
+      patchSubmitAvailability: canonicalStatePatch.submitAvailability ?? null
+    });
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   const session = agentActivitySessionFromInlineStatePatch({
@@ -743,7 +855,7 @@ function applyActivityUpdatedStatePatch(
     applied: true,
     messages: [],
     session,
-    snapshot: upsertSnapshotSession(snapshot, session),
+    snapshot: upsertSnapshotSession(snapshot, session, "inline_state_patch"),
     statePatch: canonicalStatePatch
   };
 }
@@ -778,7 +890,9 @@ function applySessionEvent(
 
   if (event.eventType === "session_update") {
     const session = sessionFromEvent(snapshot.workspaceId, event, data);
-    return session ? upsertSnapshotSession(snapshot, session) : snapshot;
+    return session
+      ? upsertSnapshotSession(snapshot, session, "session_update_event")
+      : snapshot;
   }
 
   return snapshot;
@@ -852,9 +966,65 @@ function mergeSnapshotMessages(
   };
 }
 
+// Diagnostic sink (temporary instrumentation): surfaces store anomalies —
+// version regressions on unguarded write paths and stale-patch drops — to the
+// host's logging so field exports show WHICH channel overwrote WHAT.
+type AgentActivityStoreDiagnosticSink = (
+  event: string,
+  details: Record<string, unknown>
+) => void;
+
+let agentActivityStoreDiagnosticSink: AgentActivityStoreDiagnosticSink | null =
+  null;
+
+export function setAgentActivityStoreDiagnosticSink(
+  sink: AgentActivityStoreDiagnosticSink | null
+): void {
+  agentActivityStoreDiagnosticSink = sink;
+}
+
+function reportAgentActivityStoreDiagnostic(
+  event: string,
+  details: Record<string, unknown>
+): void {
+  try {
+    agentActivityStoreDiagnosticSink?.(event, details);
+  } catch {
+    // Diagnostics must never affect the store.
+  }
+}
+
+function sessionVersionKey(session: AgentActivitySession): number | null {
+  return session.lastEventUnixMs ?? session.updatedAtUnixMs ?? null;
+}
+
+function reportSessionVersionRegression(
+  source: string,
+  existing: AgentActivitySession,
+  incoming: AgentActivitySession
+): void {
+  const previousKey = sessionVersionKey(existing);
+  const nextKey = sessionVersionKey(incoming);
+  if (previousKey === null || nextKey === null || nextKey >= previousKey) {
+    return;
+  }
+  reportAgentActivityStoreDiagnostic("session_version_regression", {
+    agentSessionId: incoming.agentSessionId,
+    workspaceId: incoming.workspaceId,
+    source,
+    previousKey,
+    nextKey,
+    previousTurnPhase: existing.turnLifecycle?.phase ?? null,
+    nextTurnPhase: incoming.turnLifecycle?.phase ?? null,
+    previousSubmitAvailability: existing.submitAvailability ?? null,
+    nextSubmitAvailability: incoming.submitAvailability ?? null
+  });
+}
+
 function upsertSnapshotSession(
   snapshot: AgentActivitySnapshot,
-  session: AgentActivitySession
+  session: AgentActivitySession,
+  source = "unknown"
 ): AgentActivitySnapshot {
   const index = snapshot.sessions.findIndex(
     (item) => item.agentSessionId === session.agentSessionId
@@ -864,6 +1034,10 @@ function upsertSnapshotSession(
       ...snapshot,
       sessions: [...snapshot.sessions, session]
     });
+  }
+  const existingSession = snapshot.sessions[index];
+  if (existingSession) {
+    reportSessionVersionRegression(source, existingSession, session);
   }
   const sessions = [...snapshot.sessions];
   sessions[index] = session;
@@ -1132,6 +1306,7 @@ function sessionFromEvent(
   return {
     workspaceId: stringValue(source.workspaceId) || workspaceId,
     agentSessionId,
+    agentTargetId: nullableStringValue(source.agentTargetId),
     provider: stringValue(source.provider),
     providerSessionId: nullableStringValue(source.providerSessionId),
     model: nullableStringValue(source.model),
@@ -1279,6 +1454,16 @@ function inlineStatePatchFromActivityUpdateData(
     runtimeContext: cloneJSONRecord(
       recordValue(source.runtimeContext) ?? undefined
     ),
+    ...(source.pendingInteractive !== undefined
+      ? {
+          pendingInteractive:
+            source.pendingInteractive === null
+              ? null
+              : (cloneJSONValue(
+                  recordValue(source.pendingInteractive) ?? {}
+                ) as AgentActivityStatePatch["pendingInteractive"])
+        }
+      : {}),
     startedAtUnixMs: numberValue(source.startedAtUnixMs),
     endedAtUnixMs: numberValue(source.endedAtUnixMs),
     title: stringValue(source.title) || undefined,
@@ -1351,6 +1536,8 @@ function agentActivitySessionFromInlineStatePatch(input: {
     ...input.existingSession,
     workspaceId: input.patch.workspaceId ?? input.workspaceId,
     agentSessionId: input.patch.agentSessionId,
+    agentTargetId:
+      input.patch.agentTargetId ?? input.existingSession.agentTargetId,
     provider: input.patch.provider ?? input.existingSession.provider,
     providerSessionId:
       input.patch.providerSessionId ?? input.existingSession.providerSessionId,
@@ -1375,6 +1562,14 @@ function agentActivitySessionFromInlineStatePatch(input: {
     runtimeContext:
       cloneJSONRecord(input.patch.runtimeContext) ??
       cloneJSONRecord(input.existingSession.runtimeContext),
+    pendingInteractive:
+      input.patch.pendingInteractive !== undefined
+        ? input.patch.pendingInteractive === null
+          ? null
+          : (cloneJSONValue(
+              input.patch.pendingInteractive
+            ) as AgentActivitySession["pendingInteractive"])
+        : input.existingSession.pendingInteractive,
     lastEventUnixMs:
       input.patch.lastEventUnixMs ??
       input.patch.occurredAtUnixMs ??
@@ -1396,6 +1591,14 @@ function cloneAgentActivityStatePatch(
   return {
     ...statePatch,
     runtimeContext: cloneJSONRecord(statePatch.runtimeContext),
+    pendingInteractive:
+      statePatch.pendingInteractive === null
+        ? null
+        : statePatch.pendingInteractive
+          ? (cloneJSONValue(
+              statePatch.pendingInteractive
+            ) as AgentActivityStatePatch["pendingInteractive"])
+          : statePatch.pendingInteractive,
     ...(statePatch.submitAvailability
       ? { submitAvailability: { ...statePatch.submitAvailability } }
       : {}),

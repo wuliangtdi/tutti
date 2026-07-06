@@ -204,6 +204,81 @@ func TestProjectSessionStateKeepsFirstTerminalStateAfterLaterTerminalPatch(t *te
 	}
 }
 
+// TestProjectSessionStateRecoversAfterTurnFailureWhenSessionStaysActive covers
+// the regression where a session's badge got stuck on "failed" forever after
+// one turn errored, even once a later turn on the *same* session started
+// working. Unlike a real session-level termination (status
+// completed/failed/canceled — see the two tests above, which must keep
+// freezing), a single failed turn leaves the session's own lifecycle status
+// "active" (only currentPhase reflects the failed turn), so a later turn
+// starting must be allowed to move currentPhase forward again.
+func TestProjectSessionStateRecoversAfterTurnFailureWhenSessionStaysActive(t *testing.T) {
+	existing := SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Status:          "active",
+		CurrentPhase:    "failed",
+		LastEventUnixMS: 100,
+		CreatedAtUnixMS: 90,
+		UpdatedAtUnixMS: 100,
+	}
+
+	projected := ProjectSessionState(existing, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "active",
+		CurrentPhase:     "working",
+		OccurredAtUnixMS: 150,
+	}, 200)
+
+	session := projected.Session
+	if session.Status != "active" || session.CurrentPhase != "working" {
+		t.Fatalf("runtime state = %q/%q, want active/working (new turn must clear the stale failed phase)", session.Status, session.CurrentPhase)
+	}
+	if session.LastEventUnixMS != 150 {
+		t.Fatalf("LastEventUnixMS = %d, want newer event 150", session.LastEventUnixMS)
+	}
+}
+
+// TestProjectSessionStateClearsFailedPhaseAfterLaterTurnCompletes is the
+// end-to-end sequence from the bug report: a turn fails, then a later turn on
+// the same session completes successfully. The session's status/phase must
+// reflect that later success, not remain stuck on the earlier failure.
+func TestProjectSessionStateClearsFailedPhaseAfterLaterTurnCompletes(t *testing.T) {
+	failed := ProjectSessionState(SessionSnapshot{
+		WorkspaceID:     "ws-1",
+		AgentSessionID:  "session-1",
+		Status:          "active",
+		CurrentPhase:    "idle",
+		LastEventUnixMS: 50,
+		CreatedAtUnixMS: 10,
+		UpdatedAtUnixMS: 50,
+	}, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "active",
+		CurrentPhase:     "failed",
+		OccurredAtUnixMS: 100,
+	}, 110)
+
+	if failed.Session.Status != "active" || failed.Session.CurrentPhase != "failed" {
+		t.Fatalf("after turn failure = %q/%q, want active/failed", failed.Session.Status, failed.Session.CurrentPhase)
+	}
+
+	recovered := ProjectSessionState(failed.Session, true, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-1",
+		Status:           "active",
+		CurrentPhase:     "idle",
+		OccurredAtUnixMS: 200,
+	}, 210)
+
+	session := recovered.Session
+	if session.Status != "active" || session.CurrentPhase != "idle" {
+		t.Fatalf("runtime state after later successful turn = %q/%q, want active/idle, not stuck failed", session.Status, session.CurrentPhase)
+	}
+}
+
 func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T) {
 	existing := MessageSnapshot{
 		ID:                3,
@@ -249,6 +324,47 @@ func TestProjectMessageUpdateMergesPayloadAndProtectsTerminalStatus(t *testing.T
 	}
 	if message.Version != 5 || message.CreatedAtUnixMS != 80 || message.UpdatedAtUnixMS != 150 {
 		t.Fatalf("version/storage times = %d/%d/%d, want 5/80/150", message.Version, message.CreatedAtUnixMS, message.UpdatedAtUnixMS)
+	}
+}
+
+func TestProjectMessageUpdateClearsStaleToolErrorOnCompletion(t *testing.T) {
+	existing := MessageSnapshot{
+		ID:                3,
+		AgentSessionID:    "session-1",
+		MessageID:         "tool-1",
+		Version:           4,
+		TurnID:            "turn-1",
+		Role:              "assistant",
+		Kind:              "tool_call",
+		Status:            "failed",
+		Payload:           map[string]any{"error": map[string]any{"message": "request interrupted"}, "input": map[string]any{"toolName": "Read"}},
+		OccurredAtUnixMS:  120,
+		StartedAtUnixMS:   90,
+		CompletedAtUnixMS: 130,
+		CreatedAtUnixMS:   80,
+		UpdatedAtUnixMS:   100,
+	}
+
+	message, ok := ProjectMessageUpdate(existing, true, MessageUpdate{
+		MessageID:         "tool-1",
+		Status:            "completed",
+		Payload:           map[string]any{"output": map[string]any{"text": "done"}},
+		CompletedAtUnixMS: 140,
+	}, 5, 150)
+	if !ok {
+		t.Fatal("ok = false, want true")
+	}
+	if message.Status != "completed" {
+		t.Fatalf("Status = %q, want completed", message.Status)
+	}
+	if _, ok := message.Payload["error"]; ok {
+		t.Fatalf("payload = %#v, want stale error cleared", message.Payload)
+	}
+	if got := message.Payload["output"].(map[string]any)["text"]; got != "done" {
+		t.Fatalf("payload = %#v, want completed output", message.Payload)
+	}
+	if got := message.Payload["input"].(map[string]any)["toolName"]; got != "Read" {
+		t.Fatalf("payload = %#v, want existing input preserved", message.Payload)
 	}
 }
 

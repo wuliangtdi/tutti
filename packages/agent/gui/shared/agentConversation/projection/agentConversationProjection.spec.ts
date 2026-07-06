@@ -561,6 +561,234 @@ describe("projectAgentConversationVM", () => {
     });
   });
 
+  it("surfaces a pending approval nested inside a delegated subagent's steps", () => {
+    const detail = detailViewModel({
+      turns: [
+        {
+          id: "turn-1",
+          userMessage: { id: "user-1", body: "Delegate it" },
+          userMessages: [{ id: "user-1", body: "Delegate it" }],
+          agentMessages: [],
+          toolCalls: [],
+          toolCallCount: 1,
+          hasFailedToolCall: false,
+          agentItems: [
+            {
+              kind: "tool-calls",
+              id: "tools-1",
+              toolCalls: [
+                {
+                  id: "call:task-1",
+                  name: "Run subagent",
+                  toolName: "Task",
+                  callType: "tool",
+                  status: "in_progress",
+                  statusKind: "working",
+                  summary: "Delegating work",
+                  payload: {
+                    metadata: {
+                      steps: [
+                        {
+                          toolUseId: "step-approval-1",
+                          toolName: "Bash",
+                          callType: "approval",
+                          status: "waiting_approval",
+                          toolInput: {
+                            requestId: "nested-approval-1",
+                            options: [
+                              {
+                                id: "allow_once",
+                                name: "Allow once",
+                                kind: "allow_once"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              toolCallCount: 1,
+              hasFailedToolCall: false
+            }
+          ]
+        }
+      ]
+    });
+
+    const conversation = projectAgentConversationVM(detail);
+
+    // Regression: a Task/subagent call renders its own tool activity as
+    // nested `task.steps`, not as sibling rows. Without descending into
+    // those steps, an approval a delegated subagent is blocked on never
+    // reached `conversation.pendingApproval`, so the session-detail bottom
+    // dock never mounted a prompt even though the run was genuinely stuck
+    // waiting on the user.
+    expect(conversation.pendingApproval?.requestId).toBe("nested-approval-1");
+    expect(conversation.pendingApproval?.options[0]?.label).toBe("Allow once");
+  });
+
+  it("surfaces a pending ask-user prompt nested inside a delegated subagent's steps", () => {
+    const detail = detailViewModel({
+      turns: [
+        {
+          id: "turn-1",
+          userMessage: { id: "user-1", body: "Delegate it" },
+          userMessages: [{ id: "user-1", body: "Delegate it" }],
+          agentMessages: [],
+          toolCalls: [],
+          toolCallCount: 1,
+          hasFailedToolCall: false,
+          agentItems: [
+            {
+              kind: "tool-calls",
+              id: "tools-1",
+              toolCalls: [
+                {
+                  id: "call:task-1",
+                  name: "Run subagent",
+                  toolName: "Task",
+                  callType: "tool",
+                  status: "in_progress",
+                  statusKind: "working",
+                  summary: "Delegating work",
+                  payload: {
+                    metadata: {
+                      steps: [
+                        {
+                          toolUseId: "step-ask-1",
+                          toolName: "AskUserQuestion",
+                          name: "Ask user",
+                          callType: "tool",
+                          status: "waiting_input",
+                          toolInput: {
+                            requestId: "nested-ask-1",
+                            questions: [
+                              {
+                                id: "approach",
+                                header: "Approach",
+                                question: "Which path should we take?",
+                                options: [
+                                  {
+                                    label: "Typed renderer",
+                                    description: "Keep going"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              toolCallCount: 1,
+              hasFailedToolCall: false
+            }
+          ]
+        }
+      ]
+    });
+
+    const conversation = projectAgentConversationVM(detail);
+
+    expect(conversation.pendingInteractivePrompt).toEqual({
+      kind: "ask-user",
+      requestId: "nested-ask-1",
+      title: "Ask user",
+      questions: [
+        {
+          id: "approach",
+          header: "Approach",
+          question: "Which path should we take?",
+          options: [{ label: "Typed renderer", description: "Keep going" }],
+          multiSelect: false,
+          answer: null
+        }
+      ]
+    });
+  });
+
+  it("carries runtime exit-plan options through the pending interactive prompt", () => {
+    const detail = detailViewModel({
+      turns: [
+        {
+          id: "turn-1",
+          userMessage: { id: "user-1", body: "Plan it" },
+          userMessages: [{ id: "user-1", body: "Plan it" }],
+          agentMessages: [],
+          toolCalls: [],
+          toolCallCount: 1,
+          hasFailedToolCall: false,
+          agentItems: [
+            {
+              kind: "tool-calls",
+              id: "tools-1",
+              toolCalls: [
+                {
+                  id: "call:plan-1",
+                  name: "Exit plan mode",
+                  toolName: "Approval",
+                  callType: "approval",
+                  status: "waiting_approval",
+                  statusKind: "waiting",
+                  summary: "",
+                  payload: {
+                    input: {
+                      requestId: "plan-request-1",
+                      toolCall: {
+                        kind: "switch_mode",
+                        title: "Exit plan mode"
+                      },
+                      options: [
+                        {
+                          optionId: "acceptEdits",
+                          name: "Yes, and auto-accept edits",
+                          kind: "acceptEdits"
+                        },
+                        {
+                          optionId: "auto",
+                          name: "Yes, and use auto mode",
+                          kind: "auto"
+                        },
+                        {
+                          optionId: "plan",
+                          name: "No, keep planning",
+                          kind: "plan"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              toolCallCount: 1,
+              hasFailedToolCall: false
+            }
+          ]
+        }
+      ]
+    });
+
+    const conversation = projectAgentConversationVM(detail);
+
+    expect(conversation.pendingInteractivePrompt).toEqual({
+      kind: "exit-plan",
+      requestId: "plan-request-1",
+      title: "Exit plan mode",
+      options: [
+        {
+          id: "acceptEdits",
+          label: "Yes, and auto-accept edits",
+          kind: "acceptEdits"
+        },
+        { id: "auto", label: "Yes, and use auto mode", kind: "auto" }
+      ],
+      keepPlanningOptionId: "plan"
+    });
+  });
+
   it("does not append the processing row when canonical detail suppresses it", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({

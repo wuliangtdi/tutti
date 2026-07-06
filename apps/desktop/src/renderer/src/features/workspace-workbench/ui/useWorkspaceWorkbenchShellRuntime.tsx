@@ -3,8 +3,13 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore
 } from "react";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
@@ -63,6 +68,7 @@ export interface WorkspaceWorkbenchShellRuntime {
     onConfirm: () => void;
     request: WorkbenchHostCloseDialogRequest | null;
   };
+  defaultAgentTargetId: string | null;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: WorkbenchDockPlacement;
   minimizeAnimation: DesktopMinimizeAnimation;
@@ -124,6 +130,34 @@ export function useWorkspaceWorkbenchShellRuntime({
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
+  const [agentGuiProviderTargets, setAgentGuiProviderTargets] = useState<
+    readonly AgentGUIProviderTarget[] | undefined
+  >(undefined);
+  const agentGuiProviderTargetsLoading = agentGuiProviderTargets === undefined;
+  // An empty daemon /agents target list means "no service-backed targets are
+  // available yet", not "hide the Codex/Claude AgentGUI rail tiles".
+  const resolvedAgentGuiProviderTargets = useMemo(
+    () =>
+      agentGuiProviderTargets && agentGuiProviderTargets.length > 0
+        ? agentGuiProviderTargets
+        : undefined,
+    [agentGuiProviderTargets]
+  );
+  const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
+    () => (desktopPreferencesState.enableCursorAgent ? [] : ["cursor"]),
+    [desktopPreferencesState.enableCursorAgent]
+  );
+  const defaultAgentTargetId = useMemo(
+    () =>
+      resolveDefaultAgentTargetId({
+        defaultProvider: desktopPreferencesState.defaultAgentProvider,
+        targets: resolvedAgentGuiProviderTargets
+      }),
+    [
+      desktopPreferencesState.defaultAgentProvider,
+      resolvedAgentGuiProviderTargets
+    ]
+  );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
@@ -158,6 +192,10 @@ export function useWorkspaceWorkbenchShellRuntime({
           createHostInput: (hostInput) =>
             workbenchHostService.createHostInput(hostInput),
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
+          defaultProviderTargetId: defaultAgentTargetId,
+          providerTargets: resolvedAgentGuiProviderTargets,
+          providerTargetsLoading: agentGuiProviderTargetsLoading,
+          comingSoonAgentProviders,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
           onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -227,6 +265,22 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [state.workspace.id, workbenchHostService]);
 
   useEffect(() => {
+    let disposed = false;
+    setAgentGuiProviderTargets(undefined);
+    void workbenchHostService.loadAgentGuiProviderTargets().then((targets) => {
+      if (!disposed) {
+        setAgentGuiProviderTargets(targets);
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+    // comingSoonAgentProviders: the provider gate disables gated targets in
+    // the daemon target list, so a gate flip must reload it (the host service
+    // cache is invalidated by the same preference change).
+  }, [comingSoonAgentProviders, state.workspace.id, workbenchHostService]);
+
+  useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {
       const host = workbenchHostRef.current;
       if (!host || request.workspaceId !== state.workspace.id) {
@@ -275,6 +329,10 @@ export function useWorkspaceWorkbenchShellRuntime({
       createHostInput: (hostInput) =>
         workbenchHostService.createHostInput(hostInput),
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
+      defaultProviderTargetId: defaultAgentTargetId,
+      providerTargets: resolvedAgentGuiProviderTargets,
+      providerTargetsLoading: agentGuiProviderTargetsLoading,
+      comingSoonAgentProviders,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
       onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -287,6 +345,10 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
+    agentGuiProviderTargetsLoading,
+    comingSoonAgentProviders,
+    defaultAgentTargetId,
+    resolvedAgentGuiProviderTargets,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,
@@ -421,6 +483,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       onConfirm: shellRuntimeController.closeDialog.confirm,
       request: shellRuntimeSnapshot.closeDialog.request
     },
+    defaultAgentTargetId,
     dockIconStyle: desktopPreferencesState.dockIconStyle,
     dockPlacement: desktopPreferencesState.dockPlacement,
     hostInput: shellRuntimeSnapshot.hostInput,
@@ -455,6 +518,24 @@ export function useWorkspaceWorkbenchShellRuntime({
     workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };
+}
+
+function resolveDefaultAgentTargetId(input: {
+  defaultProvider?: string | null;
+  targets?: readonly AgentGUIProviderTarget[];
+}): string | null {
+  const defaultProvider = input.defaultProvider?.trim() ?? "";
+  const targets = input.targets ?? [];
+  return (
+    targets.find(
+      (target) =>
+        defaultProvider !== "" &&
+        target.provider === defaultProvider &&
+        target.disabled !== true
+    )?.targetId ??
+    targets.find((target) => target.disabled !== true)?.targetId ??
+    null
+  );
 }
 
 function closeWorkspaceAppWebviews(

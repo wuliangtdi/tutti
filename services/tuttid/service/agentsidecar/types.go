@@ -16,22 +16,33 @@ type SkillBundleRenderer interface {
 }
 
 type PrepareInput struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Provider          string
-	Cwd               string
-	CLICommand        string
-	CommandGuide      string
-	Title             string
-	PermissionModeID  string
-	PlanMode          bool
-	BrowserUse        bool
-	ComputerUse       bool
-	ProviderTargetRef map[string]any
-	Model             string
-	ReasoningEffort   string
-	ExtraSkills       []ProviderSkillBundle
-	Metadata          map[string]any
+	WorkspaceID            string
+	AgentSessionID         string
+	AgentTargetID          string
+	Provider               string
+	Cwd                    string
+	CLICommand             string
+	CommandGuide           string
+	Title                  string
+	PermissionModeID       string
+	PlanMode               bool
+	BrowserUse             bool
+	ComputerUse            bool
+	ProviderTargetRef      map[string]any
+	Model                  string
+	ReasoningEffort        string
+	ConversationDetailMode string
+	ExtraSkills            []ProviderSkillBundle
+	Metadata               map[string]any
+	// ExternalRolloutSourcePath is the absolute path to the original provider
+	// CLI rollout/transcript file this session was imported from (Codex CLI's
+	// own on-disk conversation transcript under the user's real
+	// `~/.codex/sessions/...`), when known. It lets a provider preparer expose
+	// that one specific file into the sandboxed provider home so a native
+	// `thread/resume` can find it, without exposing any other unrelated
+	// conversation. Empty for non-imported sessions or when the source path
+	// wasn't captured at import time.
+	ExternalRolloutSourcePath string
 }
 
 type PreparedRuntime struct {

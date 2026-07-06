@@ -19,10 +19,10 @@ export interface IWorkspaceAppCenterService {
     workspaceId: string;
   }): Promise<void>;
   createFactoryJob(input: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
-    provider?: string;
     prompt: string;
     reasoningEffort?: string;
     workspaceId: string;
@@ -44,6 +44,7 @@ export interface IWorkspaceAppCenterService {
     restoredState?: WorkspaceAppCenterViewState | null
   ): WorkspaceAppCenterViewState;
   getFactoryProviderConfiguration(input: {
+    agentTargetId: string;
     provider: string;
     workspaceId: string;
   }): Promise<WorkspaceAppFactoryProviderConfiguration>;
@@ -61,6 +62,7 @@ export interface IWorkspaceAppCenterService {
     appId: string;
     workspaceId: string;
   }): Promise<void>;
+  openExternalUrl(url: string): Promise<void>;
   prepareFactoryJobModification(input: {
     jobId: string;
     workspaceId: string;

@@ -272,6 +272,9 @@ function createFakePreferences(
     getAgentGUIConversationRailCollapsedByProvider() {
       return {};
     },
+    getAgentConversationDetailMode() {
+      return "coding";
+    },
     getAppCatalogChannel() {
       return "production";
     },
