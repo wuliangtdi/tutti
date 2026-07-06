@@ -1601,21 +1601,12 @@ func appServerTurnStartParams(
 	return params
 }
 
-const appServerUserPromptPreviewMaxRunes = 120
-
 func appServerUserPromptPreview(content []PromptContentBlock, visibleText string) string {
 	text := strings.TrimSpace(visibleText)
 	if text == "" {
 		text = strings.TrimSpace(promptDisplayText(content))
 	}
-	if text == "" {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= appServerUserPromptPreviewMaxRunes {
-		return text
-	}
-	return strings.TrimSpace(string(runes[:appServerUserPromptPreviewMaxRunes-3])) + "..."
+	return text
 }
 
 // appServerCollaborationMode assembles the turn/start collaborationMode

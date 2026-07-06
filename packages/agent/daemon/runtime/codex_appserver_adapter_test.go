@@ -1321,19 +1321,16 @@ func TestCodexAppServerAdapterExecStreamsTurn(t *testing.T) {
 	}
 }
 
-func TestCodexAppServerUserPromptPreviewUsesVisibleTextAndTruncates(t *testing.T) {
+func TestCodexAppServerUserPromptPreviewUsesFullVisibleText(t *testing.T) {
 	t.Parallel()
 
-	longVisibleText := strings.Repeat("a", appServerUserPromptPreviewMaxRunes+20)
+	longVisibleText := strings.Repeat("a", 500)
 	got := appServerUserPromptPreview([]PromptContentBlock{
 		{Type: "text", Text: "provider text"},
 		{Type: "text", Text: "injected routing text"},
 	}, longVisibleText)
-	if runes := len([]rune(got)); runes != appServerUserPromptPreviewMaxRunes {
-		t.Fatalf("preview rune count = %d, want %d", runes, appServerUserPromptPreviewMaxRunes)
-	}
-	if !strings.HasSuffix(got, "...") {
-		t.Fatalf("preview = %q, want ellipsis", got)
+	if got != longVisibleText {
+		t.Fatalf("preview = %q, want full visible text", got)
 	}
 
 	if got := appServerUserPromptPreview([]PromptContentBlock{{Type: "image"}}, ""); got != "[Image]" {
