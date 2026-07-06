@@ -1085,6 +1085,7 @@ export const AgentGUINode = memo(function AgentGUINode({
       conversations: t("agentHost.agentGui.conversations"),
       newConversation: t("agentHost.agentGui.newConversation"),
       agentConfig: t("agentHost.agentGui.agentConfig"),
+      agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(

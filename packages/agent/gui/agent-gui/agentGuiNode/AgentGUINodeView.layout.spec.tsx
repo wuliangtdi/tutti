@@ -4364,6 +4364,7 @@ function createLabels(): AgentGUIViewLabels {
     conversations: "conversations",
     newConversation: "newConversation",
     agentConfig: "agentConfig",
+    agentSettingsMenu: "agentSettingsMenu",
     agentEnvSetup: "agentEnvSetup",
     noConversations: "noConversations",
     emptyProjectConversations: "emptyProjectConversations",
