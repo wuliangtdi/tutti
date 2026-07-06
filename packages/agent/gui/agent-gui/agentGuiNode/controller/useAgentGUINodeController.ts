@@ -78,6 +78,7 @@ import {
 } from "../model/agentGuiConversationModel";
 import {
   createAgentGUIConversationFilterState,
+  filterAgentGUIConversationSummaries,
   normalizeAgentGUIConversationFilter,
   type AgentGUIConversationFilter
 } from "../model/agentGuiConversationFilter";
@@ -87,7 +88,6 @@ import type {
 } from "../../../host/agentHostApi";
 import type {
   AgentComposerDraft,
-  AgentGUIConversationScope,
   AgentGUIComposerSettingOption,
   AgentGUIComposerSettingsVM,
   AgentGUIProviderSkillOption,
@@ -181,7 +181,9 @@ import { composerSettingsSupportFromOptions } from "../model/composerSettingsSup
 import {
   buildNodeDefaultComposerSettings,
   cloneComposerSettings,
+  composerOptionsMissingLiveModelValues,
   composerSupportForProvider,
+  liveModelOptionValuesFromRuntimeContext,
   mergeRuntimeContextComposerSettings,
   nodeDataFromComposerSettings,
   normalizeConfigOptionValue,
@@ -268,34 +270,50 @@ interface AgentGUIComposerTargetData {
   targetId: string;
 }
 
+// Patch semantics: a missing field was not touched by this switch, null
+// clears the remembered value, a string replaces it.
 export interface AgentGUIComposerDefaults {
-  model?: string;
-  permissionModeId?: string;
-  reasoningEffort?: string;
+  model?: string | null;
+  permissionModeId?: string | null;
+  reasoningEffort?: string | null;
+  speed?: string | null;
 }
 
 export interface AgentGUIRememberComposerDefaultsInput {
+  agentTargetId: string | null;
   provider: AgentGUINodeData["provider"];
   defaults: AgentGUIComposerDefaults | null;
 }
 
-function composerDefaultsFromSettings(
-  settings: AgentSessionComposerSettings
+const rememberComposerDefaultsFields = [
+  "model",
+  "permissionModeId",
+  "reasoningEffort",
+  "speed"
+] as const;
+
+// Builds the remember patch for one user switch. Only fields present in
+// `touched` are recorded: an explicit user clear (touched value empty)
+// becomes a null tombstone, while a value that sanitization dropped
+// (touched value set, final value empty) is skipped so the remembered
+// default survives transient invalid states.
+function composerDefaultsPatchFromSettings(
+  touched: Partial<AgentSessionComposerSettings>,
+  finalSettings: AgentSessionComposerSettings
 ): AgentGUIComposerDefaults | null {
-  const defaults: AgentGUIComposerDefaults = {};
-  const model = normalizeOptionalText(settings.model);
-  const permissionModeId = normalizeOptionalText(settings.permissionModeId);
-  const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
-  if (model) {
-    defaults.model = model;
+  const patch: AgentGUIComposerDefaults = {};
+  for (const field of rememberComposerDefaultsFields) {
+    if (touched[field] === undefined) {
+      continue;
+    }
+    const touchedValue = normalizeOptionalText(touched[field]);
+    const finalValue = normalizeOptionalText(finalSettings[field]);
+    if (touchedValue !== null && finalValue === null) {
+      continue;
+    }
+    patch[field] = finalValue;
   }
-  if (permissionModeId) {
-    defaults.permissionModeId = permissionModeId;
-  }
-  if (reasoningEffort) {
-    defaults.reasoningEffort = reasoningEffort;
-  }
-  return Object.keys(defaults).length > 0 ? defaults : null;
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 function composerTargetDataFromProviderTarget(input: {
@@ -2777,6 +2795,8 @@ function areComposerSettingsVMsEqual(
     (left.selectedProjectPath ?? null) ===
       (right.selectedProjectPath ?? null) &&
     Boolean(left.projectLocked) === Boolean(right.projectLocked) &&
+    Boolean(left.modelListCollapsedToLatest) ===
+      Boolean(right.modelListCollapsedToLatest) &&
     areComposerSettingOptionListsEqual(
       left.availableModels,
       right.availableModels
@@ -3589,6 +3609,25 @@ function timelineItemTime(item: WorkspaceAgentActivityTimelineItem): number {
   return item.occurredAtUnixMs ?? item.createdAtUnixMs ?? 0;
 }
 
+const emptyComingSoonProviders: readonly AgentGUIProvider[] = [];
+
+// Gated providers stay visible but behave like the built-in coming-soon
+// placeholders (hermes/openclaw/...): unclickable composer, coming-soon gate.
+function applyComingSoonProviderTargets(
+  targets: AgentGUIProviderTarget[],
+  comingSoonProviders: readonly AgentGUIProvider[]
+): AgentGUIProviderTarget[] {
+  if (comingSoonProviders.length === 0) {
+    return targets;
+  }
+  const comingSoon = new Set(comingSoonProviders);
+  return targets.map((target) =>
+    comingSoon.has(target.provider) && target.disabled !== true
+      ? { ...target, disabled: true }
+      : target
+  );
+}
+
 interface UseAgentGUINodeControllerInput {
   nodeId?: string;
   workspaceId: string;
@@ -3596,9 +3635,10 @@ interface UseAgentGUINodeControllerInput {
   workspacePath: string;
   avoidGroupingEdits: boolean;
   data: AgentGUINodeData;
-  conversationScope?: AgentGUIConversationScope;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
+  /** Providers gated by the host (feature-gated) — rendered as coming-soon placeholders. */
+  comingSoonProviders?: readonly AgentGUIProvider[];
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
@@ -3624,8 +3664,10 @@ export interface AgentGUIOpenSessionRequest {
 }
 
 export interface AgentGUIPrefillPromptRequest {
+  agentTargetId?: string | null;
   autoSubmit?: boolean;
   draftPrompt: string;
+  provider?: AgentGUIProvider;
   sequence: number;
   userProjectPath?: string | null;
 }
@@ -3637,9 +3679,9 @@ export function useAgentGUINodeController({
   workspacePath,
   avoidGroupingEdits,
   data,
-  conversationScope = "single-provider",
   providerTargets,
   providerTargetsLoading = false,
+  comingSoonProviders,
   providerReadinessGates = null,
   defaultProviderTargetId = null,
   openSessionRequest = null,
@@ -3653,32 +3695,58 @@ export function useAgentGUINodeController({
   const agentQueuedPromptRuntime = useAgentQueuedPromptRuntime();
   const agentHostApi = useAgentHostApi();
   const agentActivitySnapshot = useAgentActivitySnapshot(workspaceId);
+  const normalizedComingSoonProviders = useMemo(
+    () =>
+      comingSoonProviders && comingSoonProviders.length > 0
+        ? ([...comingSoonProviders] as readonly AgentGUIProvider[])
+        : emptyComingSoonProviders,
+    [comingSoonProviders]
+  );
   const normalizedExplicitProviderTargets = useMemo(
     () =>
-      normalizeAgentGUIProviderTargets(providerTargets, {
-        fallbackToLocal: false
-      }),
-    [providerTargets]
+      applyComingSoonProviderTargets(
+        normalizeAgentGUIProviderTargets(providerTargets, {
+          includeDisabledPlaceholders: true,
+          useStaticCatalog: false
+        }),
+        normalizedComingSoonProviders
+      ),
+    [normalizedComingSoonProviders, providerTargets]
   );
-  const normalizedProviderTargets = useMemo(
-    () =>
-      providerTargetsLoading
-        ? []
-        : providerTargets === undefined
-          ? normalizeAgentGUIProviderTargets(null)
-          : normalizedExplicitProviderTargets,
-    [normalizedExplicitProviderTargets, providerTargets, providerTargetsLoading]
-  );
-  const shouldFallbackToLocalProviderTargets =
-    providerTargets === undefined && !providerTargetsLoading;
+  const normalizedProviderTargets = useMemo(() => {
+    if (providerTargetsLoading) {
+      return [];
+    }
+    if (
+      providerTargets === undefined ||
+      normalizedExplicitProviderTargets.length === 0
+    ) {
+      return applyComingSoonProviderTargets(
+        normalizeAgentGUIProviderTargets(null, {
+          includeDisabledPlaceholders: true
+        }),
+        normalizedComingSoonProviders
+      );
+    }
+    return normalizedExplicitProviderTargets;
+  }, [
+    normalizedExplicitProviderTargets,
+    normalizedComingSoonProviders,
+    providerTargets,
+    providerTargetsLoading
+  ]);
+  const shouldUseStaticProviderTargets =
+    !providerTargetsLoading &&
+    (providerTargets === undefined ||
+      normalizedExplicitProviderTargets.length === 0);
   const selectedProviderTarget = useMemo(() => {
     const resolved = resolveAgentGUIProviderTarget({
       agentTargetId: data.agentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: data.provider,
       providerTargetId: data.providerTargetId,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     return (
       resolved ?? {
@@ -3698,7 +3766,7 @@ export function useAgentGUINodeController({
     data.providerTargetId,
     defaultProviderTargetId,
     normalizedProviderTargets,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const selectedProviderTargetIsExplicit = useMemo(
     () =>
@@ -3811,16 +3879,6 @@ export function useAgentGUINodeController({
     );
   const conversationFilterRef = useRef(conversationFilter);
   conversationFilterRef.current = conversationFilter;
-  const canUseConversationTargetFilter = conversationScope === "multi-provider";
-  const queryConversationFilter = canUseConversationTargetFilter
-    ? conversationFilter
-    : null;
-  useEffect(() => {
-    if (canUseConversationTargetFilter || conversationFilter.kind === "all") {
-      return;
-    }
-    setConversationFilter({ kind: "all" });
-  }, [canUseConversationTargetFilter, conversationFilter]);
   const conversationListQuery =
     useMemo<AgentGUIConversationListQuery | null>(() => {
       const userId = currentUserId?.trim() ?? "";
@@ -3829,15 +3887,13 @@ export function useAgentGUINodeController({
         return null;
       }
       return {
-        ...(queryConversationFilter
-          ? { conversationFilter: queryConversationFilter }
-          : {}),
+        conversationFilter,
         workspaceId,
         userId,
         provider: data.provider,
         sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN
       };
-    }, [currentUserId, data.provider, queryConversationFilter, workspaceId]);
+    }, [currentUserId, data.provider, conversationFilter, workspaceId]);
   const conversationListState = useAgentGuiConversationList(
     conversationListQuery
   );
@@ -6228,6 +6284,45 @@ export function useAgentGUINodeController({
     supports.reasoning
   ]);
 
+  // Providers such as Cursor only expose their model list through the live
+  // session's advertised config options — there is no static catalog, so the
+  // composer options fetched before the session existed carry only the
+  // currently selected model. When the live session advertises models the
+  // loaded options lack, force one refetch: the daemon merges the live list
+  // (GetComposerOptions live-model discovery) and the condition quiesces.
+  const liveModelOptionValuesKey = useMemo(
+    () =>
+      liveModelOptionValuesFromRuntimeContext(activeSessionRuntimeContext).join(
+        "\u0000"
+      ),
+    [activeSessionRuntimeContext]
+  );
+  const liveModelRefreshRequestedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (previewMode || liveModelOptionValuesKey === "") {
+      return;
+    }
+    const liveValues = liveModelOptionValuesKey.split("\u0000");
+    if (
+      !composerOptionsMissingLiveModelValues(
+        providerComposerOptions,
+        liveValues
+      )
+    ) {
+      return;
+    }
+    if (liveModelRefreshRequestedKeyRef.current === liveModelOptionValuesKey) {
+      return;
+    }
+    liveModelRefreshRequestedKeyRef.current = liveModelOptionValuesKey;
+    loadDraftComposerOptions({ force: true });
+  }, [
+    liveModelOptionValuesKey,
+    loadDraftComposerOptions,
+    previewMode,
+    providerComposerOptions
+  ]);
+
   useEffect(() => {
     if (previewMode) {
       return undefined;
@@ -7646,13 +7741,13 @@ export function useAgentGUINodeController({
       // Starting a new conversation from a target tab should compose for that
       // tab's target, not for whatever target the node last remembered.
       const filter = conversationFilterRef.current;
-      if (canUseConversationTargetFilter && filter.kind === "agentTarget") {
+      if (filter.kind === "agentTarget") {
         const filterTarget = resolveAgentGUIProviderTarget({
           agentTargetId: filter.agentTargetId,
           defaultProviderTargetId,
-          fallbackToLocal: false,
           provider: dataRef.current.provider,
-          providerTargets: normalizedProviderTargets
+          providerTargets: normalizedProviderTargets,
+          useStaticCatalog: false
         });
         if (
           filterTarget &&
@@ -7667,7 +7762,6 @@ export function useAgentGUINodeController({
     [
       activation,
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       loadDraftComposerOptions,
       normalizedProviderTargets,
@@ -7719,13 +7813,14 @@ export function useAgentGUINodeController({
     setActiveConversationId(null);
     setIsLoadingMessages(false);
     setDetailError(null);
-    const targetData = selectedComposerTargetDataRef.current;
+    const selectedTargetData = selectedComposerTargetDataRef.current;
+    const targetProvider =
+      prefillPromptRequest.provider ?? selectedTargetData.provider;
+    const targetAgentTargetId =
+      prefillPromptRequest.agentTargetId ?? selectedTargetData.agentTargetId;
     setDraftBySessionId((current) => ({
       ...current,
-      [nodeDefaultDraftContentKey(
-        targetData.provider,
-        targetData.agentTargetId
-      )]: {
+      [nodeDefaultDraftContentKey(targetProvider, targetAgentTargetId)]: {
         ...emptyAgentComposerDraft(),
         prompt: draftPrompt
       }
@@ -8772,20 +8867,16 @@ export function useAgentGUINodeController({
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId] ?? null;
           const optimisticSettings = queuedUpdate?.sessionSettingsPatch ?? null;
-          const confirmedModelSetting =
+          const pendingClaudeModelRefreshSettings =
+            dataRef.current.provider === "claude-code" &&
             sessionSettingsPatch.model !== undefined
               ? { model: sessionSettingsPatch.model }
-              : {};
-          const nextAppliedSettings = optimisticSettings
-            ? {
-                ...result.settings,
-                ...confirmedModelSetting,
-                ...optimisticSettings
-              }
-            : {
-                ...result.settings,
-                ...confirmedModelSetting
-              };
+              : null;
+          const nextAppliedSettings = {
+            ...result.settings,
+            ...(pendingClaudeModelRefreshSettings ?? {}),
+            ...(optimisticSettings ?? {})
+          };
           updateAgentSessionViewControlState(
             sessionViewRef(agentSessionId),
             (existing) =>
@@ -8927,8 +9018,12 @@ export function useAgentGUINodeController({
           )
         );
         void onRememberComposerDefaultsRef.current?.({
+          agentTargetId: targetData.agentTargetId,
           provider: targetData.provider,
-          defaults: composerDefaultsFromSettings(targetSafeMerged)
+          defaults: composerDefaultsPatchFromSettings(
+            supportedNextSettings,
+            targetSafeMerged
+          )
         });
         void agentActivityRuntime.trackDraftComposerSettingsChange?.({
           workspaceId,
@@ -9012,6 +9107,22 @@ export function useAgentGUINodeController({
       ) {
         sessionSettingsPatch.permissionModeId =
           normalizePermissionModeId(nextPermission);
+        // Codex has no live mid-turn RPC for approval/sandbox policy: the
+        // daemon only re-derives it fresh on the *next* turn/start call, so a
+        // change made while a turn is actively running won't affect that
+        // turn. Claude Code applies it immediately via query.setPermissionMode
+        // even mid-turn, so no such gap exists there. Surface the deferral
+        // honestly instead of letting the optimistic UI update imply the
+        // change is already in effect.
+        const turnPhase = activeSessionState.turnLifecycle?.phase;
+        const isTurnInFlight =
+          turnPhase === "running" || turnPhase === "submitted";
+        if (dataRef.current.provider === "codex" && isTurnInFlight) {
+          onShowMessageRef.current?.(
+            translate("messages.agentPermissionModeAppliesNextTurn"),
+            "info"
+          );
+        }
       }
       if (
         Object.keys(sessionSettingsPatch).length > 0 &&
@@ -9038,6 +9149,56 @@ export function useAgentGUINodeController({
                 }
               : existing
         );
+        // A switch inside an active session also becomes the remembered
+        // default for this agent target. Only the fields the user changed
+        // are passed; the consumer merges them field-wise so untouched
+        // remembered fields stay intact, and explicit clears propagate as
+        // null tombstones.
+        void onRememberComposerDefaultsRef.current?.({
+          agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+          provider: dataRef.current.provider,
+          defaults: composerDefaultsPatchFromSettings(
+            sessionSettingsPatch,
+            sessionSettingsPatch
+          )
+        });
+        // The node-level default drafts take precedence over the remembered
+        // preferences on the read path, so sync the durable fields into them
+        // as well or this node's next composer would keep showing its stale
+        // draft.
+        const durableNodeDefaultsPatch: Partial<AgentSessionComposerSettings> =
+          {};
+        for (const field of rememberComposerDefaultsFields) {
+          if (sessionSettingsPatch[field] !== undefined) {
+            durableNodeDefaultsPatch[field] = sessionSettingsPatch[field];
+          }
+        }
+        if (Object.keys(durableNodeDefaultsPatch).length > 0) {
+          const defaultDraftKey = nodeDefaultDraftKey(
+            dataRef.current.provider,
+            dataRef.current.agentTargetId
+          );
+          const storedNodeDefaults = readNodeDefaultDraftSettings({
+            data: dataRef.current,
+            defaultReasoningEffort,
+            drafts: draftSettingsBySessionIdRef.current
+          });
+          const nextNodeDefaults = {
+            ...storedNodeDefaults,
+            ...durableNodeDefaultsPatch
+          };
+          draftSettingsBySessionIdRef.current = {
+            ...draftSettingsBySessionIdRef.current,
+            [defaultDraftKey]: nextNodeDefaults
+          };
+          setDraftSettingsBySessionId((current) => ({
+            ...current,
+            [defaultDraftKey]: nextNodeDefaults
+          }));
+          onDataChangeRef.current((current) =>
+            nodeDataFromComposerSettings(current, nextNodeDefaults)
+          );
+        }
         if (updatingSessionSettingsIdsRef.current[agentSessionId]) {
           const queuedUpdate =
             queuedComposerSettingsUpdatesRef.current[agentSessionId];
@@ -9242,21 +9403,31 @@ export function useAgentGUINodeController({
       if (!normalizedPath || !remove) {
         return;
       }
-      const previousProjects = userProjectsRef.current;
       setListError(null);
-      setUserProjectsSnapshot(
-        previousProjects.filter((project) => project.path !== normalizedPath)
-      );
+      // Filter the visible list only after the backend confirms the delete
+      // (mirroring registerProjectPath's "backend confirm -> local store
+      // update" ordering). Filtering optimistically before the delete
+      // resolves would flip userProjectPathKey early and race the runtime
+      // rail sections refetch against the in-flight backend delete: if the
+      // section list query lands before the delete commits, it still
+      // reports the removed project's section, and nothing re-triggers a
+      // refetch afterwards, so the row stays visible until an unrelated
+      // remount forces a fresh fetch.
       const handleRemoveError = (error: unknown) => {
         const message = getAgentGUIErrorMessage(error);
-        setUserProjectsSnapshot(previousProjects);
         setListError(message);
         toast.error(message);
       };
       try {
-        void Promise.resolve(remove({ path: normalizedPath })).catch(
-          handleRemoveError
-        );
+        void Promise.resolve(remove({ path: normalizedPath }))
+          .then(() => {
+            setUserProjectsSnapshot(
+              userProjectsRef.current.filter(
+                (project) => project.path !== normalizedPath
+              )
+            );
+          })
+          .catch(handleRemoveError);
       } catch (error) {
         handleRemoveError(error);
       }
@@ -9851,9 +10022,9 @@ export function useAgentGUINodeController({
     const sessionTarget = resolveAgentGUIProviderTarget({
       agentTargetId: summaryAgentTargetId,
       defaultProviderTargetId,
-      fallbackToLocal: shouldFallbackToLocalProviderTargets,
       provider: summary.provider,
-      providerTargets: normalizedProviderTargets
+      providerTargets: normalizedProviderTargets,
+      useStaticCatalog: shouldUseStaticProviderTargets
     });
     if (!sessionTarget || sessionTarget.provider !== summary.provider) {
       return;
@@ -9903,7 +10074,7 @@ export function useAgentGUINodeController({
     normalizedProviderTargets,
     previewMode,
     providerTargetsLoading,
-    shouldFallbackToLocalProviderTargets
+    shouldUseStaticProviderTargets
   ]);
   const visibleConversationsRef = useRef<AgentGUIConversationSummary[] | null>(
     null
@@ -10304,10 +10475,9 @@ export function useAgentGUINodeController({
         targetSafeNodeDefaultSettings
       )
     );
-    void onRememberComposerDefaultsRef.current?.({
-      provider: selectedComposerTargetData.provider,
-      defaults: composerDefaultsFromSettings(targetSafeNodeDefaultSettings)
-    });
+    // Deliberately no onRememberComposerDefaults here: this sync only
+    // reconciles drafts with target capabilities. The remembered defaults
+    // must only change on explicit user switches, never via sanitization.
   }, [
     activeConversationId,
     providerComposerOptions,
@@ -10330,12 +10500,27 @@ export function useAgentGUINodeController({
   const draftSettings = activeConversationId
     ? (sessionSettings ?? defaultConversationDraftSettings)
     : homeComposerSettings;
+  const persistedDraftModel = normalizeOptionalText(draftSettings.model);
+  // "default" is Claude Code's own placeholder for "no explicit model
+  // pinned" (claudeSDKModelConfigOption); an unset value normalizes to
+  // null for every provider. Only in those "nothing meaningful persisted
+  // yet" cases do we prefer the live app-server-reported current model
+  // (kept fresh across an in-flight settings-refresh race, see the "keep
+  // Claude model selection stable" fix). Once a session has a real,
+  // concrete persisted model — e.g. one carried over from an imported
+  // conversation (2U74Ri) — that value must win outright: it is the
+  // authoritative source of what will actually run on the next turn, and
+  // a live config option can legitimately lag or reflect a different
+  // session's default while this one hasn't resumed yet.
+  const usesPlaceholderDraftModel =
+    persistedDraftModel === null || persistedDraftModel === "default";
   const liveConfigModel =
-    activeConversationId !== null
+    activeConversationId !== null && usesPlaceholderDraftModel
       ? configOptionCurrentValue(activeSessionRuntimeContext, ["model"])
       : null;
-  const draftModel =
-    liveConfigModel ?? normalizeOptionalText(draftSettings.model);
+  const draftModel = usesPlaceholderDraftModel
+    ? (liveConfigModel ?? persistedDraftModel)
+    : persistedDraftModel;
   const draftReasoningEffort = normalizeOptionalText(
     draftSettings.reasoningEffort
   ) as AgentSessionReasoningEffort | null;
@@ -10705,6 +10890,9 @@ export function useAgentGUINodeController({
           ? (activeConversation?.cwd ?? null)
           : selectedProjectPath,
       projectLocked: activeConversationId !== null,
+      // Cursor's live list spans many vendors with several versions each;
+      // collapse it to the latest release per model family.
+      modelListCollapsedToLatest: composerTargetData.provider === "cursor",
       availableModels:
         composerSupport.model &&
         hasOptionsSource &&
@@ -10747,17 +10935,88 @@ export function useAgentGUINodeController({
   ]);
   const stableComposerSettings = useStableComposerSettingsVM(composerSettings);
 
+  const resolveDefaultHomeComposerTarget =
+    useCallback((): AgentGUIProviderTarget | null => {
+      const defaultTargetId = defaultProviderTargetId?.trim() ?? "";
+      const explicitDefaultTarget = defaultTargetId
+        ? (normalizedProviderTargets.find(
+            (target) =>
+              target.targetId === defaultTargetId ||
+              target.agentTargetId === defaultTargetId
+          ) ?? null)
+        : null;
+      return (
+        explicitDefaultTarget ??
+        normalizedProviderTargets.find((target) => target.disabled !== true) ??
+        normalizedProviderTargets[0] ??
+        null
+      );
+    }, [defaultProviderTargetId, normalizedProviderTargets]);
+
+  const resetHomeComposerAgentTargetToDefault = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
+    const nextTarget = resolveDefaultHomeComposerTarget();
+    if (!nextTarget) {
+      return;
+    }
+    const nextTargetIsExplicit = normalizedExplicitProviderTargets.some(
+      (target) =>
+        target.provider === nextTarget.provider &&
+        target.targetId === nextTarget.targetId &&
+        agentGUIProviderTargetRefsEqual(target.ref, nextTarget.ref)
+    );
+    const nextTargetData = composerTargetDataFromProviderTarget({
+      current: dataRef.current,
+      isExplicit: nextTargetIsExplicit,
+      target: nextTarget
+    });
+    setHomeComposerTargetOverride(nextTarget);
+    setIntent({ tag: "home" });
+    isComposerHomeRef.current = true;
+    setIsComposerHome(true);
+    onDataChangeRef.current((current) => {
+      const currentNextTargetData = composerTargetDataFromProviderTarget({
+        current,
+        isExplicit: nextTargetIsExplicit,
+        target: nextTarget
+      });
+      const nextData: AgentGUINodeData = {
+        ...currentNextTargetData.data,
+        lastActiveAgentSessionId: null
+      };
+      dataRef.current = nextData;
+      return nextData;
+    });
+    dataRef.current = {
+      ...nextTargetData.data,
+      lastActiveAgentSessionId: null
+    };
+    if (nextTarget.disabled !== true) {
+      loadComposerOptionsForTarget(nextTargetData, { force: true });
+    }
+  }, [
+    loadComposerOptionsForTarget,
+    normalizedExplicitProviderTargets,
+    previewMode,
+    resolveDefaultHomeComposerTarget
+  ]);
+
   const updateConversationFilter = useCallback(
     (filter: AgentGUIConversationFilter) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
+      const nextFilter = normalizeAgentGUIConversationFilter(filter);
+      setConversationFilter(nextFilter);
+      if (
+        nextFilter.kind === "all" &&
+        activeConversationIdRef.current === null
+      ) {
+        resetHomeComposerAgentTargetToDefault();
       }
-      setConversationFilter(normalizeAgentGUIConversationFilter(filter));
     },
-    [canUseConversationTargetFilter]
+    [resetHomeComposerAgentTargetToDefault]
   );
-  const selectProvider = useCallback(
+  const selectHomeComposerAgentTarget = useCallback(
     (input: {
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
@@ -10768,15 +11027,12 @@ export function useAgentGUINodeController({
       const nextProvider = input.provider;
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: nextProvider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
       if (!nextTarget) {
-        return;
-      }
-      if (nextTarget.disabled === true) {
         return;
       }
       const nextTargetIsExplicit = normalizedExplicitProviderTargets.some(
@@ -10790,7 +11046,17 @@ export function useAgentGUINodeController({
         isExplicit: nextTargetIsExplicit,
         target: nextTarget
       });
+      const shouldSyncScopedRailFilter =
+        conversationFilterRef.current.kind === "agentTarget";
       setHomeComposerTargetOverride(nextTarget);
+      if (shouldSyncScopedRailFilter) {
+        const nextAgentTargetId = nextTarget.agentTargetId?.trim() ?? "";
+        setConversationFilter(
+          nextAgentTargetId
+            ? { kind: "agentTarget", agentTargetId: nextAgentTargetId }
+            : { kind: "all" }
+        );
+      }
       const previous = activeConversationIdRef.current;
       if (previous) {
         void activation.unactivate(previous);
@@ -10831,7 +11097,9 @@ export function useAgentGUINodeController({
         dataRef.current = nextData;
         return nextData;
       });
-      loadComposerOptionsForTarget(nextTargetData, { force: true });
+      if (nextTarget.disabled !== true) {
+        loadComposerOptionsForTarget(nextTargetData, { force: true });
+      }
     },
     [
       activation,
@@ -10841,7 +11109,7 @@ export function useAgentGUINodeController({
       normalizedProviderTargets,
       persistActiveConversation,
       previewMode,
-      shouldFallbackToLocalProviderTargets
+      shouldUseStaticProviderTargets
     ]
   );
   const selectConversationFilterTarget = useCallback(
@@ -10849,51 +11117,90 @@ export function useAgentGUINodeController({
       provider: AgentGUIProvider;
       providerTargetId?: string | null;
     }) => {
-      if (!canUseConversationTargetFilter) {
-        setConversationFilter({ kind: "all" });
-        return;
-      }
       const nextTarget = resolveAgentGUIProviderTarget({
         defaultProviderTargetId,
-        fallbackToLocal: shouldFallbackToLocalProviderTargets,
         provider: input.provider,
         providerTargetId: input.providerTargetId,
-        providerTargets: normalizedProviderTargets
+        providerTargets: normalizedProviderTargets,
+        useStaticCatalog: shouldUseStaticProviderTargets
       });
-      if (!nextTarget || nextTarget.disabled === true) {
+      if (!nextTarget) {
         reportAgentGUIConversationFilterTargetUnresolved({
           provider: input.provider,
           providerTargetId: input.providerTargetId ?? null,
           providerTargetCount: normalizedProviderTargets.length,
-          reason: nextTarget ? "disabled" : "unresolved",
+          reason: "unresolved",
           runtime: agentActivityRuntime,
           workspaceId
         });
         return;
-      }
-      // Keep the home composer chip in sync with the selected tab; an active
-      // conversation keeps owning the chip (it shows the session's target).
-      if (activeConversationIdRef.current === null) {
-        setHomeComposerTargetOverride(nextTarget);
       }
       const agentTargetId = nextTarget.agentTargetId?.trim() ?? "";
       const nextFilter = agentTargetId
         ? { kind: "agentTarget" as const, agentTargetId }
         : { kind: "all" as const };
       setConversationFilter(nextFilter);
+      // Keep the home composer chip in sync with the selected tab. Active
+      // conversations keep owning their target until the target-filtered list
+      // has initialized and proven empty.
+      if (activeConversationIdRef.current === null) {
+        selectHomeComposerAgentTarget(input);
+      }
     },
     [
       agentActivityRuntime,
-      canUseConversationTargetFilter,
       defaultProviderTargetId,
       normalizedProviderTargets,
-      shouldFallbackToLocalProviderTargets,
+      selectHomeComposerAgentTarget,
+      shouldUseStaticProviderTargets,
       workspaceId
     ]
   );
+  useEffect(() => {
+    if (
+      previewMode ||
+      providerTargetsLoading ||
+      activeConversationId === null ||
+      conversationFilter.kind !== "agentTarget" ||
+      isLoadingConversations ||
+      conversationListState?.initialized !== true
+    ) {
+      return;
+    }
+    if (
+      filterAgentGUIConversationSummaries(conversations, conversationFilter)
+        .length > 0
+    ) {
+      return;
+    }
+    const target = normalizedProviderTargets.find(
+      (candidate) =>
+        (candidate.agentTargetId?.trim() ?? "") ===
+        conversationFilter.agentTargetId
+    );
+    if (!target) {
+      return;
+    }
+    selectHomeComposerAgentTarget({
+      provider: target.provider,
+      providerTargetId: target.targetId
+    });
+  }, [
+    activeConversationId,
+    conversationFilter,
+    conversationListState?.initialized,
+    conversations,
+    isLoadingConversations,
+    normalizedProviderTargets,
+    previewMode,
+    providerTargetsLoading,
+    selectHomeComposerAgentTarget
+  ]);
   const stableCreateConversation =
     useStableControllerEventCallback(createConversation);
-  const stableSelectProvider = useStableControllerEventCallback(selectProvider);
+  const stableSelectHomeComposerAgentTarget = useStableControllerEventCallback(
+    selectHomeComposerAgentTarget
+  );
   const stableSelectConversationFilterTarget = useStableControllerEventCallback(
     selectConversationFilterTarget
   );
@@ -10974,7 +11281,7 @@ export function useAgentGUINodeController({
     () => ({
       updateConversationFilter: stableUpdateConversationFilter,
       selectConversationFilterTarget: stableSelectConversationFilterTarget,
-      selectProvider: stableSelectProvider,
+      selectHomeComposerAgentTarget: stableSelectHomeComposerAgentTarget,
       createConversation: stableCreateConversation,
       selectConversation: stableSelectConversation,
       submitPrompt: stableSubmitPrompt,
@@ -11025,7 +11332,7 @@ export function useAgentGUINodeController({
       stableRetryOpenclawGateway,
       stableSelectConversation,
       stableSelectConversationFilterTarget,
-      stableSelectProvider,
+      stableSelectHomeComposerAgentTarget,
       stableSendQueuedPromptNext,
       stableSubmitGuidancePrompt,
       stableShowPromptImagesUnsupported,
@@ -11051,7 +11358,7 @@ export function useAgentGUINodeController({
         selectedProviderTarget: effectiveSelectedProviderTarget,
         providerTargets: normalizedProviderTargets,
         providerTargetsLoading,
-        conversationScope,
+        comingSoonProviders: normalizedComingSoonProviders,
         conversationFilter,
         conversations: visibleConversations,
         userProjects,
@@ -11120,12 +11427,12 @@ export function useAgentGUINodeController({
       canSubmit,
       canQueueWhileBusy,
       conversation,
-      conversationScope,
       conversationFilter,
       conversationDetail,
       controllerActions,
       data,
       effectiveSelectedProviderTarget,
+      normalizedComingSoonProviders,
       normalizedProviderTargets,
       providerReadinessGate,
       providerTargetsLoading,
