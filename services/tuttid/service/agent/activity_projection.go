@@ -246,6 +246,13 @@ func activityStatePatchEventPayload(
 	if state.EndedAtUnixMS > 0 {
 		payload["endedAtUnixMs"] = state.EndedAtUnixMS
 	}
+	// submitAvailability must ride every state patch: this push event is the
+	// only live channel updating the GUI activity record between reconciles,
+	// and a consumer left on a stale blocked(active_turn) after the turn
+	// settles never dispatches its queued prompts.
+	if availability := submitAvailabilityEventPayload(state.SubmitAvailability); availability != nil {
+		payload["submitAvailability"] = availability
+	}
 	if state.Turn != nil {
 		turn := map[string]any{
 			"turnId": strings.TrimSpace(state.Turn.TurnID),
@@ -255,6 +262,9 @@ func activityStatePatchEventPayload(
 		}
 		if outcome := strings.TrimSpace(state.Turn.Outcome); outcome != "" {
 			turn["outcome"] = outcome
+		}
+		if availability := submitAvailabilityEventPayload(state.Turn.SubmitAvailability); availability != nil {
+			turn["submitAvailability"] = availability
 		}
 		if state.Turn.FileChanges != nil {
 			turn["fileChanges"] = clonePayload(state.Turn.FileChanges)
