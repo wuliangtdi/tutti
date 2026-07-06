@@ -27,7 +27,7 @@ func newComposerLiveModelCache() *composerLiveModelCache {
 }
 
 func (c *composerLiveModelCache) get(key string, now time.Time, ttl time.Duration) ([]ComposerConfigOptionValue, bool) {
-	if c == nil || ttl <= 0 {
+	if c == nil {
 		return nil, false
 	}
 	c.mu.Lock()
@@ -36,7 +36,11 @@ func (c *composerLiveModelCache) get(key string, now time.Time, ttl time.Duratio
 	if !ok {
 		return nil, false
 	}
-	if now.Sub(entry.cachedAt) > ttl {
+	// ttl <= 0 means the entry never expires (last-known-good). Claude Code uses
+	// this: a real session's model list is always better than the static
+	// fallback, and expiring it only decays the picker back to the static list
+	// with no way to re-probe (hidden discovery runs at most once per key).
+	if ttl > 0 && now.Sub(entry.cachedAt) > ttl {
 		delete(c.entries, key)
 		return nil, false
 	}
@@ -55,9 +59,15 @@ func (c *composerLiveModelCache) set(key string, now time.Time, options []Compos
 	}
 }
 
-func (s *Service) liveModelCacheTTL() time.Duration {
+func (s *Service) liveModelCacheTTL(provider string) time.Duration {
 	if s.LiveModelCacheTTL != 0 {
 		return s.LiveModelCacheTTL
+	}
+	// Claude Code advertises a stable, account-level model list that only a real
+	// session (or daemon restart) refreshes; keep the last-known-good entry for
+	// the daemon's lifetime instead of decaying to the static fallback.
+	if agentprovider.Normalize(provider) == agentprovider.ClaudeCode {
+		return 0
 	}
 	return defaultLiveModelCacheTTL
 }
@@ -71,7 +81,7 @@ func (s *Service) liveComposerModelCache() *composerLiveModelCache {
 
 func (s *Service) getLiveComposerModelOptions(provider, workspaceID, cwd string, now time.Time) ([]ComposerConfigOptionValue, bool) {
 	key := composerLiveModelCacheKey(provider, workspaceID, cwd)
-	return s.liveComposerModelCache().get(key, now, s.liveModelCacheTTL())
+	return s.liveComposerModelCache().get(key, now, s.liveModelCacheTTL(provider))
 }
 
 func (s *Service) setLiveComposerModelOptions(provider, workspaceID, cwd string, now time.Time, options []ComposerConfigOptionValue) {
