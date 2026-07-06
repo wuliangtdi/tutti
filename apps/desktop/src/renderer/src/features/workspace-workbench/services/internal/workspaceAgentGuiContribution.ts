@@ -1,11 +1,18 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
-import { createAgentGuiWorkbenchContribution } from "@tutti-os/agent-gui/workbench/contribution";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
+import {
+  createAgentGuiWorkbenchContribution,
+  resolveAgentGuiUnifiedDockLaunchPayload
+} from "@tutti-os/agent-gui/workbench/contribution";
 import { resolveAgentGuiWorkbenchSessionTitle } from "@tutti-os/agent-gui/workbench/sessionTitle";
 import type {
   AgentGuiWorkbenchProvider,
   AgentGuiWorkbenchState
 } from "@tutti-os/agent-gui/workbench/types";
+import { isAgentGuiWorkbenchProvider } from "@tutti-os/agent-gui/workbench/providerCatalog";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -41,7 +48,6 @@ import { requestWorkspaceFilesLaunch } from "../workspaceFilesLaunchCoordinator.
 import { requestWorkspaceIssueManagerLaunch } from "../workspaceIssueManagerLaunchCoordinator.ts";
 import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
-import { isWorkspaceAgentGuiDefaultDockProvider } from "./workspaceAgentProviderCatalog.ts";
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -52,13 +58,19 @@ export function createWorkspaceAgentGuiContribution(input: {
   dockIconUrls?: Parameters<
     typeof createAgentGuiWorkbenchContribution
   >[0]["dockIconUrls"];
+  unifiedDockIconUrl?: Parameters<
+    typeof createAgentGuiWorkbenchContribution
+  >[0]["unifiedDockIconUrl"];
+  defaultAgentProvider?: string | null;
+  defaultProviderTargetId?: string | null;
   hostFilesApi: DesktopHostFilesApi;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
   >[0]["onCapabilitySettingsRequest"];
   providerTargets?: readonly AgentGUIProviderTarget[];
-  defaultProviderTargetId?: string | null;
+  providerTargetsLoading?: boolean;
+  comingSoonAgentProviders?: readonly AgentGUIProvider[];
   tuttidClient: TuttidClient;
   platformApi: Pick<
     DesktopPlatformApi,
@@ -131,11 +143,16 @@ export function createWorkspaceAgentGuiContribution(input: {
       onCapabilitySettingsRequest: input.onCapabilitySettingsRequest,
       onLinkAction: handleLinkAction,
       onOpenAgentConversationWindow: async (request) => {
-        await requestWorkspaceAgentGuiLaunch(request);
+        await requestWorkspaceAgentGuiLaunch({
+          ...request,
+          openInNewWindow: true
+        });
       },
       onStateChange: (...args) => helpers.onStateChange(...args),
       previewMode: options?.previewMode,
       providerTargets: input.providerTargets,
+      providerTargetsLoading: input.providerTargetsLoading,
+      comingSoonAgentProviders: input.comingSoonAgentProviders,
       defaultProviderTargetId: input.defaultProviderTargetId,
       contextMentionProviders:
         agentGUIWorkbenchHostInput.contextMentionProviders,
@@ -175,7 +192,29 @@ export function createWorkspaceAgentGuiContribution(input: {
       nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent)
     },
     dockIconUrls: input.dockIconUrls,
+    unifiedDockIconUrl: input.unifiedDockIconUrl,
     frame: workspaceAgentGuiNodeFrame,
+    defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
+      ? input.defaultAgentProvider
+      : null,
+    defaultProviderTargetId: input.defaultProviderTargetId,
+    providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
+      input.agentProviderStatusService
+    ),
+    providerTargets: input.providerTargets,
+    providerTargetsLoading: input.providerTargetsLoading,
+    resolveDockLaunchPayload: () =>
+      resolveAgentGuiUnifiedDockLaunchPayload({
+        defaultProvider: isAgentGuiWorkbenchProvider(input.defaultAgentProvider)
+          ? input.defaultAgentProvider
+          : null,
+        defaultProviderTargetId: input.defaultProviderTargetId,
+        providerAvailability: resolveWorkspaceAgentGuiProviderAvailability(
+          input.agentProviderStatusService
+        ),
+        providerTargetsLoading: input.providerTargetsLoading,
+        targets: input.providerTargets
+      }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
     renderPreview: (context, helpers) =>
@@ -202,10 +241,20 @@ export function createWorkspaceAgentGuiContribution(input: {
         workspaceAgentActivityService: input.workspaceAgentActivityService,
         workspaceId: input.workspaceId
       }),
-    resolveDockEntryVisibility: (provider: AgentGuiWorkbenchProvider) =>
-      isWorkspaceAgentGuiDefaultDockProvider(provider) ? "always" : "never",
     workspaceId: input.workspaceId
   });
+}
+
+function resolveWorkspaceAgentGuiProviderAvailability(
+  service: AgentProviderStatusService
+): Partial<Record<AgentGuiWorkbenchProvider, boolean>> {
+  const availability: Partial<Record<AgentGuiWorkbenchProvider, boolean>> = {};
+  for (const status of service.getSnapshot().statuses) {
+    if (isAgentGuiWorkbenchProvider(status.provider)) {
+      availability[status.provider] = status.availability.status === "ready";
+    }
+  }
+  return availability;
 }
 
 function resolveWorkspaceAgentGuiDockPopupTitle(
@@ -227,7 +276,7 @@ function resolveWorkspaceAgentGuiDockPopupTitle(
       ?.provider ?? "codex";
   return resolveAgentGuiWorkbenchSessionTitle({
     agentSessionId,
-    fallbackTitle: state?.lastActiveConversationTitle,
+    fallbackTitle: null,
     provider,
     snapshot
   }).title;

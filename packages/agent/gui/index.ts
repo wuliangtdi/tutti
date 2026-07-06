@@ -4,18 +4,31 @@ export {
   projectCoreSessionStatus,
   type AgentActivitySnapshotProjection
 } from "./shared/agentActivitySnapshotProjection";
+export {
+  getAgentCustomMentionKind,
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests,
+  type AgentCustomMentionChipContext,
+  type AgentCustomMentionIdentity,
+  type AgentCustomMentionKindDefinition,
+  type AgentCustomMentionPresentation
+} from "./shared/agentCustomMentionKinds";
 export { AgentGUI } from "./AgentGUI";
 export type { AgentGUIProps } from "./AgentGUI";
 export {
   agentGUIDefaultTargetProviders,
   createLocalAgentGUIProviderTarget,
   createLocalAgentGUIProviderTargets,
+  localAgentGUIAgentTargetId,
   localAgentGUIProviderTargetId,
   normalizeAgentGUIProviderTargets,
   resolveAgentGUIProviderTarget
 } from "./providerTargets";
 export type {
   AgentGUIProvider,
+  AgentGUIProviderReadinessGate,
+  AgentGUIProviderReadinessGateAction,
+  AgentGUIProviderReadinessGateStatus,
   AgentGUIProviderTarget,
   AgentGUIProviderTargetRef
 } from "./types";

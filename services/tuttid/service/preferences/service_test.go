@@ -40,6 +40,7 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 			getResult: preferencesbiz.DesktopPreferences{
 				DefaultAgentProvider: "claude-code",
 
+				AgentDockLayout:          "unified",
 				BrowserUseConnectionMode: "autoConnect",
 				DockIconStyle:            "default",
 				DockPlacement:            "left",
@@ -69,6 +70,9 @@ func TestServiceGetReturnsStoredDesktopPreferences(t *testing.T) {
 	}
 	if preferences.DefaultAgentProvider != "claude-code" {
 		t.Fatalf("Get() defaultAgentProvider = %q, want claude-code", preferences.DefaultAgentProvider)
+	}
+	if preferences.AgentDockLayout != "unified" {
+		t.Fatalf("Get() agentDockLayout = %q, want unified", preferences.AgentDockLayout)
 	}
 	if preferences.ThemeSource != "dark" {
 		t.Fatalf("Get() themeSource = %q, want dark", preferences.ThemeSource)
@@ -111,7 +115,9 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 			"claude":  false,
 			"unknown": true,
 		},
-		DefaultAgentProvider: " claude ",
+		AgentConversationDetailMode: " general ",
+		AgentDockLayout:             " unified ",
+		DefaultAgentProvider:        " claude ",
 
 		BrowserUseConnectionMode: " autoConnect ",
 		DockIconStyle:            "default",
@@ -145,6 +151,12 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	if store.putInput.DefaultAgentProvider != "claude-code" {
 		t.Fatalf("stored defaultAgentProvider = %q, want claude-code", store.putInput.DefaultAgentProvider)
 	}
+	if store.putInput.AgentConversationDetailMode != "general" {
+		t.Fatalf("stored agentConversationDetailMode = %q, want general", store.putInput.AgentConversationDetailMode)
+	}
+	if store.putInput.AgentDockLayout != "unified" {
+		t.Fatalf("stored agentDockLayout = %q, want unified", store.putInput.AgentDockLayout)
+	}
 	if store.putInput.ThemeSource != "dark" {
 		t.Fatalf("stored themeSource = %q, want dark", store.putInput.ThemeSource)
 	}
@@ -165,14 +177,10 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 		len(store.putInput.FileDefaultOpenersByExtension) != 2 {
 		t.Fatalf("stored file openers = %#v, want normalized html/pdf", store.putInput.FileDefaultOpenersByExtension)
 	}
-	claudeDefaults := store.putInput.AgentComposerDefaultsByProvider["claude-code"]
-	if claudeDefaults.Model != "claude-3-5" ||
-		claudeDefaults.PermissionModeID != "full-access" ||
-		claudeDefaults.ReasoningEffort != "high" {
-		t.Fatalf("stored claude defaults = %#v, want trimmed values", claudeDefaults)
-	}
-	if _, ok := store.putInput.AgentComposerDefaultsByProvider["codex"]; ok {
-		t.Fatal("stored codex empty defaults, want omitted")
+	// The legacy provider-keyed defaults are frozen: client input is ignored
+	// and the stored value (empty in this stub) is written back instead.
+	if len(store.putInput.AgentComposerDefaultsByProvider) != 0 {
+		t.Fatalf("stored provider defaults = %#v, want legacy input ignored", store.putInput.AgentComposerDefaultsByProvider)
 	}
 	if !store.putInput.AgentGUIConversationRailCollapsedByProvider["codex"] {
 		t.Fatal("stored codex rail collapsed = false, want true")
@@ -189,12 +197,103 @@ func TestServicePutTrimsDesktopPreferences(t *testing.T) {
 	if publisher.published[0].DockPlacement != "left" ||
 		publisher.published[0].Locale != "zh-CN" ||
 		publisher.published[0].DefaultAgentProvider != "claude-code" ||
+		publisher.published[0].AgentConversationDetailMode != "general" ||
+		publisher.published[0].AgentDockLayout != "unified" ||
 		publisher.published[0].ThemeSource != "dark" ||
 		publisher.published[0].SleepPreventionMode != "whileAgentRunning" ||
 		publisher.published[0].BrowserUseConnectionMode != "autoConnect" ||
 		publisher.published[0].UpdateChannel != "rc" ||
 		publisher.published[0].UpdatePolicy != "auto" {
 		t.Fatalf("published preferences = %#v, want left/zh-CN/dark/prevent-sleep/autoConnect/rc/auto", publisher.published[0])
+	}
+}
+
+func TestServicePutNormalizesAgentDockLayout(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: "unified"},
+		{name: "invalid", input: "stacked", want: "unified"},
+		{name: "legacy", input: "legacySplit", want: "legacySplit"},
+		{name: "unified", input: "unified", want: "unified"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &preferencesStoreStub{}
+			service := Service{Store: store}
+			preferences, err := service.Put(context.Background(), PutInput{
+				AgentConversationDetailMode: "coding",
+				AgentDockLayout:             tc.input,
+				AppCatalogChannel:           "production",
+				DefaultAgentProvider:        "codex",
+				DockIconStyle:               "default",
+				DockPlacement:               "bottom",
+				Locale:                      "en",
+				MinimizeAnimation:           "scale",
+				SleepPreventionMode:         "never",
+				ThemeSource:                 "dark",
+				UpdateChannel:               "rc",
+				UpdatePolicy:                "prompt",
+			})
+			if err != nil {
+				t.Fatalf("Put() error = %v", err)
+			}
+			if preferences.AgentDockLayout != tc.want {
+				t.Fatalf("Put() agentDockLayout = %q, want %q", preferences.AgentDockLayout, tc.want)
+			}
+			if store.putInput.AgentDockLayout != tc.want {
+				t.Fatalf("stored agentDockLayout = %q, want %q", store.putInput.AgentDockLayout, tc.want)
+			}
+		})
+	}
+}
+
+func TestServicePutNormalizesAgentConversationDetailMode(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "empty", input: "", want: "coding"},
+		{name: "invalid", input: "daily", want: "coding"},
+		{name: "coding", input: "coding", want: "coding"},
+		{name: "general", input: "general", want: "general"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := &preferencesStoreStub{}
+			service := Service{Store: store}
+			preferences, err := service.Put(context.Background(), PutInput{
+				AgentConversationDetailMode: tc.input,
+				AppCatalogChannel:           "production",
+				DefaultAgentProvider:        "codex",
+				DockIconStyle:               "default",
+				DockPlacement:               "bottom",
+				Locale:                      "en",
+				MinimizeAnimation:           "scale",
+				SleepPreventionMode:         "never",
+				ThemeSource:                 "dark",
+				UpdateChannel:               "rc",
+				UpdatePolicy:                "prompt",
+			})
+			if err != nil {
+				t.Fatalf("Put() error = %v", err)
+			}
+			if preferences.AgentConversationDetailMode != tc.want {
+				t.Fatalf("Put() agentConversationDetailMode = %q, want %q", preferences.AgentConversationDetailMode, tc.want)
+			}
+			if store.putInput.AgentConversationDetailMode != tc.want {
+				t.Fatalf("stored agentConversationDetailMode = %q, want %q", store.putInput.AgentConversationDetailMode, tc.want)
+			}
+		})
 	}
 }
 
@@ -321,5 +420,162 @@ func TestServicePutReturnsStoredPreferencesWhenPublishFails(t *testing.T) {
 	}
 	if len(publisher.published) != 1 {
 		t.Fatalf("published len = %d, want 1", len(publisher.published))
+	}
+}
+
+func TestServiceGetDoesNotResurrectLegacyComposerDefaults(t *testing.T) {
+	t.Parallel()
+
+	// Legacy provider-keyed defaults were copied to agent target keys by a
+	// one-time sqlite data migration; Get must not overlay them again, or a
+	// user could never clear a migrated default.
+	service := Service{
+		Store: &preferencesStoreStub{
+			getResult: preferencesbiz.DesktopPreferences{
+				AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
+					"codex": {Model: "gpt-5", PermissionModeID: "full-access"},
+				},
+				AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{},
+				Initialized:                        true,
+			},
+		},
+	}
+
+	preferences, err := service.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if len(preferences.AgentComposerDefaultsByAgentTarget) != 0 {
+		t.Fatalf("agent target defaults = %#v, want stored value without legacy overlay", preferences.AgentComposerDefaultsByAgentTarget)
+	}
+}
+
+func TestServicePutNormalizesComposerDefaultsByAgentTarget(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{}
+	service := Service{Store: store}
+
+	_, err := service.Put(context.Background(), PutInput{
+		AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+			" local:codex ": {
+				Model:            " gpt-5 ",
+				PermissionModeID: " full-access ",
+				ReasoningEffort:  " high ",
+				Speed:            " fast ",
+			},
+			"local:claude-code": {},
+			"  ":                {Model: "dropped"},
+		},
+		AgentConversationDetailMode: "coding",
+		AgentDockLayout:             "unified",
+		DefaultAgentProvider:        "codex",
+		DockIconStyle:               "default",
+		DockPlacement:               "bottom",
+		Locale:                      "en",
+		MinimizeAnimation:           "scale",
+		SleepPreventionMode:         "never",
+		ThemeSource:                 "dark",
+		UpdateChannel:               "rc",
+		UpdatePolicy:                "auto",
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	stored := store.putInput.AgentComposerDefaultsByAgentTarget
+	if len(stored) != 1 {
+		t.Fatalf("stored agent target defaults = %#v, want single trimmed entry", stored)
+	}
+	codexDefaults := stored["local:codex"]
+	if codexDefaults.Model != "gpt-5" ||
+		codexDefaults.PermissionModeID != "full-access" ||
+		codexDefaults.ReasoningEffort != "high" ||
+		codexDefaults.Speed != "fast" {
+		t.Fatalf("stored local:codex defaults = %#v, want trimmed values", codexDefaults)
+	}
+}
+
+func TestServicePutFreezesLegacyComposerDefaultsByProvider(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{
+		getResult: preferencesbiz.DesktopPreferences{
+			AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
+				"codex": {Model: "gpt-5"},
+			},
+			Initialized: true,
+		},
+	}
+	service := Service{Store: store}
+
+	_, err := service.Put(context.Background(), PutInput{
+		AgentComposerDefaultsByProvider: map[string]preferencesbiz.AgentComposerDefaults{
+			"codex":       {Model: "client-overwrite"},
+			"claude-code": {Model: "client-new"},
+		},
+		AgentConversationDetailMode: "coding",
+		AgentDockLayout:             "unified",
+		DefaultAgentProvider:        "codex",
+		DockIconStyle:               "default",
+		DockPlacement:               "bottom",
+		Locale:                      "en",
+		MinimizeAnimation:           "scale",
+		SleepPreventionMode:         "never",
+		ThemeSource:                 "dark",
+		UpdateChannel:               "rc",
+		UpdatePolicy:                "auto",
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	stored := store.putInput.AgentComposerDefaultsByProvider
+	if len(stored) != 1 || stored["codex"].Model != "gpt-5" {
+		t.Fatalf("stored provider defaults = %#v, want frozen stored value", stored)
+	}
+}
+
+func TestServicePutKeepsAgentTargetDefaultsWhenFieldOmitted(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{
+		getResult: preferencesbiz.DesktopPreferences{
+			AgentComposerDefaultsByAgentTarget: map[string]preferencesbiz.AgentComposerDefaults{
+				"local:codex": {Model: "gpt-5"},
+			},
+			Initialized: true,
+		},
+	}
+	service := Service{Store: store}
+
+	basePut := PutInput{
+		AgentConversationDetailMode: "coding",
+		AgentDockLayout:             "unified",
+		DefaultAgentProvider:        "codex",
+		DockIconStyle:               "default",
+		DockPlacement:               "bottom",
+		Locale:                      "en",
+		MinimizeAnimation:           "scale",
+		SleepPreventionMode:         "never",
+		ThemeSource:                 "dark",
+		UpdateChannel:               "rc",
+		UpdatePolicy:                "auto",
+	}
+
+	// A nil map (field omitted by an older client) keeps the stored defaults.
+	if _, err := service.Put(context.Background(), basePut); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if store.putInput.AgentComposerDefaultsByAgentTarget["local:codex"].Model != "gpt-5" {
+		t.Fatalf("stored agent target defaults = %#v, want preserved on omitted field", store.putInput.AgentComposerDefaultsByAgentTarget)
+	}
+
+	// An explicitly sent empty map still clears everything.
+	clearedPut := basePut
+	clearedPut.AgentComposerDefaultsByAgentTarget = map[string]preferencesbiz.AgentComposerDefaults{}
+	if _, err := service.Put(context.Background(), clearedPut); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if len(store.putInput.AgentComposerDefaultsByAgentTarget) != 0 {
+		t.Fatalf("stored agent target defaults = %#v, want cleared by explicit empty map", store.putInput.AgentComposerDefaultsByAgentTarget)
 	}
 }

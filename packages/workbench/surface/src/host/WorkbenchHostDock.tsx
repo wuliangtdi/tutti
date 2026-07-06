@@ -447,6 +447,7 @@ export function WorkbenchHostDock({
   } = useDockMagnification({
     dockPlacement,
     dockRootRef: dockMeasureRef,
+    dockViewportRef: dockItemsRef,
     slotRefs
   });
   const clearSlotMagnificationRef = useRef<(anchorKey: string) => void>(() => {
@@ -1502,6 +1503,9 @@ export function WorkbenchHostDock({
                     className="desktop-dock__btn"
                     data-interactive={
                       clickResolution.kind === "blocked" ? "false" : "true"
+                    }
+                    data-dock-hover-panel-trigger={
+                      hasHoverPanel ? "true" : undefined
                     }
                     type="button"
                     onPointerDown={(event) => {

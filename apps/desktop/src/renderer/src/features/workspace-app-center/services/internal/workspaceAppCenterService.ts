@@ -55,7 +55,7 @@ const factoryJobDiagnosticLimit = 20;
 
 type AgentProviderComposerOptionsClient = Pick<
   TuttidClient,
-  "getWorkspaceAppFactoryProviderComposerOptions"
+  "getWorkspaceAppFactoryAgentTargetComposerOptions"
 >;
 
 export interface WorkspaceAppCenterServiceDependencies {
@@ -65,6 +65,7 @@ export interface WorkspaceAppCenterServiceDependencies {
     DesktopWorkspaceAppCenterLocalFileGateway;
   hostFilesApi: Pick<
     DesktopHostFilesApi,
+    | "openExternal"
     | "revealInFolder"
     | "selectAppArchive"
     | "selectAppArchiveExportPath"
@@ -195,10 +196,10 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   }
 
   async createFactoryJob(input: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
-    provider?: string;
     prompt: string;
     reasoningEffort?: string;
     workspaceId: string;
@@ -207,12 +208,15 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
   }
 
   async getFactoryProviderConfiguration(input: {
+    agentTargetId: string;
     provider: string;
     workspaceId: string;
   }): Promise<WorkspaceAppFactoryProviderConfiguration> {
+    const normalizedAgentTargetId = input.agentTargetId.trim();
     const normalizedProvider = input.provider.trim();
     const normalizedWorkspaceId = input.workspaceId.trim();
     if (
+      !normalizedAgentTargetId ||
       !normalizedProvider ||
       !normalizedWorkspaceId ||
       !this.dependencies.tuttidClient
@@ -220,11 +224,9 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
       return emptyFactoryProviderConfiguration();
     }
     const response =
-      await this.dependencies.tuttidClient.getWorkspaceAppFactoryProviderComposerOptions(
+      await this.dependencies.tuttidClient.getWorkspaceAppFactoryAgentTargetComposerOptions(
         normalizedWorkspaceId,
-        normalizedProvider as Parameters<
-          AgentProviderComposerOptionsClient["getWorkspaceAppFactoryProviderComposerOptions"]
-        >[1]
+        normalizedAgentTargetId
       );
     return normalizeFactoryProviderConfiguration(normalizedProvider, response);
   }
@@ -593,6 +595,14 @@ export class WorkspaceAppCenterService implements IWorkspaceAppCenterService {
         this.store.openingFolderAppId = null;
       }
     }
+  }
+
+  async openExternalUrl(url: string): Promise<void> {
+    const target = url.trim();
+    if (!target) {
+      return;
+    }
+    await this.dependencies.hostFilesApi.openExternal(target);
   }
 
   async uninstallApp(input: {

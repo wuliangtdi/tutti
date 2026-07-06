@@ -156,10 +156,30 @@ test("reference picker context menu uses the same viewport boundary as file mana
   assert.match(source, /data-workspace-file-menu-boundary=""/);
 });
 
+test("reference source picker traps Escape before global shortcut handlers", () => {
+  assert.match(source, /handleReferencePickerKeyDownCapture/);
+  assert.match(
+    source,
+    /document\.addEventListener\("keydown", handleEscapeKeyDown, \{\s*capture: true\s*\}\);/
+  );
+  assert.match(source, /event\.key !== "Escape"/);
+  assert.match(source, /event\.preventDefault\(\);/);
+  assert.match(source, /event\.stopPropagation\(\);/);
+  assert.match(source, /event\.stopImmediatePropagation\(\);/);
+  assert.match(
+    source,
+    /onKeyDownCapture=\{handleReferencePickerKeyDownCapture\}/
+  );
+});
+
 test("reference source picker renders rows with workspace file manager entry icons", () => {
   assert.match(
     source,
     /WorkspaceFileEntryIcon,\s*useWorkspaceFileEntryIconUrls,/
+  );
+  assert.match(
+    source,
+    /includeImageThumbnails:\s*resolveEntryIconUrl !== undefined,/
   );
   assert.match(source, /function referenceNodeToWorkspaceFileEntry/);
   assert.match(source, /function ReferenceNodeIcon/);

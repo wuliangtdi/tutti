@@ -64,6 +64,32 @@ picker 选中文件夹(navigable 源)
 
 > agent 能否执行 `tutti` CLI:**能**。现有 `issue-manager` 等 skill 就是这么让 agent 跑 `issue get --json` 的,同一机制。
 
+## 1.1 Agent target mentions
+
+Agent launch mentions are not workspace app mentions. The external `@` bridge
+has a dedicated `agent-target` provider for first-party Agent targets:
+
+- Omitted `window.tuttiExternal.at.query.providers` defaults include
+  `agent-target`.
+- Explicit `providers: ["workspace-app"]` returns only real workspace apps.
+- New Agent mention insertions use
+  `mention://agent-target/local:codex` or
+  `mention://agent-target/local:claude-code`.
+- AgentGUI composer host capabilities include `agent-target`; its Apps tab
+  stays scoped to `workspace-app`, while its Agents tab queries `agent-target`.
+- `workspace-app` must not return `agent-codex` or `agent-claude-code` pseudo
+  apps. Existing historical pseudo-app mention tokens can remain display-only;
+  do not create new ones.
+- Agent runtime mention routing treats `agent-target` mentions as Tutti-internal
+  references for the generic runtime-only routing reminder across ACP and Codex
+  app-server providers. The reminder may be appended to the provider prompt, but
+  it must not be persisted into renderer payloads, daemon activity events, or
+  imported session messages.
+- The runtime reminder must not prescribe launch-only behavior. It only routes
+  the model to the visible Tutti skill/CLI surface; the requested action can be
+  starting a new agent session, inspecting active peers or historical sessions,
+  or another agent CLI workflow implied by the user's prompt.
+
 ---
 
 ## 2. 源模型(app / task 对称)

@@ -81,15 +81,21 @@ async function listDeveloperLogsAgentSessions(
   const workspaces = await tuttidClient.listWorkspaces();
   const sessionPages = await Promise.all(
     workspaces.workspaces.map((workspace) =>
-      tuttidClient
-        .listWorkspaceAgentSessions(workspace.id)
-        .catch(() => ({ sessions: [], workspaceId: workspace.id }))
+      tuttidClient.listWorkspaceAgentSessions(workspace.id).catch(() => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: workspace.id
+      }))
     )
   );
 
   const sessions = sessionPages.flatMap((page) =>
     page.sessions.flatMap((session) => {
-      if (session.provider !== "codex" && session.provider !== "claude-code") {
+      if (
+        session.provider !== "codex" &&
+        session.provider !== "claude-code" &&
+        session.provider !== "cursor"
+      ) {
         return [];
       }
       const providerSessionID = session.providerSessionId?.trim() ?? "";

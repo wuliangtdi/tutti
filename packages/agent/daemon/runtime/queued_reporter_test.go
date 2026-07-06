@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
 
 type captureActivityClient struct {
@@ -46,6 +46,7 @@ func TestQueuedReporterCallsClientWithNormalizedRuntimeInput(t *testing.T) {
 		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{
 			AgentSessionID: "agent-1",
 			MessageID:      "message-1",
+			TurnID:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 		}},

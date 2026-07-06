@@ -20,7 +20,7 @@ type taskRunCreateInput struct {
 	IssueID        string `cli:"issue-id" validate:"required"`
 	TaskID         string `cli:"task-id" validate:"required"`
 	RunID          string `cli:"run-id"`
-	AgentProvider  string `cli:"agent-provider" validate:"required"`
+	AgentTargetID  string `cli:"agent-target-id" validate:"required"`
 	AgentUserID    string `cli:"agent-user-id"`
 	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
 }
@@ -28,7 +28,7 @@ type taskRunCreateInput struct {
 type issueRunCreateInput struct {
 	IssueID        string `cli:"issue-id" validate:"required"`
 	RunID          string `cli:"run-id"`
-	AgentProvider  string `cli:"agent-provider" validate:"required"`
+	AgentTargetID  string `cli:"agent-target-id" validate:"required"`
 	AgentUserID    string `cli:"agent-user-id"`
 	AgentSessionID string `cli:"agent-session-id" description:"Optional override; defaults to the current AgentGUI session when invoked from an agent runtime."`
 }
@@ -37,7 +37,7 @@ type taskRunCompleteInput struct {
 	IssueID      string `cli:"issue-id" validate:"required"`
 	TaskID       string `cli:"task-id" validate:"required"`
 	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required"`
+	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
 	Summary      string `cli:"summary"`
 	ErrorMessage string `cli:"error-message"`
 	Outputs      string `cli:"outputs"`
@@ -46,7 +46,7 @@ type taskRunCompleteInput struct {
 type issueRunCompleteInput struct {
 	IssueID      string `cli:"issue-id" validate:"required"`
 	RunID        string `cli:"run-id" validate:"required"`
-	Status       string `cli:"status" validate:"required"`
+	Status       string `cli:"status" validate:"required" enum:"completed,failed,canceled"`
 	Summary      string `cli:"summary"`
 	ErrorMessage string `cli:"error-message"`
 	Outputs      string `cli:"outputs"`
@@ -216,7 +216,7 @@ func (p Provider) runTaskRunCreate(ctx context.Context, invoke framework.InvokeC
 	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, input.TaskID, workspaceservice.CreateIssueManagerRunInput{
 		RunID:          input.RunID,
-		AgentProvider:  input.AgentProvider,
+		AgentTargetID:  input.AgentTargetID,
 		AgentUserID:    input.AgentUserID,
 		AgentSessionID: agentSessionID,
 	})
@@ -232,7 +232,7 @@ func (p Provider) runIssueRunCreate(ctx context.Context, invoke framework.Invoke
 	}
 	return p.issues.CreateRun(ctx, invoke.WorkspaceID, input.IssueID, "", workspaceservice.CreateIssueManagerRunInput{
 		RunID:          input.RunID,
-		AgentProvider:  input.AgentProvider,
+		AgentTargetID:  input.AgentTargetID,
 		AgentUserID:    input.AgentUserID,
 		AgentSessionID: agentSessionID,
 	})

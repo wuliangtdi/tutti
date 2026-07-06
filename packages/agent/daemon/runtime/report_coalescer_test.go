@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	agentsessionstore "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity"
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 )
 
 func TestStreamingReportCoalescerKeepsLatestMessageSnapshot(t *testing.T) {
@@ -90,6 +90,7 @@ func messageReport(messageID string, seq uint64, status string, content string) 
 			AgentSessionID: "agent-session-1",
 			MessageID:      messageID,
 			Seq:            seq,
+			TurnID:         "turn-1",
 			Role:           "assistant",
 			Kind:           "text",
 			Status:         status,

@@ -7,8 +7,8 @@ const styles = {
   chromeCardConnecting: "agent-gui-chrome__card--connecting",
   chromeCardDanger: "agent-gui-chrome__card--danger",
   chromeIcon: "agent-gui-chrome__icon",
-  chromeExpandCue: "agent-gui-chrome__expand-cue",
   chromeMessageSlot: "agent-gui-chrome__message-slot",
+  chromeMessageTooltip: "agent-gui-chrome__message-tooltip",
   chromeInlineActions: "agent-gui-chrome__inline-actions",
   chromeNoticeDescription: "agent-gui-chrome__notice-description",
   chromeNoticeMessage: "agent-gui-chrome__notice-message",
@@ -18,7 +18,9 @@ const styles = {
   chromeActions: "agent-gui-chrome__actions",
   chromeMetaRow: "agent-gui-chrome__meta-row",
   chromeDangerGhostButton: "agent-gui-chrome__danger-ghost-button",
-  chromeGoalHint: "agent-gui-chrome__goal-hint"
+  chromeGoalHint: "agent-gui-chrome__goal-hint",
+  chromeGoalActions: "agent-gui-chrome__goal-actions",
+  chromeGoalEditInput: "agent-gui-chrome__goal-edit-input"
 } as const;
 
 export default styles;

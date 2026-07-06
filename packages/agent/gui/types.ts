@@ -44,7 +44,10 @@ export interface AgentNodeData {
 
 export interface AgentGUINodeData {
   provider: AgentGUIProvider;
+  agentTargetId?: string | null;
+  /** @deprecated Use agentTargetId for selection restore. */
   providerTargetId?: string | null;
+  /** @deprecated Provider target refs are resolved from the current target list. */
   providerTargetRef?: AgentGUIProviderTargetRef | null;
   lastActiveAgentSessionId: string | null;
   lastActiveConversationTitle?: string | null;
@@ -52,6 +55,10 @@ export interface AgentGUINodeData {
   conversationRailWidthPx?: number | null;
   conversationRailCollapsed?: boolean | null;
   composerOverrides?: AgentHostAgentSessionComposerSettings | null;
+  composerOverridesByAgentTargetId?: Record<
+    string,
+    AgentHostAgentSessionComposerSettings | null
+  > | null;
   composerOverridesByProvider?: Partial<
     Record<AgentGUIProvider, AgentHostAgentSessionComposerSettings | null>
   > | null;
@@ -59,7 +66,13 @@ export interface AgentGUINodeData {
 
 export type AgentGUIProvider = Extract<
   AgentProvider,
-  "claude-code" | "codex" | "nexight" | "gemini" | "hermes" | "openclaw"
+  | "claude-code"
+  | "codex"
+  | "cursor"
+  | "nexight"
+  | "gemini"
+  | "hermes"
+  | "openclaw"
 >;
 
 export interface AgentGUIProviderTargetRef {
@@ -70,13 +83,36 @@ export interface AgentGUIProviderTargetRef {
 
 export interface AgentGUIProviderTarget {
   targetId: string;
+  agentTargetId?: string | null;
   provider: AgentGUIProvider;
   ref: AgentGUIProviderTargetRef;
   label: string;
   description?: string;
+  iconUrl?: string | null;
   ownerLabel?: string;
   disabled?: boolean;
   unavailableReason?: string;
+}
+
+export type AgentGUIProviderReadinessGateStatus =
+  | "checking"
+  | "coming_soon"
+  | "not_installed"
+  | "auth_required"
+  | "unavailable";
+
+export type AgentGUIProviderReadinessGateAction =
+  | "install"
+  | "login"
+  | "refresh";
+
+export interface AgentGUIProviderReadinessGate {
+  status: AgentGUIProviderReadinessGateStatus;
+  pendingAction?: AgentGUIProviderReadinessGateAction | null;
+  onAction?: (
+    provider: AgentGUIProvider,
+    action: AgentGUIProviderReadinessGateAction
+  ) => void;
 }
 
 export interface WebsiteNodeData {
@@ -173,6 +209,7 @@ export interface RoomIssueNodeData {
   selectedProvider:
     | "codex"
     | "claude-code"
+    | "cursor"
     | "nexight"
     | "gemini"
     | "openclaw"

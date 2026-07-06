@@ -871,6 +871,25 @@ test("WorkspaceAppCenterService opens workspace and package app folders", async 
   ]);
 });
 
+test("WorkspaceAppCenterService opens external URLs through host files", async () => {
+  const openedUrls: string[] = [];
+  const service = new WorkspaceAppCenterService({
+    eventStreamClient: createEventStreamClient(),
+    gateway: createGateway(),
+    hostFilesApi: createHostFilesApi({
+      openExternal: async (url) => {
+        openedUrls.push(url);
+      }
+    }),
+    hostWorkspaceApi: createHostWorkspaceApi()
+  });
+
+  await service.openExternalUrl(" https://github.com/tutti-os/tutti ");
+  await service.openExternalUrl("   ");
+
+  assert.deepEqual(openedUrls, ["https://github.com/tutti-os/tutti"]);
+});
+
 test("WorkspaceAppCenterService does not open package folders for builtin apps", async () => {
   const openedFolders: OpenWorkspaceAppFolderInput[] = [];
   const service = new WorkspaceAppCenterService({
@@ -1237,11 +1256,11 @@ test("WorkspaceAppCenterService tracks import failure and catalog refresh result
 test("WorkspaceAppCenterService tracks factory job lifecycle events", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   let createFactoryJobInput: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
     prompt: string;
-    provider?: string;
     reasoningEffort?: string;
   } | null = null;
   const createdJob = createFactoryJob({
@@ -1285,10 +1304,10 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
   });
 
   await service.createFactoryJob({
+    agentTargetId: "local:codex",
     displayName: "Dashboard App",
     model: "gpt-5",
     permissionModeId: "auto",
-    provider: "codex",
     prompt: "build a dashboard",
     reasoningEffort: "high",
     workspaceId: "workspace-1"
@@ -1303,11 +1322,11 @@ test("WorkspaceAppCenterService tracks factory job lifecycle events", async () =
   });
 
   assert.deepEqual(createFactoryJobInput, {
+    agentTargetId: "local:codex",
     displayName: "Dashboard App",
     model: "gpt-5",
     permissionModeId: "auto",
     prompt: "build a dashboard",
-    provider: "codex",
     reasoningEffort: "high"
   });
   assert.deepEqual(reporterCalls, [
@@ -1335,12 +1354,12 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     tuttidClient: createTuttidClient({
-      async getWorkspaceAppFactoryProviderComposerOptions(
+      async getWorkspaceAppFactoryAgentTargetComposerOptions(
         workspaceId,
-        provider
+        agentTargetId
       ) {
         assert.equal(workspaceId, "workspace-1");
-        assert.equal(provider, "codex");
+        assert.equal(agentTargetId, "local:codex");
         return {
           effectiveSettings: {},
           modelConfig: {
@@ -1370,7 +1389,7 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
               }
             ]
           },
-          provider,
+          provider: "codex",
           reasoningConfig: {
             configurable: true,
             currentValue: "high",
@@ -1388,6 +1407,7 @@ test("WorkspaceAppCenterService normalizes provider configuration", async () => 
   });
 
   const configuration = await service.getFactoryProviderConfiguration({
+    agentTargetId: "local:codex",
     provider: "codex",
     workspaceId: "workspace-1"
   });
@@ -1422,9 +1442,9 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     tuttidClient: createTuttidClient({
-      async getWorkspaceAppFactoryProviderComposerOptions(
+      async getWorkspaceAppFactoryAgentTargetComposerOptions(
         _workspaceId,
-        provider
+        _agentTargetId
       ) {
         return {
           effectiveSettings: {
@@ -1438,7 +1458,7 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
             configurable: true,
             modes: [{ id: "auto", label: "Approve for me", semantic: "auto" }]
           },
-          provider,
+          provider: "codex",
           reasoningConfig: {
             configurable: false,
             options: []
@@ -1452,6 +1472,7 @@ test("WorkspaceAppCenterService makes effective permission default visible", asy
   });
 
   const configuration = await service.getFactoryProviderConfiguration({
+    agentTargetId: "local:codex",
     provider: "codex",
     workspaceId: "workspace-1"
   });
@@ -1477,12 +1498,12 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
     hostFilesApi: createHostFilesApi(),
     hostWorkspaceApi: createHostWorkspaceApi(),
     tuttidClient: createTuttidClient({
-      async getWorkspaceAppFactoryProviderComposerOptions(
+      async getWorkspaceAppFactoryAgentTargetComposerOptions(
         workspaceId,
-        provider,
+        agentTargetId,
         request
       ) {
-        composerOptionsCalls.push({ provider, request, workspaceId });
+        composerOptionsCalls.push({ agentTargetId, request, workspaceId });
         return {
           effectiveSettings: {
             model: "sonnet",
@@ -1504,7 +1525,7 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
               }
             ]
           },
-          provider,
+          provider: "claude-code",
           reasoningConfig: {
             configurable: true,
             currentValue: "high",
@@ -1531,13 +1552,14 @@ test("WorkspaceAppCenterService passes workspace id and prefers live composer mo
   });
 
   const configuration = await service.getFactoryProviderConfiguration({
+    agentTargetId: "local:claude-code",
     provider: "claude-code",
     workspaceId: "workspace-1"
   });
 
   assert.deepEqual(composerOptionsCalls, [
     {
-      provider: "claude-code",
+      agentTargetId: "local:claude-code",
       request: undefined,
       workspaceId: "workspace-1"
     }
@@ -1730,6 +1752,7 @@ function createHostFilesApi(
   overrides: Partial<WorkspaceAppCenterServiceDependencies["hostFilesApi"]> = {}
 ): WorkspaceAppCenterServiceDependencies["hostFilesApi"] {
   return {
+    openExternal: async () => {},
     revealInFolder: async () => {},
     selectAppArchive: async () => null,
     selectAppArchiveExportPath: async () => null,
@@ -1815,13 +1838,13 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 function createTuttidClient(
   overrides: Partial<
-    Pick<TuttidClient, "getWorkspaceAppFactoryProviderComposerOptions">
+    Pick<TuttidClient, "getWorkspaceAppFactoryAgentTargetComposerOptions">
   > = {}
-): Pick<TuttidClient, "getWorkspaceAppFactoryProviderComposerOptions"> {
+): Pick<TuttidClient, "getWorkspaceAppFactoryAgentTargetComposerOptions"> {
   return {
-    async getWorkspaceAppFactoryProviderComposerOptions(
+    async getWorkspaceAppFactoryAgentTargetComposerOptions(
       _workspaceId,
-      provider
+      agentTargetId
     ) {
       return {
         effectiveSettings: {},
@@ -1833,7 +1856,8 @@ function createTuttidClient(
           configurable: true,
           modes: []
         },
-        provider,
+        provider:
+          agentTargetId === "local:claude-code" ? "claude-code" : "codex",
         reasoningConfig: {
           configurable: false,
           options: []

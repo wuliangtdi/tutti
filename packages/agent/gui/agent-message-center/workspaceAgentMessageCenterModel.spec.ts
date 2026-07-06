@@ -138,6 +138,92 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
     });
   });
 
+  it("prefers exit-plan prompts over raw approval options for switch-mode plan requests", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "switch-mode-plan",
+            kind: "tool_call",
+            status: "waiting_approval",
+            payload: {
+              callType: "approval",
+              toolName: "Approval",
+              title: "Approval",
+              input: {
+                requestId: "plan-request-1",
+                toolCall: {
+                  kind: "switch_mode",
+                  title: "Exit plan mode"
+                },
+                options: [
+                  {
+                    optionId: "bypassPermissions",
+                    name: "Yes, and bypass permissions",
+                    kind: "bypassPermissions"
+                  },
+                  {
+                    optionId: "auto",
+                    name: "Yes, and use auto mode",
+                    kind: "auto"
+                  },
+                  {
+                    optionId: "acceptEdits",
+                    name: "Yes, and auto-accept edits",
+                    kind: "acceptEdits"
+                  },
+                  {
+                    optionId: "default",
+                    name: "Yes, and manually approve edits",
+                    kind: "default"
+                  },
+                  {
+                    optionId: "plan",
+                    name: "No, keep planning",
+                    kind: "plan"
+                  }
+                ]
+              }
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1", status: "working" })]
+      })
+    );
+
+    // The runtime mode options are carried through (in runtime order), with the
+    // keep-planning `plan` option filtered out — including the newer `auto` mode
+    // the hardcoded fallback list omits.
+    expect(model.items[0]?.pendingPrompt).toEqual({
+      kind: "exit-plan",
+      requestId: "plan-request-1",
+      title: "Exit plan mode",
+      options: [
+        {
+          id: "bypassPermissions",
+          label: "Yes, and bypass permissions",
+          kind: "bypassPermissions"
+        },
+        { id: "auto", label: "Yes, and use auto mode", kind: "auto" },
+        {
+          id: "acceptEdits",
+          label: "Yes, and auto-accept edits",
+          kind: "acceptEdits"
+        },
+        {
+          id: "default",
+          label: "Yes, and manually approve edits",
+          kind: "default"
+        }
+      ],
+      // "No, keep planning" is surfaced separately so declining can submit its
+      // required option id instead of a bare deny.
+      keepPlanningOptionId: "plan"
+    });
+  });
+
   it("uses the latest agent message summary instead of a newer user message", () => {
     const model = buildWorkspaceAgentMessageCenterModel(
       snapshot({
@@ -168,6 +254,41 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
       kind: "progress",
       summary: "Agent summary wins"
     });
+  });
+
+  it("skips reasoning/thinking messages when picking the latest agent message summary", () => {
+    const model = buildWorkspaceAgentMessageCenterModel(
+      snapshot({
+        messages: [
+          message({
+            agentSessionId: "session-1",
+            messageId: "reply-1",
+            role: "assistant",
+            kind: "text",
+            payload: { text: "你好！系统正常，我已准备好为你提供帮助。" },
+            occurredAtUnixMs: 10
+          }),
+          message({
+            agentSessionId: "session-1",
+            messageId: "reasoning-1",
+            role: "assistant",
+            kind: "reasoning",
+            payload: {
+              text: '<reasoning>用户发送了</reasoning><reasoning>"test", 这是一个简单的测试消息。</reasoning>'
+            },
+            occurredAtUnixMs: 20
+          })
+        ],
+        sessions: [session({ agentSessionId: "session-1" })]
+      })
+    );
+
+    expect(model.items[0]?.lastAgentMessageSummary).toBe(
+      "你好！系统正常，我已准备好为你提供帮助。"
+    );
+    expect(model.items[0]?.digest.primary.summary).toBe(
+      "你好！系统正常，我已准备好为你提供帮助。"
+    );
   });
 
   it("prefers displayPrompt for message-center model summaries", () => {
@@ -488,6 +609,7 @@ describe("buildWorkspaceAgentMessageCenterModel", () => {
           message({
             agentSessionId: "session-1",
             messageId: "assistant-1",
+            status: "error",
             payload: { text: "Runtime error" },
             occurredAtUnixMs: 10
           })

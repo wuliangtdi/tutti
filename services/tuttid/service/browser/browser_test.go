@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
 
 // scriptedConn fakes an MCP server over the process connection: it answers
@@ -183,6 +184,33 @@ func TestCallToolUsesAutoConnectWhenDesktopPreferenceReusesChrome(t *testing.T) 
 	}
 }
 
+func TestCallToolUsesManagedNodeForVendoredBrowserMCPEntry(t *testing.T) {
+	transport := &scriptedTransport{}
+	svc := newTestService(transport)
+	entryPath := "/Applications/Tutti.app/Contents/Resources/bin/browser-mcp/chrome-devtools-mcp.js"
+	nodePath := "/Users/example/.tutti/app-runtimes/darwin-arm64/node/bin/node"
+	svc.managedRuntime = browserRuntimeResolverStub{
+		runtime: managedruntime.ResolvedRuntime{Node: nodePath},
+	}
+	t.Setenv(browserMCPEntryPathEnv, entryPath)
+	t.Setenv("TUTTI_APP_NODE", "")
+
+	if _, err := svc.CallTool(context.Background(), "ws-1", "", "list_pages", nil); err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+
+	if len(transport.specs) != 1 {
+		t.Fatalf("started specs len = %d, want 1", len(transport.specs))
+	}
+	command := transport.specs[0].Command
+	if len(command) < 2 || command[0] != nodePath || command[1] != entryPath {
+		t.Fatalf("command = %#v, want managed node plus vendored entry", command)
+	}
+	if !slices.Contains(command, "--isolated") {
+		t.Fatalf("command = %#v, want normal browser connection args", command)
+	}
+}
+
 func TestCallToolRestartsSessionWhenConnectionModeChanges(t *testing.T) {
 	transport := &scriptedTransport{}
 	svc := newTestService(transport)
@@ -233,6 +261,40 @@ func TestCallToolRestartsAfterProcessExit(t *testing.T) {
 	}
 	if transport.startCnt != 2 {
 		t.Fatalf("start count = %d, want restart after process exit", transport.startCnt)
+	}
+}
+
+// TestCallToolRecoversAfterUserClosesBrowserWindow reproduces the case where
+// the user manually closes the automated browser window: chrome-devtools-mcp
+// stays connected (no process exit, so isClosed() never trips) but has zero
+// open pages, and returns "The selected page has been closed..." for any
+// page-scoped tool call. CallTool must self-heal by opening a fresh page and
+// retrying, rather than surfacing that error forever.
+func TestCallToolRecoversAfterUserClosesBrowserWindow(t *testing.T) {
+	transport := &pageGoneOnceTransport{}
+	svc := newTestService(transport)
+	ctx := context.Background()
+
+	res, err := svc.CallTool(ctx, "ws-1", "", "navigate_page", map[string]any{"url": "https://example.org"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !strings.Contains(res.Text, "Successfully navigated") {
+		t.Fatalf("unexpected result text: %q", res.Text)
+	}
+	if transport.startCnt != 1 {
+		t.Fatalf("start count = %d, want 1 (self-heal must not restart the subprocess)", transport.startCnt)
+	}
+
+	sent := transport.conn.toolNames()
+	want := []string{"navigate_page", "new_page", "navigate_page"}
+	if len(sent) != len(want) {
+		t.Fatalf("tool calls = %#v, want %#v", sent, want)
+	}
+	for i, name := range want {
+		if sent[i] != name {
+			t.Fatalf("tool calls = %#v, want %#v", sent, want)
+		}
 	}
 }
 
@@ -385,6 +447,77 @@ func (c *slowToolConn) Send(data []byte) error {
 	return nil
 }
 
+// pageGoneOnceTransport starts a single conn whose first navigate_page call
+// fails with the "selected page has been closed" error chrome-devtools-mcp
+// returns after the user closes the browser window out of band; a subsequent
+// new_page call, and any navigate_page call after that, succeed.
+type pageGoneOnceTransport struct {
+	mu       sync.Mutex
+	startCnt int
+	conn     *pageGoneOnceConn
+}
+
+func (t *pageGoneOnceTransport) Start(_ context.Context, _ agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.startCnt++
+	t.conn = newPageGoneOnceConn()
+	return t.conn, nil
+}
+
+type pageGoneOnceConn struct {
+	*scriptedConn
+	mu             sync.Mutex
+	navigateCalls  int
+	toolNamesCalls []string
+}
+
+func newPageGoneOnceConn() *pageGoneOnceConn {
+	return &pageGoneOnceConn{scriptedConn: newScriptedConn()}
+}
+
+func (c *pageGoneOnceConn) toolNames() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.toolNamesCalls...)
+}
+
+func (c *pageGoneOnceConn) Send(data []byte) error {
+	var msg map[string]any
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return err
+	}
+	method, _ := msg["method"].(string)
+	id := msg["id"]
+	if method != "tools/call" {
+		return c.scriptedConn.Send(data)
+	}
+	params, _ := msg["params"].(map[string]any)
+	name, _ := params["name"].(string)
+	c.mu.Lock()
+	c.toolNamesCalls = append(c.toolNamesCalls, name)
+	c.mu.Unlock()
+
+	if name == "navigate_page" {
+		c.mu.Lock()
+		c.navigateCalls++
+		first := c.navigateCalls == 1
+		c.mu.Unlock()
+		if first {
+			c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+				"isError": true,
+				"content": []map[string]any{{"type": "text", "text": "Error: The selected page has been closed. Call list_pages to see open pages."}},
+			}})
+			return nil
+		}
+	}
+	c.push(map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{
+		"isError": false,
+		"content": []map[string]any{{"type": "text", "text": "Successfully navigated to https://example.org"}},
+	}})
+	return nil
+}
+
 type staticPreferencesReader struct {
 	preferences preferencesbiz.DesktopPreferences
 }
@@ -408,6 +541,23 @@ func (r *mutablePreferencesReader) setMode(mode string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.preferences.BrowserUseConnectionMode = mode
+}
+
+type browserRuntimeResolverStub struct {
+	runtime managedruntime.ResolvedRuntime
+	err     error
+}
+
+func (r browserRuntimeResolverStub) Resolve(context.Context) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, r.err
+}
+
+func (r browserRuntimeResolverStub) ResolveProfile(context.Context, string) (managedruntime.ResolvedRuntime, error) {
+	return r.runtime, r.err
+}
+
+func (r browserRuntimeResolverStub) PreloadProfile(context.Context, string) error {
+	return r.err
 }
 
 // TestE2ENavigateRealChrome drives a real chrome-devtools-mcp + Chrome through

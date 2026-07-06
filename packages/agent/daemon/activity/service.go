@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type State struct {
@@ -41,29 +41,69 @@ type sessionEntry struct {
 	mu       sync.Mutex
 	refCount int
 
-	state                   State
-	sessionMessages         map[string][]WorkspaceAgentSessionMessage
-	messageVersionBySession map[string]uint64
-	syncStates              map[string]*agentSessionSyncState
-	hiddenSessions          map[string]struct{}
+	state                         State
+	sessionMessages               map[string][]WorkspaceAgentSessionMessage
+	messageVersionBySession       map[string]uint64
+	remoteMessageVersionBySession map[string]uint64
+	syncStates                    map[string]*agentSessionSyncState
+	hiddenSessions                map[string]struct{}
 }
 
 type Store struct {
-	mu             sync.RWMutex
-	rooms          map[string]*sessionEntry
-	client         ReadRepository
-	syncer         *sessionSyncer
-	syncStateStore SyncStateStore
-	updateListener func(roomID string, snapshot WorkspaceAgentSnapshot)
-	startOnce      sync.Once
+	mu                 sync.RWMutex
+	rooms              map[string]*sessionEntry
+	client             ReadRepository
+	syncer             *sessionSyncer
+	syncStateStore     SyncStateStore
+	messageCursorStore MessageCursorStore
+	syncBackoff        SyncBackoffConfig
+	updateListener     func(roomID string, snapshot WorkspaceAgentSnapshot)
+	startOnce          sync.Once
 }
 
 type Option func(*Store)
 
+// WithSyncStateStore injects a persistence backend for per-session activity
+// sync states. Loaded states seed TrackRoom, updates are written through on
+// every sync-state transition, and entries are deleted when a session is
+// hidden. Without this option sync states live in memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
 func WithSyncStateStore(store SyncStateStore) Option {
 	return func(svc *Store) {
 		if svc != nil {
 			svc.syncStateStore = store
+		}
+	}
+}
+
+// WithMessageCursorStore injects a persistence backend for per-session message
+// sync cursors. Loaded cursors seed TrackRoom so the syncer resumes message
+// pulls where it left off, cursor advances are written through, and entries
+// are deleted when a session is hidden. Without this option cursors live in
+// memory only.
+//
+// Store keys are the scope identifier passed to TrackRoom: tutti side =
+// workspace ID, external daemons (tsh) = control-plane room ID; workspace ≡
+// room, one-to-one, no implicit translation.
+func WithMessageCursorStore(store MessageCursorStore) Option {
+	return func(svc *Store) {
+		if svc != nil {
+			svc.messageCursorStore = store
+		}
+	}
+}
+
+// WithSyncBackoff enables per-session exponential backoff for failed message
+// syncs in the background syncer. The zero config disables backoff, which is
+// the default and matches historical behavior (every sync tick retries
+// immediately). Use DefaultSyncBackoffConfig for field-proven values.
+func WithSyncBackoff(cfg SyncBackoffConfig) Option {
+	return func(svc *Store) {
+		if svc != nil {
+			svc.syncBackoff = cfg
 		}
 	}
 }
@@ -97,6 +137,7 @@ func (s *Store) TrackRoom(roomID string) {
 		return
 	}
 	loadedSyncStates := s.loadStoredSyncStates(roomID)
+	loadedCursors := s.loadStoredMessageCursors(roomID)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -104,13 +145,21 @@ func (s *Store) TrackRoom(roomID string) {
 	entry := s.rooms[roomID]
 	if entry == nil {
 		entry = &sessionEntry{
-			sessionMessages:         make(map[string][]WorkspaceAgentSessionMessage),
-			messageVersionBySession: make(map[string]uint64),
-			syncStates:              make(map[string]*agentSessionSyncState),
-			hiddenSessions:          make(map[string]struct{}),
+			sessionMessages:               make(map[string][]WorkspaceAgentSessionMessage),
+			messageVersionBySession:       make(map[string]uint64),
+			remoteMessageVersionBySession: make(map[string]uint64),
+			syncStates:                    make(map[string]*agentSessionSyncState),
+			hiddenSessions:                make(map[string]struct{}),
 		}
 		for agentSessionID, syncState := range loadedSyncStates {
 			entry.syncStates[agentSessionID] = syncEntryFromState(syncState)
+		}
+		for agentSessionID, cursor := range loadedCursors {
+			agentSessionID = strings.TrimSpace(agentSessionID)
+			if agentSessionID == "" || cursor == 0 {
+				continue
+			}
+			entry.remoteMessageVersionBySession[agentSessionID] = cursor
 		}
 		s.rooms[roomID] = entry
 	}
@@ -238,8 +287,19 @@ func (s *Store) ListSessionMessages(
 	}
 	hasMore := false
 	if limit > 0 && len(filtered) > limit {
+		// Page membership must be contiguous in version space: deliver the
+		// lowest `limit` undelivered versions. Stored order is display order
+		// (occurredAt), so truncating it directly could return version N while
+		// omitting an undelivered version < N; cursor-based consumers would
+		// then advance past the omitted row and lose it permanently.
+		sort.SliceStable(filtered, func(i, j int) bool {
+			return filtered[i].Version < filtered[j].Version
+		})
 		filtered = filtered[:limit]
 		hasMore = true
+		// Advertise the page boundary, not the store head, so cursors advance
+		// exactly to the end of this page.
+		latestVersion = maxSessionMessageVersion(0, filtered)
 	}
 	return ListSessionMessagesReply{
 		Messages:      sortSessionMessages(filtered),
@@ -415,11 +475,22 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 	entry.state.Sessions = removeSessionByID(entry.state.Sessions, agentSessionID)
 	delete(entry.sessionMessages, agentSessionID)
 	delete(entry.messageVersionBySession, agentSessionID)
+	delete(entry.remoteMessageVersionBySession, agentSessionID)
 	delete(entry.syncStates, agentSessionID)
 	if s.syncStateStore != nil {
 		if err := s.syncStateStore.DeleteAgentSyncState(context.Background(), roomID, agentSessionID); err != nil {
 			slog.Warn("agent activity sync state delete failed",
 				"event", "agent_activity.sync_state.delete_failed",
+				"room_id", roomID,
+				"agent_session_id", agentSessionID,
+				"error", err,
+			)
+		}
+	}
+	if s.messageCursorStore != nil {
+		if err := s.messageCursorStore.DeleteMessageCursor(context.Background(), roomID, agentSessionID); err != nil {
+			slog.Warn("agent activity message cursor delete failed",
+				"event", "agent_activity.message_cursor.delete_failed",
 				"room_id", roomID,
 				"agent_session_id", agentSessionID,
 				"error", err,
@@ -436,6 +507,8 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessionStateUpdate) WorkspaceAgentStatePatch {
 	patch := WorkspaceAgentStatePatch{
 		AgentSessionID:     strings.TrimSpace(agentSessionID),
+		AgentTargetID:      strings.TrimSpace(state.AgentTargetID),
+		DeviceID:           strings.TrimSpace(state.DeviceID),
 		Provider:           strings.TrimSpace(state.Provider),
 		ProviderSessionID:  strings.TrimSpace(state.ProviderSessionID),
 		Model:              strings.TrimSpace(state.Model),
@@ -443,11 +516,15 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 		RuntimeContext:     clonePayloadMap(state.RuntimeContext),
 		TurnLifecycle:      cloneTurnLifecycle(state.TurnLifecycle),
 		SubmitAvailability: cloneSubmitAvailability(state.SubmitAvailability),
+		PendingInteractive: cloneInteractivePrompt(state.PendingInteractive),
 		CWD:                strings.TrimSpace(state.CWD),
 		Title:              strings.TrimSpace(state.Title),
 		LifecycleStatus:    strings.TrimSpace(state.LifecycleStatus),
 		CurrentPhase:       strings.TrimSpace(state.CurrentPhase),
 		OccurredAtUnixMS:   state.OccurredAtUnixMS,
+	}
+	if state.PendingInteractive != nil {
+		patch.PendingInteractivePresent = true
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{
@@ -516,17 +593,7 @@ func (s *Store) MarkActivitySyncPending(
 	messageUpdateCount int,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		current.pendingReports++
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.Status = WorkspaceAgentSyncStatusPending
-		current.state.PendingTimelineItemCount += max(0, timelineItemCount)
-		current.state.PendingStatePatchCount += max(0, statePatchCount)
-		current.state.PendingMessageUpdateCount += max(0, messageUpdateCount)
-		current.state.AttemptCount++
-		current.state.FailedReportCount = current.failedReports
-		current.state.LastAttemptAtUnixMS = now
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncPending(current, agentSessionID, timelineItemCount, statePatchCount, messageUpdateCount, now)
 	})
 }
 
@@ -538,27 +605,7 @@ func (s *Store) MarkActivitySyncSucceeded(
 	messageUpdateCount int,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		if current.pendingReports > 0 {
-			current.pendingReports--
-		}
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.PendingTimelineItemCount = max(0, current.state.PendingTimelineItemCount-max(0, timelineItemCount))
-		current.state.PendingStatePatchCount = max(0, current.state.PendingStatePatchCount-max(0, statePatchCount))
-		current.state.PendingMessageUpdateCount = max(0, current.state.PendingMessageUpdateCount-max(0, messageUpdateCount))
-		current.failedReports = 0
-		current.state.FailedReportCount = 0
-		current.state.LastError = ""
-		if current.pendingReports == 0 {
-			current.state.Status = WorkspaceAgentSyncStatusSynced
-			current.state.PendingTimelineItemCount = 0
-			current.state.PendingStatePatchCount = 0
-			current.state.PendingMessageUpdateCount = 0
-			current.state.LastSyncedAtUnixMS = now
-		} else {
-			current.state.Status = WorkspaceAgentSyncStatusPending
-		}
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncSucceeded(current, agentSessionID, timelineItemCount, statePatchCount, messageUpdateCount, now)
 	})
 }
 
@@ -571,18 +618,7 @@ func (s *Store) MarkActivitySyncFailed(
 	err error,
 ) (WorkspaceAgentSyncState, bool) {
 	return s.updateActivitySyncState(roomID, agentSessionID, func(current *agentSessionSyncState, now int64) WorkspaceAgentSyncState {
-		if current.pendingReports > 0 {
-			current.pendingReports--
-		}
-		current.failedReports++
-		current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
-		current.state.Status = WorkspaceAgentSyncStatusFailed
-		current.state.FailedReportCount = current.failedReports
-		if err != nil {
-			current.state.LastError = strings.TrimSpace(err.Error())
-		}
-		current.state.UpdatedAtUnixMS = now
-		return current.state
+		return applyActivitySyncFailed(current, agentSessionID, err, now)
 	})
 }
 
@@ -677,6 +713,98 @@ func (*Store) applyEventLocked(entry *sessionEntry, _ string, source EventSource
 			"session_after", summarizeWorkspaceAgentSessionForLog(session),
 		)
 	}
+	if update, ok := sessionMessageUpdateFromActivityEvent(sessionID, event, timestamp); ok {
+		appendMessageUpdatesLocked(entry, source, []WorkspaceAgentMessageUpdate{update})
+	}
+}
+
+func sessionMessageUpdateFromActivityEvent(
+	sessionID string,
+	event activityshared.Event,
+	timestamp int64,
+) (WorkspaceAgentMessageUpdate, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" || timestamp <= 0 {
+		return WorkspaceAgentMessageUpdate{}, false
+	}
+	switch event.Type {
+	case activityshared.EventMessageAppended, activityshared.EventMessageCreated:
+		messageID := firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "messageId"), event.EventID)
+		if strings.TrimSpace(messageID) == "" {
+			return WorkspaceAgentMessageUpdate{}, false
+		}
+		role := strings.TrimSpace(string(event.Payload.Role))
+		if role == "" {
+			role = string(activityshared.MessageRoleAssistant)
+		}
+		kind := "text"
+		if role == string(activityshared.MessageRoleAssistantThinking) {
+			role = string(activityshared.MessageRoleAssistant)
+			kind = "reasoning"
+		}
+		payload := clonePayloadMap(event.Payload.Metadata)
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		if event.Payload.Content != "" {
+			if _, ok := payload["content"]; !ok {
+				payload["content"] = event.Payload.Content
+			}
+			payload["text"] = event.Payload.Content
+		}
+		return WorkspaceAgentMessageUpdate{
+			AgentSessionID:   sessionID,
+			MessageID:        messageID,
+			TurnID:           strings.TrimSpace(event.Payload.TurnID),
+			Role:             role,
+			Kind:             kind,
+			Status:           firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "streamState"), event.Payload.Status),
+			Payload:          payload,
+			OccurredAtUnixMS: timestamp,
+		}, true
+	case activityshared.EventCallStarted, activityshared.EventCallCompleted, activityshared.EventCallFailed:
+		callID := strings.TrimSpace(event.Payload.CallID)
+		if callID == "" {
+			return WorkspaceAgentMessageUpdate{}, false
+		}
+		status := firstNonEmptyString(payloadFirstStringValue(event.Payload.Metadata, "status"), event.Payload.Status)
+		if status == "" {
+			switch event.Type {
+			case activityshared.EventCallStarted:
+				status = string(activityshared.ActivityStatusRunning)
+			case activityshared.EventCallCompleted:
+				status = string(activityshared.ActivityStatusCompleted)
+			case activityshared.EventCallFailed:
+				status = string(activityshared.ActivityStatusFailed)
+			}
+		}
+		payload := clonePayloadMap(event.Payload.Metadata)
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		switch event.Type {
+		case activityshared.EventCallStarted:
+			payload["input"] = clonePayloadMap(event.Payload.Input)
+		case activityshared.EventCallCompleted:
+			payload["output"] = clonePayloadMap(event.Payload.Output)
+		case activityshared.EventCallFailed:
+			payload["error"] = clonePayloadMap(event.Payload.Error)
+		}
+		return WorkspaceAgentMessageUpdate{
+			AgentSessionID:   sessionID,
+			MessageID:        "toolcall:" + callID,
+			TurnID:           strings.TrimSpace(event.Payload.TurnID),
+			Role:             string(activityshared.MessageRoleAssistant),
+			Kind:             "tool_call",
+			Status:           status,
+			CallID:           callID,
+			Title:            strings.TrimSpace(event.Payload.Name),
+			Payload:          payload,
+			OccurredAtUnixMS: timestamp,
+		}, true
+	default:
+		return WorkspaceAgentMessageUpdate{}, false
+	}
 }
 
 func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch WorkspaceAgentStatePatch, now int64) {
@@ -716,6 +844,8 @@ func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch Worksp
 		)
 		session := WorkspaceAgentSession{
 			AgentSessionID:     sessionID,
+			AgentTargetID:      firstNonEmptyString(patch.AgentTargetID, source.AgentTargetID),
+			DeviceID:           firstNonEmptyString(patch.DeviceID, source.DeviceID),
 			UserID:             strings.TrimSpace(source.UserID),
 			Provider:           firstNonEmptyString(patch.Provider, source.Provider),
 			ProviderSessionID:  firstNonEmptyString(patch.ProviderSessionID, source.ProviderSessionID),
@@ -762,6 +892,8 @@ func applyStatePatchLocked(entry *sessionEntry, source EventSource, patch Worksp
 		return
 	}
 	session.AgentSessionID = firstNonEmptyString(session.AgentSessionID, sessionID)
+	session.AgentTargetID = firstNonEmptyString(patch.AgentTargetID, session.AgentTargetID, source.AgentTargetID)
+	session.DeviceID = firstNonEmptyString(patch.DeviceID, session.DeviceID, source.DeviceID)
 	session.Provider = firstNonEmptyString(patch.Provider, session.Provider, source.Provider)
 	session.ProviderSessionID = firstNonEmptyString(patch.ProviderSessionID, session.ProviderSessionID, source.ProviderSessionID)
 	session.SessionOrigin = firstNonEmptyString(strings.TrimSpace(source.SessionOrigin), session.SessionOrigin)
@@ -1228,6 +1360,7 @@ func (s *Store) interruptWorkspaceAgents(ctx context.Context, roomID string, _ s
 
 		patches = append(patches, WorkspaceAgentStatePatch{
 			AgentSessionID:    strings.TrimSpace(session.AgentSessionID),
+			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 			Provider:          strings.TrimSpace(session.Provider),
 			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
 			CWD:               strings.TrimSpace(session.CWD),
@@ -1376,15 +1509,8 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 }
 
 func statePatchLastError(event activityshared.Event) string {
-	switch event.Type {
-	case activityshared.EventSessionUpdated:
-		if strings.TrimSpace(event.Payload.EffectiveStatus) == string(activityshared.SessionStatusPaused) {
-			return ""
-		}
-	case activityshared.EventTurnCompleted:
-		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
-			return ""
-		}
+	if event.Type != activityshared.EventSessionFailed && event.Type != activityshared.EventTurnFailed {
+		return ""
 	}
 	return activityshared.BestEffortErrorMessage(event.Payload)
 }
@@ -1608,8 +1734,11 @@ func (s *Store) updateActivitySyncState(
 	}
 	next := update(current, time.Now().UnixMilli())
 	current.state = next
-	entry.mu.Unlock()
+	// Persist while holding entry.mu so sync-state writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's sync state.
 	s.saveSyncState(roomID, next)
+	entry.mu.Unlock()
 	s.notifyRoomUpdate(roomID)
 	return next, true
 }
@@ -1630,6 +1759,36 @@ func (s *Store) loadStoredSyncStates(roomID string) map[string]WorkspaceAgentSyn
 	return states
 }
 
+func (s *Store) loadStoredMessageCursors(roomID string) map[string]uint64 {
+	if s == nil || s.messageCursorStore == nil {
+		return nil
+	}
+	cursors, err := s.messageCursorStore.LoadRoomMessageCursors(context.Background(), roomID)
+	if err != nil {
+		slog.Warn("agent activity message cursor load failed",
+			"event", "agent_activity.message_cursor.load_failed",
+			"room_id", strings.TrimSpace(roomID),
+			"error", err,
+		)
+		return nil
+	}
+	return cursors
+}
+
+func (s *Store) saveMessageCursor(roomID, agentSessionID string, version uint64) {
+	if s == nil || s.messageCursorStore == nil {
+		return
+	}
+	if err := s.messageCursorStore.SaveMessageCursor(context.Background(), roomID, agentSessionID, version); err != nil {
+		slog.Warn("agent activity message cursor save failed",
+			"event", "agent_activity.message_cursor.save_failed",
+			"room_id", strings.TrimSpace(roomID),
+			"agent_session_id", strings.TrimSpace(agentSessionID),
+			"error", err,
+		)
+	}
+}
+
 func (s *Store) saveSyncState(roomID string, syncState WorkspaceAgentSyncState) {
 	if s == nil || s.syncStateStore == nil {
 		return
@@ -1642,6 +1801,78 @@ func (s *Store) saveSyncState(roomID string, syncState WorkspaceAgentSyncState) 
 			"error", err,
 		)
 	}
+}
+
+func applyActivitySyncPending(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	timelineItemCount int,
+	statePatchCount int,
+	messageUpdateCount int,
+	now int64,
+) WorkspaceAgentSyncState {
+	current.pendingReports++
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.Status = WorkspaceAgentSyncStatusPending
+	current.state.PendingTimelineItemCount += max(0, timelineItemCount)
+	current.state.PendingStatePatchCount += max(0, statePatchCount)
+	current.state.PendingMessageUpdateCount += max(0, messageUpdateCount)
+	current.state.AttemptCount++
+	current.state.FailedReportCount = current.failedReports
+	current.state.LastAttemptAtUnixMS = now
+	current.state.UpdatedAtUnixMS = now
+	return current.state
+}
+
+func applyActivitySyncSucceeded(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	timelineItemCount int,
+	statePatchCount int,
+	messageUpdateCount int,
+	now int64,
+) WorkspaceAgentSyncState {
+	if current.pendingReports > 0 {
+		current.pendingReports--
+	}
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.PendingTimelineItemCount = max(0, current.state.PendingTimelineItemCount-max(0, timelineItemCount))
+	current.state.PendingStatePatchCount = max(0, current.state.PendingStatePatchCount-max(0, statePatchCount))
+	current.state.PendingMessageUpdateCount = max(0, current.state.PendingMessageUpdateCount-max(0, messageUpdateCount))
+	current.failedReports = 0
+	current.state.FailedReportCount = 0
+	current.state.LastError = ""
+	if current.pendingReports == 0 {
+		current.state.Status = WorkspaceAgentSyncStatusSynced
+		current.state.PendingTimelineItemCount = 0
+		current.state.PendingStatePatchCount = 0
+		current.state.PendingMessageUpdateCount = 0
+		current.state.LastSyncedAtUnixMS = now
+	} else {
+		current.state.Status = WorkspaceAgentSyncStatusPending
+	}
+	current.state.UpdatedAtUnixMS = now
+	return current.state
+}
+
+func applyActivitySyncFailed(
+	current *agentSessionSyncState,
+	agentSessionID string,
+	err error,
+	now int64,
+) WorkspaceAgentSyncState {
+	if current.pendingReports > 0 {
+		current.pendingReports--
+	}
+	current.failedReports++
+	current.state.AgentSessionID = strings.TrimSpace(agentSessionID)
+	current.state.Status = WorkspaceAgentSyncStatusFailed
+	current.state.FailedReportCount = current.failedReports
+	if err != nil {
+		current.state.LastError = strings.TrimSpace(err.Error())
+	}
+	current.state.UpdatedAtUnixMS = now
+	return current.state
 }
 
 func syncEntryFromState(syncState WorkspaceAgentSyncState) *agentSessionSyncState {
@@ -1847,7 +2078,18 @@ func (s *Store) appendSessionMessages(
 	}
 
 	entry.mu.Lock()
+	// The locked append resolves provider aliases, so read the cursor under
+	// the canonical session id.
+	canonicalID := resolveKnownOrProviderAliasSessionID(entry.state.Sessions, agentSessionID, "", "", "", "")
+	cursorBefore := entry.remoteMessageVersionBySession[canonicalID]
 	changed := appendSessionMessagesLocked(entry, agentSessionID, messages, latestVersion)
+	cursorAfter := entry.remoteMessageVersionBySession[canonicalID]
+	// Persist while holding entry.mu so cursor writes serialize with
+	// HideAgentSession's delete (also under entry.mu): a save must never land
+	// after the delete and resurrect a hidden session's cursor.
+	if cursorAfter > cursorBefore && !isHiddenAgentSession(entry, canonicalID) {
+		s.saveMessageCursor(roomID, canonicalID, cursorAfter)
+	}
 	entry.mu.Unlock()
 	if changed {
 		s.notifyRoomUpdate(roomID)
@@ -1859,7 +2101,6 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 		return false
 	}
 	grouped := make(map[string][]WorkspaceAgentSessionMessage)
-	latestVersionBySession := make(map[string]uint64)
 	for _, update := range updates {
 		sessionID := resolveMessageUpdateSessionID(entry, source, update)
 		if sessionID == "" || isHiddenAgentSession(entry, sessionID) {
@@ -1870,13 +2111,10 @@ func appendMessageUpdatesLocked(entry *sessionEntry, source EventSource, updates
 			continue
 		}
 		grouped[sessionID] = append(grouped[sessionID], message)
-		if message.Version > latestVersionBySession[sessionID] {
-			latestVersionBySession[sessionID] = message.Version
-		}
 	}
 	changed := false
 	for sessionID, messages := range grouped {
-		if appendSessionMessagesForProviderLocked(entry, source.Provider, sessionID, messages, latestVersionBySession[sessionID]) {
+		if appendSessionMessagesForProviderLocked(entry, source.Provider, sessionID, messages, 0) {
 			changed = true
 		}
 	}
@@ -1951,8 +2189,14 @@ func appendSessionMessagesForProviderLocked(
 	if entry.messageVersionBySession == nil {
 		entry.messageVersionBySession = make(map[string]uint64)
 	}
+	if entry.remoteMessageVersionBySession == nil {
+		entry.remoteMessageVersionBySession = make(map[string]uint64)
+	}
 
 	items := entry.sessionMessages[agentSessionID]
+	if current := maxSessionMessageVersion(0, items); current > entry.messageVersionBySession[agentSessionID] {
+		entry.messageVersionBySession[agentSessionID] = current
+	}
 	changed := false
 	for _, message := range messages {
 		message.AgentSessionID = agentSessionID
@@ -1964,6 +2208,7 @@ func appendSessionMessagesForProviderLocked(
 			if strings.TrimSpace(existing.MessageID) != message.MessageID {
 				continue
 			}
+			message.Version = existing.Version
 			merged := mergeSessionMessage(existing, message)
 			if !sessionMessageBusinessEqual(existing, merged) {
 				changed = true
@@ -1971,13 +2216,15 @@ func appendSessionMessagesForProviderLocked(
 			items[index] = merged
 			goto nextMessage
 		}
+		entry.messageVersionBySession[agentSessionID]++
+		message.Version = entry.messageVersionBySession[agentSessionID]
 		items = append(items, cloneSessionMessage(message))
 		changed = true
 	nextMessage:
 	}
 	entry.sessionMessages[agentSessionID] = sortSessionMessages(items)
-	if latestVersion > entry.messageVersionBySession[agentSessionID] {
-		entry.messageVersionBySession[agentSessionID] = latestVersion
+	if latestVersion > entry.remoteMessageVersionBySession[agentSessionID] {
+		entry.remoteMessageVersionBySession[agentSessionID] = latestVersion
 	}
 	return changed
 }
@@ -2025,13 +2272,16 @@ func canonicalizeSessionMessageBucketsLocked(entry *sessionEntry) bool {
 		if canonicalID == "" || canonicalID == sessionID {
 			continue
 		}
-		latestVersion := maxSessionMessageVersion(entry.messageVersionBySession[sessionID], messages)
-		if appendSessionMessagesLocked(entry, canonicalID, messages, latestVersion) {
+		remoteVersion := entry.remoteMessageVersionBySession[sessionID]
+		if appendSessionMessagesLocked(entry, canonicalID, messages, remoteVersion) {
 			changed = true
+		}
+		if remoteVersion > entry.remoteMessageVersionBySession[canonicalID] {
+			entry.remoteMessageVersionBySession[canonicalID] = remoteVersion
 		}
 		delete(entry.sessionMessages, sessionID)
 		delete(entry.messageVersionBySession, sessionID)
-		changed = true
+		delete(entry.remoteMessageVersionBySession, sessionID)
 	}
 	return changed
 }
@@ -2152,6 +2402,17 @@ func sortMessageUpdates(items []WorkspaceAgentMessageUpdate) []WorkspaceAgentMes
 	sort.SliceStable(items, func(i, j int) bool {
 		left := items[i]
 		right := items[j]
+		leftTime := messageUpdateEffectiveTimestamp(left)
+		rightTime := messageUpdateEffectiveTimestamp(right)
+		if leftTime != rightTime {
+			if leftTime == 0 {
+				return false
+			}
+			if rightTime == 0 {
+				return true
+			}
+			return leftTime < rightTime
+		}
 		if left.Seq != right.Seq {
 			if left.Seq == 0 {
 				return false
@@ -2166,10 +2427,44 @@ func sortMessageUpdates(items []WorkspaceAgentMessageUpdate) []WorkspaceAgentMes
 	return items
 }
 
+// sessionMessageEffectiveTimestamp resolves the display timestamp used for
+// ordering. Legacy/hydrated rows (older daemons, connectors omitting
+// occurredAtUnixMs) may only carry started/completed/created times; falling
+// back keeps them at their historical position instead of forcing them after
+// every timestamped row.
+func sessionMessageEffectiveTimestamp(message WorkspaceAgentSessionMessage) int64 {
+	return firstNonZeroInt64(
+		message.OccurredAtUnixMS,
+		message.StartedAtUnixMS,
+		message.CompletedAtUnixMS,
+		message.CreatedAtUnixMS,
+		message.UpdatedAtUnixMS,
+	)
+}
+
+func messageUpdateEffectiveTimestamp(update WorkspaceAgentMessageUpdate) int64 {
+	return firstNonZeroInt64(
+		update.OccurredAtUnixMS,
+		update.StartedAtUnixMS,
+		update.CompletedAtUnixMS,
+	)
+}
+
 func sortSessionMessages(items []WorkspaceAgentSessionMessage) []WorkspaceAgentSessionMessage {
 	sort.SliceStable(items, func(i, j int) bool {
 		left := items[i]
 		right := items[j]
+		leftTime := sessionMessageEffectiveTimestamp(left)
+		rightTime := sessionMessageEffectiveTimestamp(right)
+		if leftTime != rightTime {
+			if leftTime == 0 {
+				return false
+			}
+			if rightTime == 0 {
+				return true
+			}
+			return leftTime < rightTime
+		}
 		if left.Version != right.Version {
 			if left.Version == 0 {
 				return false
@@ -2203,7 +2498,7 @@ func (s *Store) getMessageVersionCursor(roomID, agentSessionID string) uint64 {
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 
-	return entry.messageVersionBySession[agentSessionID]
+	return entry.remoteMessageVersionBySession[agentSessionID]
 }
 
 func (s *Store) notifyRoomUpdate(roomID string) {
@@ -2489,7 +2784,7 @@ func sessionMessageFromLegacyUpdate(
 		Kind:              strings.TrimSpace(update.Kind),
 		Status:            strings.TrimSpace(update.Status),
 		Payload:           payload,
-		OccurredAtUnixMS:  update.OccurredAtUnixMS,
+		OccurredAtUnixMS:  firstNonZeroInt64(update.OccurredAtUnixMS, update.StartedAtUnixMS, update.CompletedAtUnixMS),
 		StartedAtUnixMS:   update.StartedAtUnixMS,
 		CompletedAtUnixMS: update.CompletedAtUnixMS,
 		Version:           update.Seq,

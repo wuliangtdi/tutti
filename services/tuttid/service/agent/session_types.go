@@ -2,32 +2,41 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	agentsidecarservice "github.com/tutti-os/tutti/services/tuttid/service/agentsidecar"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type Service struct {
-	Runtime                      RuntimeController
-	AnalyticsReporter            reporterservice.Reporter
-	AvailabilityChecker          ProviderAvailabilityChecker
-	ModelCatalog                 AgentModelCatalog
-	SessionReader                SessionReader
-	MessageReader                MessageReader
-	ExternalImportStore          agentactivitybiz.Repository
-	SessionDirectoryAllocator    SessionDirectoryAllocator
-	PromptAttachmentStore        PromptAttachmentStore
-	RuntimePreparer              agentsidecarservice.Preparer
-	CapabilityLister             ComposerCapabilityLister
-	ProviderAvailabilityCacheTTL time.Duration
-	CapabilityCatalogCacheTTL    time.Duration
-	LiveModelCacheTTL            time.Duration
-	skillOptionsCache            *composerSkillOptionsCache
-	providerAvailabilityCache    *providerAvailabilityCache
-	capabilityCatalogCache       *composerCapabilityCatalogCache
-	liveModelCache               *composerLiveModelCache
+	Runtime                       RuntimeController
+	AnalyticsReporter             reporterservice.Reporter
+	AvailabilityChecker           ProviderAvailabilityChecker
+	ModelCatalog                  AgentModelCatalog
+	AgentTargetStore              AgentTargetStore
+	SessionReader                 SessionReader
+	UserProjectReader             UserProjectReader
+	MessageReader                 MessageReader
+	ExternalImportStore           agentactivitybiz.Repository
+	SessionDirectoryAllocator     SessionDirectoryAllocator
+	PromptAttachmentStore         PromptAttachmentStore
+	RuntimePreparer               agentsidecarservice.Preparer
+	CapabilityLister              ComposerCapabilityLister
+	ProviderAvailabilityCacheTTL  time.Duration
+	CapabilityCatalogCacheTTL     time.Duration
+	LiveModelCacheTTL             time.Duration
+	LiveModelDiscoveryDeleteDelay time.Duration
+	skillOptionsCache             *composerSkillOptionsCache
+	providerAvailabilityCache     *providerAvailabilityCache
+	capabilityCatalogCache        *composerCapabilityCatalogCache
+	liveModelCache                *composerLiveModelCache
+	claudeStartupLock             *claudeStartupSerializer
+	liveModelDiscoveryMu          sync.Mutex
+	liveModelDiscoveryAttempted   map[string]struct{}
 }
 
 type StaleTurnResumeReconciler interface {
@@ -36,6 +45,7 @@ type StaleTurnResumeReconciler interface {
 
 type RuntimeController interface {
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
+	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
 	CanResume(RuntimeResumeInput) bool
 	Close(context.Context, RuntimeCloseInput) error
 	Exec(context.Context, RuntimeExecInput) (RuntimeExecResult, error)
@@ -54,12 +64,17 @@ type SessionDirectoryAllocator interface {
 	CreateSessionDirectory(context.Context) (string, error)
 }
 
+type AgentTargetStore interface {
+	GetAgentTarget(context.Context, string) (agenttargetbiz.Target, error)
+}
+
 type ComposerCapabilityLister interface {
 	ListComposerCapabilityOptions(context.Context, string, string, []ComposerSkillOption) ([]ComposerCapabilityOption, []string)
 }
 
 type Session struct {
 	ID                 string
+	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
 	Cwd                string
@@ -96,13 +111,45 @@ type CancelSessionResult struct {
 type ListSessionsInput struct {
 	SearchQuery string
 	Limit       int
-	VisibleOnly bool
+}
+
+type SessionListPage struct {
+	Sessions   []Session
+	HasMore    bool
+	NextCursor string
+}
+
+type ListSessionSectionsInput struct {
+	LimitPerSection int
+	AgentTargetID   string
+}
+
+type ListSessionSectionPageInput struct {
+	SectionKey    string
+	Cursor        string
+	Limit         int
+	AgentTargetID string
+}
+
+type SessionSectionsPage struct {
+	WorkspaceID string
+	Sections    []SessionSection
+}
+
+type SessionSection struct {
+	Kind        string
+	SectionKey  string
+	UserProject *userprojectbiz.Project
+	Sessions    []Session
+	HasMore     bool
+	NextCursor  string
 }
 
 type PersistedSession struct {
 	ID                string
 	WorkspaceID       string
 	Origin            string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Cwd               string
@@ -143,6 +190,14 @@ type SessionReader interface {
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
 }
 
+type SessionSectionReader interface {
+	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+}
+
+type UserProjectReader interface {
+	List(context.Context) ([]userprojectbiz.Project, error)
+}
+
 type ClearSessionsResult struct {
 	RemovedMessages   int
 	RemovedSessions   int
@@ -164,6 +219,7 @@ type SessionPinUpdater interface {
 type RuntimeSession struct {
 	ID                 string
 	WorkspaceID        string
+	AgentTargetID      string
 	Provider           string
 	ProviderSessionID  string
 	Cwd                string
@@ -173,6 +229,7 @@ type RuntimeSession struct {
 	Status             string
 	TurnLifecycle      *TurnLifecycle
 	SubmitAvailability *SubmitAvailability
+	PendingInteractive *RuntimeInteractivePrompt
 	Visible            bool
 	Title              string
 	LastError          string
@@ -181,27 +238,42 @@ type RuntimeSession struct {
 	UpdatedAtUnixMS    int64
 }
 
+type RuntimeInteractivePrompt struct {
+	Kind      string
+	RequestID string
+	ToolName  string
+	Status    string
+	Input     map[string]any
+	Output    map[string]any
+	Error     map[string]any
+	Metadata  map[string]any
+}
+
 type RuntimeStartInput struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Provider          string
-	Cwd               string
-	Env               []string
-	Title             string
-	PermissionModeID  string
-	Model             string
-	PlanMode          bool
-	BrowserUse        *bool
-	ComputerUse       *bool
-	ProviderTargetRef map[string]any
-	ReasoningEffort   string
-	Speed             string
-	Visible           *bool
+	WorkspaceID            string
+	AgentSessionID         string
+	AgentTargetID          string
+	Provider               string
+	Cwd                    string
+	Env                    []string
+	Title                  string
+	PermissionModeID       string
+	Model                  string
+	PlanMode               bool
+	BrowserUse             *bool
+	ComputerUse            *bool
+	ProviderTargetRef      map[string]any
+	RuntimeContext         map[string]any
+	ReasoningEffort        string
+	Speed                  string
+	ConversationDetailMode string
+	Visible                *bool
 }
 
 type RuntimeResumeInput struct {
 	WorkspaceID       string
 	AgentSessionID    string
+	AgentTargetID     string
 	Provider          string
 	ProviderSessionID string
 	Cwd               string
@@ -212,6 +284,7 @@ type RuntimeResumeInput struct {
 	CreatedAtUnixMS   int64
 	UpdatedAtUnixMS   int64
 	Visible           *bool
+	RuntimeContext    map[string]any
 	// RecreateIfMissing lets the runtime start a fresh provider session in place
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
@@ -265,6 +338,18 @@ type RuntimeCancelResult struct {
 	Canceled       bool
 }
 
+type RuntimeGoalControlInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Action         string
+	Objective      string
+}
+
+type RuntimeGoalControlResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+}
+
 type RuntimeCloseInput struct {
 	WorkspaceID    string
 	AgentSessionID string
@@ -307,23 +392,25 @@ type RuntimeStreamEvent struct {
 }
 
 type CreateSessionInput struct {
-	AgentSessionID       string
-	Provider             string
-	InitialContent       []PromptContentBlock
-	InitialDisplayPrompt string
-	Metadata             map[string]any
-	Title                *string
-	Cwd                  *string
-	PermissionModeID     *string
-	Model                *string
-	PlanMode             *bool
-	BrowserUse           *bool
-	ComputerUse          *bool
-	ProviderTargetRef    map[string]any
-	ReasoningEffort      *string
-	Speed                *string
-	Visible              *bool
-	ExtraSkills          []SessionSkillBundle
+	AgentSessionID         string
+	AgentTargetID          string
+	Provider               string
+	InitialContent         []PromptContentBlock
+	InitialDisplayPrompt   string
+	Metadata               map[string]any
+	Title                  *string
+	Cwd                    *string
+	PermissionModeID       *string
+	Model                  *string
+	PlanMode               *bool
+	BrowserUse             *bool
+	ComputerUse            *bool
+	ProviderTargetRef      map[string]any
+	ReasoningEffort        *string
+	Speed                  *string
+	ConversationDetailMode string
+	Visible                *bool
+	ExtraSkills            []SessionSkillBundle
 }
 
 type SessionSkillBundle struct {

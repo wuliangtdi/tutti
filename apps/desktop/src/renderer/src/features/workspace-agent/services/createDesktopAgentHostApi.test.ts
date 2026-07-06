@@ -439,6 +439,7 @@ test("desktop agent host api routes session commands through injected tuttid cli
         workspaceId,
         {
           agentSessionId: "11111111-1111-4111-8111-111111111111",
+          agentTargetId: "local:codex",
           cwd: "/workspace",
           initialContent: [{ type: "text", text: "Build" }],
           initialDisplayPrompt: null,
@@ -1205,6 +1206,7 @@ test("desktop agent host api resolves root cwd through tuttid workspace files", 
         workspaceId,
         {
           agentSessionId: "33333333-3333-4333-8333-333333333333",
+          agentTargetId: "local:codex",
           cwd: "/Users/example/project/tutti",
           initialContent: [{ type: "text", text: "Build" }],
           initialDisplayPrompt: null,
@@ -1298,6 +1300,7 @@ test("desktop agent host api creates no-project session cwd under user Documents
         workspaceId,
         {
           agentSessionId: "44444444-4444-4444-8444-444444444444",
+          agentTargetId: "local:codex",
           cwd: "/Users/local/Documents/tutti/session-44444444-4444-4444-8444-444444444444",
           initialContent: [{ type: "text", text: "Scratch" }],
           initialDisplayPrompt: null,
@@ -1664,6 +1667,7 @@ test("desktop agent host api reconciles event hub dirty signals into full sessio
     },
     async listWorkspaceAgentSessions() {
       return {
+        hasMore: false,
         sessions: [createSession({ id: "agent-session-1" })],
         workspaceId
       };
@@ -1791,6 +1795,7 @@ test("desktop agent host api batches inline streaming message updates", async ()
     },
     async listWorkspaceAgentSessions() {
       return {
+        hasMore: false,
         sessions: [createSession({ id: "agent-session-1" })],
         workspaceId
       };
@@ -1942,6 +1947,7 @@ test("desktop agent host api preserves working state for user-only reconciled tu
     },
     async listWorkspaceAgentSessions() {
       return {
+        hasMore: false,
         sessions: [createSession({ id: "agent-session-1" })],
         workspaceId
       };
@@ -2068,6 +2074,7 @@ test("desktop agent host api ignores stale reconcile after session deletion", as
     },
     async listWorkspaceAgentSessions() {
       return {
+        hasMore: false,
         sessions: [createSession({ id: "agent-session-1" })],
         workspaceId
       };
@@ -2229,6 +2236,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
       },
       async listWorkspaceAgentSessions() {
         return {
+          hasMore: false,
           sessions: [
             createSession({
               id: "55555555-5555-4555-8555-555555555555",
@@ -2386,6 +2394,7 @@ test("desktop agent host api preserves frontend session UUIDs as canonical ids",
         workspaceId,
         {
           agentSessionId: "55555555-5555-4555-8555-555555555555",
+          agentTargetId: "local:codex",
           cwd: "/workspace",
           initialContent: [{ type: "text", text: "Smoke" }],
           initialDisplayPrompt: null,
@@ -2447,6 +2456,7 @@ test("desktop agent host api keeps canonical sessions across adapter recreation"
       },
       async listWorkspaceAgentSessions() {
         return {
+          hasMore: false,
           sessions: [
             createSession({ id: "66666666-6666-4666-8666-666666666666" })
           ],
@@ -2506,6 +2516,7 @@ test("desktop agent host api excludes invisible persisted sessions from workspac
     tuttidClient: createTuttidClient({
       async listWorkspaceAgentSessions() {
         return {
+          hasMore: false,
           sessions: [
             createSession({
               id: "visible-session",
@@ -2589,6 +2600,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
           id: "project-1",
           label: "Demo project",
           path: payload.path,
+          sectionKey: `project:${payload.path}`,
           updatedAtUnixMs: 1
         };
       },
@@ -2657,6 +2669,7 @@ test("desktop agent host api reuses desktop host file operations", async () => {
     id: "project-1",
     label: "Demo project",
     path: "/Users/local/Documents/tutti/Demo project",
+    sectionKey: "project:/Users/local/Documents/tutti/Demo project",
     updatedAtUnixMs: 1
   });
   assert.deepEqual(await api.userProjects.checkPath?.({ path: "/workspace" }), {
@@ -3103,7 +3116,7 @@ function createTuttidClient(
       };
     },
     async listWorkspaceAgentSessions() {
-      return { sessions: [createSession()] };
+      return { hasMore: false, sessions: [createSession()], workspaceId };
     },
     async listWorkspaceAgentSessionMessages() {
       throw new Error("listWorkspaceAgentSessionMessages not mocked");

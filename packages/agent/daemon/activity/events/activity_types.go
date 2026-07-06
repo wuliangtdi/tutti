@@ -6,6 +6,7 @@ type Provider string
 
 const (
 	ProviderCodex      Provider = "codex"
+	ProviderCursor     Provider = "cursor"
 	ProviderNexight    Provider = "nexight"
 	ProviderClaudeCode Provider = "claude-code"
 	ProviderGemini     Provider = "gemini"
@@ -107,6 +108,8 @@ type Event struct {
 	Provider          Provider
 	ProviderSessionID string
 	AgentSessionID    string
+	OwnerThreadID     string
+	OwnerCallID       string
 	OccurredAtUnixMS  int64
 	Payload           EventPayload
 }
@@ -141,6 +144,8 @@ type EventContext struct {
 	Provider          Provider
 	ProviderSessionID string
 	AgentSessionID    string
+	OwnerThreadID     string
+	OwnerCallID       string
 	TurnID            string
 	CWD               string
 	Title             string
@@ -151,6 +156,8 @@ func NormalizeProvider(value string) (Provider, bool) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case string(ProviderCodex):
 		return ProviderCodex, true
+	case string(ProviderCursor), "cursor-agent", "cursor_agent":
+		return ProviderCursor, true
 	case string(ProviderNexight):
 		return ProviderNexight, true
 	case string(ProviderGemini), "gemini-cli", "gemini_cli":
@@ -344,6 +351,8 @@ func eventFromContext(ctx EventContext, eventType EventType, payload EventPayloa
 		Provider:          ctx.Provider,
 		ProviderSessionID: strings.TrimSpace(ctx.ProviderSessionID),
 		AgentSessionID:    strings.TrimSpace(ctx.AgentSessionID),
+		OwnerThreadID:     strings.TrimSpace(ctx.OwnerThreadID),
+		OwnerCallID:       strings.TrimSpace(ctx.OwnerCallID),
 		OccurredAtUnixMS:  ctx.OccurredAtUnixMS,
 		Payload:           payload,
 	}

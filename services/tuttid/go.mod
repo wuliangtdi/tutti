@@ -9,8 +9,10 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.1
-	github.com/tutti-os/tutti/packages/agentactivity/daemon v0.0.0
+	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
+	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
+	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
 	github.com/tutti-os/tutti/packages/workbench/service v0.0.0
 	github.com/tutti-os/tutti/packages/workspace/files v0.0.0
@@ -24,7 +26,9 @@ replace github.com/tutti-os/tutti/packages/events/stream-go => ../../packages/ev
 
 replace github.com/tutti-os/tutti/packages/workbench/service => ../../packages/workbench/service
 
-replace github.com/tutti-os/tutti/packages/agentactivity/daemon => ../../packages/agent/daemon
+replace github.com/tutti-os/tutti/packages/agent/daemon => ../../packages/agent/daemon
+
+replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../../packages/agent/store-sqlite
 
 replace github.com/tutti-os/tutti/packages/workspace/files => ../../packages/workspace/files
 
@@ -92,3 +96,5 @@ require (
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/core
+
+replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go

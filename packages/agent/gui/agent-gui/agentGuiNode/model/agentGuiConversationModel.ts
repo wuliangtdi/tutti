@@ -15,6 +15,21 @@ import {
 } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
+import {
+  attachSubAgentLanesToConversationVM,
+  buildSubAgentLanesByCallId,
+  partitionSubAgentTimelineItems
+} from "../../../shared/agentConversation/projection/subAgentTimelinePartition";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../../../shared/agentConversation/exitPlanOptions";
+import {
+  filterAgentGUIConversationSummaries,
+  normalizeAgentGUIConversationFilter,
+  type AgentGUIConversationFilter
+} from "./agentGuiConversationFilter";
 import type { AgentApprovalItemVM } from "../../../shared/agentConversation/contracts/agentApprovalItemVM";
 import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentConversationPromptVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
@@ -59,6 +74,7 @@ export {
 export interface AgentGUIConversationSummary {
   id: string;
   userId?: string;
+  agentTargetId?: string | null;
   provider: AgentGUIResolvedProvider;
   resumable?: boolean;
   title: string;
@@ -80,6 +96,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   AgentGUIConversationSummary,
   | "id"
   | "userId"
+  | "agentTargetId"
   | "provider"
   | "title"
   | "titleFallback"
@@ -91,7 +108,9 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "sortTimeUnixMs"
   | "updatedAtUnixMs"
   | "syncState"
->;
+> & {
+  turnLifecycle?: WorkspaceAgentActivitySession["turnLifecycle"];
+};
 
 interface AgentGUIConversationProjectResolutionContext {
   projectResolver: AgentGUIConversationProjectResolver;
@@ -156,6 +175,7 @@ export type AgentGUIInteractivePrompt =
   | Extract<AgentConversationPromptVM, { kind: "plan-implementation" }>;
 
 export interface BuildAgentGUIConversationsInput {
+  conversationFilter?: AgentGUIConversationFilter;
   isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
   snapshot: WorkspaceAgentActivitySnapshot;
   provider: AgentGUIProvider;
@@ -164,6 +184,7 @@ export interface BuildAgentGUIConversationsInput {
 }
 
 export function buildAgentGUIConversationSummaries({
+  conversationFilter,
   isNoProjectPath,
   snapshot,
   provider,
@@ -178,21 +199,28 @@ export function buildAgentGUIConversationSummaries({
     userProjects,
     { isNoProjectPath }
   );
-  return buildWorkspaceAgentActivityListViewModel(runtimeSnapshot, {
-    sessionMessagesById
-  })
-    .activities.map((activity) =>
-      conversationSummaryFromActivity(
-        activity,
-        sessionsById.get(activity.sessionId),
-        { projectResolver }
-      )
+  const conversations = buildWorkspaceAgentActivityListViewModel(
+    runtimeSnapshot,
+    {
+      sessionMessagesById
+    }
+  ).activities.map((activity) =>
+    conversationSummaryFromActivity(
+      activity,
+      sessionsById.get(activity.sessionId),
+      { projectResolver }
     )
-    .filter(
-      (conversation) =>
-        conversation.provider === provider ||
-        conversation.provider === "unknown"
+  );
+  if (conversationFilter) {
+    return filterAgentGUIConversationSummaries(
+      conversations,
+      normalizeAgentGUIConversationFilter(conversationFilter)
     );
+  }
+  return conversations.filter(
+    (conversation) =>
+      conversation.provider === provider || conversation.provider === "unknown"
+  );
 }
 
 export function selectAgentGUIConversationId(
@@ -315,8 +343,17 @@ export function buildAgentGUIConversationModels({
   if (!detail) {
     return { conversation: null, detail: null };
   }
+  // Child-thread rows are excluded from the transcript by the canonical
+  // detail builder; here they are regrouped into live sub-agent lanes and
+  // attached to their collab spawn card so running sub-agents stay visible.
+  const subAgentLanesByCallId = buildSubAgentLanesByCallId(
+    partitionSubAgentTimelineItems(timelineItems)
+  );
   return {
-    conversation: projectAgentConversationVM(detail, { avoidGroupingEdits }),
+    conversation: attachSubAgentLanesToConversationVM(
+      projectAgentConversationVM(detail, { avoidGroupingEdits }),
+      subAgentLanesByCallId
+    ),
     detail
   };
 }
@@ -379,6 +416,7 @@ export function conversationSummaryFromAgentSession(
   return {
     id: session.agentSessionId.trim(),
     userId: "",
+    agentTargetId: session.agentTargetId ?? null,
     provider,
     resumable: session.resumable,
     title,
@@ -517,6 +555,7 @@ function conversationSummaryFromActivity(
   return {
     id: activity.sessionId,
     userId: session?.userId?.trim() ?? "",
+    agentTargetId: session?.agentTargetId ?? null,
     provider,
     resumable: session?.resumable,
     title,
@@ -755,6 +794,7 @@ function timelineSessionFromItems(
     cwd: conversation?.cwd?.trim() ?? "",
     lifecycleStatus: sessionLifecycleStatus(conversation?.status ?? "ready"),
     turnPhase: conversation?.status === "working" ? "working" : "idle",
+    turnLifecycle: conversation?.turnLifecycle ?? null,
     effectiveStatus: conversation?.status ?? "ready",
     status: conversation?.status ?? "ready",
     title: conversation?.title,
@@ -966,7 +1006,7 @@ function approvalRequestFromTimelineItem(
   const options = normalizeApprovalOptions(
     arrayPayload(input?.options) ?? arrayPayload(payload.options) ?? []
   );
-  if (isExitPlanApprovalInput(input, options)) {
+  if (isExitPlanSwitchModeInput(input)) {
     return null;
   }
   return {
@@ -998,10 +1038,7 @@ function interactivePromptFromTimelineItem(
     normalizeCallType(stringPayload(payload.callType));
   const input = objectPayload(payload.input);
   if (callType === "approval") {
-    const options = normalizeApprovalOptions(
-      arrayPayload(input?.options) ?? arrayPayload(payload.options) ?? []
-    );
-    if (!isExitPlanApprovalInput(input, options)) {
+    if (!isExitPlanSwitchModeInput(input)) {
       return null;
     }
     const status =
@@ -1028,7 +1065,16 @@ function interactivePromptFromTimelineItem(
         stringPayload(objectPayload(input?.toolCall)?.title) ||
         item.name?.trim() ||
         stringPayload(payload.name) ||
-        "Exit plan mode"
+        "Exit plan mode",
+      options: extractExitPlanModeOptions(input, payload),
+      ...(extractExitPlanKeepPlanningOptionId(input, payload)
+        ? {
+            keepPlanningOptionId: extractExitPlanKeepPlanningOptionId(
+              input,
+              payload
+            ) as string
+          }
+        : {})
     };
   }
   if (callType !== "interactive") {
@@ -1037,7 +1083,7 @@ function interactivePromptFromTimelineItem(
   const status =
     normalizeStatus(item.status) ||
     normalizeStatus(stringPayload(payload.status));
-  if (status !== "waiting" && status !== "pending") {
+  if (!isPendingInteractiveStatus(status)) {
     return null;
   }
   const toolName = normalizeInteractiveToolName(
@@ -1057,7 +1103,10 @@ function interactivePromptFromTimelineItem(
       kind: "exit-plan",
       requestId,
       title:
-        item.name?.trim() || stringPayload(payload.name) || "Exit plan mode"
+        item.name?.trim() || stringPayload(payload.name) || "Exit plan mode",
+      // Legacy exitplanmode tool carries no runtime mode options; the surface
+      // falls back to the curated default list.
+      options: []
     };
   }
   if (toolName !== "askuserquestion") {
@@ -1076,18 +1125,6 @@ function interactivePromptFromTimelineItem(
       item.name?.trim() || stringPayload(payload.name) || "Questions for you",
     questions
   };
-}
-
-function isExitPlanApprovalInput(
-  input: Record<string, unknown> | null,
-  options: readonly AgentGUIApprovalOption[]
-): boolean {
-  const toolCall = objectPayload(input?.toolCall);
-  const kind = stringPayload(toolCall?.kind)?.toLowerCase() ?? "";
-  if (kind !== "switch_mode") {
-    return false;
-  }
-  return options.some((option) => option.id === "plan");
 }
 
 function timelineRowTime(
@@ -1219,6 +1256,16 @@ function normalizeStatus(status: string | null | undefined): string {
     return "waiting";
   }
   return normalized;
+}
+
+function isPendingInteractiveStatus(status: string): boolean {
+  return (
+    status === "waiting" ||
+    status === "pending" ||
+    status === "running" ||
+    status === "streaming" ||
+    status === "working"
+  );
 }
 
 function stringPayload(value: unknown): string {

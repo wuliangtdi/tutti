@@ -21,6 +21,11 @@ import {
   type WorkspaceAgentMessageCenterDigest,
   type WorkspaceAgentMessageCenterDigestAgentSummary
 } from "./workspaceAgentMessageCenterDigest";
+import {
+  extractExitPlanKeepPlanningOptionId,
+  extractExitPlanModeOptions,
+  isExitPlanSwitchModeInput
+} from "../shared/agentConversation/exitPlanOptions";
 
 export interface WorkspaceAgentMessageCenterModel {
   waitingCount: number;
@@ -339,8 +344,10 @@ function analyzeMessageCenterSessionMessages(
         }
       }
     }
-
-    if (isAgentMessageRole(message.role)) {
+    if (
+      isAgentMessageRole(message.role) &&
+      !isReasoningMessageKind(message.kind)
+    ) {
       const summary = messageSummary(message);
       if (summary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
@@ -402,9 +409,9 @@ function promptFromMessage(
   message: AgentActivityMessage
 ): AgentConversationPromptVM | null {
   return (
+    exitPlanPromptFromMessage(message) ??
     approvalPromptFromMessage(message) ??
-    askUserPromptFromMessage(message) ??
-    exitPlanPromptFromMessage(message)
+    askUserPromptFromMessage(message)
   );
 }
 
@@ -416,6 +423,9 @@ function approvalPromptFromMessage(
   }
   const payload = recordValue(message.payload);
   const input = recordValue(payload.input);
+  if (isExitPlanMessage(message, input)) {
+    return null;
+  }
   const requestId =
     stringValue(input.requestId) ??
     stringValue(payload.requestId) ??
@@ -516,18 +526,46 @@ function askUserPromptFromMessage(
 function exitPlanPromptFromMessage(
   message: AgentActivityMessage
 ): AgentConversationPromptVM | null {
-  if (!includesAny(normalizedMetadataValues(message), ["exitplanmode"])) {
+  const payload = recordValue(message.payload);
+  const input = recordValue(payload.input);
+  if (!isExitPlanMessage(message, input)) {
     return null;
   }
-  const payload = recordValue(message.payload);
   return {
     kind: "exit-plan",
-    requestId: stringValue(payload.requestId) ?? message.messageId,
+    requestId:
+      stringValue(input.requestId) ??
+      stringValue(payload.requestId) ??
+      message.messageId,
     title:
+      stringValue(input.title) ??
+      stringValue(recordValue(input.toolCall).title) ??
       stringValue(payload.title) ??
       stringValue(payload.summary) ??
-      messageSummary(message)
+      messageSummary(message),
+    options: extractExitPlanModeOptions(input, payload),
+    ...keepPlanningOption(extractExitPlanKeepPlanningOptionId(input, payload))
   };
+}
+
+function keepPlanningOption(optionId: string | null): {
+  keepPlanningOptionId?: string;
+} {
+  return optionId ? { keepPlanningOptionId: optionId } : {};
+}
+
+function isExitPlanMessage(
+  message: AgentActivityMessage,
+  input: Record<string, unknown> = recordValue(
+    recordValue(message.payload).input
+  )
+): boolean {
+  // Some shapes only flag exit-plan via metadata ("exitplanmode"); the canonical
+  // Claude shape is a `switch_mode` approval carrying a `plan` option.
+  return (
+    includesAny(normalizedMetadataValues(message), ["exitplanmode"]) ||
+    isExitPlanSwitchModeInput(input)
+  );
 }
 
 function codexPlanImplementationPrompt(
@@ -687,6 +725,19 @@ function compareMessageCenterItems(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
+}
+
+/**
+ * Reasoning/thinking messages are stored with an assistant-like `role` but a
+ * distinct `kind: "reasoning"` (see workspaceAgentMessageProjection.ts, which
+ * routes `kind === "reasoning"` to a separate "assistant_thinking" timeline
+ * item instead of a normal reply). The message center must not treat these as
+ * a normal agent reply when picking the latest message to preview, otherwise
+ * raw thinking content (occasionally still carrying literal tag markup) can
+ * surface verbatim in the message-center list instead of the actual reply.
+ */
+function isReasoningMessageKind(kind: string): boolean {
+  return kind.trim().toLowerCase() === "reasoning";
 }
 
 function isUserMessageRole(role: string): boolean {

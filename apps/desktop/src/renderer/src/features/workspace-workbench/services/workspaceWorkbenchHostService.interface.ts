@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import type { AgentGUIProviderTarget } from "@tutti-os/agent-gui";
+import type {
+  AgentGUIProvider,
+  AgentGUIProviderTarget
+} from "@tutti-os/agent-gui";
 import { createDecorator } from "@tutti-os/infra/di";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceFileManagerPersistedState } from "@tutti-os/workspace-file-manager/services";
@@ -123,12 +126,15 @@ export interface IWorkspaceWorkbenchHostService {
       target: WorkspaceWorkbenchCapabilitySettingsTarget
     ) => void;
     providerTargets?: readonly AgentGUIProviderTarget[];
+    providerTargetsLoading?: boolean;
+    comingSoonAgentProviders?: readonly AgentGUIProvider[];
     renderFilesNodeBody: (
       context: WorkspaceWorkbenchBodyRendererContext
     ) => ReactNode;
     themeAppearance: DesktopThemeAppearance;
     workspaceId: string;
   }): WorkspaceWorkbenchHostInput;
+  loadAgentGuiProviderTargets(): Promise<readonly AgentGUIProviderTarget[]>;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
   ): WorkspaceFileReferenceAdapter;

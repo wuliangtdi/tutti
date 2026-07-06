@@ -15,6 +15,7 @@ const workspaceAppSkillName = "workspace-app"
 const referenceSkillName = "reference"
 const browserUseSkillName = "browser-use"
 const computerUseSkillName = "computer-use"
+const commandGuideReferencePath = "command-guide.md"
 
 //go:embed skill_templates/*.md policy_templates/*.md
 var providerSkillTemplates embed.FS
@@ -28,8 +29,9 @@ func tuttiCLISkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/tutti-cli.md",
 		map[string]string{
-			"{{COMMAND_GUIDE}}":    commandGuide(input),
+			"{{COMMAND_SUMMARY}}":  commandGuideSummary(input),
 			"{{CLI_COMMAND}}":      normalizeCLICommandName(input.CLICommand),
+			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},
@@ -40,6 +42,7 @@ func issueManagerSkill(input PrepareInput) string {
 	return renderProviderSkillTemplate(
 		"skill_templates/issue-manager.md",
 		map[string]string{
+			"{{AGENT_TARGET_ID}}":  strings.TrimSpace(input.AgentTargetID),
 			"{{AGENT_PROVIDER}}":   strings.TrimSpace(input.Provider),
 			"{{AGENT_SESSION_ID}}": strings.TrimSpace(input.AgentSessionID),
 		},
@@ -102,7 +105,10 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 	skills := []providerSkillSpec{
 		{
 			baseName: tuttiSkillName,
-			files:    map[string]string{"SKILL.md": tuttiCLISkill(input)},
+			files: map[string]string{
+				"SKILL.md":                tuttiCLISkill(input),
+				commandGuideReferencePath: commandGuideReference(input),
+			},
 		},
 		{
 			baseName: issueManagerSkillName,
@@ -126,8 +132,8 @@ func providerSkills(input PrepareInput) []providerSkillSpec {
 		})
 	}
 	// Computer use is a daemon-owned `tutti computer` CLI; inject its skill only
-	// when enabled for this session (capability gate).
-	if input.ComputerUse && ComputerUseDefaultEnabled() {
+	// when enabled and locally runnable for this session (capability gate).
+	if input.ComputerUse && ComputerUseAvailable() {
 		skills = append(skills, providerSkillSpec{
 			baseName: computerUseSkillName,
 			files:    map[string]string{"SKILL.md": computerUseSkill(input)},
@@ -289,6 +295,8 @@ func allocateSkillName(root string, baseName string) (string, error) {
 
 func providerSkillRoot(cwd string, provider string) string {
 	switch strings.TrimSpace(provider) {
+	case "cursor":
+		return filepath.Join(cwd, ".cursor", "skills")
 	case "gemini":
 		return filepath.Join(cwd, ".gemini", "skills")
 	case "openclaw":

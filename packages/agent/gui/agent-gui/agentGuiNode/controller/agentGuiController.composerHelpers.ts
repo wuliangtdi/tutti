@@ -43,6 +43,61 @@ export function composerSettingOptionsFromActivity(
   return options.map((option) => ({ ...option }));
 }
 
+// liveModelOptionValuesFromRuntimeContext extracts the model option values a
+// live ACP session advertises through its runtime-context config options
+// (configOptions[id="model"].options[].value). Providers such as Cursor only
+// expose their model list this way — there is no static catalog.
+export function liveModelOptionValuesFromRuntimeContext(
+  runtimeContext: Record<string, unknown> | null | undefined
+): string[] {
+  const configOptions = runtimeContext?.configOptions;
+  if (!Array.isArray(configOptions)) {
+    return [];
+  }
+  for (const optionRaw of configOptions) {
+    if (!optionRaw || typeof optionRaw !== "object") {
+      continue;
+    }
+    const option = optionRaw as Record<string, unknown>;
+    if (normalizeConfigOptionValue(option.id) !== "model") {
+      continue;
+    }
+    const entries = option.options;
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    const values: string[] = [];
+    for (const entryRaw of entries) {
+      if (!entryRaw || typeof entryRaw !== "object") {
+        continue;
+      }
+      const value = normalizeConfigOptionValue(
+        (entryRaw as Record<string, unknown>).value
+      );
+      if (value) {
+        values.push(value);
+      }
+    }
+    return values;
+  }
+  return [];
+}
+
+// composerOptionsMissingLiveModelValues reports whether the loaded composer
+// options lack model values the live session advertises — the signal that the
+// daemon fetched composer options before the session's model list existed and
+// a forced refetch (which merges the live list server-side) is needed.
+export function composerOptionsMissingLiveModelValues(
+  options: AgentActivityComposerOptions | null,
+  liveValues: readonly string[]
+): boolean {
+  if (!options || liveValues.length === 0) {
+    return false;
+  }
+  const known = new Set(options.models.map((option) => option.value));
+  return liveValues.some((value) => !known.has(value));
+}
+
 export function modelSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
   currentValue: string | null
@@ -212,8 +267,9 @@ export function resolveEffectiveComposerSettings(input: {
         input.settings.speed
       ) as AgentSessionSpeed | null) ?? null,
     planMode: Boolean(input.settings.planMode),
-    // Browser use defaults on; preserve an explicit opt-out, default unset to on.
+    // Browser/computer use default on; preserve explicit opt-outs.
     browserUse: input.settings.browserUse ?? true,
+    computerUse: input.settings.computerUse ?? true,
     permissionModeId: normalizePermissionModeId(input.settings.permissionModeId)
   };
 }
@@ -354,6 +410,7 @@ export function sameComposerSettings(
     (left?.speed ?? null) === (right?.speed ?? null) &&
     Boolean(left?.planMode) === Boolean(right?.planMode) &&
     (left?.browserUse ?? true) === (right?.browserUse ?? true) &&
+    (left?.computerUse ?? true) === (right?.computerUse ?? true) &&
     (left?.permissionModeId ?? null) === (right?.permissionModeId ?? null)
   );
 }
@@ -384,6 +441,7 @@ export function buildNodeDefaultComposerSettings(
       null,
     planMode: Boolean(composerOverrides.planMode),
     browserUse: composerOverrides.browserUse ?? true,
+    computerUse: composerOverrides.computerUse ?? true,
     permissionModeId: normalizePermissionModeId(
       composerOverrides.permissionModeId
     )
@@ -393,6 +451,10 @@ export function buildNodeDefaultComposerSettings(
 export function nodeComposerOverridesForProvider(
   data: AgentGUINodeData
 ): AgentSessionComposerSettings | null {
+  const agentTargetId = normalizeOptionalText(data.agentTargetId);
+  if (agentTargetId) {
+    return data.composerOverridesByAgentTargetId?.[agentTargetId] ?? null;
+  }
   return (
     data.composerOverridesByProvider?.[data.provider] ??
     data.composerOverrides ??
@@ -458,8 +520,19 @@ export function nodeDataFromComposerSettings(
     // Raw passthrough (no Boolean coercion): undefined means "default on", so
     // only an explicit false persists as an opt-out.
     browserUse: settings.browserUse,
+    computerUse: settings.computerUse,
     permissionModeId: normalizePermissionModeId(settings.permissionModeId)
   };
+  const agentTargetId = normalizeOptionalText(current.agentTargetId);
+  if (agentTargetId) {
+    return {
+      ...current,
+      composerOverridesByAgentTargetId: {
+        ...(current.composerOverridesByAgentTargetId ?? {}),
+        [agentTargetId]: composerOverrides
+      }
+    };
+  }
   return {
     ...current,
     composerOverrides,
@@ -522,15 +595,21 @@ export function removeQueuedPromptById(
 export const NODE_DEFAULT_DRAFT_KEY = "__agent_gui_node_defaults__";
 
 export function nodeDefaultDraftKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
+  const normalizedAgentTargetId = normalizeOptionalText(agentTargetId);
+  if (normalizedAgentTargetId) {
+    return `${NODE_DEFAULT_DRAFT_KEY}:target:${normalizedAgentTargetId}`;
+  }
   return `${NODE_DEFAULT_DRAFT_KEY}:${agentProvider}`;
 }
 
 export function nodeDefaultDraftPromptKey(
-  agentProvider: AgentGUINodeData["provider"]
+  agentProvider: AgentGUINodeData["provider"],
+  agentTargetId?: string | null
 ): string {
-  return nodeDefaultDraftKey(agentProvider);
+  return nodeDefaultDraftKey(agentProvider, agentTargetId);
 }
 
 export function normalizeProjectDraftPath(
@@ -545,6 +624,9 @@ export function readNodeDefaultDraftPrompt(input: {
   drafts: Record<string, string>;
 }): string {
   return (
+    input.drafts[
+      nodeDefaultDraftPromptKey(input.data.provider, input.data.agentTargetId)
+    ] ??
     input.drafts[nodeDefaultDraftPromptKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??
     ""
@@ -557,6 +639,16 @@ export function readNodeDefaultDraftSettings(input: {
   defaultSpeed?: AgentSessionSpeed | null;
   drafts: Record<string, AgentSessionComposerSettings>;
 }): AgentSessionComposerSettings {
+  const agentTargetId = normalizeOptionalText(input.data.agentTargetId);
+  if (agentTargetId) {
+    return (
+      input.drafts[nodeDefaultDraftKey(input.data.provider, agentTargetId)] ??
+      buildNodeDefaultComposerSettings(input.data, {
+        defaultReasoningEffort: input.defaultReasoningEffort,
+        defaultSpeed: input.defaultSpeed
+      })
+    );
+  }
   return (
     input.drafts[nodeDefaultDraftKey(input.data.provider)] ??
     input.drafts[NODE_DEFAULT_DRAFT_KEY] ??

@@ -59,6 +59,18 @@ export const en = {
     retryAction: "Retry"
   },
   desktop: {
+    installGuard: {
+      detail:
+        "Tutti is running from the downloaded disk image. Move it to Applications before continuing so updates can install correctly.",
+      failureDetail:
+        "macOS could not move Tutti automatically. Drag {{appPath}} to Applications, then open Tutti from Applications.",
+      failureMessage: "Move Tutti manually",
+      message: "Move Tutti to Applications?",
+      moveAction: "Move to Applications and Relaunch",
+      quitAction: "Quit",
+      showInFinderAction: "Show in Finder",
+      title: "Install Tutti"
+    },
     logsExport: {
       actionHint: "You can copy the agent prompt or open the exported folder.",
       agentPrompt: {
@@ -404,6 +416,7 @@ export const en = {
           "We couldn't update window snapping right now.",
         workbenchWindowSnappingShortcutLabel: "Window snapping shortcut",
         workbenchWindowSnappingShortcutOptions: {
+          off: "Off",
           commandArrows: "Command + Arrow keys",
           commandShiftArrows: "Command + Shift + Arrow keys"
         },
@@ -441,6 +454,15 @@ export const en = {
         defaultAgentProviderLabel: "Default provider",
         defaultAgentProviderSaveFailed:
           "We couldn't update the default provider right now.",
+        agentConversationDetailModeLabel: "Work mode",
+        agentConversationDetailModeOptions: {
+          codingTitle: "For coding",
+          codingDescription: "More technical responses and control.",
+          generalTitle: "For everyday work",
+          generalDescription: "Just as powerful, with less technical detail."
+        },
+        agentConversationDetailModeSaveFailed:
+          "We couldn't update the work mode right now.",
         computerUseLabel: "Computer use",
         computerUseDescription:
           "Allows the agent to control your Mac desktop — take screenshots, click, type, and more.",
@@ -455,10 +477,53 @@ export const en = {
         computerUseProgressAria: "Computer use setup progress",
         computerUseManageButton: "Manage",
         computerUseGrantButton: "Grant Permissions",
+        computerUseGrantAccessibilityButton: "Grant Accessibility",
+        computerUseGrantScreenRecordingButton: "Grant Screen Recording",
         computerUseAuthorizedButton: "Authorized",
         computerUseGranting: "Waiting for permissions…",
+        computerUseGrantingAccessibility: "Waiting for Accessibility…",
+        computerUseGrantingScreenRecording: "Waiting for Screen Recording…",
+        computerUseCheckingCaptureAvailability:
+          "Checking screen capture availability…",
+        computerUseStartAndCheckButton: "Start and Check",
+        computerUseStartingCuaDriver: "Starting and checking…",
         computerUseGrantSuccess: "Permissions granted.",
         computerUseGrantFailed: "Could not grant permissions.",
+        computerUseGrantAccessibilityInstruction:
+          "Next: grant Accessibility. After approving it, continue with Screen Recording.",
+        computerUseGrantScreenRecordingInstruction:
+          "Next: grant Screen Recording.",
+        computerUseScreenRecordingCaptureUnavailableInstruction:
+          'Screen Recording is authorized, but CuaDriver needs a restart before it takes effect. Click "Restart to apply" to finish automatically.',
+        computerUseGrantUnknownInstruction:
+          "Authorization status cannot be confirmed. Click to let CuaDriver check again.",
+        computerUseDriverDaemonNotRunningInstruction:
+          'CuaDriver is not running, so its authorization status cannot be read. Click "Start" to launch CuaDriver and check automatically.',
+        computerUseStartingCuaDriverInstruction:
+          "Starting CuaDriver and checking authorization…",
+        computerUseGrantTimedOutInstruction:
+          "macOS did not show a permission confirmation. Open System Settings > Privacy & Security, enable CuaDriver permissions, then return to Tutti and check again.",
+        computerUseGrantAccessibilityTimedOutInstruction:
+          "macOS did not show the Accessibility confirmation. Open System Settings > Privacy & Security > Accessibility, enable CuaDriver, then return to Tutti and check again.",
+        computerUseGrantScreenRecordingTimedOutInstruction:
+          "macOS did not show the Screen Recording confirmation. Open System Settings > Privacy & Security > Screen & System Audio Recording, enable CuaDriver, then return to Tutti and check again.",
+        computerUseGrantManualFallbackInstruction:
+          "If no macOS permission prompt appeared, open {{settings}} and enable CuaDriver manually. Tutti will keep checking in the background.",
+        computerUseOpenAccessibilitySettingsButton:
+          "Open Accessibility Settings",
+        computerUseOpenScreenRecordingSettingsButton:
+          "Open Screen Recording Settings",
+        computerUseOpenPrivacySettingsButton: "Open Privacy Settings",
+        computerUseOpeningSettings: "Opening Settings…",
+        computerUseOpenSettingsTooltip:
+          "Open the matching macOS privacy settings page. Tutti will keep checking authorization while this panel is open.",
+        computerUseOpenSettingsFailed: "Could not open System Settings.",
+        computerUseAccessibilitySettingsOpenedInstruction:
+          "Accessibility Settings is open. Enable CuaDriver there; Tutti will check automatically.",
+        computerUseScreenRecordingSettingsOpenedInstruction:
+          "Screen Recording Settings is open. Enable CuaDriver there; Tutti will check automatically.",
+        computerUsePrivacySettingsOpenedInstruction:
+          "Privacy Settings is open. Enable CuaDriver permissions there; Tutti will check automatically.",
         computerUseAuthorizedTooltip:
           "CuaDriver has Screen Recording and Accessibility permissions.",
         computerUsePermissionUnknownTooltip:
@@ -468,9 +533,57 @@ export const en = {
         computerUsePermissionAccessibility: "Accessibility",
         computerUsePermissionScreenRecording: "Screen Recording",
         computerUsePermissionListSeparator: ", ",
+        computerUsePermissionDialogTitle: "Set up Computer Use",
+        computerUsePermissionDialogDescription:
+          "Tutti guides the flow, while macOS grants the permissions to CuaDriver.",
+        computerUsePermissionDialogRelationshipTitle:
+          "Why authorize CuaDriver?",
+        computerUsePermissionDialogRelationshipBody:
+          "Tutti uses CuaDriver to take screenshots, click, and type. macOS may ask you to authorize CuaDriver next; this is expected.",
+        computerUsePermissionDialogIconHint:
+          "After opening System Settings, find “CuaDriver” in the permission list and turn on its permission switch.",
+        computerUsePermissionDialogRequiredTitle: "Required permissions",
+        computerUsePermissionDialogActionTitle: "Current action",
+        computerUsePermissionDialogActionReady:
+          "CuaDriver has the permissions Tutti needs for computer control.",
+        computerUsePermissionDialogAutoCheck:
+          "Tutti is checking authorization automatically while this dialog stays open.",
+        computerUsePermissionStatusGranted: "Effective",
+        computerUsePermissionStatusMissing: "Needed",
+        computerUsePermissionStatusUnknown: "Unknown",
+        computerUsePermissionStatusCaptureUnavailable: "Granted, not effective",
         computerUseStatusInstalled: "Installed",
         computerUseStatusNotInstalled: "Not installed",
         computerUseStatusCheckAgain: "Check again",
+        computerUseDriverRowLabel: "CuaDriver status",
+        computerUseDriverStatusRunning: "Running",
+        computerUseDriverStatusNotRunning: "Not running",
+        computerUseStartDriverButton: "Start",
+        computerUseRestartDriverButton: "Restart to apply",
+        computerUseRestartingDriver: "Restarting CuaDriver…",
+        computerUseRestartDriverFailed:
+          "Restarting CuaDriver failed. Try again, or open the CuaDriver app manually and check again.",
+        computerUseOpenPaneButton: "Open Settings",
+        computerUseStatusCheckFailed:
+          "Couldn't read permission status. Try again.",
+        computerUseStatusRetryButton: "Retry",
+        computerUseStatusUnchanged: "Checked again — no change.",
+        computerUseLastCheckedAt: "Last checked {{time}}",
+        computerUseDoneButton: "Done",
+        computerUseWizardBack: "Back",
+        computerUseWizardNext: "Next",
+        computerUseWizardInstallBody:
+          "Install CuaDriver — the local driver that performs screenshots, clicks, and typing. Installing requests no permissions.",
+        computerUseWizardGrantInstruction:
+          "After opening System Settings, find “CuaDriver” in the “{{permission}}” list and turn on its switch. Then click “Next”.",
+        computerUseWizardScreenRecordingKillNote:
+          "macOS may offer to reopen CuaDriver when you flip the switch — you can ignore it; the next step handles that automatically.",
+        computerUseWizardVerifyBody:
+          "Once you have granted both permissions, click “Check again” to confirm everything is ready (about 2 seconds). If an item still says “Needed”, click “Grant” next to it to finish that one.",
+        computerUseWizardVerifyChecking: "Checking…",
+        computerUseWizardGrantStepReturn: "Grant",
+        computerUseWizardDoneBody:
+          "Computer use is ready — the agent can now operate your desktop.",
         browserUseConnectionModeDescription:
           "Choose which browser the agent controls when it runs web tasks — the Chrome on your computer, or a separate browser Tutti launches for it.",
         browserUseConnectionModeLabel: "Browser connection",
@@ -513,6 +626,7 @@ export const en = {
       },
       nav: {
         about: "About",
+        account: "Account",
         apps: "Apps",
         sectionsLabel: "Settings sections",
         appearance: "Appearance",
@@ -526,6 +640,16 @@ export const en = {
         githubAction: "GitHub",
         versionLabel: "Version",
         websiteAction: "Website"
+      },
+      account: {
+        description: "Sign in to use your Tutti account on this device.",
+        login: "Sign in",
+        logout: "Sign out",
+        refresh: "Refresh",
+        reopenLogin: "Open sign-in again",
+        signedOutTitle: "Not signed in",
+        signingIn: "Signing in...",
+        signingOut: "Signing out..."
       },
       apps: {
         appCatalogChannelDescription:
@@ -609,6 +733,12 @@ export const en = {
           "We couldn't clear conversation history right now.",
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
+        enableCursorAgentDescription:
+          "Show the Cursor agent across the app. Off by default while Cursor support is in preview.",
+        // i18n-check-ignore: Provider brand name.
+        enableCursorAgentLabel: "Enable Cursor agent",
+        enableCursorAgentSaveFailed:
+          "We couldn't update the Cursor agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",
@@ -642,11 +772,21 @@ export const en = {
         openLogsDirectory: "Open logs folder",
         addFileDefaultOpener: "Add",
         removeFileDefaultOpener: "Remove .{{extension}}",
+        releaseChannelDescription:
+          "Choose stable release updates, or opt in to preview builds for internal verification.",
+        releaseChannelLabel: "Release channel",
+        releaseChannelOptions: {
+          rc: "Preview",
+          stable: "Stable"
+        },
         showAppDeveloperSourcesDescription:
           "Show each app's authors and GitHub source inside App Center cards.",
         showAppDeveloperSourcesLabel: "Show app authors and source",
         showAppDeveloperSourcesSaveFailed:
           "We couldn't update App Center source display.",
+        tuttiAgentSwitchDescription:
+          "Shows account and agent development controls.",
+        tuttiAgentSwitchLabel: "Tutti Agent Switch",
         visibilityDescription:
           "Hide this panel from settings. Tap the version number in About seven times to bring it back",
         visibilityLabel: "Show developer panel"
@@ -697,6 +837,11 @@ export const en = {
         unsupportedFallback:
           "Preview is not supported yet. Opening with your local app."
       },
+      filesLaunch: {
+        openFailedDescription:
+          "This session's original working directory could no longer be found on this computer.",
+        openFailedTitle: "Couldn't open folder"
+      },
       agentProviders: {
         checking: "Checking local CLI status...",
         comingSoon: "Coming soon",
@@ -726,6 +871,7 @@ export const en = {
         manageConfigMissing: "No local configuration detected",
         manageProviderClaudeCode: "Claude Code",
         manageProviderCodex: "Codex",
+        manageProviderCursor: "Cursor",
         manageProviderGemini: "Gemini CLI",
         manageProviderHermes: "Hermes",
         manageProviderOpenClaw: "OpenClaw",

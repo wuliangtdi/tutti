@@ -6,6 +6,10 @@ import {
   resolveWorkspaceFileLinkAction,
   resolveWorkspaceFilePathCandidate
 } from "./workspaceLinkActions";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../shared/agentCustomMentionKinds";
 
 describe("resolveWorkspaceFileLinkAction", () => {
   it("opens local absolute paths without remapping workspace-prefixed paths", () => {
@@ -308,6 +312,55 @@ describe("resolveWorkspaceMentionLinkAction", () => {
     });
   });
 
+  it("resolves clickable registered custom mentions to open-custom-mention", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      clickable: true,
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1",
+          source: "agent-markdown"
+        })
+      ).toEqual({
+        type: "open-custom-mention",
+        kind: "external-note",
+        href: "mention://external-note/note-a?ids=note-a%2Cnote-b&preview=hello&spaceId=space-1",
+        source: "agent-markdown"
+      });
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("does not resolve non-clickable registered custom mentions", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      present: (mention) => ({ name: mention.label })
+    });
+    try {
+      expect(
+        resolveWorkspaceMentionLinkAction({
+          href: "mention://external-note/note-a?spaceId=space-1",
+          source: "agent-markdown"
+        })
+      ).toBeNull();
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
+  it("does not resolve unregistered custom mention kinds", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://external-note/note-a?spaceId=space-1",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
+
   it("parses workspace-app mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({
@@ -354,6 +407,40 @@ describe("resolveWorkspaceMentionLinkAction", () => {
         source: "agent-markdown"
       })
     ).toBeNull();
+  });
+
+  it("parses agent-session mention context without a captured provider", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://agent-session/session-1?workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-agent-session",
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      source: "agent-markdown"
+    });
+  });
+
+  it("restores the mentioned session's own provider from the agentProvider scope key", () => {
+    // Regression for cross-provider mentions (e.g. a Codex conversation
+    // @-mentioning a Claude Code session) resolving to the WRONG provider:
+    // callers default `provider` from their own viewing context only when
+    // the action doesn't already carry one, so the mention must capture the
+    // target session's real provider here rather than leaving it undefined.
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://agent-session/session-1?agentProvider=claude-code&workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-agent-session",
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      provider: "claude-code",
+      source: "agent-markdown"
+    });
   });
 });
 

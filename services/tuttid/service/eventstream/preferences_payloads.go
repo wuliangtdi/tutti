@@ -3,12 +3,16 @@ package eventstream
 type desktopPreferencesMutationPayload struct {
 	Preferences struct {
 		AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
+		AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 		AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
+		AgentConversationDetailMode                 string                                                    `json:"agentConversationDetailMode"`
+		AgentDockLayout                             string                                                    `json:"agentDockLayout"`
 		AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
 		BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
 		DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 		DockIconStyle                               string                                                    `json:"dockIconStyle"`
 		DockPlacement                               string                                                    `json:"dockPlacement"`
+		EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
 		FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 		Locale                                      string                                                    `json:"locale"`
 		MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
@@ -28,12 +32,16 @@ type desktopPreferencesUpdatedPayload struct {
 
 type desktopPreferencesSettingsPayload struct {
 	AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
+	AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
+	AgentConversationDetailMode                 string                                                    `json:"agentConversationDetailMode"`
+	AgentDockLayout                             string                                                    `json:"agentDockLayout"`
 	AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    string                                                    `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider                        string                                                    `json:"defaultAgentProvider"`
 	DockIconStyle                               string                                                    `json:"dockIconStyle"`
 	DockPlacement                               string                                                    `json:"dockPlacement"`
+	EnableCursorAgent                           bool                                                      `json:"enableCursorAgent"`
 	FileDefaultOpenersByExtension               desktopFileDefaultOpenersByExtensionPayload               `json:"fileDefaultOpenersByExtension"`
 	Locale                                      string                                                    `json:"locale"`
 	MinimizeAnimation                           string                                                    `json:"minimizeAnimation"`
@@ -52,6 +60,8 @@ type desktopWorkbenchWindowSnappingPayload struct {
 
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload
 
+type desktopAgentComposerDefaultsByAgentTargetPayload map[string]desktopAgentComposerDefaultsPayload
+
 type desktopAgentGUIConversationRailCollapsedByProviderPayload map[string]bool
 
 type desktopFileDefaultOpenersByExtensionPayload map[string]string
@@ -60,4 +70,9 @@ type desktopAgentComposerDefaultsPayload struct {
 	Model            string `json:"model,omitempty"`
 	PermissionModeID string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  string `json:"reasoningEffort,omitempty"`
+	Speed            string `json:"speed,omitempty"`
+}
+
+func (p desktopAgentComposerDefaultsPayload) isZero() bool {
+	return p.Model == "" && p.PermissionModeID == "" && p.ReasoningEffort == "" && p.Speed == ""
 }

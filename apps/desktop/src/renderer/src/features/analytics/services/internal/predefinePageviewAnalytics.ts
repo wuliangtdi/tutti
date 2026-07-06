@@ -1,7 +1,5 @@
-import { PredefinePageviewReporter } from "../../reporters/predefine-pageview/predefinePageviewReporter.ts";
+import { AppPageviewReporter } from "../../reporters/app-pageview/appPageviewReporter.ts";
 import type { IReporterService } from "../reporterService.interface.ts";
-
-const focusedDayStorageKey = "tutti.analytics.predefine_pageview.focused_day";
 
 export interface PredefinePageviewAnalyticsController {
   dispose(): void;
@@ -13,19 +11,12 @@ export interface PredefinePageviewAnalyticsRuntime {
   addFocusListener(listener: () => void): () => void;
 }
 
-export interface PredefinePageviewAnalyticsStorage {
-  getFocusedDay(): string | null;
-  setFocusedDay(dayKey: string): void;
-}
-
 export function startPredefinePageviewAnalytics(input: {
   reporterNow?: () => number;
   reporterService: Pick<IReporterService, "trackEvents">;
   runtime?: PredefinePageviewAnalyticsRuntime;
-  storage?: PredefinePageviewAnalyticsStorage;
 }): PredefinePageviewAnalyticsController {
   const runtime = input.runtime ?? createDocumentPredefinePageviewRuntime();
-  const storage = input.storage ?? createLocalStoragePredefinePageviewStorage();
   const now = input.reporterNow ?? Date.now;
   let disposed = false;
 
@@ -33,7 +24,7 @@ export function startPredefinePageviewAnalytics(input: {
     if (disposed) {
       return;
     }
-    void new PredefinePageviewReporter({
+    void new AppPageviewReporter({
       now,
       reporterService: input.reporterService
     }).report();
@@ -47,11 +38,6 @@ export function startPredefinePageviewAnalytics(input: {
     if (disposed) {
       return;
     }
-    const dayKey = toLocalDayKey(now());
-    if (storage.getFocusedDay() === dayKey) {
-      return;
-    }
-    storage.setFocusedDay(dayKey);
     reportPageview();
   };
 
@@ -72,15 +58,6 @@ export function startPredefinePageviewAnalytics(input: {
   };
 }
 
-function toLocalDayKey(timestamp: number): string {
-  const date = new Date(timestamp);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
-}
-
 function createDocumentPredefinePageviewRuntime(): PredefinePageviewAnalyticsRuntime {
   return {
     addFocusListener(listener) {
@@ -88,25 +65,6 @@ function createDocumentPredefinePageviewRuntime(): PredefinePageviewAnalyticsRun
       return () => {
         window.removeEventListener("focus", listener);
       };
-    }
-  };
-}
-
-function createLocalStoragePredefinePageviewStorage(): PredefinePageviewAnalyticsStorage {
-  return {
-    getFocusedDay() {
-      try {
-        return globalThis.localStorage.getItem(focusedDayStorageKey);
-      } catch {
-        return null;
-      }
-    },
-    setFocusedDay(dayKey) {
-      try {
-        globalThis.localStorage.setItem(focusedDayStorageKey, dayKey);
-      } catch {
-        // Storage is only a dedupe aid; analytics remains best-effort.
-      }
     }
   };
 }

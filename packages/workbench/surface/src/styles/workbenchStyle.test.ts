@@ -173,6 +173,10 @@ test("dock transparent hover padding lets clicks reach windows behind it", () =>
   assert.match(css, /\.desktop-dock__slot\s*{[^}]*pointer-events:\s*auto;/s);
   assert.match(
     css,
+    /\.desktop-dock\[data-dock-pointer-active="true"\]\s+\.desktop-dock__btn\[data-dock-hover-panel-trigger="true"\],[\s\S]*?pointer-events:\s*auto;/s
+  );
+  assert.match(
+    css,
     /\.desktop-dock__hover-panel\s*{[^}]*pointer-events:\s*auto;/s
   );
 });
@@ -334,6 +338,10 @@ test("dock overflow keeps scroll controls viewport-bound", () => {
   assert.match(
     css,
     /\.desktop-dock__label-tooltip\s*{[^}]*width:\s*max-content;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s
+  );
+  assert.match(
+    css,
+    /\.desktop-dock__label-tooltip\s*{[^}]*max-width:\s*min\(180px, calc\(100vw - 32px\)\);[^}]*padding:\s*4px 7px;[^}]*border-radius:\s*6px;[^}]*font-size:\s*11px;[^}]*line-height:\s*14px;/s
   );
   assert.match(
     css,

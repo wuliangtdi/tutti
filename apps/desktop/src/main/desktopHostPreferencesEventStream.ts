@@ -47,6 +47,8 @@ export function connectDesktopHostPreferencesEventStream(
           nextPreferences.agentComposerDefaultsByProvider,
         agentGuiConversationRailCollapsedByProvider:
           nextPreferences.agentGuiConversationRailCollapsedByProvider,
+        agentConversationDetailMode:
+          nextPreferences.agentConversationDetailMode,
         appCatalogChannel: nextPreferences.appCatalogChannel,
         browserUseConnectionMode: nextPreferences.browserUseConnectionMode,
         defaultAgentProvider: nextPreferences.defaultAgentProvider,

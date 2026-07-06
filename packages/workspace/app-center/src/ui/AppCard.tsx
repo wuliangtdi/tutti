@@ -1,5 +1,5 @@
 import type { KeyboardEvent, ReactElement } from "react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   ChatIcon,
@@ -18,6 +18,10 @@ import {
   PopoverContent,
   PopoverTrigger,
   RefreshIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   UninstallIcon,
   UploadIcon,
   cn
@@ -32,9 +36,11 @@ import type {
   WorkspaceAppLocalRepairAgentRequest,
   WorkspaceAppLocalRepairRequest
 } from "../contracts/host.ts";
+import { isCommunityRecommendedApp } from "../core/appCenterAppOrdering.ts";
 import type { AppCenterI18nRuntime } from "../i18n/appCenterI18n.ts";
 
 export interface AppCenterFactoryProviderOption {
+  readonly agentTargetId: string;
   readonly disabled?: boolean;
   readonly disabledReason?: string;
   readonly iconUrl?: string | null;
@@ -70,10 +76,10 @@ export interface AppCenterFactoryProviderConfiguration {
 export interface AppCenterHostActions {
   readonly cancelFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly createFactoryJob?: (input: {
+    agentTargetId: string;
     displayName: string;
     model?: string;
     permissionModeId?: string;
-    provider?: string;
     prompt: string;
     reasoningEffort?: string;
   }) => Promise<void> | void;
@@ -97,14 +103,17 @@ export interface AppCenterHostActions {
   ) => Promise<void> | void;
   readonly openAppFolder?: (appId: string) => Promise<void> | void;
   readonly openAppPackageFolder?: (appId: string) => Promise<void> | void;
+  readonly openExternalUrl?: (url: string) => Promise<void> | void;
   readonly openFactoryJobAgentSession?: (
     agentSessionId: string,
-    provider?: string | null
+    provider?: string | null,
+    agentTargetId?: string | null
   ) => Promise<void> | void;
   readonly modifyAppWithAgent?: (
     jobId: string,
     agentSessionId: string,
-    provider?: string | null
+    provider?: string | null,
+    agentTargetId?: string | null
   ) => Promise<void> | void;
   readonly publishFactoryJob?: (jobId: string) => Promise<void> | void;
   readonly repairLocalApp?: (
@@ -176,11 +185,13 @@ export const AppCard = memo(function AppCard({
     app.canOpenFactorySession &&
     !!app.factoryAgentSessionId &&
     !!app.factoryJobId;
+  const communityDeveloper = resolveCommunityAppDeveloper(app);
   const actionContext = useMemo(
     () => createWorkspaceAppActionContext(app),
     [app]
   );
   const hasMoreActions =
+    communityDeveloper != null ||
     canPublishFactoryUpdate ||
     canOpenFactorySession ||
     app.canExport ||
@@ -258,6 +269,7 @@ export const AppCard = memo(function AppCard({
                 app={app}
                 canOpenFactorySession={canOpenFactorySession}
                 canPublishFactoryUpdate={canPublishFactoryUpdate}
+                communityDeveloper={communityDeveloper}
                 copy={copy}
               />
             ) : null}
@@ -301,9 +313,13 @@ export const AppCard = memo(function AppCard({
       <div className="mt-5 flex min-h-0 min-w-0 flex-1 flex-col p-1">
         <div className="min-w-0">
           <div className="flex min-w-0 items-baseline gap-2">
-            <h3 className="block min-w-0 truncate text-[15px] font-semibold leading-6 tracking-[0] text-[var(--text-primary)]">
+            <AppCardTextTooltip
+              as="h3"
+              className="block min-w-0 truncate text-[15px] font-semibold leading-6 tracking-[0] text-[var(--text-primary)]"
+              content={app.name}
+            >
               {app.name}
-            </h3>
+            </AppCardTextTooltip>
             {app.version ? (
               <span className="min-w-0 flex-none text-[11px] leading-4 text-[var(--text-tertiary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
                 {copy.t("labels.version", { version: app.version })}
@@ -316,9 +332,13 @@ export const AppCard = memo(function AppCard({
             ) : null}
           </div>
           {app.description ? (
-            <p className="mt-2 line-clamp-3 text-[13px] font-normal leading-[1.3] text-[var(--text-secondary)]">
+            <AppCardTextTooltip
+              as="p"
+              className="mt-2 line-clamp-3 text-[13px] font-normal leading-[1.3] text-[var(--text-secondary)]"
+              content={app.description}
+            >
               {app.description}
-            </p>
+            </AppCardTextTooltip>
           ) : null}
         </div>
 
@@ -335,6 +355,7 @@ export const AppCard = memo(function AppCard({
 
         {showDeveloperSources ? (
           <AppDeveloperSourceRow
+            actions={actions}
             app={app}
             copy={copy}
             officialDeveloperIconUrl={officialDeveloperIconUrl}
@@ -344,6 +365,101 @@ export const AppCard = memo(function AppCard({
     </article>
   );
 });
+
+function AppCardTextTooltip({
+  as,
+  children,
+  className,
+  content
+}: {
+  readonly as: "h3" | "p";
+  readonly children: string;
+  readonly className: string;
+  readonly content: string;
+}): ReactElement {
+  const normalizedContent = content.trim();
+  const textRef = useRef<HTMLHeadingElement | HTMLParagraphElement | null>(
+    null
+  );
+  const [overflowing, setOverflowing] = useState(false);
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element || !normalizedContent) {
+      setOverflowing(false);
+      return;
+    }
+
+    let frame = 0;
+    const measure = (): void => {
+      frame = 0;
+      setOverflowing(
+        element.scrollWidth - element.clientWidth > 1 ||
+          element.scrollHeight - element.clientHeight > 1
+      );
+    };
+    const queueMeasure = (): void => {
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+      }
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    queueMeasure();
+    window.addEventListener("resize", queueMeasure);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", queueMeasure);
+        if (frame !== 0) {
+          window.cancelAnimationFrame(frame);
+        }
+      };
+    }
+
+    const observer = new ResizeObserver(queueMeasure);
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", queueMeasure);
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [normalizedContent]);
+
+  const textElement =
+    as === "h3" ? (
+      <h3 ref={textRef} className={className}>
+        {children}
+      </h3>
+    ) : (
+      <p ref={textRef} className={className}>
+        {children}
+      </p>
+    );
+
+  if (!normalizedContent) {
+    return textElement;
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{textElement}</TooltipTrigger>
+        {overflowing ? (
+          <TooltipContent
+            className="max-w-[min(420px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+            collisionPadding={12}
+          >
+            {normalizedContent}
+          </TooltipContent>
+        ) : null}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function createWorkspaceAppActionContext(
   app: WorkspaceAppCardViewModel
@@ -356,10 +472,12 @@ function createWorkspaceAppActionContext(
 }
 
 function AppDeveloperSourceRow({
+  actions,
   app,
   copy,
   officialDeveloperIconUrl
 }: {
+  readonly actions: AppCenterHostActions;
   readonly app: WorkspaceAppCardViewModel;
   readonly copy: AppCenterI18nRuntime;
   readonly officialDeveloperIconUrl?: string | null;
@@ -492,7 +610,7 @@ function AppDeveloperSourceRow({
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                openExternalURL(author.url);
+                openExternalURL(actions, author.url);
               }}
             >
               <AuthorAvatar
@@ -512,7 +630,7 @@ function AppDeveloperSourceRow({
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                openExternalURL(repository.url);
+                openExternalURL(actions, repository.url);
               }}
             >
               <GitHubBrandIcon className="size-4" />
@@ -598,9 +716,16 @@ function displayRepositoryURL(url: string): string {
   return url.replace(/^https?:\/\//u, "");
 }
 
-function openExternalURL(url: string | null | undefined): void {
+function openExternalURL(
+  actions: AppCenterHostActions,
+  url: string | null | undefined
+): void {
   const target = url?.trim();
   if (!target) {
+    return;
+  }
+  if (actions.openExternalUrl) {
+    void actions.openExternalUrl(target);
     return;
   }
   window.open(target, "_blank", "noopener,noreferrer");
@@ -611,15 +736,38 @@ function AppCardMoreActions({
   app,
   canOpenFactorySession,
   canPublishFactoryUpdate,
+  communityDeveloper,
   copy
 }: {
   readonly actions: AppCenterHostActions;
   readonly app: WorkspaceAppCardViewModel;
   readonly canOpenFactorySession: boolean;
   readonly canPublishFactoryUpdate: boolean;
+  readonly communityDeveloper: WorkspaceAppAuthorViewModel | null;
   readonly copy: AppCenterI18nRuntime;
 }): ReactElement {
   const menuItems: AppCenterActionMenuItem[] = [];
+
+  if (communityDeveloper) {
+    menuItems.push({
+      content: (
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="shrink-0">{copy.t("sources.developer")}</span>
+          <AuthorAvatar author={communityDeveloper} />
+          <span className="min-w-0 flex-1 truncate">
+            {communityDeveloper.name}
+          </span>
+        </span>
+      ),
+      key: "developer",
+      label: copy.t("sources.developerMenuLabel", {
+        name: communityDeveloper.name
+      }),
+      onSelect: () => {
+        openExternalURL(actions, communityDeveloper.url);
+      }
+    });
+  }
 
   if (canPublishFactoryUpdate) {
     menuItems.push({
@@ -642,14 +790,16 @@ function AppCardMoreActions({
         if (app.factoryEditAction === "open_session") {
           void actions.openFactoryJobAgentSession?.(
             app.factoryAgentSessionId ?? "",
-            app.factoryProvider
+            app.factoryProvider,
+            app.factoryAgentTargetId
           );
           return;
         }
         void actions.modifyAppWithAgent?.(
           app.factoryJobId ?? "",
           app.factoryAgentSessionId ?? "",
-          app.factoryProvider
+          app.factoryProvider,
+          app.factoryAgentTargetId
         );
       }
     });
@@ -748,7 +898,8 @@ function AppCardMoreActions({
 
 interface AppCenterActionMenuItem {
   readonly attention?: boolean;
-  readonly icon: ReactElement;
+  readonly content?: ReactElement;
+  readonly icon?: ReactElement;
   readonly key: string;
   readonly label: string;
   readonly onSelect: () => void;
@@ -816,8 +967,12 @@ function AppCenterActionMenu({
                 item.onSelect();
               }}
             >
-              {item.icon}
-              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              {item.content ?? (
+                <>
+                  {item.icon}
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </>
+              )}
               {item.attention ? (
                 <i
                   aria-hidden="true"
@@ -829,6 +984,19 @@ function AppCenterActionMenu({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function resolveCommunityAppDeveloper(
+  app: WorkspaceAppCardViewModel
+): WorkspaceAppAuthorViewModel | null {
+  if (!isCommunityRecommendedApp(app.id)) {
+    return null;
+  }
+  return (
+    app.authors?.find(
+      (author) => author.name.trim() && Boolean(author.url?.trim())
+    ) ?? null
   );
 }
 

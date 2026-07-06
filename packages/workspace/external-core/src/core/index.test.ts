@@ -62,6 +62,7 @@ test("keeps the default provider set explicit", () => {
     "file",
     "workspace-issue",
     "workspace-app",
+    "agent-target",
     "agent-session",
     "agent-generated-file"
   ]);
@@ -365,6 +366,7 @@ test("keeps the workspace agent provider set explicit", () => {
   assert.deepEqual(tuttiExternalWorkspaceAgentProviders, [
     "claude-code",
     "codex",
+    "cursor",
     "nexight",
     "hermes",
     "gemini",

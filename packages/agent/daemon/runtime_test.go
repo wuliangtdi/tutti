@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
-	activityshared "github.com/tutti-os/tutti/packages/agentactivity/daemon/activity/events"
-	agentruntime "github.com/tutti-os/tutti/packages/agentactivity/daemon/runtime"
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
 func TestNewRuntimeCreatesDefaultController(t *testing.T) {
@@ -19,8 +20,12 @@ func TestNewRuntimeCreatesDefaultController(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRuntime() error = %v", err)
 	}
+	t.Cleanup(runtime.Close)
 	if runtime.Controller() == nil {
 		t.Fatal("Controller() = nil, want controller")
+	}
+	if runtime.done == nil {
+		t.Fatal("default runtime did not start live session reaper")
 	}
 }
 
@@ -51,6 +56,7 @@ func TestNewRuntimeUsesCustomAdapters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRuntime() error = %v", err)
 	}
+	t.Cleanup(runtime.Close)
 	started, err := runtime.Controller().Start(context.Background(), agentruntime.StartInput{
 		RoomID:         "workspace-1",
 		AgentSessionID: "agent-session-1",
@@ -61,6 +67,47 @@ func TestNewRuntimeUsesCustomAdapters(t *testing.T) {
 	}
 	if started.Session.Provider != "test-agent" {
 		t.Fatalf("provider = %q, want test-agent", started.Session.Provider)
+	}
+}
+
+func TestNewRuntimeAppliesProviderLaunchPreparerToCustomAdapters(t *testing.T) {
+	t.Parallel()
+
+	adapter := &providerLaunchPreparerTestAdapter{
+		testAdapter: testAdapter{provider: "test-agent"},
+	}
+	_, err := NewRuntime(Config{
+		Adapters: []agentruntime.Adapter{adapter},
+		ProviderLaunchPreparer: func(context.Context, agentruntime.ProviderLaunchPrepareInput) (agentruntime.ProviderLaunchPrepareResult, error) {
+			return agentruntime.ProviderLaunchPrepareResult{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	if adapter.preparer == nil {
+		t.Fatal("custom adapter did not receive ProviderLaunchPreparer")
+	}
+}
+
+func TestNewRuntimeCanDisableLiveSessionReaper(t *testing.T) {
+	t.Parallel()
+
+	enabled := false
+	runtime, err := NewRuntime(Config{
+		Adapters: []agentruntime.Adapter{testAdapter{provider: "test-agent"}},
+		LiveSessionReaper: LiveSessionReaperConfig{
+			Enabled:       &enabled,
+			IdleAfter:     time.Minute,
+			SweepInterval: time.Minute,
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	t.Cleanup(runtime.Close)
+	if runtime.done != nil {
+		t.Fatal("disabled live session reaper started a background loop")
 	}
 }
 
@@ -80,23 +127,32 @@ type testAdapter struct {
 	provider string
 }
 
+type providerLaunchPreparerTestAdapter struct {
+	testAdapter
+	preparer agentruntime.ProviderLaunchPreparer
+}
+
+func (a *providerLaunchPreparerTestAdapter) SetProviderLaunchPreparer(preparer agentruntime.ProviderLaunchPreparer) {
+	a.preparer = preparer
+}
+
 func (a testAdapter) Provider() string {
 	return a.provider
 }
 
-func (a testAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
+func (testAdapter) Start(context.Context, agentruntime.Session) ([]activityshared.Event, error) {
 	return nil, nil
 }
 
-func (a testAdapter) Resume(context.Context, agentruntime.Session) error {
+func (testAdapter) Resume(context.Context, agentruntime.Session) error {
 	return nil
 }
 
-func (a testAdapter) Close(context.Context, agentruntime.Session) error {
+func (testAdapter) Close(context.Context, agentruntime.Session) error {
 	return nil
 }
 
-func (a testAdapter) Exec(
+func (testAdapter) Exec(
 	context.Context,
 	agentruntime.Session,
 	[]agentruntime.PromptContentBlock,
@@ -108,7 +164,7 @@ func (a testAdapter) Exec(
 	return nil, nil
 }
 
-func (a testAdapter) Cancel(
+func (testAdapter) Cancel(
 	context.Context,
 	agentruntime.Session,
 	string,

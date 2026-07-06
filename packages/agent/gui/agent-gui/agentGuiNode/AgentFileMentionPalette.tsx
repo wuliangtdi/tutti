@@ -403,6 +403,9 @@ function resolveMentionPaletteEmptyLabel(input: {
   if (input.filter === "app") {
     return agentMentionEmptyGroupLabel("apps", input.query);
   }
+  if (input.filter === "agent") {
+    return agentMentionEmptyGroupLabel("agents", input.query);
+  }
   if (input.filter === "issue") {
     return agentMentionEmptyGroupLabel("issues", input.query);
   }
@@ -491,6 +494,15 @@ function agentMentionItemToRowItem(
     };
   }
 
+  if (item.kind === "agent-target") {
+    return {
+      kind: "app",
+      name: item.name,
+      description: item.description ?? null,
+      iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId)
+    };
+  }
+
   if (item.kind === "workspace-reference") {
     return {
       kind: "app",
@@ -504,6 +516,17 @@ function agentMentionItemToRowItem(
     return {
       kind: "app-factory",
       name: item.name
+    };
+  }
+
+  if (item.kind === "custom") {
+    // 自定义 mention 只经 draftPrompt prefill 进入 composer,不出现在 @ 面板候选;
+    // 兜底按通用条目展示(label 即注册方给的 name)。
+    return {
+      kind: "issue",
+      title: item.name,
+      creatorName: null,
+      statusTag: null
     };
   }
 
@@ -602,6 +625,8 @@ function mentionStatusTone(
 
 function browseHintForFilter(filter: AgentMentionFilterId): string {
   switch (filter) {
+    case "agent":
+      return translate("agentHost.agentGui.contextPickerBrowseAgentHint");
     case "app":
       return translate("agentHost.agentGui.contextPickerBrowseAppHint");
     case "file":
