@@ -1509,15 +1509,8 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 }
 
 func statePatchLastError(event activityshared.Event) string {
-	switch event.Type {
-	case activityshared.EventSessionUpdated:
-		if strings.TrimSpace(event.Payload.EffectiveStatus) == string(activityshared.SessionStatusPaused) {
-			return ""
-		}
-	case activityshared.EventTurnCompleted:
-		if strings.TrimSpace(event.Payload.TurnOutcome) == string(activityshared.TurnOutcomeInterrupted) {
-			return ""
-		}
+	if event.Type != activityshared.EventSessionFailed && event.Type != activityshared.EventTurnFailed {
+		return ""
 	}
 	return activityshared.BestEffortErrorMessage(event.Payload)
 }

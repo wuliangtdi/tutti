@@ -1,4 +1,3 @@
-//nolint:unused // Retain migrated helpers until the next agent-daemon decomposition pass.
 package agentsessionstore
 
 import (
@@ -198,6 +197,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		Title:              strings.TrimSpace(patch.Title),
 		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
 		CurrentPhase:       currentPhase,
+		LastError:          strings.TrimSpace(patch.LastError),
 		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
 	}
 	if patch.Turn != nil {
