@@ -244,7 +244,7 @@ describe("AgentGUINodeView layout persistence", () => {
     );
   });
 
-  it("renders an injected conversation rail footer with neutral context", () => {
+  it("renders an injected provider rail footer with neutral context", () => {
     const activeConversation = createConversationSummary("session-1", {
       title: "Active conversation"
     });
@@ -261,7 +261,7 @@ describe("AgentGUINodeView layout persistence", () => {
       )
     );
 
-    renderAgentGUINodeView({
+    const { container } = renderAgentGUINodeView({
       renderSidebarFooter,
       viewModel: createViewModel({
         currentUserId: "user-1",
@@ -271,9 +271,19 @@ describe("AgentGUINodeView layout persistence", () => {
       })
     });
 
+    const footer = screen.getByTestId("agent-gui-sidebar-footer-slot");
+    const providerTileScrollArea = screen.getByRole("tablist", {
+      name: "Switch provider"
+    });
+    expect(footer).toHaveTextContent("Footer user-1 session-1");
     expect(
-      screen.getByTestId("agent-gui-sidebar-footer-slot")
-    ).toHaveTextContent("Footer user-1 session-1");
+      container.querySelector(".agent-gui-node__provider-rail-panel")
+    ).toContainElement(footer);
+    expect(providerTileScrollArea).not.toContainElement(footer);
+    expect(providerTileScrollArea.nextElementSibling).toBe(footer);
+    expect(
+      container.querySelector(".agent-gui-node__rail")
+    ).not.toContainElement(footer);
     expect(renderSidebarFooter).toHaveBeenCalledWith({
       currentUserId: "user-1",
       activeConversation
