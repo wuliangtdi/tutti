@@ -9,7 +9,7 @@ actions. This note describes the intended implementation for:
 
 - a Codex-like managed npm installer for `@tutti-os/tutti-agent`;
 - proactive installation when the app opens;
-- a selected-provider empty state that lets signed-out users log in quickly.
+- selected-provider account login CTAs that let signed-out users log in quickly.
 
 This document extends the broader [Tutti Agent Integration Plan](./tutti-agent-integration-plan.md).
 
@@ -244,7 +244,7 @@ Do not reuse a user-clicked install event for the proactive path. Product needs
 to know whether fast-start readiness is working without hiding explicit user
 actions.
 
-## Empty State Login
+## Account Login CTAs
 
 ### Problem
 
@@ -253,9 +253,15 @@ desktop user currently has no direct account login affordance in the empty
 state. The settings page has the correct account login button, but the AgentGUI
 empty state is the place where the user discovers the blocked provider.
 
+The same rule applies to visible auth failure cards inside an existing
+conversation. A `tutti-agent` request can fail with a 401 from the Tutti LLM API
+when the desktop account session or derived `tutti_llm` token is missing. The
+inline `登录` action on that error card must start the desktop Tutti account
+login flow, not the generic provider terminal-login action.
+
 ### Auth Layers
 
-There are two auth layers and the empty state must target the correct one:
+There are two auth layers and Tutti Agent CTAs must target the correct one:
 
 1. Desktop Tutti account login:
    - implemented by `IAccountService.startLogin()`;
@@ -267,9 +273,10 @@ There are two auth layers and the empty state must target the correct one:
    - bootstrapped by the sidecar using `tutti-agent login --with-tutti-llm-tokens`
      after the desktop account has a valid session.
 
-The empty state login button should use layer 1. It should not run the provider
-`login` action directly, because the user needs the desktop Tutti account
-session before the sidecar can issue LLM tokens for `tutti-agent`.
+The empty state login button and visible auth-failure login button should use
+layer 1. They should not run the provider `login` action directly, because the
+user needs the desktop Tutti account session before the sidecar can issue LLM
+tokens for `tutti-agent`.
 
 ### UI Behavior
 
@@ -284,6 +291,11 @@ When the selected provider is `tutti-agent`, no session is selected, and
   reopen the active login URL by calling `accountService.startLogin()` again;
 - after login completes, refresh provider status so the runtime can move toward
   `ready` or provider-level `auth_required`.
+
+When a conversation-visible auth failure belongs to `tutti-agent`, route its
+`登录` action through `accountService.startLogin()` as well. Other providers
+should continue to use the provider status service's `login` action, because
+their login flow is provider-specific.
 
 The implementation should reuse `IAccountService` through `useAccountService()`.
 Do not duplicate `startAccountLogin`, `openExternal`, or polling logic inside
@@ -315,7 +327,7 @@ On login completion:
    installer and tests.
 2. Add proactive desktop bootstrap for `tutti-agent` install with backoff and
    analytics.
-3. Add the selected-provider signed-out empty state login CTA using
+3. Add the selected-provider signed-out login CTAs using
    `IAccountService.startLogin()`.
 4. Add end-to-end manual QA:
    - fresh machine, no `tutti-agent` binary;

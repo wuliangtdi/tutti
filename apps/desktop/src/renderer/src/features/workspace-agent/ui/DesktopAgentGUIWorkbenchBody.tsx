@@ -82,6 +82,7 @@ import {
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
+import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -269,6 +270,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   const { i18n, locale } = useTranslation();
   const { service: desktopPreferencesService, state: desktopPreferencesState } =
     useDesktopPreferencesService();
+  const { service: accountService } = useAccountService();
   const [computerUseStatus, setComputerUseStatus] =
     useState<DesktopComputerUseStatus | null>(null);
   const appCenterState = useSnapshot(appCenterService.store);
@@ -454,12 +456,16 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       if (!isDesktopManagedAgentProvider(loginProvider)) {
         return;
       }
+      if (loginProvider === "tutti-agent") {
+        void accountService.startLogin();
+        return;
+      }
       void agentProviderStatusService?.runAction(loginProvider, "login", {
         workbenchHost: context.host,
         workspaceId
       });
     },
-    [agentProviderStatusService, context.host, workspaceId]
+    [accountService, agentProviderStatusService, context.host, workspaceId]
   );
   const handleProviderReadinessGateAction = useCallback(
     (

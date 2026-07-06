@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -307,7 +308,7 @@ func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMT
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Cookie", cookie)
-	response, err := http.DefaultClient.Do(request)
+	response, err := httpx.Default().Do(request)
 	if err != nil {
 		return tuttiAgentLLMTokenBundle{}, err
 	}
