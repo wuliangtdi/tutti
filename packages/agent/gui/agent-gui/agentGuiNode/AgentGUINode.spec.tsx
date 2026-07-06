@@ -7124,6 +7124,7 @@ function createViewModel(
     selectedProviderTarget: createLocalAgentGUIProviderTarget("codex"),
     providerTargets: [createLocalAgentGUIProviderTarget("codex")],
     providerTargetsLoading: false,
+    comingSoonProviders: [],
     conversations: [],
     userProjects: [],
     activeConversation: null,
