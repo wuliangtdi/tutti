@@ -238,6 +238,11 @@ current provider target list second, and from legacy node/session `provider`
 only when no target can be resolved. A non-ready provider replaces only the
 empty-home composer with a friendly gate; active/history conversations and
 existing-session composer behavior remain outside this gate.
+When the desktop status list returns an ambiguous startup result for a provider
+whose runtime command is more authoritative than its lightweight status check
+(for example Cursor), the desktop status service may run a provider-specific
+runtime probe and fold a ready result back into the provider status snapshot
+before projecting the empty-home readiness gate.
 Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
