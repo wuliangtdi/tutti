@@ -275,6 +275,16 @@ panel-scoped AgentGUI container and then activate the durable session. The
 explicit new-window action must pass `openInNewWindow` so the descriptor creates
 a fresh panel-scoped AgentGUI instance while still activating the same durable
 session.
+The detached Agent button in desktop chrome is a different window boundary: it
+asks main to create an Electron `BrowserWindow` with the `view=agent` renderer
+intent. That window is Agent-only, but it is not a separate app bundle or a
+separate data owner. It reuses the workspace renderer services, preload host
+capabilities, `tuttid` client, `WorkspaceAgentActivityService`, account state,
+provider status, and project/file services for the same `workspaceId`.
+Standalone Agent window state may keep a minimal UI-local workbench node
+context, but durable conversations, session activation, login, provider
+readiness, and file/project data must still flow through the shared desktop
+AgentGUI host input and activity runtime.
 Opening an existing session is session-authoritative. If the launch payload has
 no `agentTargetId` or provider target id, workbench node state must clear any
 previous target constraint instead of inheriting it from the reused node. When a

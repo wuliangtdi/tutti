@@ -142,6 +142,7 @@ export const en = {
       expandConversationRail: "Expand session list",
       fallbackAgentLabel: "Agent",
       newConversation: "New session",
+      openDetachedWindow: "Open in detached window",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable"

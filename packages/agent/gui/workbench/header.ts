@@ -9,6 +9,7 @@ import type {
   WorkbenchDisplayMode,
   WorkbenchHostNodeHeaderWindowActions
 } from "@tutti-os/workbench-surface";
+import { ExternalLink } from "lucide-react";
 import {
   Button,
   PanelIcon,
@@ -27,6 +28,9 @@ const headerChromeIconButtonClassName =
 const conversationRailToggleButtonClassName =
   "agent-gui-workbench-header__icon-button agent-gui-workbench-header__rail-toggle";
 
+const detachedWindowButtonClassName =
+  "agent-gui-workbench-header__icon-button agent-gui-workbench-header__detached-window";
+
 const headerChromeIconClassName = "agent-gui-workbench-header__icon";
 
 export interface AgentGuiWorkbenchHeaderCopy {
@@ -37,6 +41,7 @@ export interface AgentGuiWorkbenchHeaderCopy {
   maximize?: string;
   minimize?: string;
   newConversation: string;
+  openDetachedWindow?: string;
   restore?: string;
 }
 
@@ -53,7 +58,9 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationTitle?: string | null;
   nodeId: string;
   onCreateConversation?: () => void;
+  onOpenDetachedWindow?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
+  showWindowControls?: boolean;
   title?: string;
   windowActions?: Pick<
     WorkbenchHostNodeHeaderWindowActions,
@@ -75,7 +82,9 @@ export function AgentGuiWorkbenchHeader({
   conversationTitle,
   nodeId,
   onCreateConversation,
+  onOpenDetachedWindow,
   onToggleConversationRail,
+  showWindowControls = true,
   title: _title,
   windowActions,
   ...headerProps
@@ -136,33 +145,35 @@ export function AgentGuiWorkbenchHeader({
         className: "agent-gui-workbench-header__primary",
         "data-agent-gui-workbench-header-primary": "true"
       },
-      createElement(
-        "div",
-        {
-          className: "agent-gui-workbench-header__traffic-lights",
-          onDoubleClick: (event) => event.stopPropagation(),
-          onPointerDown: (event) => event.stopPropagation()
-        },
-        createTrafficLightButton({
-          label: copy.close ?? "Close",
-          onClick: safeWindowActions.close,
-          testId: "agent-gui-window-close",
-          tone: "close"
-        }),
-        createTrafficLightButton({
-          label: copy.minimize ?? "Minimize",
-          onClick: safeWindowActions.minimize,
-          testId: "agent-gui-window-minimize",
-          tone: "minimize"
-        }),
-        createTrafficLightButton({
-          label: displayModeLabel,
-          onClick: safeWindowActions.toggleDisplayMode,
-          pressed: safeDisplayMode === "fullscreen",
-          testId: "agent-gui-window-toggle-display-mode",
-          tone: "maximize"
-        })
-      ),
+      showWindowControls
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__traffic-lights",
+              onDoubleClick: (event) => event.stopPropagation(),
+              onPointerDown: (event) => event.stopPropagation()
+            },
+            createTrafficLightButton({
+              label: copy.close ?? "Close",
+              onClick: safeWindowActions.close,
+              testId: "agent-gui-window-close",
+              tone: "close"
+            }),
+            createTrafficLightButton({
+              label: copy.minimize ?? "Minimize",
+              onClick: safeWindowActions.minimize,
+              testId: "agent-gui-window-minimize",
+              tone: "minimize"
+            }),
+            createTrafficLightButton({
+              label: displayModeLabel,
+              onClick: safeWindowActions.toggleDisplayMode,
+              pressed: safeDisplayMode === "fullscreen",
+              testId: "agent-gui-window-toggle-display-mode",
+              tone: "maximize"
+            })
+          )
+        : null,
       !isConversationRailCollapsed
         ? createElement(
             "div",
@@ -177,6 +188,12 @@ export function AgentGuiWorkbenchHeader({
               appTitle
             )
           )
+        : null,
+      onOpenDetachedWindow
+        ? createDetachedWindowButton({
+            label: copy.openDetachedWindow ?? "Open in detached window",
+            onOpenDetachedWindow
+          })
         : null,
       createElement(
         Button as never,
@@ -269,6 +286,47 @@ export function AgentGuiWorkbenchHeader({
   );
 }
 
+function createDetachedWindowButton({
+  label,
+  onOpenDetachedWindow
+}: {
+  label: string;
+  onOpenDetachedWindow: () => void;
+}): ReactNode {
+  const button = createElement(
+    Button as never,
+    {
+      "aria-label": label,
+      className: detachedWindowButtonClassName,
+      "data-testid": "agent-gui-open-detached-window",
+      size: "icon-sm",
+      type: "button",
+      variant: "ghost",
+      onClick: (event) => {
+        event.stopPropagation();
+        onOpenDetachedWindow();
+      },
+      onDoubleClick: (event) => event.stopPropagation(),
+      onPointerDown: (event) => event.stopPropagation()
+    },
+    createElement(ExternalLink, {
+      "aria-hidden": true,
+      className: headerChromeIconClassName
+    })
+  );
+
+  return createElement(TooltipProvider, {
+    children: createElement(
+      Tooltip,
+      null,
+      createElement(TooltipTrigger, { asChild: true }, button),
+      createElement(TooltipContent, { side: "bottom" }, label)
+    ),
+    delayDuration: 250,
+    skipDelayDuration: 0
+  });
+}
+
 function createSessionHeaderIconSlot({
   src,
   fallbackSrc,
@@ -349,7 +407,7 @@ function createTrafficLightButton(input: {
         ? "unfullscreen"
         : "fullscreen"
       : input.tone;
-  const button = createElement(
+  return createElement(
     "button",
     {
       "aria-label": input.label,
@@ -372,17 +430,6 @@ function createTrafficLightButton(input: {
       iconName
     })
   );
-
-  return createElement(TooltipProvider, {
-    children: createElement(
-      Tooltip,
-      null,
-      createElement(TooltipTrigger, { asChild: true }, button),
-      createElement(TooltipContent, { side: "bottom" }, input.label)
-    ),
-    delayDuration: 250,
-    skipDelayDuration: 0
-  });
 }
 
 function TrafficLightIcon({

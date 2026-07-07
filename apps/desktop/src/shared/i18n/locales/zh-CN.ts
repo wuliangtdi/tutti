@@ -140,6 +140,7 @@ export const zhCN = {
       expandConversationRail: "展开会话列表",
       fallbackAgentLabel: "Agent",
       newConversation: "新建会话",
+      openDetachedWindow: "在独立窗口打开",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用"
     },

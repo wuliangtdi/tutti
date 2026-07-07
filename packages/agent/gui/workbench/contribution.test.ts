@@ -1339,7 +1339,9 @@ describe("agent GUI workbench contribution copy", () => {
   });
 
   it("renders the expanded workbench header as a rail titlebar plus detail title", () => {
+    const openDetachedWindow = vi.fn();
     const contribution = createTestAgentGuiWorkbenchContribution({
+      onOpenDetachedWindow: openDetachedWindow,
       renderBody: () => null,
       resolveDockPopupIdentity: (state) =>
         state?.lastActiveAgentSessionId === "session-1"
@@ -1420,6 +1422,12 @@ describe("agent GUI workbench contribution copy", () => {
     expect(
       screen.getByTestId("agent-gui-toggle-conversation-rail")
     ).toHaveClass("agent-gui-workbench-header__rail-toggle");
+    const detachedWindowButton = screen.getByRole("button", {
+      name: agentGuiWorkbenchDefaultCopy.openDetachedWindow
+    });
+    expect(detachedWindowButton).toHaveClass(
+      "agent-gui-workbench-header__detached-window"
+    );
     expect(screen.queryByTestId("agent-gui-window-session-icon")).toBeNull();
     expect(
       screen.getByTestId("agent-gui-window-detail-title")
@@ -1435,6 +1443,14 @@ describe("agent GUI workbench contribution copy", () => {
         name: agentGuiWorkbenchDefaultCopy.newConversation
       })
     ).not.toBeInTheDocument();
+
+    fireEvent.click(detachedWindowButton);
+    expect(openDetachedWindow).toHaveBeenCalledWith({
+      agentSessionId: "session-1",
+      agentTargetId: null,
+      provider: "codex",
+      workspaceId: "workspace-1"
+    });
   });
 
   it("aligns the expanded unified header controls with the provider and conversation rails", () => {
@@ -1500,6 +1516,12 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-workbench-header\[data-agent-gui-workbench-header-collapsed="true"\]::after\s*{[^}]*left:\s*0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__detached-window\s*{\s*margin-left:\s*auto;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{\s*margin-left:\s*0;/s
     );
   });
 });

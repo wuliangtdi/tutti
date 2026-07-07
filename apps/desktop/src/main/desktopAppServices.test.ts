@@ -115,6 +115,7 @@ function createHostServices(): DesktopHostServices {
     },
     workspaceLaunch: {
       async openStartupWindow() {},
+      async showAgentWindow() {},
       async showWorkspace() {}
     }
   };

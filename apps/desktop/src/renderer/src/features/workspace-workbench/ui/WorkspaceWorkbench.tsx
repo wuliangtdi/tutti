@@ -97,6 +97,10 @@ import {
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import { WorkspaceLaunchpadOverlay } from "./WorkspaceLaunchpadOverlay.tsx";
+import {
+  StandaloneAgentWindow,
+  type StandaloneAgentWindowProps
+} from "./StandaloneAgentWindow.tsx";
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime";
 import { useWorkspaceOnboardingAutoOpen } from "./useWorkspaceOnboardingAutoOpen.ts";
 import { resolveWorkspaceWorkbenchLayoutConstraints } from "./workspaceWorkbenchLayoutConstraints.ts";
@@ -111,6 +115,7 @@ const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
+  agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
   routeView: string;
@@ -118,6 +123,7 @@ interface WorkspaceWorkbenchProps {
   workspaceID: string | null;
 }
 export function WorkspaceWorkbench({
+  agentWindowInput,
   enableWindowCloseGuard,
   headerSlot,
   routeView,
@@ -149,6 +155,15 @@ export function WorkspaceWorkbench({
 
   if (state.status === "loading" || !state.workspace) {
     return <main className="h-screen min-h-0 bg-background" />;
+  }
+
+  if (routeView === "agent" && agentWindowInput) {
+    return (
+      <StandaloneAgentWindow
+        {...agentWindowInput}
+        workspace={state.workspace}
+      />
+    );
   }
 
   return (

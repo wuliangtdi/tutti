@@ -26,6 +26,7 @@ import type {
 import type {
   DesktopComputerUseApi,
   DesktopHostFilesApi,
+  DesktopHostWindowApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
@@ -68,6 +69,7 @@ export function createWorkspaceAgentGuiContribution(input: {
   defaultAgentProvider?: string | null;
   defaultProviderTargetId?: string | null;
   hostFilesApi: DesktopHostFilesApi;
+  hostWindowApi: Pick<DesktopHostWindowApi, "openAgentWindow">;
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: Parameters<
     typeof DesktopAgentGUIWorkbenchBody
@@ -205,7 +207,10 @@ export function createWorkspaceAgentGuiContribution(input: {
         "workspace.agentGui.fallbackAgentLabel"
       ),
       newConversation: input.appI18n.t("workspace.agentGui.newConversation"),
-      nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent)
+      nodeTitle: input.i18n.t(workspaceWorkbenchDesktopI18nKeys.nodes.agent),
+      openDetachedWindow: input.appI18n.t(
+        "workspace.agentGui.openDetachedWindow"
+      )
     },
     dockIconUrls: input.dockIconUrls,
     unifiedDockIconUrl: input.unifiedDockIconUrl,
@@ -229,6 +234,15 @@ export function createWorkspaceAgentGuiContribution(input: {
       }),
     renderBody: (context, helpers) =>
       renderAgentGuiWorkbenchBody(context, helpers),
+    onOpenDetachedWindow: (request) =>
+      input.hostWindowApi.openAgentWindow({
+        agentSessionId: request.agentSessionId,
+        agentTargetId: request.agentTargetId,
+        providerStatusSnapshot: input.agentProviderStatusService.getSnapshot(),
+        providerTargets: request.providerTargets,
+        provider: request.provider,
+        workspaceId: request.workspaceId
+      }),
     renderPreview: (context, helpers) =>
       createElement(
         DesktopAgentGUIWorkbenchDockPreviewFrame,

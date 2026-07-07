@@ -96,6 +96,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   minimize: string;
   newConversation: string;
   nodeTitle: string;
+  openDetachedWindow: string;
   restore: string;
 }
 
@@ -111,6 +112,7 @@ export const agentGuiWorkbenchDefaultCopy: AgentGuiWorkbenchContributionCopy = {
   minimize: "Minimize",
   newConversation: "New conversation",
   nodeTitle: "Agent",
+  openDetachedWindow: "Open in detached window",
   restore: "Restore"
 };
 
@@ -163,6 +165,13 @@ export interface CreateAgentGuiWorkbenchContributionInput {
     payload: unknown;
     reason: WorkbenchHostLaunchRequest["reason"];
   }) => unknown | null | undefined;
+  onOpenDetachedWindow?: (input: {
+    agentSessionId?: string | null;
+    agentTargetId?: string | null;
+    providerTargets?: readonly AgentGUIProviderTarget[];
+    provider: AgentGuiWorkbenchProvider;
+    workspaceId: string;
+  }) => void | Promise<void>;
   unifiedDockIconUrl?: string;
   workspaceId: string;
 }
@@ -335,6 +344,17 @@ export function createAgentGuiWorkbenchContribution(
             },
             ...dragHandleProps,
             onCreateConversation: announceNewConversation,
+            onOpenDetachedWindow: input.onOpenDetachedWindow
+              ? () => {
+                  void input.onOpenDetachedWindow?.({
+                    agentSessionId: workbenchState.lastActiveAgentSessionId,
+                    agentTargetId: nodeState.agentTargetId,
+                    providerTargets: input.providerTargets ?? undefined,
+                    provider,
+                    workspaceId: input.workspaceId
+                  });
+                }
+              : undefined,
             onPointerDown: (event) => {
               dragHandleProps.onPointerDown?.(event);
               if (!isFocused) {

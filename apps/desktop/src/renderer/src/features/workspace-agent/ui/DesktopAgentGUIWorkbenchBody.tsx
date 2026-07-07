@@ -38,7 +38,10 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
-import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
+import type {
+  AgentProviderStatusSnapshot,
+  IAgentProviderStatusService
+} from "../services/agentProviderStatusService.interface";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
 import { isDesktopAgentProvider } from "@shared/preferences";
@@ -83,6 +86,7 @@ import {
   withDesktopAgentGUIProviderComposerDefaults
 } from "./desktopAgentGUIWorkbenchStateHelpers.ts";
 import { useDesktopManagedAgentsState } from "./useDesktopManagedAgentsState.ts";
+import { projectDesktopManagedAgentsStateForAgentGUI } from "../services/internal/desktopManagedAgentProviders.ts";
 import { projectDesktopAgentProviderReadinessGates } from "../services/internal/desktopAgentProviderReadinessGate.ts";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
 
@@ -110,6 +114,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   }) => Promise<void> | void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
   previewMode?: boolean;
+  providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   providerTargets?: readonly AgentGUIProviderTarget[];
   providerTargetsLoading?: boolean;
   /** "exact" renders only the provided targets (no static catalog). Defaults to "catalog". */
@@ -194,6 +199,8 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.onOpenAgentConversationWindow ===
       next.onOpenAgentConversationWindow &&
     previous.previewMode === next.previewMode &&
+    previous.providerStatusBootstrapSnapshot ===
+      next.providerStatusBootstrapSnapshot &&
     previous.providerTargets === next.providerTargets &&
     previous.providerTargetsLoading === next.providerTargetsLoading &&
     previous.providerRailMode === next.providerRailMode &&
@@ -259,6 +266,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onOpenAgentConversationWindow,
   onStateChange,
   previewMode = false,
+  providerStatusBootstrapSnapshot = null,
   providerTargets,
   providerTargetsLoading = false,
   providerRailMode = "catalog",
@@ -348,7 +356,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   ]);
   const managedAgentsState = useDesktopManagedAgentsState(
     agentProviderStatusService,
-    { ensureLoaded: !previewMode }
+    { ensureLoaded: !previewMode && !providerStatusBootstrapSnapshot }
   );
   const providerStatusSnapshot = useSyncExternalStore(
     agentProviderStatusService && !previewMode
@@ -358,6 +366,23 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       ? () => agentProviderStatusService.getSnapshot()
       : getEmptyProviderStatusSnapshot,
     getEmptyProviderStatusSnapshot
+  );
+  const effectiveProviderStatusSnapshot =
+    !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
+      ? providerStatusBootstrapSnapshot
+      : providerStatusSnapshot;
+  const effectiveManagedAgentsState = useMemo(
+    () =>
+      !providerStatusSnapshot.capturedAt && providerStatusBootstrapSnapshot
+        ? projectDesktopManagedAgentsStateForAgentGUI(
+            providerStatusBootstrapSnapshot
+          )
+        : managedAgentsState,
+    [
+      managedAgentsState,
+      providerStatusBootstrapSnapshot,
+      providerStatusSnapshot
+    ]
   );
   const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   // Activation funnel stage ③ "saw a chattable surface": the agent workbench
@@ -525,10 +550,14 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       previewMode
         ? null
         : projectDesktopAgentProviderReadinessGates({
-            snapshot: providerStatusSnapshot,
+            snapshot: effectiveProviderStatusSnapshot,
             onAction: handleProviderReadinessGateAction
           }),
-    [handleProviderReadinessGateAction, previewMode, providerStatusSnapshot]
+    [
+      effectiveProviderStatusSnapshot,
+      handleProviderReadinessGateAction,
+      previewMode
+    ]
   );
   const rawWorkbenchStateSource = useMemo(
     () => context.externalNodeState ?? context.node.data.runtimeNodeState,
@@ -1159,7 +1188,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         newConversationRequestSequence={newConversationRequestSequence}
         openSessionRequest={openSessionRequest}
         prefillPromptRequest={prefillPromptRequest}
-        managedAgentsState={managedAgentsState}
+        managedAgentsState={effectiveManagedAgentsState}
         nodeId={context.node.id}
         providerTargets={providerTargetsLoading ? [] : providerTargets}
         providerTargetsLoading={providerTargetsLoading}

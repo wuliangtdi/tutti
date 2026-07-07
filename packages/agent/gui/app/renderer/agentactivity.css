@@ -4306,10 +4306,88 @@ aside.workspace-agents-status-panel
   user-select: auto;
 }
 
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .workbench-window__header {
+  cursor: grab !important;
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .workbench-window__header:active {
+  cursor: grabbing !important;
+}
+
 .workbench-window:has([data-agent-gui-workbench-header="true"])
   .workbench-window__body {
   grid-row: 1;
   overflow: hidden;
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .workbench-window__body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workbench-window[data-agent-gui-standalone-window="true"] {
+  width: 100vw;
+  height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .workspace-node-window,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  [data-workspace-node-window-root="true"],
+.workbench-window[data-agent-gui-standalone-window="true"]
+  [data-workspace-node-window-body="true"],
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__shell,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__body,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__layout {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__provider-rail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__rail,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__detail-panel,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__detail {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__rail-toolbar {
+  flex: 0 0 auto;
+}
+
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__conversation-list,
+.workbench-window[data-agent-gui-standalone-window="true"]
+  .agent-gui-node__timeline {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .workbench-window:has([data-agent-gui-workbench-header="true"])
@@ -4477,6 +4555,26 @@ aside.workspace-agents-status-panel
   margin-right: 0;
 }
 
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"] {
+  cursor: grab !important;
+  -webkit-app-region: drag;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]:active {
+  cursor: grabbing !important;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__primary {
+  cursor: grab !important;
+  -webkit-app-region: drag;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__primary:active {
+  cursor: grabbing !important;
+}
+
 .agent-gui-workbench-header__traffic-light {
   position: relative;
   display: inline-flex;
@@ -4638,6 +4736,25 @@ aside.workspace-agents-status-panel
   pointer-events: none;
 }
 
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__agent-brand,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__session-title,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__detail-title {
+  cursor: grab !important;
+  -webkit-app-region: drag;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__agent-brand:active,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__session-title:active,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__detail-title:active {
+  cursor: grabbing !important;
+}
+
 .agent-gui-workbench-header__icon-button {
   display: inline-flex !important;
   width: 28px !important;
@@ -4655,6 +4772,16 @@ aside.workspace-agents-status-panel
   cursor: pointer;
 }
 
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__traffic-lights,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__traffic-light,
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__icon-button {
+  cursor: pointer !important;
+  -webkit-app-region: no-drag;
+}
+
 .agent-gui-workbench-header__icon-button:hover,
 .agent-gui-workbench-header__icon-button:focus-visible {
   background: color-mix(
@@ -4667,6 +4794,15 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__rail-toggle {
   margin-left: auto;
+}
+
+.agent-gui-workbench-header__detached-window {
+  margin-left: auto;
+}
+
+.agent-gui-workbench-header__detached-window
+  + .agent-gui-workbench-header__rail-toggle {
+  margin-left: 0;
 }
 
 .workbench-window:has([data-workbench-node-render-error="true"])
