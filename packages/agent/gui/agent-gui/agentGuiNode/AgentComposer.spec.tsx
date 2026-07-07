@@ -119,8 +119,10 @@ vi.mock("@tutti-os/ui-system", async (importOriginal) => {
   };
   type MockPopoverContentProps = React.ComponentProps<"div"> & {
     align?: string;
+    collisionPadding?: number;
     onOpenAutoFocus?: (event: Event) => void;
     side?: string;
+    sideOffset?: number;
   };
   return {
     ...actual,
@@ -152,15 +154,17 @@ vi.mock("@tutti-os/ui-system", async (importOriginal) => {
     PopoverContent: React.forwardRef<HTMLDivElement, MockPopoverContentProps>(
       (
         {
-          align: _align,
+          align,
           children,
+          collisionPadding: _collisionPadding,
           onOpenAutoFocus: _onOpenAutoFocus,
-          side: _side,
+          side,
+          sideOffset: _sideOffset,
           ...props
         },
         ref
       ) => (
-        <div ref={ref} {...props}>
+        <div ref={ref} data-align={align} data-side={side} {...props}>
           {children}
         </div>
       )
@@ -1151,6 +1155,64 @@ describe("AgentComposer", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Claude Code" }));
 
     expect(onHandoffConversation).toHaveBeenCalledWith(claudeTarget);
+  });
+
+  it("shows a handoff tooltip label on the handoff trigger", () => {
+    const codexTarget = {
+      targetId: "local:codex",
+      agentTargetId: "local:codex",
+      provider: "codex" as const,
+      ref: { kind: "local-provider", provider: "codex" as const },
+      label: "Codex"
+    };
+    const claudeTarget = {
+      targetId: "local:claude-code",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code" as const,
+      ref: { kind: "local-provider", provider: "claude-code" as const },
+      label: "Claude Code"
+    };
+
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        selectedProviderTarget={codexTarget}
+        providerTargets={[codexTarget, claudeTarget]}
+        providerSelectReadonly
+        onHandoffConversation={vi.fn()}
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("combobox", { name: "Handoff" })).toHaveAttribute(
+      "title",
+      "交接给其他 Agent"
+    );
   });
 
   it("marks the handoff icon disabled with the handoff trigger", () => {
@@ -2336,7 +2398,10 @@ describe("AgentComposer", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1);
     });
-    expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
+    const usagePopover = screen.getByTestId("agent-gui-usage-popover");
+    expect(usagePopover).toBeVisible();
+    expect(usagePopover).toHaveAttribute("data-side", "top");
+    expect(usagePopover).toHaveAttribute("data-align", "center");
     fireEvent.click(usageChip);
     expect(screen.getByTestId("agent-gui-usage-popover")).toBeVisible();
     expect(screen.getByTestId("agent-gui-usage-popover")).toHaveTextContent(
@@ -4915,6 +4980,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     addContent: "添加文件等内容",
     referenceWorkspaceFiles: "引用空间文件",
     handoffConversation: "Handoff",
+    handoffConversationTooltip: "交接给其他 Agent",
     handoffConversationMenu: "选择 Agent",
     providerSwitchLabel: "切换 Provider",
     reviewPicker: {

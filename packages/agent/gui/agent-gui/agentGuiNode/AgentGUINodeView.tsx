@@ -592,6 +592,7 @@ export interface AgentGUIViewLabels {
   addContent: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
+  handoffConversationTooltip: string;
   handoffConversationMenu: string;
   projectLocked: string;
   projectMissingDescription: string;
@@ -2451,6 +2452,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       addContent: labels.addContent,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
+      handoffConversationTooltip: labels.handoffConversationTooltip,
       handoffConversationMenu: labels.handoffConversationMenu,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
@@ -2472,6 +2474,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.fileMentionPalette,
       labels.fileMentionTabHint,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.inheritedUnavailable,
       labels.loadingConversation,
@@ -2801,6 +2804,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isComposerSending,
       labels.followupPlaceholder,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.initialPlaceholder,
       labels.promptTips,

@@ -1273,6 +1273,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       }
     });
@@ -1599,6 +1600,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "切换 Provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "交接给其他 Agent",
         handoffConversationMenu: "选择 Agent"
       },
       viewModel: {
@@ -1628,6 +1630,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -1668,6 +1671,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -5257,6 +5261,7 @@ function createLabels(): AgentGUIViewLabels {
     addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     handoffConversation: "Handoff",
+    handoffConversationTooltip: "Hand off to another agent",
     handoffConversationMenu: "Choose agent",
     syncPending: "syncPending",
     syncSynced: "syncSynced",

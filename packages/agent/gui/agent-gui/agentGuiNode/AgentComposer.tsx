@@ -397,6 +397,7 @@ export interface AgentComposerProps {
     addContent: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
+    handoffConversationTooltip: string;
     handoffConversationMenu: string;
     providerSwitchLabel: string;
     projectLocked: string;
@@ -711,8 +712,10 @@ function AgentUsageChip({
       {usagePopoverOpen ? (
         <PopoverContent
           ref={usagePopoverContentRef}
-          side="bottom"
-          align="end"
+          side="top"
+          align="center"
+          sideOffset={8}
+          collisionPadding={16}
           className="w-[320px] max-w-[calc(100vw-32px)] gap-3 text-xs"
           data-testid="agent-gui-usage-popover"
           onOpenAutoFocus={(event) => event.preventDefault()}
@@ -3594,83 +3597,94 @@ export function AgentComposer({
                 </TooltipProvider>
               </div>
               {showHandoffSelect ? (
-                <Select
-                  value={HANDOFF_SELECT_IDLE_VALUE}
-                  disabled={handoffDisabled}
-                  onValueChange={(nextTargetId) => {
-                    const target = handoffMenuTargets.find(
-                      (candidate) => candidate.targetId === nextTargetId
-                    );
-                    if (!target || target.disabled === true) {
-                      return;
-                    }
-                    onHandoffConversation?.(target);
-                  }}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    aria-label={effectiveHandoffLabel}
-                    title={effectiveHandoffLabel}
-                    onBlur={() => {
-                      setIsHandoffIconPlaying(false);
-                    }}
-                    onFocus={() => {
-                      setIsHandoffIconPlaying(true);
-                    }}
-                    onMouseEnter={() => {
-                      setIsHandoffIconPlaying(true);
-                    }}
-                    onMouseLeave={() => {
-                      setIsHandoffIconPlaying(false);
-                    }}
-                    className={cn(
-                      styles.composerMenuTrigger,
-                      styles.composerProviderSelect,
-                      styles.composerHandoffTrigger,
-                      "w-auto max-w-[180px] [&>svg:last-child]:hidden"
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <AgentComposerHandoffIcon
-                        disabled={handoffDisabled}
-                        isPlaying={isHandoffIconPlaying}
-                      />
-                      <span className="min-w-0 truncate">
-                        {effectiveHandoffLabel}
-                      </span>
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent
-                    align="start"
-                    className={cn(
-                      styles.composerMenuContent,
-                      styles.composerHandoffMenuContent,
-                      "min-w-[190px]"
-                    )}
-                    aria-label={effectiveHandoffMenuLabel}
-                  >
-                    {handoffMenuTargets.map((target) => (
-                      <SelectItem
-                        key={`${target.provider}:${target.targetId}`}
-                        value={target.targetId}
-                        className={cn(styles.composerMenuItem, "gap-2")}
-                        disabled={target.disabled === true}
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <img
-                            alt=""
-                            aria-hidden="true"
-                            className="size-4 shrink-0 rounded-[4px]"
-                            src={resolveComposerProviderTargetIconUrl(target)}
-                          />
-                          <span className="min-w-0 truncate">
-                            {target.label}
+                <TooltipProvider>
+                  <Tooltip>
+                    <Select
+                      value={HANDOFF_SELECT_IDLE_VALUE}
+                      disabled={handoffDisabled}
+                      onValueChange={(nextTargetId) => {
+                        const target = handoffMenuTargets.find(
+                          (candidate) => candidate.targetId === nextTargetId
+                        );
+                        if (!target || target.disabled === true) {
+                          return;
+                        }
+                        onHandoffConversation?.(target);
+                      }}
+                    >
+                      <TooltipTrigger asChild>
+                        <SelectTrigger
+                          size="sm"
+                          aria-label={effectiveHandoffLabel}
+                          title={labels.handoffConversationTooltip}
+                          onBlur={() => {
+                            setIsHandoffIconPlaying(false);
+                          }}
+                          onFocus={() => {
+                            setIsHandoffIconPlaying(true);
+                          }}
+                          onMouseEnter={() => {
+                            setIsHandoffIconPlaying(true);
+                          }}
+                          onMouseLeave={() => {
+                            setIsHandoffIconPlaying(false);
+                          }}
+                          className={cn(
+                            styles.composerMenuTrigger,
+                            styles.composerProviderSelect,
+                            styles.composerHandoffTrigger,
+                            "w-auto max-w-[180px] [&>svg:last-child]:hidden"
+                          )}
+                        >
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <AgentComposerHandoffIcon
+                              disabled={handoffDisabled}
+                              isPlaying={isHandoffIconPlaying}
+                            />
+                            <span className="min-w-0 truncate">
+                              {effectiveHandoffLabel}
+                            </span>
                           </span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        </SelectTrigger>
+                      </TooltipTrigger>
+                      <SelectContent
+                        align="start"
+                        className={cn(
+                          styles.composerMenuContent,
+                          styles.composerHandoffMenuContent,
+                          "min-w-[190px]"
+                        )}
+                        aria-label={effectiveHandoffMenuLabel}
+                      >
+                        {handoffMenuTargets.map((target) => (
+                          <SelectItem
+                            key={`${target.provider}:${target.targetId}`}
+                            value={target.targetId}
+                            className={cn(styles.composerMenuItem, "gap-2")}
+                            disabled={target.disabled === true}
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <img
+                                alt=""
+                                aria-hidden="true"
+                                className="size-4 shrink-0 rounded-[4px]"
+                                src={resolveComposerProviderTargetIconUrl(
+                                  target
+                                )}
+                              />
+                              <span className="min-w-0 truncate">
+                                {target.label}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <TooltipContent side="top">
+                      {labels.handoffConversationTooltip}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : showProviderSelect && selectedProviderSwitchTarget ? (
                 <Select
                   value={selectedProviderSwitchTarget.targetId}

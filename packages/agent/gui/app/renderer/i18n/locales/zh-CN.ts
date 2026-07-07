@@ -629,6 +629,7 @@ export const zhCN = {
       conversationFilterTutti: "Tutti",
       providerSwitchLabel: "切换 Provider",
       handoffConversation: "Handoff",
+      handoffConversationTooltip: "交接给其他 Agent",
       handoffConversationMenu: "选择要交接的 Agent",
       batchRunnerStandaloneTitle: "Agent GUI 批量执行面板",
       batchRunnerSubtitle: "批量执行 JSONL 用例，查看进度与执行结果",

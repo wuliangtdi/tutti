@@ -679,6 +679,7 @@ export const en = {
       conversationFilterTutti: "Tutti",
       providerSwitchLabel: "Switch provider",
       handoffConversation: "Handoff",
+      handoffConversationTooltip: "Hand off to another agent",
       handoffConversationMenu: "Choose an agent for handoff",
       batchRunnerStandaloneTitle: "Agent GUI batch runner",
       batchRunnerSubtitle:

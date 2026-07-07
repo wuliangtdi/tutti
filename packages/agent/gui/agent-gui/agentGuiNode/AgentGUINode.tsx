@@ -1500,6 +1500,9 @@ export const AgentGUINode = memo(function AgentGUINode({
       addContent: t("agentHost.agentGui.addContent"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
+      handoffConversationTooltip: t(
+        "agentHost.agentGui.handoffConversationTooltip"
+      ),
       handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
     }),
     [displayProviderLabel, fallbackAgentTitle, t]
