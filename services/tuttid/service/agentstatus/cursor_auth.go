@@ -7,31 +7,56 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
+const cursorAuthStatusProbeCount = 3
+
 func runCursorAuthStatusCommand(ctx context.Context, binaryPath string, env []string) (AuthInfo, bool) {
-	commandCtx, cancel := context.WithTimeout(ctx, authStatusCommandTimeout)
-	defer cancel()
 	proxyEnv := runtimecmd.InjectSystemProxyEnv(env)
 
-	if auth, ok := runCursorCLICommand(commandCtx, binaryPath, []string{"about", "--format", "json"}, proxyEnv); ok {
-		if parsed, ok := parseCursorAboutOutput(auth); ok {
-			return parsed, true
-		}
+	attempts := []struct {
+		args  []string
+		parse func([]byte) (AuthInfo, bool)
+	}{
+		{
+			args:  []string{"about", "--format", "json"},
+			parse: parseCursorAboutOutput,
+		},
+		{
+			args:  []string{"about"},
+			parse: parseCursorAboutOutput,
+		},
+		{
+			args:  []string{"status"},
+			parse: parseCursorAuthStatusOutput,
+		},
 	}
-	if auth, ok := runCursorCLICommand(commandCtx, binaryPath, []string{"about"}, proxyEnv); ok {
-		if parsed, ok := parseCursorAboutOutput(auth); ok {
-			return parsed, true
+	for _, attempt := range attempts {
+		attemptCtx, cancel := cursorAuthStatusAttemptContext(ctx)
+		auth, ok := runCursorCLICommand(attemptCtx, binaryPath, attempt.args, proxyEnv)
+		cancel()
+		if !ok {
+			continue
 		}
-	}
-	if auth, ok := runCursorCLICommand(commandCtx, binaryPath, []string{"status"}, proxyEnv); ok {
-		if parsed, ok := parseCursorAuthStatusOutput(auth); ok {
+		if parsed, ok := attempt.parse(auth); ok {
 			return parsed, true
 		}
 	}
 	return AuthInfo{}, false
+}
+
+func cursorAuthStatusAttemptContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(parent, cursorAuthStatusAttemptTimeout())
+}
+
+func cursorAuthStatusAttemptTimeout() time.Duration {
+	return authStatusCommandTimeout / cursorAuthStatusProbeCount
 }
 
 func runCursorCLICommand(
