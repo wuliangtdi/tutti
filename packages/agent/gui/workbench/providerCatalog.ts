@@ -5,10 +5,10 @@ export const agentGuiWorkbenchProviders = [
   "codex",
   "tutti-agent",
   "cursor",
+  "opencode",
   "hermes",
   "gemini",
-  "openclaw",
-  "opencode"
+  "openclaw"
 ] as const satisfies readonly AgentGuiWorkbenchProvider[];
 
 export const agentGuiWorkbenchDefaultDockProviders = [

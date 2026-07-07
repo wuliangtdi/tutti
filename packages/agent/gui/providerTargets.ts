@@ -21,9 +21,9 @@ export const agentGUIDefaultTargetProviders = [
   "claude-code",
   "tutti-agent",
   "cursor",
+  "opencode",
   "hermes",
-  "openclaw",
-  "opencode"
+  "openclaw"
 ] as const satisfies readonly AgentGUIProvider[];
 
 const agentGUIDisabledPlaceholderProviders = [
