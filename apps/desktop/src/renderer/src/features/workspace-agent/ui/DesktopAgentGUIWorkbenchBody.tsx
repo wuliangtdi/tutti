@@ -347,9 +347,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     contextMentionProviders,
     workspaceAppMentionProvider
   ]);
+  const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
+  const requiredProviders = useMemo(() => [provider], [provider]);
   const managedAgentsState = useDesktopManagedAgentsState(
     agentProviderStatusService,
-    { ensureLoaded: !previewMode }
+    { ensureLoaded: !previewMode, requiredProviders }
   );
   const providerStatusSnapshot = useSyncExternalStore(
     agentProviderStatusService && !previewMode
@@ -360,7 +362,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
       : getEmptyProviderStatusSnapshot,
     getEmptyProviderStatusSnapshot
   );
-  const provider = desktopAgentGUIProviderFromInstanceId(context.instanceId);
   // Activation funnel stage ③ "saw a chattable surface": the agent workbench
   // body is mounted (not a dock preview) and the active provider is ready, so
   // the composer is interactive. reportProviderReady (stage ②) can fire while

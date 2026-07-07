@@ -143,6 +143,23 @@ export function projectDesktopManagedAgentsStateForAgentGUI(
   };
 }
 
+export function hasRequiredDesktopManagedAgentProviderStatuses(
+  snapshot: AgentProviderStatusSnapshot,
+  requiredProviders: readonly WorkspaceAgentProvider[] | undefined
+): boolean {
+  if (!requiredProviders || requiredProviders.length === 0) {
+    return true;
+  }
+  if (!snapshot.capturedAt) {
+    return false;
+  }
+
+  const knownProviders = new Set(
+    snapshot.statuses.map((status) => status.provider)
+  );
+  return requiredProviders.every((provider) => knownProviders.has(provider));
+}
+
 export function isDesktopManagedAgentProvider(
   value: unknown
 ): value is WorkspaceAgentProvider {

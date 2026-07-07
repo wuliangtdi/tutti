@@ -8,6 +8,7 @@ import type { IAgentProviderStatusService } from "../agentProviderStatusService.
 import {
   desktopManagedAgentProviders,
   ensureDesktopManagedAgentProviderStatuses,
+  hasRequiredDesktopManagedAgentProviderStatuses,
   isDesktopManagedAgentProvider,
   projectDesktopManagedAgentsStateForAgentGUI
 } from "./desktopManagedAgentProviders.ts";
@@ -186,6 +187,36 @@ test("projectDesktopManagedAgentsStateForAgentGUI projects captured provider sta
   });
 
   assert.deepEqual(state?.readyAgentIds, ["codex"]);
+});
+
+test("hasRequiredDesktopManagedAgentProviderStatuses waits for required provider", () => {
+  const snapshot = createProviderStatusSnapshot([
+    createProviderStatus({
+      adapterInstalled: true,
+      availability: "ready",
+      cliInstalled: true,
+      provider: "codex"
+    })
+  ]);
+
+  assert.equal(
+    hasRequiredDesktopManagedAgentProviderStatuses(snapshot, ["cursor"]),
+    false
+  );
+  assert.equal(
+    hasRequiredDesktopManagedAgentProviderStatuses(snapshot, ["codex"]),
+    true
+  );
+});
+
+test("hasRequiredDesktopManagedAgentProviderStatuses keeps empty snapshot loading", () => {
+  assert.equal(
+    hasRequiredDesktopManagedAgentProviderStatuses(
+      createProviderStatusSnapshot([]),
+      ["cursor"]
+    ),
+    false
+  );
 });
 
 test("isDesktopManagedAgentProvider accepts only desktop managed providers", () => {

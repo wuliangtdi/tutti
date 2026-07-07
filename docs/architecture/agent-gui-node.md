@@ -253,6 +253,11 @@ remaining providers in the background. When the empty-home rail is still on
 is still gated, AgentGUI may move the home composer to that first ready target
 so the user can start typing without waiting for every provider to finish
 detection.
+Progressive detection snapshots are partial by design. A provider missing from
+the current snapshot means "not checked yet", not "install or login required".
+Desktop AgentGUI hosts that project managed-agent readiness for an already-open
+provider panel must wait until that provider appears in the status snapshot
+before replacing the composer with setup UI or disabling active-session sends.
 Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
