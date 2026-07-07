@@ -216,10 +216,6 @@ export function toAgentHostAgentSessionStatus(status: string): string {
   }
 }
 
-export function stringifyError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function unavailableHostMethod(name: string): () => Promise<never> {
   return () =>
     Promise.reject(
