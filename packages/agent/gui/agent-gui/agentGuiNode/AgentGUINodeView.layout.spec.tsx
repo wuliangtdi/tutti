@@ -5218,6 +5218,7 @@ function createLabels(): AgentGUIViewLabels {
       "computerUseCapabilitySettingsDescription",
     slashStatusTitle: "slashStatusTitle",
     slashStatusSession: "slashStatusSession",
+    slashStatusAccount: "slashStatusAccount",
     slashStatusBaseUrl: "slashStatusBaseUrl",
     slashStatusContext: "slashStatusContext",
     slashStatusLimits: "slashStatusLimits",
