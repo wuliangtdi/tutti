@@ -172,6 +172,9 @@ func TestProviderSkillRootDoesNotExposeClaudeCodeProjectSkills(t *testing.T) {
 	if root := providerSkillRoot(cwd, "claude-code"); root != "" {
 		t.Fatalf("providerSkillRoot() for claude-code = %q, want empty", root)
 	}
+	if root := providerSkillRoot(cwd, "cursor"); root != "" {
+		t.Fatalf("providerSkillRoot() for cursor = %q, want empty", root)
+	}
 	if root := providerSkillRoot(cwd, "gemini"); root != filepath.Join(cwd, ".gemini", "skills") {
 		t.Fatalf("providerSkillRoot() for gemini = %q, want project skill root", root)
 	}

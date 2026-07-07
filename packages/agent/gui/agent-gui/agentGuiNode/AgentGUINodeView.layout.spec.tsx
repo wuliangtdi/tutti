@@ -1273,6 +1273,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       }
     });
@@ -1443,6 +1444,46 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.queryByRole("tab", { name: "Hermes" })).toBeNull();
   });
 
+  it("renders provider target badges on rail tiles", () => {
+    const { container } = renderAgentGUINodeView({
+      viewModel: {
+        ...createViewModel(),
+        providerRailMode: "exact",
+        providerTargets: [
+          {
+            targetId: "shared-agent:alice-codex",
+            provider: "codex",
+            ref: {
+              kind: "shared-agent",
+              provider: "codex",
+              sharedAgentId: "alice-codex"
+            },
+            label: "Alice's Codex",
+            badge: {
+              iconUrl: "app://alice-avatar.png",
+              label: "Alice avatar"
+            }
+          }
+        ],
+        providerTargetsLoading: false
+      }
+    });
+
+    expect(
+      screen.getByRole("tab", { name: "Alice's Codex, Alice avatar" })
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector(".agent-gui-node__provider-rail-badge")
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector<HTMLImageElement>(
+          ".agent-gui-node__provider-rail-badge-image"
+        )
+        ?.getAttribute("src")
+    ).toBe("app://alice-avatar.png");
+  });
+
   it("preserves the host-provided target order in exact rail mode", () => {
     renderAgentGUINodeView({
       viewModel: {
@@ -1599,6 +1640,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Codex",
         providerSwitchLabel: "切换 Provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "交接给其他 Agent",
         handoffConversationMenu: "选择 Agent"
       },
       viewModel: {
@@ -1628,6 +1670,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -1668,6 +1711,7 @@ describe("AgentGUINodeView layout persistence", () => {
         emptyProvider: "Cursor",
         providerSwitchLabel: "Switch provider",
         handoffConversation: "Handoff",
+        handoffConversationTooltip: "Hand off to another agent",
         handoffConversationMenu: "Choose agent"
       },
       viewModel: {
@@ -5218,6 +5262,7 @@ function createLabels(): AgentGUIViewLabels {
       "computerUseCapabilitySettingsDescription",
     slashStatusTitle: "slashStatusTitle",
     slashStatusSession: "slashStatusSession",
+    slashStatusAccount: "slashStatusAccount",
     slashStatusBaseUrl: "slashStatusBaseUrl",
     slashStatusContext: "slashStatusContext",
     slashStatusLimits: "slashStatusLimits",
@@ -5258,6 +5303,7 @@ function createLabels(): AgentGUIViewLabels {
     addContent: "addContent",
     referenceWorkspaceFiles: "referenceWorkspaceFiles",
     handoffConversation: "Handoff",
+    handoffConversationTooltip: "Hand off to another agent",
     handoffConversationMenu: "Choose agent",
     syncPending: "syncPending",
     syncSynced: "syncSynced",

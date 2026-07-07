@@ -555,6 +555,7 @@ export interface AgentGUIViewLabels {
   slashStatusBaseUrl: string;
   slashStatusContext: string;
   slashStatusLimits: string;
+  slashStatusAccount: string;
   slashStatusClose: string;
   slashStatusContextValue: (input: {
     percentLeft: number;
@@ -593,6 +594,7 @@ export interface AgentGUIViewLabels {
   addContent: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
+  handoffConversationTooltip: string;
   handoffConversationMenu: string;
   projectLocked: string;
   projectMissingDescription: string;
@@ -627,6 +629,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   /** Capture time of the usage/limits shown in the rail config menu (for the
@@ -1096,6 +1099,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  providerAuthAccountLabels,
   railConfigProvider,
   railSlashStatusLimits,
   slashStatusUsageCapturedAtUnixMs = null,
@@ -1545,6 +1549,19 @@ export function AgentGUINodeView({
   const shouldShowProviderRailConfigMenu =
     shouldShowProviderRailConfigButton &&
     viewModel.conversationFilter.kind !== "all";
+  const effectiveProviderAuthAccountLabel = useMemo(() => {
+    const provider =
+      (effectiveRailConfigProvider ?? viewModel.data.provider)?.trim() ?? "";
+    if (!provider) {
+      return null;
+    }
+    const label = providerAuthAccountLabels?.[provider]?.trim();
+    return label || null;
+  }, [
+    effectiveRailConfigProvider,
+    providerAuthAccountLabels,
+    viewModel.data.provider
+  ]);
   const enabledProviderTargets = viewModel.providerTargets.filter(
     (target) =>
       target.disabled !== true &&
@@ -1718,6 +1735,7 @@ export function AgentGUINodeView({
                     }
                     slashStatusUsageDidFail={slashStatusUsageDidFail}
                     slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                     onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                     onAgentUsageRefresh={onAgentUsageRefresh}
                     onOpenAgentEnvSetup={openAgentEnvSetup}
@@ -2430,6 +2448,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
+      slashStatusAccount: labels.slashStatusAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
@@ -2453,6 +2472,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       addContent: labels.addContent,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
+      handoffConversationTooltip: labels.handoffConversationTooltip,
       handoffConversationMenu: labels.handoffConversationMenu,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
@@ -2475,6 +2495,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.fileMentionTabHint,
       labels.fileDropHint,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.inheritedUnavailable,
       labels.loadingConversation,
@@ -2804,6 +2825,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       isComposerSending,
       labels.followupPlaceholder,
       labels.handoffConversation,
+      labels.handoffConversationTooltip,
       labels.handoffConversationMenu,
       labels.initialPlaceholder,
       labels.promptTips,
@@ -4816,6 +4838,17 @@ function agentGUIProviderRailLabel(
   return targetLabel;
 }
 
+function agentGUIProviderRailAriaLabel(
+  label: string,
+  badgeLabel: string | null | undefined
+): string {
+  const normalizedBadgeLabel = badgeLabel?.trim() ?? "";
+  if (!normalizedBadgeLabel || normalizedBadgeLabel === label) {
+    return label;
+  }
+  return `${label}, ${normalizedBadgeLabel}`;
+}
+
 function agentGUIProviderTargetMatchesConversationFilter(
   target: AgentGUINodeViewModel["providerTargets"][number],
   filter: AgentGUINodeViewModel["conversationFilter"]
@@ -5342,12 +5375,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
             target.label,
             labels
           );
+          const ariaLabel = agentGUIProviderRailAriaLabel(
+            label,
+            target.badge?.label
+          );
           const tile = (
             <button
               key={`${target.provider}:${target.targetId}`}
               type="button"
               role="tab"
-              aria-label={label}
+              aria-label={ariaLabel}
               aria-selected={providerSelected}
               className={styles.providerRailTile}
               data-disabled={target.disabled === true ? "true" : undefined}
@@ -5382,6 +5419,16 @@ const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
                     target.iconUrl
                   )}
                 />
+                {target.badge?.iconUrl ? (
+                  <span aria-hidden="true" className={styles.providerRailBadge}>
+                    <img
+                      alt=""
+                      className={styles.providerRailBadgeImage}
+                      draggable={false}
+                      src={target.badge.iconUrl}
+                    />
+                  </span>
+                ) : null}
               </span>
             </button>
           );
@@ -5705,6 +5752,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
+  providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
@@ -5719,6 +5767,7 @@ function AgentGUIConfigMenu({
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
+  providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
   onOpenAgentEnvSetup,
@@ -5753,6 +5802,25 @@ function AgentGUIConfigMenu({
         data-testid="agent-gui-config-menu"
       >
         <div className="flex min-w-0 flex-col gap-3">
+          {providerAuthAccountLabel ? (
+            <>
+              <div className="flex min-w-0 flex-col gap-2 p-2">
+                <span className="text-[13px] font-semibold leading-4">
+                  {labels.slashStatusAccount}
+                </span>
+                <span className="text-[13px] leading-5 text-[var(--text-secondary)]">
+                  {providerAuthAccountLabel}
+                </span>
+              </div>
+              {slashStatusLimits.length > 0 ||
+              slashStatusUsageAttempted ||
+              slashStatusLimitsLoading ? (
+                <div className="px-2">
+                  <span className="block h-px bg-[var(--border-1)]" />
+                </div>
+              ) : null}
+            </>
+          ) : null}
           {slashStatusLimits.length > 0 ||
           slashStatusUsageAttempted ||
           slashStatusLimitsLoading ? (

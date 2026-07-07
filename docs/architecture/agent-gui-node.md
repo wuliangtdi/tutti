@@ -98,7 +98,7 @@ There are also real architectural debts:
   migrated path name. Treat its stores as package-owned AgentGUI UI stores, not
   desktop renderer ownership.
 - `packages/agent/gui/agent-gui/**` still contains more than AgentGuiNode
-  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`, batch runner). Treat
+  (`RoomIssueNode`, `terminalNode`, `workspaceDesktop`). Treat
   that folder as the legacy workspace-node area. Do not infer that all code
   inside it belongs to the conversation node.
 - Some Host API compatibility types still exist for tests, projection, and old
@@ -1311,6 +1311,9 @@ telemetry, and provider execution policy.
 AgentGUI owns only target display and passthrough:
 
 - show `target.label` for new-session surfaces
+- render optional `target.badge` as target presentation metadata on provider
+  rail tiles; product ownership, sharing, avatar, or availability semantics
+  stay in the host-projected target data
 - keep provider behavior keyed by `target.provider`
 - persist `agentTargetId` in new workbench node state when the host target has
   one

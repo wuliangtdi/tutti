@@ -1201,6 +1201,50 @@ delimited by ---`, and the composer skill picker may show partial or
   [codex.go](../../services/tuttid/service/agentsidecar/codex.go)
   [preparer_test.go](../../services/tuttid/service/agentsidecar/preparer_test.go)
 
+### Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes
+
+- Symptom:
+  Starting a Cursor Agent session through Tutti leaves new Tutti-managed skill
+  directories under the repository, such as `.cursor/skills/tutti-cli` or
+  `.cursor/skills/tutti-cli-tutti-6`, or appends a `BEGIN TUTTI-RUNTIME`
+  managed block to the tracked project `AGENTS.md`. The directories may
+  accumulate across runs and the managed block can appear as a tracked working
+  tree change.
+- Quick checks:
+  Inspect the session sidecar manifest for `provider-skill` entries pointing
+  inside the workspace cwd. For current sessions, `TUTTI_CURSOR_PLUGIN_DIR`
+  should point under the session runtime root, for example
+  `~/.tutti-dev/agent/runs/<session>/cursor-plugin/tutti-cli`, and the Cursor
+  ACP command should include `--plugin-dir <that-dir>` before `acp`. The
+  project `AGENTS.md` should not receive a `TUTTI-RUNTIME` managed block for
+  Cursor sessions.
+- Root cause:
+  Cursor supports local plugins via `cursor-agent --plugin-dir`, but the
+  previous sidecar path reused project-local native skill installation and wrote
+  Tutti injected skills to `cwd/.cursor/skills`. Repeated runs then allocated
+  suffixed names instead of overwriting the session-owned materialization. The
+  same Cursor preparation path also wrote provider instructions into
+  `cwd/AGENTS.md`, which dirtied tracked repositories.
+- Fix:
+  Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`, expose it through
+  `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
+  `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
+  `.cursor/skills` discoverable for composer options, but never write Tutti
+  injected skills or Tutti runtime instructions into the workspace cwd for
+  Cursor sessions.
+- Validation:
+  Add `agentsidecar` coverage that Cursor prepare creates the runtime plugin
+  while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
+  coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
+  that Cursor composer skill discovery includes plugin skills. Then run
+  `cd services/tuttid && go test ./service/agentsidecar ./service/agent` and
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [cursor.go](../../services/tuttid/service/agentsidecar/cursor.go)
+  [acp_provider_cursor.go](../../packages/agent/daemon/runtime/acp_provider_cursor.go)
+  [skill_options.go](../../services/tuttid/service/agent/skill_options.go)
+
 ### Codex provider shows login required when global service tier is legacy
 
 - Symptom:
@@ -1614,6 +1658,38 @@ delimited by ---`, and the composer skill picker may show partial or
   [service.go](../../services/tuttid/service/agentstatus/service.go)
   [store.go](../../services/tuttid/service/externalagentregistry/store.go)
   [patch-claude-agent-acp.mjs](../../services/tuttid/service/agentstatus/assets/patch-claude-agent-acp.mjs)
+
+### Cursor ACP context ring stays empty or usage looks wrong
+
+- Symptom:
+  A Cursor AgentGUI session shows an empty context ring, `0%`, or stale context
+  usage while the session is actively running. Check & Settings may show the
+  Cursor subscription tier from `cursor-agent about`, but account quota still
+  reads as unsupported.
+- Quick checks:
+  Grep tuttid logs for `event=agent_session.acp.usage_update` while reproducing
+  the session. Inspect `provider`, `parsed_ok`, `context_known`, `raw_used`,
+  `raw_size`, `used_tokens`, `total_tokens`, and `quota_count` on each event.
+  If no events appear, Cursor is not pushing ACP `usage_update` for that
+  session. If events appear with `parsed_ok=false` or missing `raw_used` /
+  `raw_size`, inspect the raw ACP payload shape before changing AgentGUI.
+- Root cause:
+  Tutti's standard ACP adapter already normalizes `usage_update` into runtime
+  context, but Cursor may omit the event or publish a different payload than
+  Codex/Claude bridges. Subscription tier display comes from auth probing, not
+  from `usage_update`.
+- Fix:
+  Use the diagnostic log fields to decide whether to fix adapter parsing or wait
+  for Cursor to publish usage updates. Do not mask missing usage in AgentGUI
+  when the provider never sent `usage_update`.
+- Validation:
+  Run `go test ./packages/agent/daemon/runtime -run UsageUpdate` and start a
+  Cursor session while tailing tuttid logs for
+  `agent_session.acp.usage_update`.
+- References:
+  [standard_acp_adapter.go](../../packages/agent/daemon/runtime/standard_acp_adapter.go)
+  [acp_live_state.go](../../packages/agent/daemon/runtime/acp_live_state.go)
+  [service_helpers.go](../../services/tuttid/service/agentstatus/service_helpers.go)
 
 ### Claude SDK model aliases resolve to configured Anthropic defaults
 
