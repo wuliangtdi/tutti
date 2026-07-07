@@ -31,6 +31,7 @@ import {
   X
 } from "lucide-react";
 import { AgentUsageMeter } from "./AgentUsageMeter";
+import { AgentProbeUsageFreshness } from "./AgentProbeUsageFreshness";
 import { AccountMembershipBadge } from "./AccountMembershipBadge";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
@@ -562,6 +563,12 @@ export interface AgentGUIViewLabels {
   }) => string;
   slashStatusContextUnavailable: string;
   slashStatusLimitsUnavailable: string;
+  slashStatusUsageJustUpdated: string;
+  slashStatusUsageMinutesAgo: (count: number) => string;
+  slashStatusUsageHoursAgo: (count: number) => string;
+  slashStatusUsageUpdating: string;
+  slashStatusUsageRefreshFailed: string;
+  slashStatusUsageRefreshAria: string;
   usageChipLabel: (input: { percent: number }) => string;
   usageTooltipLabel: string;
   usagePopoverTitle: string;
@@ -621,7 +628,18 @@ interface AgentGUINodeViewProps {
   slashStatusLimitsLoading?: boolean;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
+  /** Capture time of the usage/limits shown in the rail config menu (for the
+   * freshness indicator). Null when no usage snapshot is available. */
+  slashStatusUsageCapturedAtUnixMs?: number | null;
+  /** True when the latest usage probe fetch failed (drives the retry state). */
+  slashStatusUsageDidFail?: boolean;
+  /** True once a usage probe has run for this provider (snapshot or error), so
+   * the config menu shows a "no limits / retry" row rather than hiding the
+   * whole section when there are no meters to display. */
+  slashStatusUsageAttempted?: boolean;
   onAgentConfigMenuOpen?: () => void;
+  /** Forces a fresh usage probe from the config menu's refresh control. */
+  onAgentUsageRefresh?: () => void;
   accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;
@@ -1079,7 +1097,11 @@ export function AgentGUINodeView({
   slashStatusLimitsLoading = false,
   railConfigProvider,
   railSlashStatusLimits,
+  slashStatusUsageCapturedAtUnixMs = null,
+  slashStatusUsageDidFail = false,
+  slashStatusUsageAttempted = false,
   onAgentConfigMenuOpen,
+  onAgentUsageRefresh,
   accountMenuState = null,
   previewMode = false,
   onAgentProviderLogin,
@@ -1683,7 +1705,14 @@ export function AgentGUINodeView({
                   labels={labels}
                   previewMode={previewMode}
                   slashStatusLimits={effectiveRailSlashStatusLimits}
+                  slashStatusLimitsLoading={slashStatusLimitsLoading}
+                  slashStatusUsageCapturedAtUnixMs={
+                    slashStatusUsageCapturedAtUnixMs
+                  }
+                  slashStatusUsageDidFail={slashStatusUsageDidFail}
+                  slashStatusUsageAttempted={slashStatusUsageAttempted}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
+                  onAgentUsageRefresh={onAgentUsageRefresh}
                   onOpenAgentEnvSetup={openAgentEnvSetup}
                   onOpenAgentSettings={openAgentSettings}
                 />
@@ -5566,7 +5595,12 @@ interface AgentGUIConfigMenuProps {
   labels: AgentGUIViewLabels;
   previewMode: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
+  slashStatusLimitsLoading: boolean;
+  slashStatusUsageCapturedAtUnixMs: number | null;
+  slashStatusUsageDidFail: boolean;
+  slashStatusUsageAttempted: boolean;
   onAgentConfigMenuOpen?: () => void;
+  onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
 }
@@ -5575,7 +5609,12 @@ function AgentGUIConfigMenu({
   labels,
   previewMode,
   slashStatusLimits,
+  slashStatusLimitsLoading,
+  slashStatusUsageCapturedAtUnixMs,
+  slashStatusUsageDidFail,
+  slashStatusUsageAttempted,
   onAgentConfigMenuOpen,
+  onAgentUsageRefresh,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
@@ -5608,25 +5647,54 @@ function AgentGUIConfigMenu({
         data-testid="agent-gui-config-menu"
       >
         <div className="flex min-w-0 flex-col gap-3">
-          {slashStatusLimits.length > 0 ? (
+          {slashStatusLimits.length > 0 ||
+          slashStatusUsageAttempted ||
+          slashStatusLimitsLoading ? (
             <>
               <div className="flex min-w-0 flex-col gap-2 p-2">
-                <span className="text-[13px] font-semibold leading-4">
-                  {labels.slashStatusLimits}
-                </span>
-                {slashStatusLimits.map((limit) => (
-                  <AgentUsageMeter
-                    key={limit.id}
-                    label={limit.label}
-                    value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                    percent={
-                      typeof limit.percentRemaining === "number" &&
-                      Number.isFinite(limit.percentRemaining)
-                        ? limit.percentRemaining
-                        : null
-                    }
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[13px] font-semibold leading-4">
+                    {labels.slashStatusLimits}
+                  </span>
+                  <AgentProbeUsageFreshness
+                    testId="agent-gui-config-usage-refresh"
+                    capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+                    isLoading={slashStatusLimitsLoading}
+                    didFail={slashStatusUsageDidFail}
+                    disabled={previewMode || !onAgentUsageRefresh}
+                    onRefresh={() => onAgentUsageRefresh?.()}
+                    labels={{
+                      justUpdated: labels.slashStatusUsageJustUpdated,
+                      minutesAgo: labels.slashStatusUsageMinutesAgo,
+                      hoursAgo: labels.slashStatusUsageHoursAgo,
+                      updating: labels.slashStatusUsageUpdating,
+                      refreshFailed: labels.slashStatusUsageRefreshFailed,
+                      refreshAria: labels.slashStatusUsageRefreshAria
+                    }}
                   />
-                ))}
+                </div>
+                {slashStatusLimits.length > 0 ? (
+                  slashStatusLimits.map((limit) => (
+                    <AgentUsageMeter
+                      key={limit.id}
+                      label={limit.label}
+                      value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                      percent={
+                        typeof limit.percentRemaining === "number" &&
+                        Number.isFinite(limit.percentRemaining)
+                          ? limit.percentRemaining
+                          : null
+                      }
+                    />
+                  ))
+                ) : slashStatusLimitsLoading ? null : (
+                  <span
+                    className="text-[var(--text-tertiary)]"
+                    data-testid="agent-gui-config-usage-unavailable"
+                  >
+                    {labels.slashStatusLimitsUnavailable}
+                  </span>
+                )}
               </div>
               <div className="px-2">
                 <span className="block h-px bg-[var(--border-1)]" />

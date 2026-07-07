@@ -788,7 +788,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     setWorkspaceAgentProbes((current) => ({
       isLoadingAvailability: current?.snapshot === null,
       isLoadingUsage: true,
-      snapshot: current?.snapshot ?? null
+      snapshot: current?.snapshot ?? null,
+      usageLoadFailed: current?.usageLoadFailed ?? false
     }));
     void agentProbeApi
       .list({
@@ -807,7 +808,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           snapshot: mergeDesktopAgentProbeSnapshots(
             current?.snapshot ?? null,
             snapshot
-          )
+          ),
+          usageLoadFailed: false
         }));
       })
       .catch((error) => {
@@ -817,7 +819,8 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         setWorkspaceAgentProbes((current) => ({
           isLoadingAvailability: false,
           isLoadingUsage: false,
-          snapshot: current?.snapshot ?? null
+          snapshot: current?.snapshot ?? null,
+          usageLoadFailed: true
         }));
         void runtimeApi?.logTerminalDiagnostic({
           details: {
