@@ -38,6 +38,7 @@ import {
   type WorkbenchHostNodeBodyContext
 } from "@tutti-os/workbench-surface";
 import { useTranslation } from "@renderer/i18n";
+import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
 import type { IAgentProviderStatusService } from "../services/agentProviderStatusService.interface";
 import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences/ui/useDesktopPreferencesService";
 import { Toast } from "@renderer/lib/toast";
@@ -1138,6 +1139,16 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }),
     [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
+  const providerAuthAccountLabels = useMemo(() => {
+    const labels: Partial<Record<WorkspaceAgentProvider, string>> = {};
+    for (const status of providerStatusSnapshot.statuses) {
+      const accountLabel = status.auth.accountLabel?.trim();
+      if (accountLabel) {
+        labels[status.provider] = accountLabel;
+      }
+    }
+    return labels;
+  }, [providerStatusSnapshot.statuses]);
 
   return (
     <>
@@ -1169,6 +1180,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         providerReadinessGates={providerReadinessGates}
         defaultProviderTargetId={defaultProviderTargetId}
         workspaceAgentProbes={workspaceAgentProbes}
+        providerAuthAccountLabels={providerAuthAccountLabels}
         onAgentProbeDemandChange={
           previewMode ? undefined : handleAgentProbeDemandChange
         }

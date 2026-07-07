@@ -555,6 +555,7 @@ export interface AgentGUIViewLabels {
   slashStatusBaseUrl: string;
   slashStatusContext: string;
   slashStatusLimits: string;
+  slashStatusAccount: string;
   slashStatusClose: string;
   slashStatusContextValue: (input: {
     percentLeft: number;
@@ -627,6 +628,7 @@ interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  providerAuthAccountLabels?: Partial<Record<string, string>>;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   /** Capture time of the usage/limits shown in the rail config menu (for the
@@ -1096,6 +1098,7 @@ export function AgentGUINodeView({
   isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
+  providerAuthAccountLabels,
   railConfigProvider,
   railSlashStatusLimits,
   slashStatusUsageCapturedAtUnixMs = null,
@@ -1545,6 +1548,19 @@ export function AgentGUINodeView({
   const shouldShowProviderRailConfigMenu =
     shouldShowProviderRailConfigButton &&
     viewModel.conversationFilter.kind !== "all";
+  const effectiveProviderAuthAccountLabel = useMemo(() => {
+    const provider =
+      (effectiveRailConfigProvider ?? viewModel.data.provider)?.trim() ?? "";
+    if (!provider) {
+      return null;
+    }
+    const label = providerAuthAccountLabels?.[provider]?.trim();
+    return label || null;
+  }, [
+    effectiveRailConfigProvider,
+    providerAuthAccountLabels,
+    viewModel.data.provider
+  ]);
   const enabledProviderTargets = viewModel.providerTargets.filter(
     (target) =>
       target.disabled !== true &&
@@ -1718,6 +1734,7 @@ export function AgentGUINodeView({
                     }
                     slashStatusUsageDidFail={slashStatusUsageDidFail}
                     slashStatusUsageAttempted={slashStatusUsageAttempted}
+                    providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                     onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                     onAgentUsageRefresh={onAgentUsageRefresh}
                     onOpenAgentEnvSetup={openAgentEnvSetup}
@@ -2430,6 +2447,7 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       slashStatusBaseUrl: labels.slashStatusBaseUrl,
       slashStatusContext: labels.slashStatusContext,
       slashStatusLimits: labels.slashStatusLimits,
+      slashStatusAccount: labels.slashStatusAccount,
       slashStatusClose: labels.slashStatusClose,
       slashStatusContextValue: labels.slashStatusContextValue,
       slashStatusContextUnavailable: labels.slashStatusContextUnavailable,
@@ -5706,6 +5724,7 @@ interface AgentGUIConfigMenuProps {
   slashStatusUsageCapturedAtUnixMs: number | null;
   slashStatusUsageDidFail: boolean;
   slashStatusUsageAttempted: boolean;
+  providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
   onOpenAgentEnvSetup: () => void;
@@ -5720,6 +5739,7 @@ function AgentGUIConfigMenu({
   slashStatusUsageCapturedAtUnixMs,
   slashStatusUsageDidFail,
   slashStatusUsageAttempted,
+  providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
   onOpenAgentEnvSetup,
@@ -5754,6 +5774,25 @@ function AgentGUIConfigMenu({
         data-testid="agent-gui-config-menu"
       >
         <div className="flex min-w-0 flex-col gap-3">
+          {providerAuthAccountLabel ? (
+            <>
+              <div className="flex min-w-0 flex-col gap-2 p-2">
+                <span className="text-[13px] font-semibold leading-4">
+                  {labels.slashStatusAccount}
+                </span>
+                <span className="text-[13px] leading-5 text-[var(--text-secondary)]">
+                  {providerAuthAccountLabel}
+                </span>
+              </div>
+              {slashStatusLimits.length > 0 ||
+              slashStatusUsageAttempted ||
+              slashStatusLimitsLoading ? (
+                <div className="px-2">
+                  <span className="block h-px bg-[var(--border-1)]" />
+                </div>
+              ) : null}
+            </>
+          ) : null}
           {slashStatusLimits.length > 0 ||
           slashStatusUsageAttempted ||
           slashStatusLimitsLoading ? (

@@ -517,6 +517,7 @@ export const zhCN = {
       slashStatusBaseUrl: "Base URL",
       slashStatusContext: "上下文",
       slashStatusLimits: "限制",
+      slashStatusAccount: "账户",
       slashStatusClose: "关闭",
       slashStatusFiveHourLimit: "5h limit",
       slashStatusWeeklyLimit: "7d limit",

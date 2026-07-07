@@ -985,6 +985,83 @@ func TestDefaultPreparerClaudeCodeSetsClaudeCodeExecutableFromPath(t *testing.T)
 	}
 }
 
+func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	agentsPath := filepath.Join(cwd, "AGENTS.md")
+	if err := os.WriteFile(agentsPath, []byte("user cursor guidance\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(cwd, ".cursor", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, ".cursor", "skills", "user-skill"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	preparer := NewDefaultPreparer(stateDir)
+	preparer.CLICommand = "tutti-dev"
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "cursor-session-1",
+		AgentTargetID:  "local:cursor",
+		Provider:       "cursor",
+		Cwd:            cwd,
+		BrowserUse:     true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	if prepared.Cwd != cwd {
+		t.Fatalf("prepared cwd = %q, want %q", prepared.Cwd, cwd)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".cursor", "skills", "tutti-cli")); !os.IsNotExist(err) {
+		t.Fatalf("cursor cwd tutti skill exists after prepare, err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".cursor", "skills", "user-skill")); err != nil {
+		t.Fatalf("cursor user skill was modified or removed: %v", err)
+	}
+	agentsContent, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("cursor AGENTS.md missing after prepare: %v", err)
+	}
+	if string(agentsContent) != "user cursor guidance\n" {
+		t.Fatalf("cursor AGENTS.md content = %q, want user guidance unchanged", string(agentsContent))
+	}
+
+	pluginDir := envValue(prepared.Env, cursorPluginDirEnv)
+	if pluginDir == "" {
+		t.Fatalf("prepared env = %#v, want %s", prepared.Env, cursorPluginDirEnv)
+	}
+	if rel, err := filepath.Rel(cwd, pluginDir); err == nil && !strings.HasPrefix(rel, "..") {
+		t.Fatalf("cursor plugin dir = %q, want outside cwd %q", pluginDir, cwd)
+	}
+	pluginManifest, err := os.ReadFile(filepath.Join(pluginDir, ".cursor-plugin", "plugin.json"))
+	if err != nil {
+		t.Fatalf("cursor plugin manifest missing: %v", err)
+	}
+	if !strings.Contains(string(pluginManifest), `"name": "tutti-cli"`) ||
+		!strings.Contains(string(pluginManifest), `"skills": "./skills/"`) ||
+		!strings.Contains(string(pluginManifest), `"displayName": "Tutti CLI"`) {
+		t.Fatalf("cursor plugin manifest = %q", string(pluginManifest))
+	}
+	pluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "tutti-cli", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("cursor plugin skill missing: %v", err)
+	}
+	if !strings.Contains(string(pluginSkill), "`tutti-dev <scope> --help`") ||
+		!strings.Contains(string(pluginSkill), "mention://agent-session") ||
+		!strings.Contains(string(pluginSkill), "mention://agent-target") {
+		t.Fatalf("cursor plugin skill content = %q", string(pluginSkill))
+	}
+	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md")); err != nil {
+		t.Fatalf("cursor issue-manager plugin skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "workspace-app", "SKILL.md")); err != nil {
+		t.Fatalf("cursor workspace-app plugin skill missing: %v", err)
+	}
+}
+
 // Plan mode must NOT override CLAUDE_CONFIG_DIR. Doing so points the CLI at a
 // fresh config directory without the user's credentials, which made plan turns
 // fail with "Not logged in · Please run /login" (-32000) for OAuth users while

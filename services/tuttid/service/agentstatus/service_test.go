@@ -175,11 +175,12 @@ func TestDefaultRegistryIncludesCursorSpec(t *testing.T) {
 
 func TestParseCursorAuthStatusOutput(t *testing.T) {
 	for _, tt := range []struct {
-		output string
-		status AuthStatus
-		ok     bool
+		output       string
+		status       AuthStatus
+		accountLabel string
+		ok           bool
 	}{
-		{output: "Logged in as user@example.com", status: AuthAuthenticated, ok: true},
+		{output: "Logged in as user@example.com", status: AuthAuthenticated, accountLabel: "user@example.com", ok: true},
 		{output: "cursor-agent 2026.06.10\nStatus: Authenticated", status: AuthAuthenticated, ok: true},
 		{output: "Not logged in. Run cursor-agent login to sign in.", status: AuthRequired, ok: true},
 		{output: "You are currently logged out", status: AuthRequired, ok: true},
@@ -193,6 +194,49 @@ func TestParseCursorAuthStatusOutput(t *testing.T) {
 		if ok && auth.Status != tt.status {
 			t.Fatalf("parseCursorAuthStatusOutput(%q) status = %q, want %q", tt.output, auth.Status, tt.status)
 		}
+		if ok && auth.AccountLabel != tt.accountLabel {
+			t.Fatalf("parseCursorAuthStatusOutput(%q) accountLabel = %q, want %q", tt.output, auth.AccountLabel, tt.accountLabel)
+		}
+	}
+}
+
+func TestParseCursorAboutJSON(t *testing.T) {
+	auth, ok := parseCursorAboutJSON([]byte(`{
+		"cliVersion": "2026.07.01-41b2de7",
+		"subscriptionTier": "Ultra",
+		"userEmail": "user@example.com"
+	}`))
+	if !ok {
+		t.Fatal("parseCursorAboutJSON() ok = false, want true")
+	}
+	if auth.Status != AuthAuthenticated {
+		t.Fatalf("status = %q, want authenticated", auth.Status)
+	}
+	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
+		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
+	}
+	if auth.AuthMethod != "cursor_login" {
+		t.Fatalf("authMethod = %q, want cursor_login", auth.AuthMethod)
+	}
+
+	auth, ok = parseCursorAboutJSON([]byte(`{"userEmail": null}`))
+	if !ok || auth.Status != AuthRequired {
+		t.Fatalf("null userEmail = %#v, want required auth", auth)
+	}
+}
+
+func TestParseCursorAboutText(t *testing.T) {
+	auth, ok := parseCursorAboutText([]byte(`About Cursor CLI
+
+CLI Version         2026.07.01-41b2de7
+Subscription Tier   Ultra
+User Email          user@example.com
+`))
+	if !ok {
+		t.Fatal("parseCursorAboutText() ok = false, want true")
+	}
+	if auth.AccountLabel != "Cursor Ultra · user@example.com" {
+		t.Fatalf("accountLabel = %q, want Cursor Ultra · user@example.com", auth.AccountLabel)
 	}
 }
 
