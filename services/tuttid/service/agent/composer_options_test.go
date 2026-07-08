@@ -108,6 +108,10 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 			t.Fatalf("%s planMode clamped, want preserved", provider)
 		}
 	}
+	cursor := normalizeComposerSettingsForProvider("cursor", ComposerSettings{PlanMode: true})
+	if !cursor.PlanMode {
+		t.Fatal("cursor planMode clamped, want preserved")
+	}
 	for _, provider := range []string{"gemini", "hermes", "nexight", "openclaw"} {
 		got := normalizeComposerSettingsForProvider(provider, ComposerSettings{PlanMode: true})
 		if got.PlanMode {

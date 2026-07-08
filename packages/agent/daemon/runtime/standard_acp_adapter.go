@@ -1553,7 +1553,7 @@ func (a *standardACPAdapter) effectiveModeID(session Session) string {
 		return ""
 	}
 	if session.SettingsValue().PlanMode {
-		if a.config.provider == ProviderClaudeCode {
+		if a.config.provider == ProviderClaudeCode || a.config.provider == ProviderCursor {
 			return "plan"
 		}
 		if modeID := a.config.permissionModeID("plan"); modeID != "" {
@@ -1882,8 +1882,10 @@ func (a *standardACPAdapter) handleACPMessage(
 			"event_count", len(events),
 			"event_type_counts", activityEventTypeCounts(events),
 		)
-		if len(events) > 0 && emit == nil {
-			a.emitSessionEvents(session.AgentSessionID, events)
+		if len(events) > 0 {
+			if emit == nil || hasACPCurrentModeUpdatedEvent(events) {
+				a.emitSessionEvents(session.AgentSessionID, events)
+			}
 		}
 		return events, nil
 	case acpMethodPermission:
@@ -3027,11 +3029,15 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "current_mode_update":
-		// The agent is the authoritative source of its current mode. We log
-		// every report so we can verify claude-code emits this on exit-plan
-		// before making it drive the session's persisted mode (the interactive
-		// selection already keeps exit-plan in sync; see syncClaudeCodeModeFromSelection).
+		modeID := acpModeValue(params.Update)
 		logACPCurrentModeUpdate(config, session, params.Update)
+		// Cursor plan mode is orthogonal to permission tiers; mirror agent-driven
+		// plan entry/exit into the session settings that drive the composer badge.
+		if config.provider == ProviderCursor {
+			if event, ok := acpCurrentModeUpdatedEvent(session, modeID); ok {
+				return []activityshared.Event{event}
+			}
+		}
 		return nil
 	case "available_commands_update", "plan":
 		return nil

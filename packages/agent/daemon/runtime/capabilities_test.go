@@ -53,7 +53,10 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	if !containsString(cursor, CapabilityImageInput) || !containsString(cursor, CapabilityInterrupt) {
 		t.Fatalf("cursor capabilities = %v, want imageInput+interrupt", cursor)
 	}
-	if containsString(cursor, CapabilityPlanMode) || containsString(cursor, CapabilitySkills) {
+	if !containsString(cursor, CapabilityPlanMode) {
+		t.Fatalf("cursor capabilities missing planMode: %v", cursor)
+	}
+	if containsString(cursor, CapabilitySkills) {
 		t.Fatalf("cursor capabilities too permissive: %v", cursor)
 	}
 

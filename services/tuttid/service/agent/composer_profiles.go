@@ -112,7 +112,7 @@ var composerProfiles = map[string]composerProfile{
 		// the model list is reused from running Cursor conversations only.
 		ModelSelection:         true,
 		LiveModelDiscovery:     true,
-		Capabilities:           []string{"imageInput", "interrupt"},
+		Capabilities:           []string{"imageInput", "interrupt", "planMode"},
 		PermissionConfigurable: true,
 		// Approval tiers matching the Codex/Claude Code experience instead of
 		// Cursor's raw agent/plan/ask execution modes: read-only maps to
