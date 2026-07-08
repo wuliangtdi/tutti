@@ -130,6 +130,60 @@ func TestStoreFreshMigrateCreatesTablesWithoutHostForeignKeys(t *testing.T) {
 	}
 }
 
+func TestStoreMigrateCreatesPinnedPaginationIndex(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+
+	rows, err := store.db.QueryContext(ctx, `PRAGMA index_xinfo(idx_workspace_agent_sessions_pinned_page)`)
+	if err != nil {
+		t.Fatalf("index_xinfo error = %v", err)
+	}
+	defer rows.Close()
+
+	type indexedColumn struct {
+		name string
+		desc int
+	}
+	var columns []indexedColumn
+	for rows.Next() {
+		var (
+			seqno int
+			cid   int
+			name  sql.NullString
+			desc  int
+			coll  sql.NullString
+			key   int
+		)
+		if err := rows.Scan(&seqno, &cid, &name, &desc, &coll, &key); err != nil {
+			t.Fatalf("scan index_xinfo: %v", err)
+		}
+		if key == 0 {
+			continue
+		}
+		columns = append(columns, indexedColumn{name: name.String, desc: desc})
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate index_xinfo: %v", err)
+	}
+
+	want := []indexedColumn{
+		{name: "workspace_id", desc: 0},
+		{name: "deleted_at_unix_ms", desc: 0},
+		{name: "pinned_at_unix_ms", desc: 1},
+		{name: "agent_session_id", desc: 0},
+	}
+	if len(columns) != len(want) {
+		t.Fatalf("pinned pagination index columns = %+v, want %+v", columns, want)
+	}
+	for i := range want {
+		if columns[i] != want[i] {
+			t.Fatalf("pinned pagination index column[%d] = %+v, want %+v", i, columns[i], want[i])
+		}
+	}
+}
+
 func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	t.Parallel()
 
