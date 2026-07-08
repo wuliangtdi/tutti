@@ -7640,6 +7640,7 @@ function createViewModel(
     activeLiveState: "active",
     activationError: null,
     openclawGateway: null,
+    activeConversationBusy: false,
     canSubmit: true,
     canQueueWhileBusy: false,
     hasSentUserMessage: false,
