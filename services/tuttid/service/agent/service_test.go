@@ -3513,6 +3513,86 @@ func TestServiceUpdateSettingsPersistsRuntimeComposerSettings(t *testing.T) {
 	}
 }
 
+func TestServiceUpdateSettingsKeepsLiveModelWhenPersistedSessionIsNewer(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		Provider:    "tutti-agent",
+		WorkspaceID: "ws-1",
+		Status:      "working",
+		Settings: &ComposerSettings{
+			Model: "minimax-m3",
+		},
+		RuntimeContext: map[string]any{
+			"model": "minimax-m3",
+			"config": map[string]any{
+				"model": "minimax-m3",
+			},
+			"configOptions": []any{
+				map[string]any{
+					"id":           "model",
+					"currentValue": "minimax-m3",
+				},
+			},
+		},
+		CreatedAtUnixMS: 100,
+		UpdatedAtUnixMS: 200,
+	}
+	service := NewService(runtime)
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"ws-1:session-1": {
+			ID:          "session-1",
+			Provider:    "tutti-agent",
+			WorkspaceID: "ws-1",
+			Status:      "completed",
+			Settings: ComposerSettings{
+				Model: "minimax-m3",
+			},
+			RuntimeContext: map[string]any{
+				"model": "minimax-m3",
+				"config": map[string]any{
+					"model": "minimax-m3",
+				},
+				"configOptions": []any{
+					map[string]any{
+						"id":           "model",
+						"currentValue": "minimax-m3",
+					},
+				},
+			},
+			CreatedAtUnixMS: 100,
+			UpdatedAtUnixMS: time.Now().Add(time.Hour).UnixMilli(),
+			LastEventUnixMS: time.Now().Add(time.Hour).UnixMilli(),
+		},
+	}}
+	model := "glm-5.1"
+
+	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		Model: &model,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.Model != "glm-5.1" {
+		t.Fatalf("session settings = %#v, want model glm-5.1", session.Settings)
+	}
+	if session.RuntimeContext["model"] != "glm-5.1" {
+		t.Fatalf("runtime model = %#v, want glm-5.1", session.RuntimeContext["model"])
+	}
+	config, ok := session.RuntimeContext["config"].(map[string]any)
+	if !ok || config["model"] != "glm-5.1" {
+		t.Fatalf("runtime config = %#v, want model glm-5.1", session.RuntimeContext["config"])
+	}
+	configOptions, ok := session.RuntimeContext["configOptions"].([]any)
+	if !ok || len(configOptions) == 0 {
+		t.Fatalf("runtime configOptions = %#v, want model option", session.RuntimeContext["configOptions"])
+	}
+	modelOption, ok := configOptions[0].(map[string]any)
+	if !ok || modelOption["currentValue"] != "glm-5.1" {
+		t.Fatalf("runtime model option = %#v, want currentValue glm-5.1", configOptions[0])
+	}
+}
+
 func TestServiceMapsRuntimeSessionLastError(t *testing.T) {
 	now := time.Now().UnixMilli()
 	session := serviceSession(RuntimeSession{

@@ -889,15 +889,45 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     workspaceId: string;
   }): ReturnType<IWorkspaceAgentActivityService["updateSessionSettings"]> {
     const workspaceState = desktopAgentHostWorkspaceState(input.workspaceId);
+    const requestedSettings = normalizeComposerSettings(input.settings);
+    void this.dependencies.runtimeApi.logTerminalDiagnostic({
+      details: {
+        agentSessionId: input.agentSessionId,
+        model: requestedSettings.model ?? null,
+        permissionModeId: requestedSettings.permissionModeId ?? null,
+        planMode: requestedSettings.planMode ?? null,
+        reasoningEffort: requestedSettings.reasoningEffort ?? null,
+        speed: requestedSettings.speed ?? null
+      },
+      event: "workspace.agent_session.settings.update_requested",
+      level: "info",
+      sessionId: input.agentSessionId,
+      workspaceId: input.workspaceId
+    });
     const session =
       await this.dependencies.tuttidClient.updateWorkspaceAgentSessionSettings(
         input.workspaceId,
         input.agentSessionId,
-        normalizeComposerSettings(input.settings)
+        requestedSettings
       );
     const settings = session.settings
       ? normalizeComposerSettings(session.settings)
-      : normalizeComposerSettings(input.settings);
+      : requestedSettings;
+    void this.dependencies.runtimeApi.logTerminalDiagnostic({
+      details: {
+        agentSessionId: input.agentSessionId,
+        model: settings.model ?? null,
+        permissionModeId: settings.permissionModeId ?? null,
+        planMode: settings.planMode ?? null,
+        provider: session.provider,
+        reasoningEffort: settings.reasoningEffort ?? null,
+        speed: settings.speed ?? null
+      },
+      event: "workspace.agent_session.settings.update_completed",
+      level: "info",
+      sessionId: input.agentSessionId,
+      workspaceId: input.workspaceId
+    });
     rememberAgentSessionStateDefaults(workspaceState, session.id, settings);
     return {
       agentSessionId: input.agentSessionId,

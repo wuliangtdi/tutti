@@ -9640,6 +9640,20 @@ export function useAgentGUINodeController({
           target: targetData,
           options: snapshotComposerOptions
         });
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentTargetId: targetData.agentTargetId ?? null,
+            changedFields: Object.keys(supportedNextSettings).sort().join(","),
+            nextModel: supportedNextSettings.model ?? null,
+            previousModel: previousSettings.model ?? null,
+            provider: targetData.provider,
+            reason: "no_active_conversation",
+            resolvedModel: targetSafeMerged.model ?? null
+          },
+          event: "agent.gui.composer_settings.default_only",
+          level: "info",
+          workspaceId
+        });
         draftSettingsBySessionIdRef.current = {
           ...draftSettingsBySessionIdRef.current,
           [defaultDraftKey]: targetSafeMerged
@@ -9777,10 +9791,70 @@ export function useAgentGUINodeController({
           );
         }
       }
+      const sessionSettingsPatchKeys = Object.keys(sessionSettingsPatch).sort();
       if (
-        Object.keys(sessionSettingsPatch).length > 0 &&
+        sessionSettingsPatchKeys.length === 0 &&
+        (nextModel !== undefined ||
+          nextReasoningEffort !== undefined ||
+          nextSpeed !== undefined ||
+          nextPlanMode !== undefined ||
+          nextPermission !== undefined ||
+          nextBrowserUse !== undefined ||
+          nextComputerUse !== undefined)
+      ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            attemptedModel: nextModel ?? null,
+            currentModel,
+            provider: dataRef.current.provider,
+            reason: "settings_already_current"
+          },
+          event: "agent.gui.composer_settings.update_noop",
+          level: "info",
+          workspaceId
+        });
+      }
+      if (
+        sessionSettingsPatchKeys.length > 0 &&
+        activeSessionState === null &&
+        !isPreActivationSession
+      ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            changedFields: sessionSettingsPatchKeys.join(","),
+            currentModel,
+            nextModel: sessionSettingsPatch.model ?? null,
+            provider: dataRef.current.provider,
+            reason: "missing_active_session_state"
+          },
+          event: "agent.gui.composer_settings.update_skipped",
+          level: "warn",
+          workspaceId
+        });
+      }
+      if (
+        sessionSettingsPatchKeys.length > 0 &&
         (activeSessionState !== null || isPreActivationSession)
       ) {
+        agentActivityRuntime.reportDiagnostic?.({
+          details: {
+            agentSessionId,
+            agentTargetId: normalizeOptionalText(dataRef.current.agentTargetId),
+            changedFields: sessionSettingsPatchKeys.join(","),
+            currentModel,
+            isPreActivationSession,
+            nextModel: sessionSettingsPatch.model ?? null,
+            provider: dataRef.current.provider,
+            turnPhase: activeSessionState?.turnLifecycle?.phase ?? null
+          },
+          event: "agent.gui.composer_settings.update_requested",
+          level: "info",
+          workspaceId
+        });
         updateAgentSessionViewControlState(
           sessionViewRef(agentSessionId),
           (existing) => {
