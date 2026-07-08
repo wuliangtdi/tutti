@@ -8921,6 +8921,95 @@ describe("useAgentGUINodeController", () => {
     ).toBeNull();
   });
 
+  it("rolls back a failed rename for an active transient conversation", async () => {
+    const hostToastError = vi.fn();
+    let resolveActivation:
+      | ((value: AgentHostActivateAgentSessionResult) => void)
+      | undefined;
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>((resolve) => {
+          resolveActivation = resolve;
+        })
+    );
+    const renameSession = vi.fn(async () => {
+      throw new Error("rename failed");
+    });
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      activate,
+      renameSession,
+      toastApi: {
+        error: hostToastError
+      }
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null),
+        onDataChange: vi.fn()
+      })
+    );
+
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("draft title"));
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.viewModel.activeConversation?.title).toBe(
+        "draft title"
+      );
+    });
+    const createdId = result.current.viewModel.activeConversationId!;
+
+    let caughtError: unknown = null;
+    await act(async () => {
+      try {
+        await result.current.actions.renameConversation(
+          createdId,
+          "Renamed transient title"
+        );
+      } catch (error) {
+        caughtError = error;
+      }
+    });
+
+    expect(caughtError).toBeInstanceOf(Error);
+    expect(renameSession).toHaveBeenCalledWith({
+      workspaceId: "room-1",
+      agentSessionId: createdId,
+      title: "Renamed transient title"
+    });
+    expect(hostToastError).toHaveBeenCalledWith("rename failed");
+    expect(result.current.viewModel.activeConversation?.title).toBe(
+      "draft title"
+    );
+    expect(
+      result.current.viewModel.conversations.find(
+        (conversation) => conversation.id === createdId
+      )?.title
+    ).toBe("draft title");
+
+    act(() => {
+      resolveActivation?.({
+        session: agentSession(createdId, {
+          title: "draft title",
+          status: "working"
+        }),
+        activation: { mode: "new", status: "attached" }
+      });
+    });
+  });
+
   it("keeps a prompt title when session state reports the provider default runtime title", async () => {
     let resolveState:
       | ((
@@ -18351,6 +18440,7 @@ function installAgentHostApi({
   cancel = vi.fn(),
   updateSettings = vi.fn(),
   deleteSession = vi.fn(),
+  renameSession = vi.fn(),
   setSessionPinned = vi.fn(),
   warmupOpenclawGateway = vi.fn(async () => ({ accepted: true, ready: true })),
   onEvent = vi.fn(() => vi.fn()),
@@ -18377,6 +18467,7 @@ function installAgentHostApi({
   cancel?: ReturnType<typeof vi.fn>;
   updateSettings?: ReturnType<typeof vi.fn>;
   deleteSession?: ReturnType<typeof vi.fn>;
+  renameSession?: ReturnType<typeof vi.fn>;
   setSessionPinned?: ReturnType<typeof vi.fn>;
   warmupOpenclawGateway?: ReturnType<typeof vi.fn>;
   onEvent?: ReturnType<typeof vi.fn>;
@@ -18485,6 +18576,7 @@ function installAgentHostApi({
     getState: getState as CallableMock,
     list: list as CallableMock,
     listSessionTimeline: listSessionTimeline as CallableMock,
+    renameSession: renameSession as CallableMock,
     releaseEventStream: releaseEventStream as CallableMock | undefined,
     retainEventStream: retainEventStream as CallableMock | undefined,
     subscribeEvents: subscribeEvents as CallableMock,
@@ -18510,6 +18602,7 @@ function installAgentActivityRuntimeForHostMocks({
   getState,
   list,
   listSessionTimeline,
+  renameSession,
   releaseEventStream,
   retainEventStream,
   subscribeEvents,
@@ -18531,6 +18624,7 @@ function installAgentActivityRuntimeForHostMocks({
   getState: CallableMock;
   list: CallableMock;
   listSessionTimeline: CallableMock;
+  renameSession: CallableMock;
   releaseEventStream?: CallableMock | undefined;
   retainEventStream?: CallableMock | undefined;
   subscribeEvents: CallableMock;
@@ -18771,6 +18865,18 @@ function installAgentActivityRuntimeForHostMocks({
         };
       });
       return { removed: true };
+    },
+    async renameSession(input) {
+      const renamed = await renameSession(input);
+      if (renamed) {
+        return renamed as AgentActivitySession;
+      }
+      return upsertRuntimeSession(setSnapshot, input.workspaceId, {
+        agentSessionId: input.agentSessionId,
+        title: input.title,
+        status: "ready",
+        updatedAtUnixMs: Date.now()
+      });
     },
     async getSession(workspaceId, agentSessionId) {
       const session = getSnapshot(workspaceId).sessions.find(
@@ -19056,6 +19162,18 @@ function installNoopAgentActivityRuntimeForTests(): void {
           }
         ),
       deleteSession: async () => ({ removed: true }),
+      renameSession: async (input) =>
+        upsertRuntimeSession(
+          (targetWorkspaceId, updater) =>
+            updater(getSnapshot(targetWorkspaceId)),
+          input.workspaceId,
+          {
+            agentSessionId: input.agentSessionId,
+            title: input.title,
+            status: "ready",
+            updatedAtUnixMs: Date.now()
+          }
+        ),
       getSession: async (workspaceId, agentSessionId) =>
         upsertRuntimeSession(
           (targetWorkspaceId, updater) =>
