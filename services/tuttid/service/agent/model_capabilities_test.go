@@ -49,6 +49,29 @@ func TestModelCapabilitiesUsesCursorRuleWhenModelsDevDoesNotMatch(t *testing.T) 
 	}
 }
 
+func TestModelCapabilitiesIgnoresProvidersWithoutModelImageSupport(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"anthropic":{"models":{"claude-sonnet-4-5":{"modalities":{"input":["text","image"]}}}}}`))
+	}))
+	defer server.Close()
+	service := &ModelCapabilitiesService{APIURL: server.URL}
+
+	result := service.ResolveModelCapabilities(context.Background(), ModelCapabilityLookupInput{
+		Provider: agentprovider.ClaudeCode,
+		ModelID:  "anthropic/claude-sonnet-4-5",
+		Label:    "Claude Sonnet 4.5",
+	})
+	if result.SupportsImageInput != nil {
+		t.Fatalf("supportsImageInput = %#v, want unknown for claude-code", result.SupportsImageInput)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("models.dev calls = %d, want 0", calls.Load())
+	}
+}
+
 func TestModelCapabilitiesModelsDevSupportsImage(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -220,6 +243,7 @@ func TestServiceEnrichesComposerModelOptions(t *testing.T) {
 	service := &Service{ModelCapabilities: fakeModelCapabilitiesResolver{
 		"opencode:openai/gpt-5.2-pro":    true,
 		"cursor:composer-2.5[fast=true]": true,
+		"claude-code:claude-sonnet-4-5":  true,
 	}}
 
 	options := service.enrichModelCapabilityOptions(context.Background(), "opencode", []ComposerConfigOptionValue{{
@@ -238,6 +262,39 @@ func TestServiceEnrichesComposerModelOptions(t *testing.T) {
 	}})
 	if len(liveOptions) != 1 || liveOptions[0].SupportsImageInput == nil || !*liveOptions[0].SupportsImageInput {
 		t.Fatalf("cursor options = %#v, want supportsImageInput true", liveOptions)
+	}
+
+	claudeOptions := service.enrichModelCapabilityOptions(context.Background(), "claude-code", []ComposerConfigOptionValue{{
+		ID:    "claude-sonnet-4-5",
+		Label: "Claude Sonnet 4.5",
+		Value: "claude-sonnet-4-5",
+	}})
+	if len(claudeOptions) != 1 || claudeOptions[0].SupportsImageInput != nil {
+		t.Fatalf("claude options = %#v, want no model-level image capability", claudeOptions)
+	}
+}
+
+func TestEnrichAgentModelOptionsOnlyUsesModelImageSupportForAllowedProviders(t *testing.T) {
+	t.Parallel()
+	resolver := fakeModelCapabilitiesResolver{
+		"opencode:openai/gpt-5.2-pro": true,
+		"codex:gpt-5":                 true,
+	}
+
+	opencodeModels := enrichAgentModelOptions(context.Background(), "opencode", []AgentModelOption{{
+		ID:          "openai/gpt-5.2-pro",
+		DisplayName: "GPT-5.2 Pro",
+	}}, resolver)
+	if len(opencodeModels) != 1 || opencodeModels[0].SupportsImageInput == nil || !*opencodeModels[0].SupportsImageInput {
+		t.Fatalf("opencode models = %#v, want supportsImageInput true", opencodeModels)
+	}
+
+	codexModels := enrichAgentModelOptions(context.Background(), "codex", []AgentModelOption{{
+		ID:          "gpt-5",
+		DisplayName: "GPT-5",
+	}}, resolver)
+	if len(codexModels) != 1 || codexModels[0].SupportsImageInput != nil {
+		t.Fatalf("codex models = %#v, want no model-level image capability", codexModels)
 	}
 }
 
