@@ -602,6 +602,30 @@ export const zhCN = {
         }
       },
       empty: "需要 {{provider}} 帮你做些什么？",
+      homeSuggestionsClose: "收起建议",
+      homeSuggestions: {
+        about: {
+          title: "认识 Tutti",
+          prompt: "介绍一下 Tutti 能帮我做些什么"
+        },
+        breakdown: {
+          title: "任务拆解",
+          taskCenterLabel: "任务管理",
+          prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
+        },
+        review: {
+          title: "质量审查",
+          prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
+        },
+        interaction: {
+          title: "Agent 互动",
+          prompt:
+            "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
+        },
+        import: {
+          title: "导入会话"
+        }
+      },
       conversations: "会话",
       newConversation: "新建会话",
       accountMenuTitle: "Tutti Agent",

@@ -119,6 +119,61 @@ export interface AgentComposerDraft {
   largeTexts?: AgentComposerDraftLargeText[];
 }
 
+/**
+ * Built-in glyph for a home-suggestion category chip. Keeps the localized data
+ * free of any component references so it can live in the i18n label bundle.
+ */
+export type AgentHomeSuggestionIcon =
+  | "write"
+  | "code"
+  | "research"
+  | "handoff"
+  | "breakdown"
+  | "review"
+  | "interaction"
+  | "about"
+  | "import";
+
+/**
+ * Host-level action a chip can trigger. A chip may carry an action alongside a
+ * `prompt` — both fire on click (the prompt fills, then the action runs).
+ * `import-session` opens the external-agent session import wizard.
+ */
+export type AgentHomeSuggestionAction = "import-session";
+
+export interface AgentHomeSuggestionItem {
+  id: string;
+  /** Text shown in the suggestion row. */
+  label: string;
+  /**
+   * Prompt inserted into the composer when the suggestion is chosen. Defaults
+   * to `label` when omitted so short labels can double as the prompt.
+   */
+  prompt?: string;
+}
+
+export interface AgentHomeSuggestionCategory {
+  id: string;
+  /** Chip / card header label. */
+  label: string;
+  icon?: AgentHomeSuggestionIcon;
+  /**
+   * Suggestions revealed in an expandable card when the chip is chosen. Omit
+   * (or leave empty) for a direct-fill chip that uses `prompt` instead.
+   */
+  items?: AgentHomeSuggestionItem[];
+  /**
+   * When set, the chip fills the composer with this prompt immediately on click
+   * instead of expanding a card of `items`.
+   */
+  prompt?: string;
+  /**
+   * When set, the chip triggers a host action on click instead of filling the
+   * composer or expanding `items`.
+   */
+  action?: AgentHomeSuggestionAction;
+}
+
 export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
