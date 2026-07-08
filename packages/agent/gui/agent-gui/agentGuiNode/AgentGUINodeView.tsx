@@ -93,7 +93,13 @@ import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsL
 import { AgentConversationFlow } from "../../shared/agentConversation/components/AgentConversationFlow";
 import type { AgentConversationVM } from "../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentPromptContentBlock } from "../../shared/contracts/dto";
-import type { AgentComposerDraft } from "./model/agentGuiNodeTypes";
+import type {
+  AgentComposerDraft,
+  AgentHomeSuggestionAction,
+  AgentHomeSuggestionCategory
+} from "./model/agentGuiNodeTypes";
+import { AgentHomeSuggestions } from "./AgentHomeSuggestions";
+import { AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT } from "../../workbench/contribution";
 import { useProjectedAgentConversation } from "../../shared/agentConversation/projection/useProjectedAgentConversation";
 import { normalizeOptionalWorkspaceAgentStatus } from "../../shared/workspaceAgentStatusNormalizer";
 import {
@@ -397,6 +403,10 @@ export interface AgentGUIViewLabels {
   emptyForProvider?: (provider: string) => string;
   emptyProvider?: string;
   emptyProviderForProvider?: (provider: string) => string;
+  /** Starter-prompt suggestion categories shown under the new-session composer. */
+  homeSuggestions?: readonly AgentHomeSuggestionCategory[];
+  /** Accessible label for the button that dismisses an expanded suggestion category. */
+  homeSuggestionsClose?: string;
   conversations: string;
   newConversation: string;
   accountMenuTitle: string;
@@ -2625,6 +2635,26 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     },
     [onRequestComposerFocus, selectHomeComposerAgentTarget]
   );
+  const handleSelectHomeSuggestion = useCallback(
+    (prompt: string) => {
+      // Don't request focus here: replacing the draft already makes the composer
+      // focus the filled prompt (focusAtStart). A second focus (focusAtEnd) would
+      // race it and make the cursor/scroll jump — a visible flicker on fill.
+      updateDraftContent({ ...viewModel.draftContent, prompt });
+    },
+    [updateDraftContent, viewModel.draftContent]
+  );
+  const handleHomeSuggestionAction = useCallback(
+    (action: AgentHomeSuggestionAction) => {
+      if (action === "import-session") {
+        // The host chrome owns the external-agent import wizard; let it open.
+        window.dispatchEvent(
+          new CustomEvent(AGENT_GUI_WORKBENCH_OPEN_EXTERNAL_IMPORT_EVENT)
+        );
+      }
+    },
+    []
+  );
   const submitPrompt = useStableEventCallback(actions.submitPrompt);
   const goalControl = useStableEventCallback(actions.goalControl);
   const submitGuidancePrompt = useStableEventCallback(
@@ -3351,6 +3381,10 @@ const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
               chromeLabels={chromeLabels}
               composerProps={emptyHeroComposerProps}
               providerSelectLabel={labels.providerSwitchLabel}
+              suggestions={labels.homeSuggestions ?? EMPTY_HOME_SUGGESTIONS}
+              suggestionsCloseLabel={labels.homeSuggestionsClose}
+              onSelectSuggestion={handleSelectHomeSuggestion}
+              onSelectSuggestionAction={handleHomeSuggestionAction}
             />
           )
         ) : (
@@ -3552,6 +3586,9 @@ function useOptionalStableEventCallback<Args extends unknown[], Result>(
   }, [callback != null]);
 }
 
+const EMPTY_HOME_SUGGESTIONS: readonly AgentHomeSuggestionCategory[] =
+  Object.freeze([]);
+
 interface AgentGUIEmptyHeroPaneProps {
   provider: AgentGUINodeViewModel["data"]["provider"];
   emptyLabel: string;
@@ -3569,6 +3606,10 @@ interface AgentGUIEmptyHeroPaneProps {
   chromeLabels: ChromeLabels;
   composerProps: AgentComposerProps;
   providerSelectLabel: string;
+  suggestions: readonly AgentHomeSuggestionCategory[];
+  suggestionsCloseLabel?: string;
+  onSelectSuggestion: (prompt: string) => void;
+  onSelectSuggestionAction?: (action: AgentHomeSuggestionAction) => void;
 }
 
 const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
@@ -3587,7 +3628,11 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
   selectedProviderTarget,
   chromeLabels,
   composerProps,
-  providerSelectLabel
+  providerSelectLabel,
+  suggestions,
+  suggestionsCloseLabel,
+  onSelectSuggestion,
+  onSelectSuggestionAction
 }: AgentGUIEmptyHeroPaneProps): React.JSX.Element {
   "use memo";
 
@@ -3641,6 +3686,12 @@ const AgentGUIEmptyHeroPane = memo(function AgentGUIEmptyHeroPane({
           />
         ) : null}
         <AgentComposer {...composerProps} />
+        <AgentHomeSuggestions
+          categories={suggestions}
+          onSelectSuggestion={onSelectSuggestion}
+          onSelectAction={onSelectSuggestionAction}
+          closeLabel={suggestionsCloseLabel}
+        />
       </div>
     </div>
   );

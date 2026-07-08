@@ -5310,3 +5310,99 @@ function createLabels(): AgentGUIViewLabels {
     syncFailed: "syncFailed"
   };
 }
+
+function createLabelsWithHomeSuggestions(): AgentGUIViewLabels {
+  return {
+    ...createLabels(),
+    homeSuggestionsClose: "Close suggestions",
+    homeSuggestions: [
+      {
+        id: "write",
+        icon: "write",
+        label: "Write",
+        items: [{ id: "write-1", label: "Draft an announcement" }]
+      },
+      {
+        id: "tutti-handoff",
+        icon: "handoff",
+        label: "Hand off to another agent",
+        items: [
+          {
+            id: "handoff-1",
+            label: "Prepare a handoff summary",
+            prompt: "Write a concise handoff summary."
+          }
+        ]
+      }
+    ]
+  };
+}
+
+describe("AgentGUINodeView home suggestions", () => {
+  afterEach(() => {
+    composerMock.calls = [];
+  });
+
+  it("keeps a category collapsed until its chip is chosen", () => {
+    renderAgentGUINodeView({ labels: createLabelsWithHomeSuggestions() });
+
+    expect(screen.queryByText("Draft an announcement")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+
+    expect(screen.getByText("Draft an announcement")).toBeInTheDocument();
+  });
+
+  it("prefills the composer draft with a chosen suggestion, preserving draft images", () => {
+    const updateDraftContent = vi.fn();
+    const image = {
+      id: "img-1",
+      name: "shot.png",
+      mimeType: "image/png" as const,
+      previewUrl: "blob:preview"
+    };
+
+    renderAgentGUINodeView({
+      actions: { ...createActions(), updateDraftContent },
+      labels: createLabelsWithHomeSuggestions(),
+      viewModel: createViewModel({
+        draftContent: { prompt: "", images: [image] }
+      })
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Write" }));
+    fireEvent.click(screen.getByText("Draft an announcement"));
+
+    expect(updateDraftContent).toHaveBeenCalledWith({
+      prompt: "Draft an announcement",
+      images: [image]
+    });
+  });
+
+  it("inserts the handoff prompt text rather than its display label", () => {
+    const updateDraftContent = vi.fn();
+
+    renderAgentGUINodeView({
+      actions: { ...createActions(), updateDraftContent },
+      labels: createLabelsWithHomeSuggestions()
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hand off to another agent" })
+    );
+    fireEvent.click(screen.getByText("Prepare a handoff summary"));
+
+    expect(updateDraftContent).toHaveBeenCalledWith({
+      prompt: "Write a concise handoff summary.",
+      images: []
+    });
+  });
+
+  it("does not render the suggestions section when none are provided", () => {
+    const { container } = renderAgentGUINodeView({ labels: createLabels() });
+
+    expect(
+      container.querySelector(".agent-gui-node__empty-hero-suggestions")
+    ).toBeNull();
+  });
+});
