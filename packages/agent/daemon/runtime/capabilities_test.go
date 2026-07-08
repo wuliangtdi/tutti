@@ -59,6 +59,16 @@ func TestStandardACPCapabilitiesByProvider(t *testing.T) {
 	if !containsString(withCompact, CapabilityCompact) || !containsString(withCompact, CapabilityImageInput) {
 		t.Fatalf("derived capabilities = %v, want compact+imageInput", withCompact)
 	}
+
+	// Cursor advertises planMode (ACP session/set_mode "plan") so the composer
+	// plan badge survives the authoritative session snapshots emitted per turn.
+	cursor := standardACPCapabilities(ProviderCursor, false, acpLiveStateSnapshot{})
+	if !containsString(cursor, CapabilityPlanMode) {
+		t.Fatalf("cursor capabilities missing planMode: %v", cursor)
+	}
+	if !containsString(cursor, CapabilityInterrupt) {
+		t.Fatalf("cursor capabilities missing interrupt: %v", cursor)
+	}
 }
 
 func TestClaudeCodeSessionStateReportsCapabilities(t *testing.T) {
