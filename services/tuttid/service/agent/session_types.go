@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -196,6 +197,13 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+}
+
+type SessionStateReporter interface {
+	ReportSessionState(
+		context.Context,
+		agentsessionstore.ReportSessionStateInput,
+	) (agentsessionstore.ReportSessionStateReply, error)
 }
 
 type SessionSectionReader interface {
