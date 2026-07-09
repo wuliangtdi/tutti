@@ -175,7 +175,6 @@ import {
   ConversationMeta,
   filterConversationSectionsBySearchMatches,
   groupConversations,
-  normalizeConversationProjectPath,
   type ConversationSection
 } from "./agentGuiNodeViewConversation";
 import { buildAgentGUIConversationSummaries } from "./model/agentGuiConversationModel";
@@ -4363,22 +4362,11 @@ function AgentGUILaunchpadIconGrid({
       </span>
     );
   }
-  // Keep the icons left-to-right, but split them around the selected agent so
-  // the active icon always stays dead-center. The leading/trailing rails share
-  // equal flex width, so the center never drifts with uneven side counts.
   return (
     <span aria-hidden="true" className={styles.providerRailLaunchpadIcon}>
-      <span className={styles.providerRailLaunchpadSide} data-side="leading">
-        {icons
-          .slice(0, activeIndex)
-          .map((icon, index) => renderItem(icon, activeIndex - index, false))}
-      </span>
-      {renderItem(icons[activeIndex]!, 0, true)}
-      <span className={styles.providerRailLaunchpadSide} data-side="trailing">
-        {icons
-          .slice(activeIndex + 1)
-          .map((icon, index) => renderItem(icon, index + 1, false))}
-      </span>
+      {icons.map((icon, index) =>
+        renderItem(icon, Math.abs(index - activeIndex), index === activeIndex)
+      )}
     </span>
   );
 }
@@ -5028,9 +5016,10 @@ export function updateConversationSectionsFromSummaries(
     if ((conversation.pinnedAtUnixMs ?? 0) > 0) {
       continue;
     }
-    const sectionId = conversation.project
-      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
-      : "conversations";
+    if (conversation.project) {
+      continue;
+    }
+    const sectionId = "conversations";
     const items = summarySectionItemsById.get(sectionId) ?? [];
     items.push(conversation);
     summarySectionItemsById.set(sectionId, items);
@@ -5089,7 +5078,6 @@ export function updateConversationSectionsFromSummaries(
       };
     }
     const summaryItems = summarySectionItemsById.get(section.id) ?? [];
-    const summaryIdsForSection = new Set(summaryItems.map((item) => item.id));
     const items = section.items
       .map((item) => {
         seenIds.add(item.id);
@@ -5097,26 +5085,29 @@ export function updateConversationSectionsFromSummaries(
         if (!summary) {
           return item;
         }
+        if ((summary.pinnedAtUnixMs ?? 0) > 0) {
+          sectionChanged = true;
+          return null;
+        }
         const nextItem = section.project
           ? {
               ...summary,
               project: section.project
             }
-          : summary;
+          : {
+              ...summary,
+              project: null
+            };
         if (conversationSummariesRenderEqual(item, nextItem)) {
           return item;
         }
         sectionChanged = true;
         return nextItem;
       })
-      .filter((item) => {
-        const summary = summariesById.get(item.id);
-        if (!summary || summaryIdsForSection.has(item.id)) {
-          return true;
-        }
-        sectionChanged = true;
-        return false;
-      });
+      .filter(
+        (item): item is AgentGUINodeViewModel["conversations"][number] =>
+          item !== null
+      );
     const nextSection = sectionChanged
       ? {
           ...section,
@@ -5191,9 +5182,7 @@ export function updateConversationSectionsFromSummaries(
     });
   }
   for (const conversation of newConversations) {
-    const targetSectionId = conversation.project
-      ? `project:${normalizeConversationProjectPath(conversation.project.path)}`
-      : "conversations";
+    const targetSectionId = "conversations";
     const targetIndex = sectionsWithInsertions.findIndex(
       (section) => section.id === targetSectionId
     );
@@ -5208,9 +5197,9 @@ export function updateConversationSectionsFromSummaries(
     }
     sectionsWithInsertions.push({
       id: targetSectionId,
-      kind: conversation.project ? "project" : "conversations",
-      label: conversation.project?.label ?? options.sectionConversationsLabel,
-      project: conversation.project ?? null,
+      kind: "conversations",
+      label: options.sectionConversationsLabel,
+      project: null,
       items: [conversation]
     });
   }
@@ -5261,6 +5250,7 @@ function projectRuntimeSectionsToConversationSections(input: {
           label: section.userProject.label,
           lastUsedAtUnixMs: section.userProject.lastUsedAtUnixMs,
           path: section.userProject.path,
+          sectionKey: section.userProject.sectionKey,
           updatedAtUnixMs: section.userProject.updatedAtUnixMs
         }
       : null;
@@ -5372,6 +5362,7 @@ function conversationProjectsRenderEqual(
       : left.id === right.id &&
         left.path === right.path &&
         left.label === right.label &&
+        left.sectionKey === right.sectionKey &&
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&
         left.lastUsedAtUnixMs === right.lastUsedAtUnixMs)
