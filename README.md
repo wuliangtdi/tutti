@@ -15,12 +15,6 @@
 
 ---
 
-## Download
-
-[Download Tutti · Local for macOS](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
-
-Windows support is coming soon.
-
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
 
 Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6) to share feedback, ask questions, and help shape the future of human-agent collaboration.
@@ -247,7 +241,7 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 
 [![Contributors](https://contrib.rocks/image?repo=tutti-os/tutti)](https://github.com/tutti-os/tutti/graphs/contributors)
 
-## Getting Started
+## Quick Start
 
 ### Download
 

@@ -15,12 +15,6 @@
 
 ---
 
-## 下载
-
-[下载 Tutti · Local macOS 版](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
-
-Windows 版本即将推出。
-
 如果你喜欢 Tutti，欢迎给我们一个 Star，或者 Fork 仓库、提交 Issue、发起 PR。
 
 也欢迎感兴趣的朋友加入我们的微信群，分享反馈、提出问题，一起定义人与 Agent 协作的未来。
