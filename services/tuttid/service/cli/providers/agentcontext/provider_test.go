@@ -667,15 +667,17 @@ func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newWaitCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input:      map[string]any{"session-id": "SESSION-1", "timeout-ms": "2500"},
+		Input:      map[string]any{"session-id": "SESSION-1", "after-version": "7", "timeout-ms": "2500"},
 		OutputMode: cliservice.OutputModeJSON,
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
+	if sessions.waitInput.AfterVersion == nil || *sessions.waitInput.AfterVersion != 7 {
+		t.Fatalf("after version = %#v, want 7", sessions.waitInput.AfterVersion)
+	}
 	if sessions.waitInput.WorkspaceID != "workspace-1" ||
 		sessions.waitInput.AgentSessionID != "SESSION-1" ||
-		sessions.waitInput.AfterVersion != nil ||
 		sessions.waitInput.MessageLimit != 0 ||
 		!sessions.waitInput.SkipMessages ||
 		sessions.waitInput.Timeout != 2500*time.Millisecond {
@@ -698,17 +700,20 @@ func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 	}
 }
 
-func TestWaitCommandExposesOnlySleepParameters(t *testing.T) {
+func TestWaitCommandExposesCursorAndSleepParameters(t *testing.T) {
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newWaitCommand()
 
 	properties := command.Capability.InputSchema["properties"].(map[string]any)
 	if _, ok := properties["session-id"]; !ok {
 		t.Fatalf("schema = %#v, want session-id", properties)
 	}
+	if _, ok := properties["after-version"]; !ok {
+		t.Fatalf("schema = %#v, want after-version", properties)
+	}
 	if _, ok := properties["timeout-ms"]; !ok {
 		t.Fatalf("schema = %#v, want timeout-ms", properties)
 	}
-	for _, key := range []string{"after-version", "limit"} {
+	for _, key := range []string{"limit"} {
 		if _, ok := properties[key]; ok {
 			t.Fatalf("schema should omit %q: %#v", key, properties)
 		}

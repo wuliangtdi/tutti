@@ -28,8 +28,9 @@ type sessionSummaryInput struct {
 }
 
 type waitInput struct {
-	SessionID string `cli:"session-id" validate:"required" description:"Agent session id to await."`
-	TimeoutMS int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
+	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to await."`
+	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Wait for a stop point after this message version."`
+	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
 }
 
 type turnResourcesInput struct {
@@ -188,9 +189,15 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 	if input.TimeoutMS == 0 {
 		timeout = 5 * time.Minute
 	}
+	var afterVersion *uint64
+	if input.AfterVersion != nil {
+		value := uint64(*input.AfterVersion)
+		afterVersion = &value
+	}
 	result, err := p.sessions.Wait(ctx, agentservice.WaitInput{
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
+		AfterVersion:   afterVersion,
 		SkipMessages:   true,
 		Timeout:        timeout,
 	})
