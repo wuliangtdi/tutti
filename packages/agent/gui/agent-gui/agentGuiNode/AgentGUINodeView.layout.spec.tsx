@@ -1242,16 +1242,24 @@ describe("AgentGUINodeView layout persistence", () => {
       ) ?? []
     );
     expect(items.length).toBeGreaterThan(1);
-    // The launchpad splits its icons around the selected agent so it stays
-    // centered; exactly one icon is active and it renders first (leading rail
-    // empty for the codex selection here).
+    // The launchpad keeps all provider icons in one continuous row so the
+    // group, not a synthetic selected-agent center point, stays horizontally
+    // centered in the empty hero.
     expect(
       items.filter(
         (item) => item.getAttribute("data-provider-active") === "true"
       )
     ).toHaveLength(1);
-    expect(items[0]?.getAttribute("data-provider-active")).toBe("true");
-    expect(items[0]?.querySelector("img")?.getAttribute("src")).toBe(
+    expect(heroIconGrid?.children).toHaveLength(items.length);
+    expect(
+      heroIconGrid?.querySelector(
+        ".agent-gui-node__provider-rail-launchpad-side"
+      )
+    ).toBeNull();
+    const activeItem = items.find(
+      (item) => item.getAttribute("data-provider-active") === "true"
+    );
+    expect(activeItem?.querySelector("img")?.getAttribute("src")).toBe(
       MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS.codex
     );
   });
@@ -1615,8 +1623,8 @@ describe("AgentGUINodeView layout persistence", () => {
       "Codex",
       "Claude Code",
       "Cursor",
-      "Open Code",
       "Tutti Agent",
+      "Open Code",
       "Hermes",
       "OpenClaw"
     ]);
@@ -2528,7 +2536,8 @@ describe("AgentGUINodeView layout persistence", () => {
     const project = {
       id: "project-home",
       path: "/Users/ryan",
-      label: "ryan"
+      label: "ryan",
+      sectionKey: "project:/Users/ryan"
     };
     const listSessionSections = vi.fn<
       NonNullable<AgentActivityRuntime["listSessionSections"]>
@@ -2566,7 +2575,7 @@ describe("AgentGUINodeView layout persistence", () => {
       },
       viewModel: {
         ...createViewModel(),
-        activeConversationId: "session-5",
+        activeConversationId: "session-20",
         userProjects: [project],
         conversations: [5, 20, 19, 18, 17].map((index) =>
           createConversationSummary(`session-${index}`, {
@@ -2579,15 +2588,15 @@ describe("AgentGUINodeView layout persistence", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("agent-gui-conversation-item-session-5")
+        screen.getByTestId("agent-gui-conversation-item-session-20")
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByTestId("agent-gui-conversation-item-session-20")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("agent-gui-conversation-item-session-16")
+      screen.queryByTestId("agent-gui-conversation-item-session-5")
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-gui-conversation-item-session-16")
+    ).toBeInTheDocument();
   });
 
   it("renders pinned conversations from the runtime pinned page", async () => {
@@ -4334,8 +4343,13 @@ describe("AgentGUINodeView layout persistence", () => {
     });
   });
 
-  it("keeps the selected transient conversation ahead of the latest runtime rail page", () => {
-    const project = { id: "ryan", label: "ryan", path: "/Users/ryan" };
+  it("does not insert local project summaries ahead of the persisted runtime rail page", () => {
+    const project = {
+      id: "ryan",
+      label: "ryan",
+      path: "/Users/ryan",
+      sectionKey: "project:/Users/ryan"
+    };
     const existingSection = {
       id: "project:/Users/ryan",
       kind: "project" as const,
@@ -4362,10 +4376,6 @@ describe("AgentGUINodeView layout persistence", () => {
 
     expect(updated?.[0]?.items.map((item) => item.id)).toEqual([
       "session-5",
-      "session-20",
-      "session-19",
-      "session-18",
-      "session-17",
       "session-4",
       "session-3",
       "session-2",
