@@ -87,7 +87,7 @@ func TestTuttiCLIPolicyUsesPreparedCLICommandForAgentLauncherFallback(t *testing
 		"tutti-dev claude start --prompt <task> --show --json",
 		"tutti-dev agent wait",
 		"tutti-dev agent session-summary",
-		"returns only recent execution messages",
+		"does not fetch execution messages",
 		"full compact context helper or turn discovery",
 		"tutti-dev agent turn-resources",
 		"`mention://agent-target/<targetId>?workspaceId=...`",

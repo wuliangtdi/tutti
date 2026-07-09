@@ -102,7 +102,7 @@ func TestCommandGuideFromCapabilitiesUsesRelevantRegistryCommands(t *testing.T) 
 			ID:          "agent-context.agent.wait",
 			Path:        []string{"agent", "wait"},
 			Summary:     "Wait for an agent session stop point",
-			Description: "Wait for recent agent execution messages.",
+			Description: "Wait without fetching execution messages.",
 		},
 		{
 			ID:          "workspace-apps.app.open",
@@ -380,7 +380,7 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev agent wait --session-id <session-id> --json") ||
 		!strings.Contains(guide, "use `agent session-summary` when you need the full compact session context") {
-		t.Fatalf("guide = %q, want tutti-dev wait fallback command", guide)
+		t.Fatalf("guide = %q, want tutti-dev await fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json") {
 		t.Fatalf("guide = %q, want tutti-dev turn resources fallback command", guide)

@@ -28,10 +28,8 @@ type sessionSummaryInput struct {
 }
 
 type waitInput struct {
-	SessionID    string `cli:"session-id" validate:"required" description:"Agent session id to wait on."`
-	AfterVersion *int64 `cli:"after-version" validate:"min=0" description:"Only include messages newer than this version. Defaults to the current latest version when wait starts."`
-	Limit        int    `cli:"limit" validate:"min=0" description:"Maximum number of recent agent execution messages to return."`
-	TimeoutMS    int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
+	SessionID string `cli:"session-id" validate:"required" description:"Agent session id to await."`
+	TimeoutMS int    `cli:"timeout-ms" validate:"min=0" description:"Maximum time to wait in milliseconds before returning a timeout result."`
 }
 
 type turnResourcesInput struct {
@@ -47,9 +45,7 @@ type sessionSummaryResult struct {
 }
 
 type waitCommandResult struct {
-	ImageLocalPath imageLocalPathResolver
-	Messages       []agentservice.SessionMessage
-	Result         agentservice.WaitResult
+	Result agentservice.WaitResult
 }
 
 type turnResourcesResult struct {
@@ -121,7 +117,7 @@ func (p Provider) newWaitCommand() cliservice.Command {
 		ID:          appID + ".agent.wait",
 		Path:        []string{"agent", "wait"},
 		Summary:     "Wait for an agent session stop point",
-		Description: "Block until the session reaches a stop point, then return only recent agent execution messages. Use `agent session-summary` for full context recovery.",
+		Description: "Block until the session reaches a stop point. Use `agent session-summary` for context recovery.",
 		Kind:        framework.KindAction,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
@@ -192,25 +188,17 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 	if input.TimeoutMS == 0 {
 		timeout = 5 * time.Minute
 	}
-	var afterVersion *uint64
-	if input.AfterVersion != nil {
-		value := uint64(*input.AfterVersion)
-		afterVersion = &value
-	}
 	result, err := p.sessions.Wait(ctx, agentservice.WaitInput{
 		WorkspaceID:    invoke.WorkspaceID,
 		AgentSessionID: input.SessionID,
-		AfterVersion:   afterVersion,
-		MessageLimit:   input.Limit,
+		SkipMessages:   true,
 		Timeout:        timeout,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return waitCommandResult{
-		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
-		Messages:       result.Messages,
-		Result:         result,
+		Result: result,
 	}, nil
 }
 
@@ -271,12 +259,9 @@ func waitJSONValue(result any) map[string]any {
 	return map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
 		"session":        sessionSummaryValue(waited.Result.Session),
-		"messages":       messageCompactValues(waited.Messages, waited.ImageLocalPath),
 		"latestVersion":  waited.Result.LatestVersion,
-		"hasMore":        waited.Result.HasMore,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
-		"effectiveAfter": waited.Result.EffectiveAfter,
 	}
 }
 

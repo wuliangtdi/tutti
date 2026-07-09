@@ -50,8 +50,8 @@ This directory is being used by a Tutti AgentGUI session.
 - Use `{{CLI_COMMAND}} codex start --prompt <task> --show --json` or `{{CLI_COMMAND}} claude start --prompt <task> --show --json`.
 - Before starting or messaging another agent, follow `$tutti-handoff`.
 - After `agent start`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
-- After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --after-version <waitAfterVersion> --json` with the returned `waitAfterVersion`.
-- `agent wait` returns only recent execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for task prompt, not model.
+- After `agent send`, prefer `{{CLI_COMMAND}} agent wait --session-id <session-id> --json`.
+- `agent wait` does not fetch execution messages; use `{{CLI_COMMAND}} agent session-summary --session-id <session-id> --json` only for the full compact context helper or turn discovery. Ask for task prompt, not model.
 
 ### Image Context
 
