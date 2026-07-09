@@ -25,6 +25,20 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 **[tutti.sh →](https://tutti.sh/?tc=25q)**
 
+## Quick Start
+
+### Download
+
+[Download Tutti · Local for macOS](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
+
+Windows support is coming soon.
+
+<!-- TODO: waitlist link for Tutti · VM -->
+
+Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
+
 ## What is Tutti?
 
 Claude Code is powerful. So is Codex. So is Canvas. So is Claude Design.
@@ -240,20 +254,6 @@ No. Tutti is useful for coding, design, content, app workflows, and any work whe
 ## Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=tutti-os/tutti)](https://github.com/tutti-os/tutti/graphs/contributors)
-
-## Quick Start
-
-### Download
-
-[Download Tutti · Local for macOS](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
-
-Windows support is coming soon.
-
-<!-- TODO: waitlist link for Tutti · VM -->
-
-Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
 ## Community & Contributing
 
