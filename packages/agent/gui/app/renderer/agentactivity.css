@@ -4785,9 +4785,6 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__agent-name {
   flex: 0 0 auto;
-  font-family: Merriweather, Georgia, serif;
-  font-style: italic;
-  font-weight: 700;
 }
 
 .agent-gui-workbench-header__session-title {
