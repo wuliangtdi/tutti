@@ -5,13 +5,18 @@ import (
 	"strings"
 )
 
+var migratedDescriptors = []ProviderDescriptor{codexDescriptor()}
+
+var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
+
+var eventProviderIndex = buildEventProviderIndex(migratedDescriptors)
+
 // Migrated returns the descriptors that have completed the provider-registry
 // migration. Providers not present here continue through the explicitly
 // temporary legacy registrations in their owning layers.
 func Migrated() []ProviderDescriptor {
-	descriptors := []ProviderDescriptor{codexDescriptor()}
-	result := make([]ProviderDescriptor, 0, len(descriptors))
-	for _, descriptor := range descriptors {
+	result := make([]ProviderDescriptor, 0, len(migratedDescriptors))
+	for _, descriptor := range migratedDescriptors {
 		result = append(result, cloneDescriptor(descriptor))
 	}
 	return result
@@ -22,42 +27,40 @@ func Find(value string) (ProviderDescriptor, bool) {
 	if normalized == "" {
 		return ProviderDescriptor{}, false
 	}
-	for _, descriptor := range Migrated() {
-		if normalize(descriptor.Identity.ID) == normalized {
-			return descriptor, true
-		}
-		for _, alias := range descriptor.Identity.Aliases {
-			if normalize(alias) == normalized {
-				return descriptor, true
-			}
-		}
-	}
-	return ProviderDescriptor{}, false
-}
-
-func FindEventProvider(value string) (ProviderDescriptor, bool) {
-	normalized := normalize(value)
-	if normalized == "" {
+	index, ok := providerDescriptorIndex[normalized]
+	if !ok {
 		return ProviderDescriptor{}, false
 	}
-	for _, descriptor := range Migrated() {
-		if !descriptor.Events.Enabled {
-			continue
-		}
-		if normalize(descriptor.Identity.ID) == normalized {
-			return descriptor, true
-		}
-		for _, alias := range descriptor.Events.Aliases {
-			if normalize(alias) == normalized {
-				return descriptor, true
-			}
-		}
+	return cloneDescriptor(migratedDescriptors[index]), true
+}
+
+// ResolveProviderID normalizes a migrated provider identity without exposing
+// or cloning its descriptor. Use this in hot paths that only need identity.
+func ResolveProviderID(value string) (string, bool) {
+	index, ok := providerDescriptorIndex[normalize(value)]
+	if !ok {
+		return "", false
 	}
-	return ProviderDescriptor{}, false
+	return migratedDescriptors[index].Identity.ID, true
+}
+
+// EventProvider describes the small immutable event-normalization projection
+// consumed on per-event hot paths.
+type EventProvider struct {
+	ProviderID              string
+	TurnLifecycleProjection TurnLifecycleProjectionPolicy
+}
+
+// ResolveEventProvider normalizes an event provider without cloning the full
+// provider descriptor.
+func ResolveEventProvider(value string) (EventProvider, bool) {
+	resolved, ok := eventProviderIndex[normalize(value)]
+	return resolved, ok
 }
 
 func ValidateMigrated() error {
 	providerKeys := map[string]string{}
+	eventKeys := map[string]string{}
 	targetIDs := map[string]string{}
 	for _, descriptor := range Migrated() {
 		if err := Validate(descriptor); err != nil {
@@ -70,6 +73,15 @@ func ValidateMigrated() error {
 				return fmt.Errorf("provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
 			}
 			providerKeys[normalizedKey] = providerID
+		}
+		if descriptor.Events.Enabled {
+			for _, key := range append([]string{providerID}, descriptor.Events.Aliases...) {
+				normalizedKey := normalize(key)
+				if owner, exists := eventKeys[normalizedKey]; exists {
+					return fmt.Errorf("event provider key %q is shared by %q and %q", normalizedKey, owner, providerID)
+				}
+				eventKeys[normalizedKey] = providerID
+			}
 		}
 		targetID := strings.TrimSpace(descriptor.Target.ID)
 		if owner, exists := targetIDs[targetID]; exists {
@@ -84,6 +96,15 @@ func Validate(descriptor ProviderDescriptor) error {
 	providerID := normalize(descriptor.Identity.ID)
 	if providerID == "" {
 		return fmt.Errorf("provider identity id is required")
+	}
+	if descriptor.Identity.ID != providerID {
+		return fmt.Errorf("provider identity id %q must be canonical", descriptor.Identity.ID)
+	}
+	if err := validateUniqueNonBlankStrings(descriptor.Identity.Aliases); err != nil {
+		return fmt.Errorf("provider %q identity aliases: %w", providerID, err)
+	}
+	if containsNormalized(descriptor.Identity.Aliases, providerID) {
+		return fmt.Errorf("provider %q identity aliases repeat its canonical id", providerID)
 	}
 	if strings.TrimSpace(descriptor.Identity.DisplayName) == "" {
 		return fmt.Errorf("provider %q display name is required", providerID)
@@ -103,6 +124,12 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if strings.TrimSpace(descriptor.Runtime.Name) == "" {
 		return fmt.Errorf("provider %q runtime name is required", providerID)
+	}
+	if strings.TrimSpace(descriptor.Runtime.ClientInfoName) == "" {
+		return fmt.Errorf("provider %q runtime client info name is required", providerID)
+	}
+	if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
+		return fmt.Errorf("provider %q runtime auth required message is required", providerID)
 	}
 	if err := validateCommand(descriptor.Runtime.Command); err != nil {
 		return fmt.Errorf("provider %q runtime command: %w", providerID, err)
@@ -213,6 +240,12 @@ func Validate(descriptor ProviderDescriptor) error {
 	if !descriptor.Events.Enabled {
 		return fmt.Errorf("provider %q event normalization must be enabled", providerID)
 	}
+	if err := validateUniqueNonBlankStrings(descriptor.Events.Aliases); err != nil {
+		return fmt.Errorf("provider %q event aliases: %w", providerID, err)
+	}
+	if containsNormalized(descriptor.Events.Aliases, providerID) {
+		return fmt.Errorf("provider %q event aliases repeat its canonical id", providerID)
+	}
 	switch descriptor.Events.TurnLifecycleProjection {
 	case TurnLifecycleProjectionLegacy, TurnLifecycleProjectionExplicit:
 	default:
@@ -273,6 +306,15 @@ func validateUniqueNonBlankStrings(values []string) error {
 	return nil
 }
 
+func containsNormalized(values []string, expected string) bool {
+	for _, value := range values {
+		if normalize(value) == expected {
+			return true
+		}
+	}
+	return false
+}
+
 func validateSlashCommandPolicy(policy SlashCommandPolicyDescriptor) error {
 	if err := validateUniqueNonBlankStrings(policy.FallbackCommands); err != nil {
 		return fmt.Errorf("fallback commands: %w", err)
@@ -303,6 +345,33 @@ func validateSlashCommandPolicy(policy SlashCommandPolicyDescriptor) error {
 
 func normalize(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func buildProviderDescriptorIndex(descriptors []ProviderDescriptor) map[string]int {
+	result := make(map[string]int, len(descriptors))
+	for index, descriptor := range descriptors {
+		for _, key := range append([]string{descriptor.Identity.ID}, descriptor.Identity.Aliases...) {
+			result[normalize(key)] = index
+		}
+	}
+	return result
+}
+
+func buildEventProviderIndex(descriptors []ProviderDescriptor) map[string]EventProvider {
+	result := make(map[string]EventProvider, len(descriptors))
+	for _, descriptor := range descriptors {
+		if !descriptor.Events.Enabled {
+			continue
+		}
+		resolved := EventProvider{
+			ProviderID:              descriptor.Identity.ID,
+			TurnLifecycleProjection: descriptor.Events.TurnLifecycleProjection,
+		}
+		for _, key := range append([]string{descriptor.Identity.ID}, descriptor.Events.Aliases...) {
+			result[normalize(key)] = resolved
+		}
+	}
+	return result
 }
 
 func cloneDescriptor(value ProviderDescriptor) ProviderDescriptor {

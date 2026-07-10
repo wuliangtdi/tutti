@@ -18,8 +18,8 @@ import (
 //
 // Single tunable hard gate: a detected codex below this floor is flagged as
 // too old (surfaced as CODEX_VERSION_TOO_OLD) and the server-side 400 is the
-// backstop. Bump this constant when raising the floor; nothing else needs to
-// change.
+// backstop. Bump providerregistry.CodexMinVersion when raising the floor;
+// nothing else needs to change.
 const MinSupportedCodexVersion = providerregistry.CodexMinVersion
 
 // compareCodexVersions compares two semver-ish version strings.

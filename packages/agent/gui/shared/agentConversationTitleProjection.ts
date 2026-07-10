@@ -34,11 +34,11 @@ export interface AgentGUIConversationTitleMessage {
 export function normalizeAgentGUIProviderIdentity(
   provider: string | null | undefined
 ): AgentGUIResolvedProvider {
-  return (
-    (resolveAgentGUIProviderCatalogIdentity(provider)?.providerId as
-      | AgentGUIProvider
-      | undefined) ?? "unknown"
-  );
+  const providerId =
+    resolveAgentGUIProviderCatalogIdentity(provider)?.providerId;
+  return providerId && Object.hasOwn(AGENT_PROVIDER_LABEL, providerId)
+    ? (providerId as AgentGUIProvider)
+    : "unknown";
 }
 
 export function resolveAgentGUIProviderIdentity(input: {

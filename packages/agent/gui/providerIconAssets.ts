@@ -26,14 +26,12 @@ import {
   tuttiAgentRoundedUrl,
   tuttiDocRoundedUrl
 } from "./managedAgentIconAssets.ts";
+import type { ProviderIconAssetVariant } from "./providerIconTypes.ts";
 
-export type ProviderIconAssetVariant =
-  | "manage"
-  | "providerRail"
-  | "rounded"
-  | "sessionColorful"
-  | "sessionFlat"
-  | "dock";
+export {
+  PROVIDER_ICON_ASSET_VARIANTS,
+  type ProviderIconAssetVariant
+} from "./providerIconTypes.ts";
 
 export type ProviderIconAssetSet = Partial<
   Record<ProviderIconAssetVariant, string>
@@ -102,6 +100,30 @@ export function resolveProviderIconAsset(
 ): string | null {
   const normalizedIconKey = iconKey?.trim().toLowerCase() ?? "";
   return PROVIDER_ICON_ASSETS_BY_ICON_KEY[normalizedIconKey]?.[variant] ?? null;
+}
+
+export function createProviderIconUrlMap(
+  variant: ProviderIconAssetVariant,
+  legacyProviderIconKeys: Readonly<Record<string, string>>,
+  migratedProviderIdentities: readonly {
+    providerId: string;
+    iconKey: string;
+  }[]
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [providerId, iconKey] of Object.entries(legacyProviderIconKeys)) {
+    const iconUrl = resolveProviderIconAsset(iconKey, variant);
+    if (iconUrl) {
+      result[providerId] = iconUrl;
+    }
+  }
+  for (const identity of migratedProviderIdentities) {
+    const iconUrl = resolveProviderIconAsset(identity.iconKey, variant);
+    if (iconUrl) {
+      result[identity.providerId] = iconUrl;
+    }
+  }
+  return result;
 }
 
 export {

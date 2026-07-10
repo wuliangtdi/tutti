@@ -11,6 +11,8 @@ func TestMigratedCodexDescriptorBuildsDefaultAdapter(t *testing.T) {
 	if !ok {
 		t.Fatal("codex descriptor missing")
 	}
+	descriptor.Runtime.ClientInfoName = "descriptor-client"
+	descriptor.Runtime.AuthRequiredMessage = "descriptor auth required"
 	adapter := newAdapterFromProviderDescriptor(
 		descriptor,
 		newScriptedAppServerTransport(),
@@ -30,6 +32,10 @@ func TestMigratedCodexDescriptorBuildsDefaultAdapter(t *testing.T) {
 	serverInfo := appServerAdapter.appServerInfo(nil)
 	if serverInfo["name"] != descriptor.Runtime.Name || serverInfo["title"] != descriptor.Identity.DisplayName {
 		t.Fatalf("server info = %#v, want descriptor runtime/display identity", serverInfo)
+	}
+	if appServerAdapter.config.clientInfoName != descriptor.Runtime.ClientInfoName ||
+		appServerAdapter.config.authRequiredMessage != descriptor.Runtime.AuthRequiredMessage {
+		t.Fatalf("adapter config = %#v, want descriptor runtime identity/auth", appServerAdapter.config)
 	}
 }
 

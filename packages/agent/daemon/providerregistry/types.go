@@ -46,10 +46,12 @@ type IdentityDescriptor struct {
 }
 
 type RuntimeDescriptor struct {
-	Kind     RuntimeKind
-	Name     string
-	Command  []string
-	Endpoint RuntimeEndpointDescriptor
+	Kind                RuntimeKind
+	Name                string
+	Command             []string
+	ClientInfoName      string
+	AuthRequiredMessage string
+	Endpoint            RuntimeEndpointDescriptor
 }
 
 type InstallerDescriptor struct {

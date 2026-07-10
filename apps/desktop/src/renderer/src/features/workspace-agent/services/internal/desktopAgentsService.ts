@@ -12,7 +12,10 @@ import type {
 
 export interface DesktopAgentsServiceDependencies {
   now?: () => number;
-  resolveAgentIconUrl?: (provider: string) => string;
+  resolveAgentTargetIconUrl?: (identity: {
+    iconKey: string | null;
+    provider: string;
+  }) => string;
   /** Feature gate: gated providers keep their targets but are forced disabled (coming soon). */
   isAgentTargetProviderGated?: (provider: string) => boolean;
   tuttidClient: Pick<TuttidClient, "listAgentTargets">;
@@ -84,7 +87,7 @@ export class DesktopAgentsService implements IAgentsService {
       return this.snapshot;
     }
     const agentTargets = mapAgentTargetsToPresentations(response.targets, {
-      resolveAgentIconUrl: this.dependencies.resolveAgentIconUrl
+      resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
     }).map((target) =>
       this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
         ? { ...target, enabled: false }
@@ -110,14 +113,23 @@ export class DesktopAgentsService implements IAgentsService {
 
 export function mapAgentTargetsToPresentations(
   targets: readonly AgentTarget[],
-  options: { resolveAgentIconUrl?: (provider: string) => string } = {}
+  options: {
+    resolveAgentTargetIconUrl?: (identity: {
+      iconKey: string | null;
+      provider: string;
+    }) => string;
+  } = {}
 ): readonly AgentTargetPresentation[] {
   return [...targets].sort(compareAgentTargetsForDisplay).map((target) => ({
     agentTargetId: target.id,
     createdAtUnixMs: target.createdAtUnixMs,
     enabled: target.enabled === true,
     iconKey: target.iconKey ?? null,
-    iconUrl: resolveAgentTargetIconUrl(target, options.resolveAgentIconUrl),
+    iconUrl:
+      options.resolveAgentTargetIconUrl?.({
+        iconKey: target.iconKey?.trim() || null,
+        provider: target.provider
+      }) ?? "",
     launchRefType: target.launchRef.type,
     name: target.name,
     provider: target.provider,
@@ -147,14 +159,6 @@ export function mapAgentTargetPresentationsToProviderTargets(
       disabled: target.enabled !== true
     };
   });
-}
-
-function resolveAgentTargetIconUrl(
-  target: AgentTarget,
-  resolveAgentIconUrl?: (provider: string) => string
-): string {
-  const descriptorIconKey = target.iconKey?.trim() ?? "";
-  return resolveAgentIconUrl?.(descriptorIconKey || target.provider) ?? "";
 }
 
 function compareAgentTargetsForDisplay(

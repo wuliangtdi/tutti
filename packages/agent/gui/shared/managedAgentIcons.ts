@@ -1,9 +1,6 @@
 import { agentColorfulUrl } from "../managedAgentIconAssets.ts";
 import { migratedAgentGUIProviderIdentityCatalog } from "../providerIdentityCatalog.ts";
-import {
-  resolveProviderIconAsset,
-  type ProviderIconAssetVariant
-} from "../providerIconAssets.ts";
+import { createProviderIconUrlMap } from "../providerIconAssets.ts";
 import { normalizeManagedAgentProvider } from "./managedAgentProviders";
 
 /**
@@ -22,15 +19,27 @@ const legacyManagedAgentProviderIconKeys = {
 
 /** Square avatar art for the managed toolchain agents (used by Manage Agents and Launch home Agents floor). */
 export const MANAGED_AGENT_ICON_URLS: Record<string, string> =
-  createProviderIconUrlMap("manage");
+  createProviderIconUrlMap(
+    "manage",
+    legacyManagedAgentProviderIconKeys,
+    migratedAgentGUIProviderIdentityCatalog
+  );
 
 /** Colorful provider rail icons used by AgentGUI's left provider filter. */
 export const MANAGED_AGENT_PROVIDER_RAIL_ICON_URLS: Record<string, string> =
-  createProviderIconUrlMap("providerRail");
+  createProviderIconUrlMap(
+    "providerRail",
+    legacyManagedAgentProviderIconKeys,
+    migratedAgentGUIProviderIdentityCatalog
+  );
 
 /** Rounded avatars for Room status / room activity panel only. */
 export const MANAGED_AGENT_ICON_ROUNDED_URLS: Record<string, string> =
-  createProviderIconUrlMap("rounded");
+  createProviderIconUrlMap(
+    "rounded",
+    legacyManagedAgentProviderIconKeys,
+    migratedAgentGUIProviderIdentityCatalog
+  );
 
 /** Neutral artwork for UI surfaces that require a non-null fallback. */
 export const MANAGED_AGENT_ICON_FALLBACK_URL = agentColorfulUrl;
@@ -42,25 +51,4 @@ export function managedAgentRoundedIconUrl(
     MANAGED_AGENT_ICON_ROUNDED_URLS[normalizeManagedAgentProvider(provider)] ??
     MANAGED_AGENT_ICON_FALLBACK_URL
   );
-}
-
-function createProviderIconUrlMap(
-  variant: ProviderIconAssetVariant
-): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [providerId, iconKey] of Object.entries(
-    legacyManagedAgentProviderIconKeys
-  )) {
-    const iconUrl = resolveProviderIconAsset(iconKey, variant);
-    if (iconUrl) {
-      result[providerId] = iconUrl;
-    }
-  }
-  for (const identity of migratedAgentGUIProviderIdentityCatalog) {
-    const iconUrl = resolveProviderIconAsset(identity.iconKey, variant);
-    if (iconUrl) {
-      result[identity.providerId] = iconUrl;
-    }
-  }
-  return result;
 }

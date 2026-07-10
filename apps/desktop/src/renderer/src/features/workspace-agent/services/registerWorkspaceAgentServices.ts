@@ -32,7 +32,10 @@ export interface WorkspaceAgentServiceRegistrationInput {
     DesktopRuntimeApi,
     "logRendererDiagnostic" | "logTerminalDiagnostic"
   >;
-  resolveAgentIconUrl?: (provider: string) => string;
+  resolveAgentTargetIconUrl?: (identity: {
+    iconKey: string | null;
+    provider: string;
+  }) => string;
   isAgentTargetProviderGated?: (provider: string) => boolean;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -64,7 +67,7 @@ export function registerWorkspaceAgentServices(
   bindDesktopManagedAgentProviderVisibilityRefresh(agentProviderStatusService);
   startTuttiAgentInstallBootstrap(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
-    resolveAgentIconUrl: input.resolveAgentIconUrl,
+    resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
     isAgentTargetProviderGated: input.isAgentTargetProviderGated,
     tuttidClient: input.tuttidClient
   });

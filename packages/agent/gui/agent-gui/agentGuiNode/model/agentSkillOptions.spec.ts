@@ -60,6 +60,21 @@ describe("agentSkillOptions", () => {
     ).toBe("/product-design:frontend-design keep /init");
   });
 
+  it("does not guess an invocation syntax when the descriptor omitted it", () => {
+    expect(
+      promptForProviderSkills({
+        prompt: "$unknown keep /init",
+        skills: [
+          {
+            name: "unknown",
+            trigger: "/unknown",
+            sourceKind: "plugin"
+          }
+        ]
+      })
+    ).toBe("$unknown keep /init");
+  });
+
   it("uses the first useful description line", () => {
     expect(skillDescriptionForDisplay("\n  Search docs  \nMore details")).toBe(
       "Search docs"

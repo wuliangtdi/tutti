@@ -1557,14 +1557,14 @@ func applyExplicitTurnLifecycleToPatch(patch *WorkspaceAgentStatePatch, event ac
 }
 
 func providerUsesExplicitTurnLifecycleProjection(provider string) bool {
-	descriptor, ok := providerregistry.FindEventProvider(provider)
+	resolved, ok := providerregistry.ResolveEventProvider(provider)
 	if !ok {
 		// No unmigrated provider used this projection in the activity store.
 		// Their legacy projection path remains unchanged until their descriptor
 		// migration declares an explicit policy.
 		return false
 	}
-	return descriptor.Events.TurnLifecycleProjection == providerregistry.TurnLifecycleProjectionExplicit
+	return resolved.TurnLifecycleProjection == providerregistry.TurnLifecycleProjectionExplicit
 }
 
 func completedCommandFromEventMetadata(metadata map[string]any) *WorkspaceAgentCompletedCommand {

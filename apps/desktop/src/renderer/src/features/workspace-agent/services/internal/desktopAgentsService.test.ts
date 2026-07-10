@@ -25,7 +25,8 @@ test("desktop agents service maps agent targets into renderer presentations and 
       })
     ],
     {
-      resolveAgentIconUrl: (provider) => `tutti-asset://agent/${provider}.png`
+      resolveAgentTargetIconUrl: ({ iconKey, provider }) =>
+        `tutti-asset://agent/${iconKey ?? provider}.png`
     }
   );
 

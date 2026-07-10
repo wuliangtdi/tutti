@@ -36,8 +36,13 @@ const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
 );
 const enabledWorkbenchProviderSet = new Set<string>(agentGuiWorkbenchProviders);
 
+const agentGuiWorkbenchLabelProviders = [
+  ...agentGuiWorkbenchProviders,
+  "nexight"
+] as const satisfies readonly AgentGuiWorkbenchProvider[];
+
 export const agentGuiWorkbenchProviderLabels = Object.fromEntries(
-  agentGuiWorkbenchProviders.map((provider) => {
+  agentGuiWorkbenchLabelProviders.map((provider) => {
     const identity = resolveAgentGUIProviderCatalogIdentity(provider);
     if (!identity) {
       throw new Error(`Missing workbench provider identity for ${provider}`);

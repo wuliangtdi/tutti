@@ -19,6 +19,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if descriptor.Runtime.Name != "codex-app-server" {
 		t.Fatalf("Runtime.Name = %q", descriptor.Runtime.Name)
 	}
+	if descriptor.Runtime.ClientInfoName == "" || descriptor.Runtime.AuthRequiredMessage == "" {
+		t.Fatalf("Runtime identity/auth = %#v", descriptor.Runtime)
+	}
 	if descriptor.Runtime.Endpoint.ConfigKind != EndpointConfigKindCodexCLI {
 		t.Fatalf("Runtime.Endpoint.ConfigKind = %q", descriptor.Runtime.Endpoint.ConfigKind)
 	}
@@ -89,13 +92,37 @@ func TestMigratedReturnsClones(t *testing.T) {
 	}
 }
 
+func TestResolveProviderProjectionsDoNotExposeDescriptors(t *testing.T) {
+	providerID, ok := ResolveProviderID(" CODEX ")
+	if !ok || providerID != CodexProviderID {
+		t.Fatalf("ResolveProviderID(CODEX) = %q, %v", providerID, ok)
+	}
+	eventProvider, ok := ResolveEventProvider(" CODEX ")
+	if !ok || eventProvider.ProviderID != CodexProviderID ||
+		eventProvider.TurnLifecycleProjection != TurnLifecycleProjectionExplicit {
+		t.Fatalf("ResolveEventProvider(CODEX) = %#v, %v", eventProvider, ok)
+	}
+	if _, ok := ResolveProviderID("unknown"); ok {
+		t.Fatal("ResolveProviderID(unknown) ok = true")
+	}
+	if _, ok := ResolveEventProvider("unknown"); ok {
+		t.Fatal("ResolveEventProvider(unknown) ok = true")
+	}
+}
+
 func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*ProviderDescriptor)
 	}{
 		{name: "runtime kind", mutate: func(value *ProviderDescriptor) { value.Runtime.Kind = "poison" }},
+		{name: "noncanonical provider id", mutate: func(value *ProviderDescriptor) { value.Identity.ID = " CODEX " }},
+		{name: "blank identity alias", mutate: func(value *ProviderDescriptor) { value.Identity.Aliases = []string{" "} }},
+		{name: "duplicate identity alias", mutate: func(value *ProviderDescriptor) { value.Identity.Aliases = []string{"alias", " ALIAS "} }},
+		{name: "identity alias repeats id", mutate: func(value *ProviderDescriptor) { value.Identity.Aliases = []string{"CODEX"} }},
 		{name: "runtime command", mutate: func(value *ProviderDescriptor) { value.Runtime.Command[1] = " " }},
+		{name: "runtime client info", mutate: func(value *ProviderDescriptor) { value.Runtime.ClientInfoName = " " }},
+		{name: "runtime auth message", mutate: func(value *ProviderDescriptor) { value.Runtime.AuthRequiredMessage = " " }},
 		{name: "status kind", mutate: func(value *ProviderDescriptor) { value.Status.Kind = "poison" }},
 		{name: "status auth command", mutate: func(value *ProviderDescriptor) { value.Status.AuthStatusCommand[0] = " " }},
 		{name: "status auth marker", mutate: func(value *ProviderDescriptor) { value.Status.AuthMarkerPaths[0] = " " }},
@@ -106,6 +133,9 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 		{name: "model catalog kind", mutate: func(value *ProviderDescriptor) { value.ComposerProfile.ModelCatalog = "poison" }},
 		{name: "capability catalog kind", mutate: func(value *ProviderDescriptor) { value.ComposerProfile.CapabilityCatalog.Kind = "poison" }},
 		{name: "target launch ref type", mutate: func(value *ProviderDescriptor) { value.Target.LaunchRefType = "poison" }},
+		{name: "blank event alias", mutate: func(value *ProviderDescriptor) { value.Events.Aliases = []string{" "} }},
+		{name: "duplicate event alias", mutate: func(value *ProviderDescriptor) { value.Events.Aliases = []string{"alias", " ALIAS "} }},
+		{name: "event alias repeats id", mutate: func(value *ProviderDescriptor) { value.Events.Aliases = []string{"CODEX"} }},
 		{name: "slash command effect", mutate: func(value *ProviderDescriptor) {
 			value.ComposerProfile.SlashCommandPolicy.CommandEffects[0].Effect = "poison"
 		}},

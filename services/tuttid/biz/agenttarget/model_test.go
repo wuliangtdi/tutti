@@ -15,7 +15,16 @@ func TestDefaultSystemTargetsUseMigratedCodexDescriptor(t *testing.T) {
 	if !ok {
 		t.Fatal("codex descriptor missing")
 	}
-	target := targets[0]
+	var target *Target
+	for index := range targets {
+		if targets[index].ID == descriptor.Target.ID {
+			target = &targets[index]
+			break
+		}
+	}
+	if target == nil {
+		t.Fatalf("codex target %q missing from %#v", descriptor.Target.ID, targets)
+	}
 	if target.ID != descriptor.Target.ID || target.Provider != descriptor.Identity.ID {
 		t.Fatalf("target identity = %#v", target)
 	}

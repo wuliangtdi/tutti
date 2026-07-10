@@ -530,7 +530,7 @@ func generatedAgentSlashCommandPolicy(
 		})
 	}
 	return &tuttigenerated.AgentSlashCommandPolicy{
-		FallbackCommands: append([]string(nil), policy.FallbackCommands...),
+		FallbackCommands: append(make([]string, 0, len(policy.FallbackCommands)), policy.FallbackCommands...),
 		CommandEffects:   effects,
 	}
 }

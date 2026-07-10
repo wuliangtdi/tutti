@@ -294,7 +294,7 @@ export interface AgentGUINodeViewModel {
   goalPauseSupported: boolean;
   usage: AgentActivityUsage | null;
   backgroundAgentCount: number;
-  /** A plan turn finished and the provider supports an implementation prompt. */
+  /** Error returned while loading conversation or project lists. */
   listError: string | null;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;

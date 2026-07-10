@@ -158,8 +158,8 @@ type EventContext struct {
 }
 
 func NormalizeProvider(value string) (Provider, bool) {
-	if descriptor, ok := providerregistry.FindEventProvider(value); ok {
-		return Provider(descriptor.Identity.ID), true
+	if resolved, ok := providerregistry.ResolveEventProvider(value); ok {
+		return Provider(resolved.ProviderID), true
 	}
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case string(ProviderTuttiAgent), "tutti_agent":

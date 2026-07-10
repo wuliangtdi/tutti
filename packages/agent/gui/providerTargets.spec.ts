@@ -9,6 +9,13 @@ import {
 } from "./providerTargets";
 
 describe("agent gui provider targets", () => {
+  it("keeps migration-window default providers unique", () => {
+    const providers = createLocalAgentGUIProviderTargets().map(
+      (target) => target.provider
+    );
+    expect(new Set(providers).size).toBe(providers.length);
+  });
+
   it("creates local targets for the default provider catalog", () => {
     expect(createLocalAgentGUIProviderTarget("codex")).toEqual({
       targetId: "local:codex",

@@ -128,6 +128,28 @@ describe("AgentVisibleErrorMessage", () => {
     expect(getAgentEnvPanelStore().focus).toBe("detect");
   });
 
+  it("keeps the remediation action when the provider is unavailable", () => {
+    const { getAllByRole } = renderBlock(
+      buildRow({
+        code: "cli_not_found",
+        phase: "start",
+        provider: null,
+        detail: "spawn failed",
+        retryable: false
+      })
+    );
+
+    const action = getAllByRole("button").find(
+      (button) => button.textContent === "Connect"
+    );
+    expect(action).toBeTruthy();
+    fireEvent.click(action as HTMLButtonElement);
+    const store = getAgentEnvPanelStore();
+    expect(store.open).toBe(true);
+    expect(store.provider).toBeNull();
+    expect(store.focus).toBe("install");
+  });
+
   it("tucks the raw payload behind a single 'Raw error' disclosure", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({

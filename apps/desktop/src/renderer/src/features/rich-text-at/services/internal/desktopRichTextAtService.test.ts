@@ -943,7 +943,8 @@ function createAgentsService(
   targets: readonly AgentTarget[]
 ): Pick<IAgentsService, "load"> {
   const agentTargets = mapAgentTargetsToPresentations(targets, {
-    resolveAgentIconUrl: resolveTestAgentIconUrl
+    resolveAgentTargetIconUrl: ({ provider }) =>
+      resolveTestAgentIconUrl(provider)
   });
   const snapshot: AgentsSnapshot = {
     agentTargets,

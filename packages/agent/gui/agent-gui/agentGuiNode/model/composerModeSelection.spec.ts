@@ -24,18 +24,7 @@ describe("permissionModeSelectionPatch", () => {
 });
 
 describe("resolvePermissionModeControlsDisabled", () => {
-  it("stays enabled mid-turn for claude-code, since the SDK applies the change live", () => {
-    expect(
-      resolvePermissionModeControlsDisabled({
-        changeDuringTurnSupported: true,
-        isSendingTurn: true,
-        isSubmittingPrompt: false,
-        showStopButton: true
-      })
-    ).toBe(false);
-  });
-
-  it("stays enabled mid-turn for codex, which re-derives the policy on the next turn/start regardless", () => {
+  it("stays enabled mid-turn when the provider applies permission changes live", () => {
     expect(
       resolvePermissionModeControlsDisabled({
         changeDuringTurnSupported: true,

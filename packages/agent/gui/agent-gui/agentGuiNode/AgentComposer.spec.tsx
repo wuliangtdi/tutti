@@ -722,6 +722,51 @@ describe("AgentComposer", () => {
     expect(palette).toHaveTextContent("切换计划模式。");
   });
 
+  it("keeps legacy Claude Code palette filtering when no typed policy is loaded", async () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="claude-code"
+        draftContent={createDraft("/")}
+        availableCommands={
+          [
+            { name: "context" },
+            { name: "usage" },
+            { name: "plugin-noise" }
+          ] satisfies readonly AgentHostAgentSessionCommand[]
+        }
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({ slashCommandPolicy: null })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    const palette = await screen.findByTestId("mock-slash-palette");
+    expect(palette).toHaveTextContent("查看当前上下文快照。");
+    expect(palette).toHaveTextContent("查看上下文和额度用量。");
+    expect(palette).not.toHaveTextContent("plugin-noise");
+  });
+
   it("shows Chinese slash command labels with English aliases in zh-CN", async () => {
     render(
       <AgentComposer
@@ -1691,7 +1736,8 @@ describe("AgentComposer", () => {
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings({
-          supportsPlanMode: true
+          supportsPlanMode: true,
+          slashCommandPolicy: null
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}
@@ -1736,7 +1782,8 @@ describe("AgentComposer", () => {
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings({
-          supportsPlanMode: true
+          supportsPlanMode: true,
+          slashCommandPolicy: null
         })}
         queuedPrompts={[]}
         drainingQueuedPromptId={null}

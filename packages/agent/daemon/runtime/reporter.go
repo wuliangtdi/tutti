@@ -910,8 +910,8 @@ func applyExplicitTurnLifecycleToPatch(patch *agentsessionstore.WorkspaceAgentSt
 }
 
 func providerUsesExplicitTurnLifecyclePatch(provider string) bool {
-	if descriptor, ok := providerregistry.FindEventProvider(provider); ok {
-		return descriptor.Events.TurnLifecycleProjection == providerregistry.TurnLifecycleProjectionExplicit
+	if resolved, ok := providerregistry.ResolveEventProvider(provider); ok {
+		return resolved.TurnLifecycleProjection == providerregistry.TurnLifecycleProjectionExplicit
 	}
 	// Preserve the existing projection behavior of providers that have not
 	// migrated to providerregistry yet. This fallback disappears provider by

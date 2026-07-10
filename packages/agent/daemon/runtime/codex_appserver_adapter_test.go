@@ -13,6 +13,7 @@ import (
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 const (
@@ -28,6 +29,15 @@ func testAppServerSession() Session {
 		CWD:            "/workspace/room-1",
 		Status:         SessionStatusReady,
 	}
+}
+
+func codexProviderDescriptorForTest(t *testing.T) providerregistry.ProviderDescriptor {
+	t.Helper()
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		t.Fatal("migrated Codex provider descriptor is missing")
+	}
+	return descriptor
 }
 
 // --- scripted app-server transport ---
@@ -812,7 +822,8 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 		t.Fatalf("process starts = %d, want 1", len(transport.specs))
 	}
 	spec := transport.specs[0]
-	wantCommand := []string{codexAppServerCommand, codexAppServerSubcmd}
+	descriptor := codexProviderDescriptorForTest(t)
+	wantCommand := descriptor.Runtime.Command
 	if len(spec.Command) != 2 || spec.Command[0] != wantCommand[0] || spec.Command[1] != wantCommand[1] {
 		t.Fatalf("command = %#v, want %#v", spec.Command, wantCommand)
 	}
@@ -825,9 +836,9 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 
 	initialize := appServerRequestParams(t, transport.conn, appServerMethodInitialize)
 	clientInfo, _ := initialize["clientInfo"].(map[string]any)
-	if asString(clientInfo["name"]) != codexOfficialOriginator || asString(clientInfo["version"]) == "" {
+	if asString(clientInfo["name"]) != descriptor.Runtime.ClientInfoName || asString(clientInfo["version"]) == "" {
 		t.Fatalf("initialize clientInfo = %#v, want name=%q + non-empty version",
-			initialize["clientInfo"], codexOfficialOriginator)
+			initialize["clientInfo"], descriptor.Runtime.ClientInfoName)
 	}
 	capabilities, _ := initialize["capabilities"].(map[string]any)
 	if experimental, _ := capabilities["experimentalApi"].(bool); !experimental {
@@ -852,10 +863,11 @@ func TestCodexClientInfoParamsPresentsOfficialOriginator(t *testing.T) {
 	// A resolved codex version is used verbatim and overrides the host name,
 	// so the outbound originator/User-Agent match the genuine codex_cli_rs.
 	host := HostMetadata{ClientInfo: ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"}}
-	got := codexClientInfoParamsForVersion(host, "1.2.3")
+	descriptor := codexProviderDescriptorForTest(t)
+	got := clientInfoParamsForVersion(host, descriptor.Runtime.ClientInfoName, "1.2.3")
 
-	if got["name"] != codexOfficialOriginator {
-		t.Fatalf("name = %v, want %q (official originator, not the host name)", got["name"], codexOfficialOriginator)
+	if got["name"] != descriptor.Runtime.ClientInfoName {
+		t.Fatalf("name = %v, want %q (official originator, not the host name)", got["name"], descriptor.Runtime.ClientInfoName)
 	}
 	if got["version"] != "1.2.3" {
 		t.Fatalf("version = %v, want the resolved codex version 1.2.3 (not host %q)", got["version"], host.ClientInfo.Version)
@@ -871,10 +883,11 @@ func TestCodexClientInfoParamsFallsBackToHostVersion(t *testing.T) {
 	// When the codex version cannot be resolved, fall back to the host version
 	// rather than emitting a blank version segment.
 	host := HostMetadata{ClientInfo: ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "9.9.9"}}
-	got := codexClientInfoParamsForVersion(host, "")
+	descriptor := codexProviderDescriptorForTest(t)
+	got := clientInfoParamsForVersion(host, descriptor.Runtime.ClientInfoName, "")
 
-	if got["name"] != codexOfficialOriginator {
-		t.Fatalf("name = %v, want %q", got["name"], codexOfficialOriginator)
+	if got["name"] != descriptor.Runtime.ClientInfoName {
+		t.Fatalf("name = %v, want %q", got["name"], descriptor.Runtime.ClientInfoName)
 	}
 	if got["version"] != "9.9.9" {
 		t.Fatalf("version = %v, want host fallback 9.9.9", got["version"])

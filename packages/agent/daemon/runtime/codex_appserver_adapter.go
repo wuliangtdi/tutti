@@ -15,14 +15,14 @@ import (
 	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 // Codex app-server JSON-RPC methods used by the adapter. The app-server
 // protocol is the official first-party integration surface for Codex; it
 // replaces the previous codex-acp (ACP) bridge for the "codex" provider.
 const (
-	codexAppServerCommand = "codex"
-	codexAppServerSubcmd  = "app-server"
+	codexAppServerSubcmd = "app-server"
 
 	appServerMethodInitialize     = "initialize"
 	appServerMethodInitialized    = "initialized"
@@ -89,15 +89,12 @@ const (
 	appServerSlashUndo    = "/undo"
 )
 
-const codexAppServerAuthRequiredMessage = "Codex requires authentication. " +
-	"Run `codex login` on the host (or sync Codex credentials), then retry this session."
-
 const (
 	tuttiAgentAppServerCommand = "tutti-agent"
 	// tuttiAgentClientInfoName is the originator the Tutti Agent fork presents
-	// to the Tutti model gateway. It must not reuse codexOfficialOriginator:
-	// that value exists to satisfy OpenAI's official-client allowlist and does
-	// not apply to gateway-authenticated first-party traffic.
+	// to the Tutti model gateway. It must not reuse the Codex descriptor's
+	// client identity, which exists to satisfy OpenAI's official-client
+	// allowlist and does not apply to gateway-authenticated first-party traffic.
 	tuttiAgentClientInfoName               = "tutti_agent"
 	tuttiAgentAppServerAuthRequiredMessage = "Tutti Agent requires authentication. " +
 		"Sign in to Tutti on this device (or run `tutti-agent login`), then retry this session."
@@ -114,17 +111,6 @@ type appServerAdapterConfig struct {
 	command             []string
 	clientInfoName      string
 	authRequiredMessage string
-}
-
-func codexAppServerAdapterConfig() appServerAdapterConfig {
-	return appServerAdapterConfig{
-		provider:            ProviderCodex,
-		runtimeName:         "codex-app-server",
-		displayName:         "Codex",
-		command:             []string{codexAppServerCommand, codexAppServerSubcmd},
-		clientInfoName:      codexOfficialOriginator,
-		authRequiredMessage: codexAppServerAuthRequiredMessage,
-	}
 }
 
 func tuttiAgentAppServerAdapterConfig() appServerAdapterConfig {
@@ -302,7 +288,24 @@ func NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(
 	host HostMetadata,
 	commandResolver ProviderCommandResolver,
 ) *CodexAppServerAdapter {
-	return newAppServerAdapter(transport, host, codexAppServerAdapterConfig(), commandResolver)
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		panic("migrated Codex provider descriptor is missing")
+	}
+	if err := providerregistry.Validate(descriptor); err != nil {
+		panic(fmt.Sprintf("invalid migrated Codex provider descriptor: %v", err))
+	}
+	adapter := newAdapterFromProviderDescriptor(
+		descriptor,
+		transport,
+		host,
+		commandResolver,
+	)
+	codexAdapter, ok := adapter.(*CodexAppServerAdapter)
+	if !ok {
+		panic(fmt.Sprintf("Codex provider descriptor constructed %T", adapter))
+	}
+	return codexAdapter
 }
 
 // NewTuttiAgentAppServerAdapterWithHostMetadata serves the tutti-agent
@@ -328,14 +331,6 @@ func newAppServerAdapter(
 		cancelGraceWindow: defaultCodexAppServerCancelGraceWindow,
 	}
 }
-
-// codexOfficialOriginator is the client identifier the first-party Codex CLI
-// presents to the backend. Codex derives the outbound request `originator`
-// header and User-Agent verbatim from the app-server clientInfo.name, so
-// presenting this value (paired with the real codex binary version) makes
-// Tutti's request byte-identical to the genuine client and keeps it accepted
-// by upstreams that gate on an "official Codex client" allowlist.
-const codexOfficialOriginator = "codex_cli_rs"
 
 // resolveCLIVersion returns the version of the binary that serves the
 // app-server (e.g. "0.142.1"), resolved with the same env (PATH) the
@@ -371,12 +366,6 @@ func (a *CodexAppServerAdapter) resolveCLIVersion(env []string) string {
 // codex provider, the Tutti identity for tutti-agent.
 func (a *CodexAppServerAdapter) clientInfoParams(env []string) map[string]any {
 	return clientInfoParamsForVersion(a.host, a.config.clientInfoName, a.resolveCLIVersion(env))
-}
-
-// codexClientInfoParamsForVersion composes the official Codex clientInfo for a
-// known codex version, falling back to the host-provided version when empty.
-func codexClientInfoParamsForVersion(host HostMetadata, version string) map[string]any {
-	return clientInfoParamsForVersion(host, codexOfficialOriginator, version)
 }
 
 func clientInfoParamsForVersion(host HostMetadata, name string, version string) map[string]any {

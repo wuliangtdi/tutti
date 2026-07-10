@@ -12,8 +12,9 @@ func TestExternalImportAgentTargetIDUsesMigratedProviderDescriptor(t *testing.T)
 	if !ok {
 		t.Fatal("codex descriptor missing")
 	}
-	if got := externalImportAgentTargetID(" CODEX "); got != descriptor.Target.ID {
-		t.Fatalf("externalImportAgentTargetID(codex) = %q, want %q", got, descriptor.Target.ID)
+	input := " CODEX "
+	if got := externalImportAgentTargetID(input); got != descriptor.Target.ID {
+		t.Fatalf("externalImportAgentTargetID(%q) = %q, want %q", input, got, descriptor.Target.ID)
 	}
 	if got := externalImportAgentTargetID("claude-code"); got != agenttargetbiz.IDLocalClaudeCode {
 		t.Fatalf("externalImportAgentTargetID(claude-code) = %q, want %q", got, agenttargetbiz.IDLocalClaudeCode)

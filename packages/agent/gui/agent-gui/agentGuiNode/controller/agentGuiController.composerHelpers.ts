@@ -137,6 +137,7 @@ export function providerSkillsFromComposerOptions(
   const invocationByTrigger = new Map(
     (options.capabilityCatalog ?? []).flatMap((capability) =>
       capability.trigger &&
+      capability.status === "available" &&
       (capability.invocation === "promptItem" ||
         capability.invocation === "textTrigger")
         ? [[capability.trigger, capability.invocation] as const]
@@ -308,7 +309,7 @@ export function resolveEffectiveComposerSettings(input: {
 export function runtimeConfigKeyForSetting(
   runtimeContext: Record<string, unknown>,
   setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
-): string {
+): string | null {
   const configOptions = runtimeContext.configOptions;
   if (Array.isArray(configOptions)) {
     for (const option of configOptions) {
@@ -318,7 +319,7 @@ export function runtimeConfigKeyForSetting(
       }
     }
   }
-  return defaultRuntimeConfigKeyForSetting(setting);
+  return null;
 }
 
 export function shouldUpdateRuntimeConfigOption(
@@ -341,21 +342,6 @@ export function shouldUpdateRuntimeConfigOption(
   );
 }
 
-function defaultRuntimeConfigKeyForSetting(
-  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
-): string {
-  switch (setting) {
-    case "model":
-      return "model";
-    case "reasoningEffort":
-      return "effort";
-    case "speed":
-      return "fast";
-    case "permissionModeId":
-      return "mode";
-  }
-}
-
 export function mergeRuntimeContextComposerSettings(
   runtimeContext: Record<string, unknown> | undefined,
   settings: AgentSessionComposerSettings
@@ -372,28 +358,42 @@ export function mergeRuntimeContextComposerSettings(
 
   if (settings.model !== undefined) {
     const value = normalizeOptionalText(settings.model);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(runtimeContext, "model")] =
-      value;
+    appendRuntimeConfigPatch(
+      runtimeConfigPatch,
+      runtimeContext,
+      "model",
+      value
+    );
     optionPatches.push({ setting: "model", value });
   }
   if (settings.reasoningEffort !== undefined) {
     const value = normalizeOptionalText(settings.reasoningEffort);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(runtimeContext, "reasoningEffort")
-    ] = value;
+    appendRuntimeConfigPatch(
+      runtimeConfigPatch,
+      runtimeContext,
+      "reasoningEffort",
+      value
+    );
     optionPatches.push({ setting: "reasoningEffort", value });
   }
   if (settings.speed !== undefined) {
     const value = normalizeOptionalText(settings.speed);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(runtimeContext, "speed")] =
-      value;
+    appendRuntimeConfigPatch(
+      runtimeConfigPatch,
+      runtimeContext,
+      "speed",
+      value
+    );
     optionPatches.push({ setting: "speed", value });
   }
   if (settings.permissionModeId !== undefined) {
     const value = normalizeOptionalText(settings.permissionModeId);
-    runtimeConfigPatch[
-      runtimeConfigKeyForSetting(runtimeContext, "permissionModeId")
-    ] = value;
+    appendRuntimeConfigPatch(
+      runtimeConfigPatch,
+      runtimeContext,
+      "permissionModeId",
+      value
+    );
     optionPatches.push({ setting: "permissionModeId", value });
   }
 
@@ -423,6 +423,18 @@ export function mergeRuntimeContextComposerSettings(
     );
   }
   return nextRuntimeContext;
+}
+
+function appendRuntimeConfigPatch(
+  patch: Record<string, unknown>,
+  runtimeContext: Record<string, unknown>,
+  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId",
+  value: string | null
+): void {
+  const configKey = runtimeConfigKeyForSetting(runtimeContext, setting);
+  if (configKey) {
+    patch[configKey] = value;
+  }
 }
 
 export function normalizePermissionModeId(

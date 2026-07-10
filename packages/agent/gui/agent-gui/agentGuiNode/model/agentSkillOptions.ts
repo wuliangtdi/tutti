@@ -30,6 +30,9 @@ export function promptForProviderSkills(input: {
 }): string {
   let prompt = input.prompt;
   for (const skill of input.skills) {
+    if (!skill.invocation) {
+      continue;
+    }
     const nativePrefix = skill.invocation === "promptItem" ? "$" : "/";
     const nativeTrigger = skillTriggerForPrefix(skill, nativePrefix);
     const aliasPrefix = nativePrefix === "$" ? "/" : "$";

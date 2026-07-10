@@ -20,11 +20,19 @@ const legacyAgentGUIDefaultTargetProviders = [
 ] as const satisfies readonly AgentGUIProvider[];
 
 export const agentGUIDefaultTargetProviders: readonly AgentGUIProvider[] = [
-  ...[...migratedAgentGUIProviderIdentityCatalog]
-    .sort((left, right) => left.target.sortOrder - right.target.sortOrder)
-    .map((identity) => identity.providerId as AgentGUIProvider),
-  ...legacyAgentGUIDefaultTargetProviders
+  ...uniqueAgentGUIProviders(
+    [...migratedAgentGUIProviderIdentityCatalog]
+      .sort((left, right) => left.target.sortOrder - right.target.sortOrder)
+      .map((identity) => identity.providerId as AgentGUIProvider),
+    legacyAgentGUIDefaultTargetProviders
+  )
 ];
+
+function uniqueAgentGUIProviders(
+  ...providerLists: readonly (readonly AgentGUIProvider[])[]
+): AgentGUIProvider[] {
+  return [...new Set(providerLists.flat())];
+}
 
 const legacyAgentGUIDisabledPlaceholderProviders = [
   "hermes",

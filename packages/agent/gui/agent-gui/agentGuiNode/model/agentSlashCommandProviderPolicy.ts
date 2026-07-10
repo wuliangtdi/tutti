@@ -225,7 +225,7 @@ export function resolveSlashCommandsForProvider({
     const commandName = normalizedCommandName(entry);
     return (
       commandName !== "plan" &&
-      isSlashPaletteCommandVisible(provider, commandName)
+      isSlashPaletteCommandVisible(provider, commandName, policy)
     );
   });
   const planEntries =
@@ -413,8 +413,20 @@ function fallbackCommandsForProvider(
 
 function isSlashPaletteCommandVisible(
   provider: AgentSlashCommandProvider,
-  commandName: string
+  commandName: string,
+  policy?: AgentSlashCommandPolicy | null
 ): boolean {
+  if (
+    policy &&
+    (policy.fallbackCommands.some(
+      (command) => command.trim().toLowerCase() === commandName
+    ) ||
+      policy.commandEffects.some(
+        (descriptor) => descriptor.command.trim().toLowerCase() === commandName
+      ))
+  ) {
+    return true;
+  }
   if (provider === "claude-code") {
     return CLAUDE_CODE_SLASH_PALETTE_COMMANDS.has(commandName);
   }

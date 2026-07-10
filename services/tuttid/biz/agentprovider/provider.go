@@ -18,16 +18,28 @@ const (
 )
 
 func All() []string {
-	providers := []string{ClaudeCode}
-	for _, descriptor := range providerregistry.Migrated() {
-		providers = append(providers, descriptor.Identity.ID)
+	providers := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 8)
+	appendProvider := func(provider string) {
+		if _, ok := seen[provider]; ok {
+			return
+		}
+		seen[provider] = struct{}{}
+		providers = append(providers, provider)
 	}
-	return append(providers, TuttiAgent, Cursor, Nexight, Hermes, OpenClaw, OpenCode)
+	appendProvider(ClaudeCode)
+	for _, descriptor := range providerregistry.Migrated() {
+		appendProvider(descriptor.Identity.ID)
+	}
+	for _, provider := range []string{TuttiAgent, Cursor, Nexight, Hermes, OpenClaw, OpenCode} {
+		appendProvider(provider)
+	}
+	return providers
 }
 
 func Normalize(provider string) string {
-	if descriptor, ok := providerregistry.Find(provider); ok {
-		return descriptor.Identity.ID
+	if providerID, ok := providerregistry.ResolveProviderID(provider); ok {
+		return providerID
 	}
 	switch strings.TrimSpace(strings.ToLower(provider)) {
 	case "claude", ClaudeCode:

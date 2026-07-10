@@ -149,6 +149,19 @@ describe("agentSlashCommandProviderPolicy", () => {
     ]);
   });
 
+  it("trusts typed Claude Code policy commands instead of the legacy allowlist", () => {
+    expect(
+      resolveSlashCommandsForProvider({
+        provider: "claude-code",
+        policy: {
+          fallbackCommands: ["custom-command"],
+          commandEffects: []
+        },
+        commands: [{ name: "descriptor-command" }]
+      }).map((command) => command.name)
+    ).toEqual(["custom-command"]);
+  });
+
   it("filters compact when the session has no compactable context", () => {
     expect(
       resolveSlashCommandsForProvider({

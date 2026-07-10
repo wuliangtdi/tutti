@@ -15,9 +15,11 @@ func codexDescriptor() ProviderDescriptor {
 			LocaleKey:   "agentHost.agentGui.conversationFilterCodex",
 		},
 		Runtime: RuntimeDescriptor{
-			Kind:    RuntimeKindCodexAppServer,
-			Name:    "codex-app-server",
-			Command: []string{"codex", "app-server"},
+			Kind:                RuntimeKindCodexAppServer,
+			Name:                "codex-app-server",
+			Command:             []string{"codex", "app-server"},
+			ClientInfoName:      "codex_cli_rs",
+			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
 			Endpoint: RuntimeEndpointDescriptor{
 				BaseURLEnvVars: []string{
 					"OPENAI_BASE_URL",

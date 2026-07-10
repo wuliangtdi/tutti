@@ -2,7 +2,7 @@
  * Maps a permission-mode dropdown selection onto a settings patch.
  *
  * Plan mode is no longer a dropdown option — it is an independent toggle
- * surfaced via Shift+Tab and the plan badge. The descriptor-derived option
+ * surfaced via Shift+Tab and the plan badge. The caller-provided option
  * decides whether selecting a permission mode also clears plan mode.
  */
 export function permissionModeSelectionPatch(

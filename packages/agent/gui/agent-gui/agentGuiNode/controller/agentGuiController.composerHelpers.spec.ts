@@ -10,6 +10,7 @@ import {
   mergeRuntimeContextComposerSettings,
   nodeDataFromComposerSettings,
   permissionModeOptions,
+  providerSkillsFromComposerOptions,
   readNodeDefaultDraftPrompt,
   readNodeDefaultDraftSettings
 } from "./agentGuiController.composerHelpers";
@@ -137,6 +138,47 @@ describe("descriptor-backed runtime config options", () => {
         { id: "mode", currentValue: "full-access" }
       ]
     });
+  });
+
+  it("does not invent provider config keys when descriptors are unavailable", () => {
+    const runtimeContext = { config: { providerOwned: true } };
+
+    expect(
+      mergeRuntimeContextComposerSettings(runtimeContext, {
+        model: "model",
+        reasoningEffort: "high",
+        speed: "fast",
+        permissionModeId: "auto"
+      })
+    ).toEqual(runtimeContext);
+  });
+});
+
+describe("descriptor-backed skill invocation", () => {
+  it("does not apply invocation metadata from unavailable capabilities", () => {
+    const options = {
+      skills: [
+        {
+          name: "example",
+          trigger: "/example",
+          sourceKind: "plugin"
+        }
+      ],
+      capabilityCatalog: [
+        {
+          name: "example",
+          label: "Example",
+          kind: "skill",
+          status: "unavailable",
+          trigger: "/example",
+          invocation: "promptItem"
+        }
+      ]
+    } as unknown as AgentActivityComposerOptions;
+
+    expect(
+      providerSkillsFromComposerOptions(options)[0]?.invocation
+    ).toBeUndefined();
   });
 });
 

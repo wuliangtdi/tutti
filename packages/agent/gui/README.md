@@ -103,6 +103,13 @@ Hosts that need to brand the aggregate provider rail entry may pass
 `providerRailAllPresentation.iconUrl`. This only changes the `All` filter icon;
 single agent or target icons continue to come from `providerTargets[].iconUrl`.
 
+Hosts adapting daemon-owned agent targets must resolve the target's descriptor
+`iconKey` instead of assuming it equals the provider ID. The narrow
+`@tutti-os/agent-gui/provider-icons` subpath exports
+`resolveProviderIconAsset(iconKey, variant)` for that adapter seam. Unknown
+keys return `null`; hosts should render a neutral icon rather than silently
+substituting another provider's icon.
+
 Hosts that need custom main-pane presentation for a disabled selected target may
 pass `renderProviderUnavailableState`. AgentGUI calls this renderer only when
 the selected `providerTargets[]` entry has `disabled: true`; install, login,

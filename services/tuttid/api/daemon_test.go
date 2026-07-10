@@ -36,6 +36,22 @@ type stubCatalogService struct {
 	updateFn func(context.Context, string, workspaceservice.UpdateInput) (workspacebiz.Summary, error)
 }
 
+func TestGeneratedAgentSlashCommandPolicyKeepsEmptyCommandsAsArray(t *testing.T) {
+	policy := generatedAgentSlashCommandPolicy(
+		&providerregistry.SlashCommandPolicyDescriptor{},
+	)
+	if policy == nil {
+		t.Fatal("generatedAgentSlashCommandPolicy() = nil")
+	}
+	encoded, err := json.Marshal(policy)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	if !bytes.Contains(encoded, []byte(`"fallbackCommands":[]`)) {
+		t.Fatalf("generated policy = %s, want empty fallbackCommands array", encoded)
+	}
+}
+
 type rejectingWorkbenchStore struct {
 	t *testing.T
 }
