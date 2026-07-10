@@ -217,9 +217,7 @@ export function AgentPermissionModeDropdown({
   // While the daemon's composer options load, the permission options are empty
   // and the trigger is disabled; surface a hover hint so the user knows it is
   // still loading rather than permanently unavailable.
-  const isLoading =
-    composerSettings.isSettingsLoading ||
-    composerSettings.isModelOptionsLoading === true;
+  const isLoading = composerSettings.isSettingsLoading;
   const availableOptions = composerSettings.availablePermissionModes ?? [];
   const selectedValue =
     composerSettings.selectedPermissionModeValue ??

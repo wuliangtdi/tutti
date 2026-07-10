@@ -20,6 +20,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
   const modelConfig = recordValue(result.modelConfig);
   const reasoningConfig = recordValue(result.reasoningConfig);
   const speedConfig = recordValue(result.speedConfig);
+  const effectiveSettings = composerSettingsFromValue(result.effectiveSettings);
   const modelsFromConfig = settingOptionsFromComposerConfig(modelConfig);
   // The live agent's advertised model list reflects what the running session
   // can actually use, so it takes precedence when present.
@@ -72,6 +73,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
       speedConfig.configurable === true ||
       (speedConfig.configurable === undefined &&
         speedsFromLiveConfig.length > 0),
+    effectiveSettings,
     permissionConfig: permissionConfigFromValue(result.permissionConfig),
     runtimeContext,
     skills:
@@ -79,6 +81,23 @@ export function agentActivityComposerOptionsFromTuttidResult(
     capabilityCatalog,
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
+  };
+}
+
+function composerSettingsFromValue(
+  value: unknown
+): AgentActivityComposerOptions["effectiveSettings"] {
+  const settings = recordValue(value);
+  if (Object.keys(settings).length === 0) {
+    return null;
+  }
+  return {
+    model: normalizeText(settings.model),
+    reasoningEffort: normalizeText(settings.reasoningEffort),
+    speed: normalizeText(settings.speed),
+    planMode:
+      typeof settings.planMode === "boolean" ? settings.planMode : undefined,
+    permissionModeId: normalizeText(settings.permissionModeId)
   };
 }
 

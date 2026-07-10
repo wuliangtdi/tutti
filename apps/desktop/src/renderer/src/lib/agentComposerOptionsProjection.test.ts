@@ -60,3 +60,23 @@ test("agent composer options project the typed slash command policy", () => {
     ]
   });
 });
+
+test("agent composer options preserve effective pre-session settings", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("codex", {
+    effectiveSettings: {
+      model: "gpt-5.3-codex",
+      reasoningEffort: "high",
+      speed: "fast",
+      planMode: false,
+      permissionModeId: "full-access"
+    }
+  });
+
+  assert.deepEqual(options.effectiveSettings, {
+    model: "gpt-5.3-codex",
+    reasoningEffort: "high",
+    speed: "fast",
+    planMode: false,
+    permissionModeId: "full-access"
+  });
+});

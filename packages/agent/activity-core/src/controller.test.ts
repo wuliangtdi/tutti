@@ -1335,6 +1335,10 @@ test("controller caches composer options by provider and clones snapshots", asyn
         return createComposerOptions({
           provider: input.provider,
           models: [{ value: "gpt-5.4", label: "GPT-5.4" }],
+          effectiveSettings: {
+            model: "gpt-5.4",
+            reasoningEffort: "high"
+          },
           permissionConfig: {
             configurable: true,
             defaultValue: "auto",
@@ -1349,6 +1353,7 @@ test("controller caches composer options by provider and clones snapshots", asyn
 
   const first = await controller.loadComposerOptions({ provider: "codex" });
   first.models[0]!.label = "mutated";
+  first.effectiveSettings!.model = "mutated";
   first.permissionConfig!.defaultValue = "mutated";
   first.permissionConfig!.modes[0]!.label = "mutated";
   (first.runtimeContext!.promptCapabilities as Record<string, unknown>).image =
@@ -1357,6 +1362,7 @@ test("controller caches composer options by provider and clones snapshots", asyn
 
   assert.equal(loadCount, 1);
   assert.equal(second.models[0]?.label, "GPT-5.4");
+  assert.equal(second.effectiveSettings?.model, "gpt-5.4");
   assert.equal(second.permissionConfig?.defaultValue, "auto");
   assert.equal(second.permissionConfig?.modes[0]?.label, "Auto");
   assert.deepEqual(second.runtimeContext?.promptCapabilities, { image: true });
@@ -1541,6 +1547,54 @@ test("controller dedupes in-flight composer option loads and supports force relo
   assert.equal(reloaded.models[0]?.value, "gpt-2");
 });
 
+test("controller does not dedupe in-flight composer options with different settings", async () => {
+  const resolvers = new Map<
+    string,
+    (options: AgentActivityComposerOptions) => void
+  >();
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) =>
+        new Promise<AgentActivityComposerOptions>((resolve) => {
+          resolvers.set(input.settings?.model ?? "", resolve);
+        })
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  const firstLoad = controller.loadComposerOptions({
+    provider: "codex",
+    settings: { model: "gpt-5.3-codex" }
+  });
+  const secondLoad = controller.loadComposerOptions({
+    provider: "codex",
+    settings: { model: "gpt-5.4" }
+  });
+
+  assert.equal(resolvers.size, 2);
+  resolvers.get("gpt-5.4")?.(
+    createComposerOptions({
+      provider: "codex",
+      effectiveSettings: { model: "gpt-5.4" }
+    })
+  );
+  resolvers.get("gpt-5.3-codex")?.(
+    createComposerOptions({
+      provider: "codex",
+      effectiveSettings: { model: "gpt-5.3-codex" }
+    })
+  );
+  const [first, second] = await Promise.all([firstLoad, secondLoad]);
+
+  assert.equal(first.effectiveSettings?.model, "gpt-5.3-codex");
+  assert.equal(second.effectiveSettings?.model, "gpt-5.4");
+  assert.equal(
+    controller.getSnapshot().composerOptionsByProvider?.codex?.effectiveSettings
+      ?.model,
+    "gpt-5.4"
+  );
+});
+
 test("controller force reload bypasses stale in-flight composer option loads", async () => {
   const resolvers: Array<(options: AgentActivityComposerOptions) => void> = [];
   const controller = createAgentActivityController({
@@ -1630,6 +1684,52 @@ test("loadComposerOptions refetches when cwd changes and caches per cwd", async 
   void first;
   void cachedSame;
   void afterSwitch;
+});
+
+test("loadComposerOptions refetches when effective input settings change", async () => {
+  const adapterCalls: Array<{
+    model: string | null | undefined;
+    reasoningEffort: string | null | undefined;
+  }> = [];
+  const controller = createAgentActivityController({
+    adapter: fakeAdapter({
+      loadComposerOptions: async (input) => {
+        adapterCalls.push({
+          model: input.settings?.model,
+          reasoningEffort: input.settings?.reasoningEffort
+        });
+        return createComposerOptions({
+          provider: input.provider,
+          effectiveSettings: {
+            model: input.settings?.model,
+            reasoningEffort: input.settings?.reasoningEffort
+          }
+        });
+      }
+    }),
+    workspaceId: "workspace-1"
+  });
+
+  await controller.loadComposerOptions({
+    provider: "codex",
+    cwd: "/repo",
+    settings: { model: "gpt-5.3-codex", reasoningEffort: "high" }
+  });
+  const cached = await controller.loadComposerOptions({
+    provider: "codex",
+    cwd: "/repo",
+    settings: { model: " gpt-5.3-codex ", reasoningEffort: "high" }
+  });
+  const changed = await controller.loadComposerOptions({
+    provider: "codex",
+    cwd: "/repo",
+    settings: { model: "gpt-5.4", reasoningEffort: "medium" }
+  });
+
+  assert.equal(adapterCalls.length, 2);
+  assert.equal(cached.effectiveSettings?.model, "gpt-5.3-codex");
+  assert.equal(changed.effectiveSettings?.model, "gpt-5.4");
+  assert.equal(changed.effectiveSettings?.reasoningEffort, "medium");
 });
 
 function fakeAdapter(

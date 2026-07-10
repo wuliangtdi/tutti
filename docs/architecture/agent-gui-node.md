@@ -217,6 +217,16 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+The loaded target-scoped snapshot remains the presentational source while the
+first conversation is activating and while a live runtime refreshes its model
+catalog. Treat live model discovery as a background refresh when that snapshot
+still has usable model options; only a genuinely missing options source is a
+foreground composer loading state. Permission presentation is independent of a
+live model-catalog refresh and must keep showing its resolved target setting.
+The snapshot's effective settings provide the current model, reasoning, speed,
+and permission values until optimistic or authoritative session settings replace
+them; option lists alone are not enough to preserve selection across the
+home-to-detail transition.
 If restored node data has a stale `provider` that disagrees with a resolvable
 `agentTargetId`, the target's provider wins for empty-composer settings and
 launch preparation.
@@ -651,6 +661,9 @@ composer submit with no activeConversationId
   -> normalize prompt content and optional displayPrompt
   -> set local first-create busy state
   -> mark conversation-list create pending
+  -> capture selected target/options and effective settings
+  -> create optimistic conversation summary and user message
+  -> enter conversation detail with optimistic target/settings overlay
   -> activation.activate(mode="new")
   -> AgentActivityRuntime.activateSession
   -> WorkspaceAgentActivityService.activateSession
@@ -661,21 +674,23 @@ composer submit with no activeConversationId
   -> RuntimeController.Start
   -> RuntimeController.Exec when initialContent exists
   -> activation succeeds
-  -> create/attach conversation summary
-  -> record optimistic user message
-  -> clear home draft and enter conversation detail
+  -> attach durable conversation summary and clear home draft
   -> ActivityProjection receives runtime reports
   -> agent.activity.updated events
   -> AgentActivityController snapshot update
   -> projection + UI refresh
 ```
 
-For normal first-message creation, the UI stays on the home composer while
-activation is pending. The home composer uses its existing busy/send-button
-state; it does not show a separate "creating session" text and it does not enter
-conversation detail just to show "connecting conversation". After activation
-succeeds, the controller attaches the conversation and records the optimistic
-user message before loading runtime projection. For Claude Code,
+For normal first-message creation, the controller captures the selected target
+and composer settings, creates an optimistic conversation and user message, and
+enters conversation detail before activation resolves. That optimistic detail
+uses the captured target/options overlay until node data echoes the same target;
+the controller releases the overlay on that echo or when navigation/failure
+leaves the new conversation, so it cannot be revived by reopening the session.
+It does not show the existing-session "connecting conversation" recovery state.
+After activation succeeds, the durable session and runtime projection replace
+the optimistic ownership without clearing the visible message or composer
+settings. For Claude Code,
 `desktopAgentActivityAdapter.createSession` may promote a pre-warmed hidden draft
 session before calling `sendWorkspaceAgentSessionInput`. Create-time-only launch
 options must opt out of that promotion path because the hidden draft has already
@@ -1055,9 +1070,10 @@ composer draft + activeConversationId
 
 User-visible rules:
 
-- Home composer submit with no active conversation starts activation. Detail
-  composer submit with an active conversation sends input. First-message
-  activation keeps the user on the home composer until activation succeeds.
+- Home composer submit with no active conversation starts activation and enters
+  an optimistic conversation detail immediately. Detail composer submit with an
+  active conversation sends input. The optimistic first-message detail keeps the
+  submitted target and settings until the node/session projection catches up.
 - Treat active-session refs as controller caches, not the source of truth for
   whether a submit is new or existing. React effect cleanup, projection reloads,
   and conversation-list refreshes may temporarily disturb UI-local refs; they

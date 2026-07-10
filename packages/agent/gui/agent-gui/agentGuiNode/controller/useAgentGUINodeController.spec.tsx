@@ -7197,6 +7197,195 @@ describe("useAgentGUINodeController", () => {
     ).toEqual([expect.objectContaining({ body: "hello from hero" })]);
   });
 
+  it("keeps target-scoped composer options visible during optimistic first-session activation", async () => {
+    const activate = vi.fn(
+      (_input: AgentHostActivateAgentSessionInput) =>
+        new Promise<AgentHostActivateAgentSessionResult>(() => {
+          // Keep activation pending so the host has not echoed the target yet.
+        })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        effectiveSettings: {
+          model: "gpt-5.3-codex",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: "full-access"
+        },
+        modelConfig: {
+          configurable: true,
+          options: [{ value: "gpt-5.3-codex", name: "GPT-5.3 Codex" }]
+        },
+        reasoningConfig: {
+          configurable: true,
+          options: [{ value: "high", name: "High" }]
+        },
+        permissionConfig: {
+          configurable: true,
+          defaultValue: "full-access",
+          modes: [
+            {
+              id: "full-access",
+              label: "Full access",
+              semantic: "full-access"
+            }
+          ]
+        }
+      })),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex"),
+        // Deliberately do not echo updates back as props: the controller owns
+        // the optimistic transition until the host projection catches up.
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+        false
+      );
+    });
+
+    act(() => {
+      result.current.actions.submitPrompt(
+        promptBlocks("keep settings visible")
+      );
+    });
+
+    await waitFor(() => {
+      expect(activate).toHaveBeenCalledTimes(1);
+    });
+    expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+      false
+    );
+    expect(result.current.viewModel.composerSettings.modelUnavailable).toBe(
+      false
+    );
+    expect(result.current.viewModel.composerSettings.selectedModelValue).toBe(
+      "gpt-5.3-codex"
+    );
+    expect(
+      result.current.viewModel.composerSettings.selectedReasoningEffortValue
+    ).toBe("high");
+    expect(result.current.viewModel.composerSettings.availableModels).toEqual([
+      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" }
+    ]);
+    expect(
+      result.current.viewModel.composerSettings.availablePermissionModes
+    ).toEqual([
+      expect.objectContaining({
+        value: "full-access",
+        label: "Full access"
+      })
+    ]);
+  });
+
+  it("treats live model discovery as background refresh when preloaded options remain usable", async () => {
+    const activate = vi.fn(
+      async (input: AgentHostActivateAgentSessionInput) => ({
+        session: agentSession(input.agentSessionId, { status: "working" }),
+        activation: { mode: "new" as const, status: "attached" as const }
+      })
+    );
+    installAgentHostApi({
+      list: vi.fn(async () => ({ presences: [], sessions: [] })),
+      listSessionTimeline: vi.fn(async () => ({ timelineItems: [] })),
+      subscribeEvents: vi.fn(() => vi.fn()),
+      getComposerOptions: vi.fn(async () => ({
+        provider: "codex",
+        effectiveSettings: {
+          model: "gpt-5.3-codex",
+          reasoningEffort: "high",
+          speed: null,
+          planMode: false,
+          permissionModeId: "full-access"
+        },
+        modelConfig: {
+          configurable: true,
+          options: [{ value: "gpt-5.3-codex", name: "GPT-5.3 Codex" }]
+        },
+        reasoningConfig: {
+          configurable: true,
+          options: [{ value: "high", name: "High" }]
+        },
+        permissionConfig: {
+          configurable: true,
+          defaultValue: "full-access",
+          modes: [
+            {
+              id: "full-access",
+              label: "Full access",
+              semantic: "full-access"
+            }
+          ]
+        }
+      })),
+      getState: vi.fn(async ({ agentSessionId }) =>
+        agentSessionState(agentSessionId, {
+          permissionModeId: "full-access",
+          settings: {
+            model: "gpt-5.3-codex",
+            reasoningEffort: "high",
+            permissionModeId: "full-access"
+          },
+          runtimeContext: {
+            cwd: "/workspace",
+            appServerStartup: { models: "loading", rateLimits: "loading" }
+          }
+        })
+      ),
+      activate
+    });
+
+    const { result } = renderHook(() =>
+      useAgentGUINodeController({
+        workspaceId: "room-1",
+        currentUserId: "user-1",
+        workspacePath: "/workspace",
+        avoidGroupingEdits: false,
+        data: agentGuiData(null, "codex", {
+          agentTargetId: "local:codex"
+        }),
+        onDataChange: vi.fn()
+      })
+    );
+
+    await waitFor(() => {
+      expect(result.current.viewModel.composerSettings.isSettingsLoading).toBe(
+        false
+      );
+    });
+    act(() => {
+      result.current.actions.submitPrompt(promptBlocks("start with cache"));
+    });
+
+    await waitFor(() => {
+      expect(result.current.viewModel.isCreatingConversation).toBe(false);
+      expect(
+        result.current.viewModel.composerSettings.sessionSettings?.model
+      ).toBe("gpt-5.3-codex");
+    });
+    expect(
+      result.current.viewModel.composerSettings.isModelOptionsLoading
+    ).toBe(false);
+    expect(result.current.viewModel.composerSettings.availableModels).toEqual([
+      { value: "gpt-5.3-codex", label: "GPT-5.3 Codex" }
+    ]);
+  });
+
   it("applies a composer settings change locally during the pre-activation window and flushes it once the session attaches", async () => {
     let resolveActivation:
       | ((value: AgentHostActivateAgentSessionResult) => void)
@@ -19532,6 +19721,7 @@ function composerOptionsFromRuntimeResult(
       );
   const modelConfig = recordValue(result.modelConfig) ?? {};
   const reasoningConfig = recordValue(result.reasoningConfig) ?? {};
+  const effectiveSettings = recordValue(result.effectiveSettings);
   // Mirrors the production adapter mapping: configurable comes from the wire,
   // with a fixture convenience fallback to "has any options".
   const modelConfigurable =
@@ -19547,6 +19737,22 @@ function composerOptionsFromRuntimeResult(
     speeds: [],
     modelConfigurable,
     reasoningConfigurable,
+    effectiveSettings: effectiveSettings
+      ? {
+          model: normalizeConfigOptionValue(effectiveSettings.model),
+          reasoningEffort: normalizeConfigOptionValue(
+            effectiveSettings.reasoningEffort
+          ),
+          speed: normalizeConfigOptionValue(effectiveSettings.speed),
+          planMode:
+            typeof effectiveSettings.planMode === "boolean"
+              ? effectiveSettings.planMode
+              : undefined,
+          permissionModeId: normalizeConfigOptionValue(
+            effectiveSettings.permissionModeId
+          )
+        }
+      : null,
     permissionConfig: permissionConfigFromRuntimeResult(
       result.permissionConfig
     ),

@@ -52,15 +52,15 @@
       "packages/agent/gui/utils/nodeFrameResize.ts": 7
     },
     "fileLines": {
-      "packages/agent/activity-core/src/controller.ts": 1712,
+      "packages/agent/activity-core/src/controller.ts": 1691,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentComposer.tsx": 4641,
-      "packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx": 873,
+      "packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx": 871,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx": 1976,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx": 8126,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchController.ts": 1750,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 1404,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.ts": 1443,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12593,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12485,
       "packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts": 1584,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterCard.tsx": 1330,
       "packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts": 864,

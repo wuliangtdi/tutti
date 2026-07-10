@@ -238,8 +238,19 @@ target id because older runtimes and historical imports are provider-only.
 
 Composer options are cached by `agentTargetId` when a target-backed request
 includes one. Provider-keyed composer options remain a legacy/provider-only
-cache and may be used by UI as a fallback while target-specific options load,
-but target-backed loads must not reuse or overwrite the provider cache.
+cache and serve only requests without an `agentTargetId`; target-backed UI must
+not fall back to it. While a live session refreshes its catalog, UI may continue
+presenting an already loaded target snapshot, but a genuinely missing target
+snapshot remains loading until target-scoped options arrive. Target-backed loads
+must not reuse or overwrite the provider cache. Each composer-options snapshot
+also carries its effective pre-session settings; AgentGUI resolves displayed
+settings field by field in this order: authoritative session settings,
+optimistic first-create settings, preloaded effective settings, then home
+defaults. A partial session projection must not erase a usable preloaded model
+or reasoning selection while live metadata is still arriving. Because the
+effective settings are request-dependent, composer-options cache freshness and
+in-flight reuse include both normalized `cwd` and normalized requested settings;
+target/provider identity alone is not a complete cache key.
 
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
 host-owned legacy reference for selecting which target under the real provider

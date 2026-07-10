@@ -7,6 +7,7 @@ import {
   mergeAgentActivityMessages
 } from "./merge.ts";
 import { loadAllAgentSessionMessages } from "./pagination.ts";
+import { createComposerOptionsCacheCoordinator } from "./composerOptionsCache.ts";
 import type {
   AgentActivityComposerOptions,
   AgentActivityLoadComposerOptionsInput,
@@ -76,19 +77,7 @@ export function createAgentActivityController({
 }: CreateAgentActivityControllerInput): AgentActivityController {
   const listeners = new Set<AgentActivitySnapshotListener>();
   const activeMessageSyncs = new Map<string, Promise<void>>();
-  const activeComposerOptionsLoads = new Map<
-    string,
-    Promise<AgentActivityComposerOptions>
-  >();
-  const composerOptionsLoadVersions = new Map<string, number>();
-  const composerOptionsCwdByCacheKey = new Map<string, string>();
-  const activeComposerOptionsLoadCwds = new Map<string, string>();
-  const normalizeComposerCwd = (cwd: string | null | undefined): string =>
-    (cwd ?? "").trim();
-  const composerOptionsProviderCacheKey = (provider: string): string =>
-    `provider:${provider}`;
-  const composerOptionsTargetCacheKey = (agentTargetId: string): string =>
-    `target:${agentTargetId}`;
+  const composerOptionsCache = createComposerOptionsCacheCoordinator();
   const autoRetainedStreamReleases = new Map<string, () => void>();
   const retainedStreams = new Map<string, RetainedSessionStream>();
   let snapshot: AgentActivitySnapshot =
@@ -174,32 +163,29 @@ export function createAgentActivityController({
         typeof input.agentTargetId === "string" && input.agentTargetId.trim()
           ? input.agentTargetId.trim()
           : null;
-      const primaryCacheKey = agentTargetId
-        ? composerOptionsTargetCacheKey(agentTargetId)
-        : composerOptionsProviderCacheKey(provider);
-      const requestedCwd = normalizeComposerCwd(input.cwd);
+      const primaryCacheKey = composerOptionsCache.cacheKey(
+        provider,
+        agentTargetId
+      );
+      const requestSignature = composerOptionsCache.requestSignature(input);
       if (!input.force) {
         const cached = agentTargetId
           ? snapshot.composerOptionsByAgentTargetId?.[agentTargetId]
           : snapshot.composerOptionsByProvider?.[provider];
         if (
           cached &&
-          composerOptionsCwdByCacheKey.get(primaryCacheKey) === requestedCwd
+          composerOptionsCache.settledMatches(primaryCacheKey, requestSignature)
         ) {
           return cloneAgentActivityComposerOptions(cached);
         }
       }
-      const existingLoad = activeComposerOptionsLoads.get(primaryCacheKey);
-      if (
-        existingLoad &&
-        !input.force &&
-        activeComposerOptionsLoadCwds.get(primaryCacheKey) === requestedCwd
-      ) {
+      const existingLoad = input.force
+        ? null
+        : composerOptionsCache.activeLoad(primaryCacheKey, requestSignature);
+      if (existingLoad) {
         return existingLoad.then(cloneAgentActivityComposerOptions);
       }
-      const loadVersion =
-        (composerOptionsLoadVersions.get(primaryCacheKey) ?? 0) + 1;
-      composerOptionsLoadVersions.set(primaryCacheKey, loadVersion);
+      const loadVersion = composerOptionsCache.nextLoadVersion(primaryCacheKey);
       const load = adapter
         .loadComposerOptions({
           agentTargetId,
@@ -215,12 +201,10 @@ export function createAgentActivityController({
             provider,
             loadedAtUnixMs: options.loadedAtUnixMs || Date.now()
           });
-          if (
-            composerOptionsLoadVersions.get(primaryCacheKey) !== loadVersion
-          ) {
+          if (!composerOptionsCache.isLatest(primaryCacheKey, loadVersion)) {
             return cloneAgentActivityComposerOptions(normalizedOptions);
           }
-          composerOptionsCwdByCacheKey.set(primaryCacheKey, requestedCwd);
+          composerOptionsCache.markSettled(primaryCacheKey, requestSignature);
           updateSnapshot((current) => {
             const currentOptions = agentTargetId
               ? current.composerOptionsByAgentTargetId?.[agentTargetId]
@@ -251,13 +235,9 @@ export function createAgentActivityController({
           return cloneAgentActivityComposerOptions(normalizedOptions);
         })
         .finally(() => {
-          if (activeComposerOptionsLoads.get(primaryCacheKey) === load) {
-            activeComposerOptionsLoads.delete(primaryCacheKey);
-            activeComposerOptionsLoadCwds.delete(primaryCacheKey);
-          }
+          composerOptionsCache.finishActive(primaryCacheKey, load);
         });
-      activeComposerOptionsLoads.set(primaryCacheKey, load);
-      activeComposerOptionsLoadCwds.set(primaryCacheKey, requestedCwd);
+      composerOptionsCache.markActive(primaryCacheKey, requestSignature, load);
       return load.then(cloneAgentActivityComposerOptions);
     },
     invalidateComposerOptions(input) {
@@ -274,17 +254,17 @@ export function createAgentActivityController({
         snapshot.composerOptionsByProvider ?? {}
       )) {
         if (matchesProvider(provider)) {
-          staleCacheKeys.add(composerOptionsProviderCacheKey(provider));
+          staleCacheKeys.add(composerOptionsCache.cacheKey(provider, null));
         }
       }
       for (const [agentTargetId, options] of Object.entries(
         snapshot.composerOptionsByAgentTargetId ?? {}
       )) {
         if (matchesProvider(options?.provider)) {
-          staleCacheKeys.add(composerOptionsTargetCacheKey(agentTargetId));
+          staleCacheKeys.add(composerOptionsCache.cacheKey("", agentTargetId));
         }
       }
-      for (const cacheKey of composerOptionsCwdByCacheKey.keys()) {
+      for (const cacheKey of composerOptionsCache.settledCacheKeys()) {
         // Provider cache keys may have no snapshot entry yet (load in flight);
         // match them directly so those are invalidated too.
         if (providers === null) {
@@ -292,13 +272,13 @@ export function createAgentActivityController({
           continue;
         }
         for (const provider of providers) {
-          if (cacheKey === composerOptionsProviderCacheKey(provider)) {
+          if (cacheKey === composerOptionsCache.cacheKey(provider, null)) {
             staleCacheKeys.add(cacheKey);
           }
         }
       }
       for (const cacheKey of staleCacheKeys) {
-        composerOptionsCwdByCacheKey.delete(cacheKey);
+        composerOptionsCache.invalidate(cacheKey);
       }
     },
     async listSessionMessages({
@@ -595,13 +575,12 @@ function cloneAgentActivityComposerOptions(
     modelConfigurable: options.modelConfigurable ?? false,
     reasoningConfigurable: options.reasoningConfigurable ?? false,
     speedConfigurable: options.speedConfigurable ?? false,
-    permissionConfig: options.permissionConfig
-      ? {
-          configurable: options.permissionConfig.configurable,
-          defaultValue: options.permissionConfig.defaultValue ?? null,
-          modes: options.permissionConfig.modes.map((mode) => ({ ...mode }))
-        }
-      : (options.permissionConfig ?? null),
+    effectiveSettings: options.effectiveSettings
+      ? { ...options.effectiveSettings }
+      : (options.effectiveSettings ?? null),
+    permissionConfig: cloneJSONValue(
+      options.permissionConfig ?? null
+    ) as AgentActivityComposerOptions["permissionConfig"],
     runtimeContext: cloneJSONRecord(options.runtimeContext),
     skills: options.skills.map((skill) => ({ ...skill })),
     capabilityCatalog: (options.capabilityCatalog ?? []).map((capability) => ({

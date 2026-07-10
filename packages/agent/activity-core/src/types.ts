@@ -203,6 +203,8 @@ export interface AgentActivityComposerOptions {
   reasoningConfigurable?: boolean;
   /** Mirrors tuttid speedConfig.configurable; false when absent. */
   speedConfigurable?: boolean;
+  /** Effective pre-session settings paired with this options snapshot. */
+  effectiveSettings?: AgentActivityComposerSettings | null;
   permissionConfig?: AgentActivityComposerPermissionConfig | null;
   runtimeContext?: Record<string, unknown>;
   skills: AgentActivityComposerSkillOption[];
