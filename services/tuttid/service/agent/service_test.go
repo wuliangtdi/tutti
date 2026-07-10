@@ -1686,6 +1686,45 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	}
 }
 
+func TestServiceCreateClampsLegacyMaxToSelectedModelCapability(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{{
+				ID:                         "gpt-5.3-codex-spark",
+				DefaultReasoningEffort:     "xhigh",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+					{Value: "low"},
+					{Value: "medium"},
+					{Value: "high"},
+					{Value: "xhigh"},
+				},
+			}},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "44444444-4444-4444-8444-444444444444",
+		AgentTargetID:   agenttargetbiz.IDLocalCodex,
+		Provider:        "codex",
+		Model:           stringRef("gpt-5.3-codex-spark"),
+		ReasoningEffort: stringRef("max"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].ReasoningEffort != "xhigh" {
+		t.Fatalf("runtime start calls = %#v, want Spark reasoning xhigh", runtime.startCalls)
+	}
+	if session.Settings == nil || session.Settings.ReasoningEffort != "xhigh" {
+		t.Fatalf("session settings = %#v, want Spark reasoning xhigh", session.Settings)
+	}
+}
+
 func TestServiceCreatePassesPlanModeToRuntime(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	runtime := newFakeRuntime()
@@ -3484,6 +3523,58 @@ func TestServiceUpdateSettingsPreservesCodexModelCatalogReasoningEffort(t *testi
 	}
 	if session.Settings == nil || session.Settings.ReasoningEffort != "minimal" {
 		t.Fatalf("session settings = %#v, want reasoningEffort minimal", session.Settings)
+	}
+}
+
+func TestServiceUpdateSettingsClampsReasoningWhenModelChanges(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = RuntimeSession{
+		ID:          "session-1",
+		Provider:    "codex",
+		WorkspaceID: "ws-1",
+		Status:      "ready",
+		Settings: &ComposerSettings{
+			Model:           "gpt-5.6-sol",
+			ReasoningEffort: "ultra",
+		},
+	}
+	service := NewService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{
+					ID:                         "gpt-5.6-sol",
+					DefaultReasoningEffort:     "high",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"}, {Value: "medium"}, {Value: "high"},
+						{Value: "xhigh"}, {Value: "max"}, {Value: "ultra"},
+					},
+				},
+				{
+					ID:                         "gpt-5.6-luna",
+					DefaultReasoningEffort:     "high",
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"}, {Value: "medium"}, {Value: "high"},
+						{Value: "xhigh"}, {Value: "max"},
+					},
+				},
+			},
+		},
+	}
+	model := "gpt-5.6-luna"
+
+	session, err := service.UpdateSettings(context.Background(), "ws-1", "session-1", ComposerSettingsPatch{
+		Model: &model,
+	})
+	if err != nil {
+		t.Fatalf("UpdateSettings returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.Model != model || session.Settings.ReasoningEffort != "high" {
+		t.Fatalf("session settings = %#v, want Luna/high", session.Settings)
 	}
 }
 

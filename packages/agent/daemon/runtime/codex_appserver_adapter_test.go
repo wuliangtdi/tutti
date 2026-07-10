@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -987,7 +988,7 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	session.PermissionModeID = "read-only"
 	session.Settings = &SessionSettings{
 		Model:            "gpt-5.3-codex-spark",
-		ReasoningEffort:  "max",
+		ReasoningEffort:  "xhigh",
 		PermissionModeID: "read-only",
 	}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -1012,6 +1013,31 @@ func TestCodexAppServerAdapterStartAppliesSettingsAndPermissionMode(t *testing.T
 	}
 	if asString(config["model_reasoning_summary"]) != "auto" {
 		t.Fatalf("thread/start config = %#v, want reasoning summaries enabled for inline review on spark", config)
+	}
+}
+
+func TestCodexAppServerReasoningEffortValuePreservesGPT56Tiers(t *testing.T) {
+	t.Parallel()
+
+	if got := codexACPReasoningEffortValue("max"); got != "xhigh" {
+		t.Fatalf("legacy codexACPReasoningEffortValue(max) = %q, want xhigh", got)
+	}
+	for _, value := range []string{"max", "ultra"} {
+		if got := codexAppServerReasoningEffortValue(value); got != value {
+			t.Fatalf("codexAppServerReasoningEffortValue(%q) = %q, want %q", value, got, value)
+		}
+	}
+}
+
+func TestAppServerThreadStartParamsPreservesMaxReasoningEffort(t *testing.T) {
+	t.Parallel()
+
+	session := testAppServerSession()
+	session.Settings = &SessionSettings{Model: "gpt-5.6-sol", ReasoningEffort: "max"}
+	params := appServerThreadStartParams(session, "/workspace")
+	config, _ := params["config"].(map[string]any)
+	if got := asString(config["model_reasoning_effort"]); got != "max" {
+		t.Fatalf("thread/start reasoning effort = %q, want max", got)
 	}
 }
 
@@ -1399,8 +1425,8 @@ func TestCodexAppServerAdapterExecSendsTurnOverrides(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	session.PermissionModeID = "full-access"
 	session.Settings = &SessionSettings{
-		Model:            "gpt-5.1-codex",
-		ReasoningEffort:  "high",
+		Model:            "gpt-5.6-sol",
+		ReasoningEffort:  "ultra",
 		PermissionModeID: "full-access",
 	}
 	if _, err := adapter.Exec(context.Background(), session, []PromptContentBlock{{
@@ -1409,10 +1435,10 @@ func TestCodexAppServerAdapterExecSendsTurnOverrides(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
-	if asString(turnStart["model"]) != "gpt-5.1-codex" {
+	if asString(turnStart["model"]) != "gpt-5.6-sol" {
 		t.Fatalf("turn/start model = %q", turnStart["model"])
 	}
-	if asString(turnStart["effort"]) != "high" {
+	if asString(turnStart["effort"]) != "ultra" {
 		t.Fatalf("turn/start effort = %q", turnStart["effort"])
 	}
 	if asString(turnStart["approvalPolicy"]) != "never" {
@@ -4247,6 +4273,88 @@ func TestCodexAppServerAdapterApplySessionSettings(t *testing.T) {
 	turnStart := appServerRequestParams(t, transport.conn, appServerMethodTurnStart)
 	if asString(turnStart["model"]) != model || asString(turnStart["effort"]) != "low" {
 		t.Fatalf("turn/start overrides = %#v", turnStart)
+	}
+}
+
+func TestCodexAppServerAdapterApplySessionSettingsRefreshesModelReasoningOptions(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	adapter.mu.Lock()
+	appSession := adapter.sessions[session.AgentSessionID]
+	appSession.models = []map[string]any{
+		{
+			"id":                        "gpt-5.6-sol",
+			"supportedReasoningEfforts": []any{"low", "medium", "high", "xhigh", "max", "ultra"},
+		},
+		{
+			"id":                        "gpt-5.6-luna",
+			"defaultReasoningEffort":    "high",
+			"supportedReasoningEfforts": []any{"low", "medium", "high", "xhigh", "max"},
+		},
+	}
+	adapter.mu.Unlock()
+	session.Settings = &SessionSettings{Model: "gpt-5.6-luna", ReasoningEffort: "ultra"}
+	model := "gpt-5.6-luna"
+
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		Model: &model,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+	state := adapter.SessionState(session)
+	options, _ := state.RuntimeContext["configOptions"].([]map[string]any)
+	reasoning := configOptionByID(options, "reasoning_effort")
+	if got := configOptionValues(reasoning); !slices.Equal(got, []string{"low", "medium", "high", "xhigh", "max"}) {
+		t.Fatalf("reasoning options = %#v, want Luna efforts without ultra", got)
+	}
+	if got := asString(reasoning["currentValue"]); got != "high" {
+		t.Fatalf("reasoning current value = %q, want high", got)
+	}
+}
+
+func TestCodexAppServerAdapterLateModelListPreservesUpdatedSettings(t *testing.T) {
+	t.Parallel()
+
+	adapter, _, session := startedAppServerAdapter(t)
+	adapter.mu.Lock()
+	adapter.sessions[session.AgentSessionID].models = nil
+	adapter.mu.Unlock()
+	model := "gpt-5.6-luna"
+	effort := "high"
+	updatedSession := session
+	updatedSession.Settings = &SessionSettings{Model: model, ReasoningEffort: effort}
+	if err := adapter.ApplySessionSettings(context.Background(), updatedSession, SessionSettingsPatch{
+		Model:           &model,
+		ReasoningEffort: &effort,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings: %v", err)
+	}
+
+	startupSession := session
+	startupSession.Settings = &SessionSettings{Model: "gpt-5.6-sol", ReasoningEffort: "ultra"}
+	if applied := adapter.applyStartupModels(session.AgentSessionID, startupSession, nil, []map[string]any{
+		{
+			"id":                        "gpt-5.6-sol",
+			"defaultReasoningEffort":    "high",
+			"supportedReasoningEfforts": []any{"low", "medium", "high", "xhigh", "max", "ultra"},
+		},
+		{
+			"id":                        "gpt-5.6-luna",
+			"defaultReasoningEffort":    "high",
+			"supportedReasoningEfforts": []any{"low", "medium", "high", "xhigh", "max"},
+		},
+	}); !applied {
+		t.Fatal("applyStartupModels = false, want true")
+	}
+
+	state := adapter.SessionState(updatedSession)
+	config, _ := state.RuntimeContext["config"].(map[string]any)
+	if got := asString(config["model"]); got != model {
+		t.Fatalf("late model/list model = %q, want %q", got, model)
+	}
+	if got := asString(config["reasoning_effort"]); got != effort {
+		t.Fatalf("late model/list reasoning effort = %q, want %q", got, effort)
 	}
 }
 

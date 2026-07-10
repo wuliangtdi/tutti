@@ -40,6 +40,21 @@ func codexACPReasoningEffortValue(value string) string {
 	}
 }
 
+// codexAppServerReasoningEffortValue preserves the distinct max and ultra
+// values advertised by current Codex app-server model catalogs. The legacy
+// ACP mapper above remains unchanged for providers that still treat max as an
+// alias for xhigh.
+func codexAppServerReasoningEffortValue(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "max":
+		return "max"
+	case "ultra":
+		return "ultra"
+	default:
+		return codexACPReasoningEffortValue(value)
+	}
+}
+
 // codexServiceTierValue maps the orthogonal speed tier onto the codex
 // app-server `service_tier` config value. The "fast" tier is sent verbatim;
 // the codex app-server maps the legacy `fast` config onto the request value

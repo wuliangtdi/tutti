@@ -570,35 +570,6 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 	})
 }
 
-func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettingsPatch) (Session, error) {
-	ensured, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
-	if err != nil {
-		return Session{}, err
-	}
-	if settings.ReasoningEffort != nil {
-		normalizedReasoningEffort := normalizeReasoningEffortForProvider(
-			strings.TrimSpace(ensured.Session.Provider),
-			*settings.ReasoningEffort,
-		)
-		settings.ReasoningEffort = &normalizedReasoningEffort
-	}
-	if settings.Speed != nil {
-		normalizedSpeed := normalizeSpeedForProvider(
-			strings.TrimSpace(ensured.Session.Provider),
-			*settings.Speed,
-		)
-		settings.Speed = &normalizedSpeed
-	}
-	if err := s.controller().UpdateSettings(ctx, RuntimeUpdateSettingsInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Settings:       settings,
-	}); err != nil {
-		return Session{}, normalizeRuntimeError(err)
-	}
-	return s.Get(ctx, workspaceID, agentSessionID)
-}
-
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
 	_, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
 	if err != nil {
