@@ -5015,7 +5015,11 @@ describe("AgentComposer", () => {
       );
 
       const drafts = screen.getByTestId("agent-gui-composer-image-drafts");
-      fireEvent.click(within(drafts).getByRole("button", { name: "移除引用" }));
+      const removeButton = within(drafts).getByRole("button", {
+        name: "移除引用"
+      });
+      expect(removeButton).toHaveClass("z-[2]");
+      fireEvent.click(removeButton);
       rerender(renderComposer());
 
       expect(
