@@ -1,10 +1,14 @@
 package agentprovider
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
 
 const (
 	ClaudeCode = "claude-code"
-	Codex      = "codex"
+	Codex      = providerregistry.CodexProviderID
 	Cursor     = "cursor"
 	Hermes     = "hermes"
 	Nexight    = "nexight"
@@ -13,27 +17,21 @@ const (
 	TuttiAgent = "tutti-agent"
 )
 
-var allProviders = []string{
-	ClaudeCode,
-	Codex,
-	TuttiAgent,
-	Cursor,
-	Nexight,
-	Hermes,
-	OpenClaw,
-	OpenCode,
-}
-
 func All() []string {
-	return append([]string(nil), allProviders...)
+	providers := []string{ClaudeCode}
+	for _, descriptor := range providerregistry.Migrated() {
+		providers = append(providers, descriptor.Identity.ID)
+	}
+	return append(providers, TuttiAgent, Cursor, Nexight, Hermes, OpenClaw, OpenCode)
 }
 
 func Normalize(provider string) string {
+	if descriptor, ok := providerregistry.Find(provider); ok {
+		return descriptor.Identity.ID
+	}
 	switch strings.TrimSpace(strings.ToLower(provider)) {
 	case "claude", ClaudeCode:
 		return ClaudeCode
-	case Codex:
-		return Codex
 	case TuttiAgent:
 		return TuttiAgent
 	case "cursor-agent", "cursor-cli", Cursor:

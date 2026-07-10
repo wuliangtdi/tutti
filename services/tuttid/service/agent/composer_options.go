@@ -296,9 +296,10 @@ func composerDefaultModel(
 			}
 		}
 	}
-	switch provider {
-	case agentprovider.Codex:
+	if composerProfileFor(provider).ModelCatalog == "codex-cli" {
 		return strings.TrimSpace(readCodexConfiguredDefaultModel())
+	}
+	switch provider {
 	case agentprovider.ClaudeCode:
 		return strings.TrimSpace(readClaudeCodeConfiguredDefaultModel())
 	default:
@@ -316,9 +317,13 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 	}
 	options := make([]map[string]any, 0, 3)
 	if profile.ModelSelection && len(modelOptions) > 0 {
+		configOptionID := strings.TrimSpace(profile.ModelConfigOptionID)
+		if configOptionID == "" {
+			configOptionID = "model"
+		}
 		options = append(options, map[string]any{
 			"currentValue": nullableString(settings.Model),
-			"id":           "model",
+			"id":           configOptionID,
 			"options":      composerConfigOptionValuesToRuntimeModelOptions(modelOptions),
 		})
 	}
@@ -631,8 +636,11 @@ func composerSelectedModelOptions(model string) []ComposerConfigOptionValue {
 }
 
 func reasoningConfigOptionID(provider string) string {
+	if id := strings.TrimSpace(composerProfileFor(provider).ReasoningConfigOptionID); id != "" {
+		return id
+	}
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.TuttiAgent:
+	case agentprovider.TuttiAgent:
 		return "reasoning_effort"
 	default:
 		return "effort"
@@ -660,8 +668,11 @@ func speedProviderSupportsSpeed(provider string) bool {
 // the tier onto the app-server `service_tier` config; Claude Code sets a `fast`
 // ACP config option when the agent advertises it.
 func speedConfigOptionID(provider string) string {
+	if id := strings.TrimSpace(composerProfileFor(provider).SpeedConfigOptionID); id != "" {
+		return id
+	}
 	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex, agentprovider.TuttiAgent:
+	case agentprovider.TuttiAgent:
 		return "service_tier"
 	default:
 		return "fast"
@@ -745,8 +756,11 @@ func reasoningEffortOptions(provider string, selected string) []map[string]strin
 }
 
 func reasoningEffortValuesForProvider(provider string) []string {
-	if provider == agentprovider.Codex ||
-		provider == agentprovider.ClaudeCode ||
+	profile := composerProfileFor(provider)
+	if len(profile.ReasoningEffortValues) > 0 {
+		return append([]string(nil), profile.ReasoningEffortValues...)
+	}
+	if provider == agentprovider.ClaudeCode ||
 		provider == agentprovider.OpenCode {
 		return []string{"low", "medium", "high", "xhigh"}
 	}
@@ -759,12 +773,13 @@ func normalizeReasoningEffortForProvider(provider string, value string) string {
 		return ""
 	}
 	normalized := strings.TrimSpace(value)
-	if (provider == agentprovider.Codex || provider == agentprovider.ClaudeCode) &&
-		(normalized == "minimal" || normalized == "none") {
-		return "high"
-	}
-	if provider == agentprovider.OpenCode && (normalized == "minimal" || normalized == "none") {
-		return "high"
+	if normalized == "minimal" || normalized == "none" {
+		for _, candidate := range reasoningEffortValuesForProvider(provider) {
+			if candidate == normalized {
+				return normalized
+			}
+		}
+		return composerDefaultReasoningEffort(provider)
 	}
 	return normalized
 }

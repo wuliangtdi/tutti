@@ -16,6 +16,14 @@ package agentruntime
 // codex binary's own app-server protocol) and is not a template for new
 // providers.
 //
+// Provider registration is migrating to providerregistry.ProviderDescriptor.
+// Codex has completed that migration: its runtime, status, composer, target,
+// identity, and event registration values live in providerregistry/codex.go.
+// Do not add Codex values back to the legacy registration sites below. The
+// checklist remains temporarily for ACP providers that have not yet migrated;
+// migrate the next provider by extending the descriptor runtime/conversion
+// kinds and then deleting that provider's legacy entries atomically.
+//
 // # Adding an ACP provider (e.g. OpenCode)
 //
 // Runtime (this package):

@@ -153,14 +153,16 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := []Adapter{
 		newDefaultClaudeCodeAdapter(transport, host, options.ProviderCommandResolver),
-		NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, options.ProviderCommandResolver),
+	}
+	adapters = append(adapters, newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)...)
+	adapters = append(adapters,
 		NewTuttiAgentAppServerAdapterWithHostMetadata(transport, host),
 		NewCursorAdapterWithHostMetadata(transport, host),
 		NewNexightAdapterWithHostMetadata(transport, host),
 		NewHermesAdapterWithHostMetadata(transport, host),
 		NewOpenClawAdapterWithHostMetadata(transport, host),
 		NewOpenCodeAdapterWithHostMetadata(transport, host),
-	}
+	)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
 	return NewController(adapters, reporter)
 }
@@ -446,10 +448,13 @@ func normalizePermissionModeIDWithFallback(provider string, mode string, fallbac
 }
 
 func defaultPermissionModeIDForProvider(provider string) string {
+	if profile, ok := migratedProviderComposerProfile(provider); ok {
+		return strings.TrimSpace(profile.DefaultPermissionModeID)
+	}
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return "default"
-	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
+	case ProviderTuttiAgent, ProviderNexight:
 		return "auto"
 	case ProviderCursor:
 		return "agent"
@@ -484,10 +489,19 @@ func isClaudeCodePermissionModeID(mode string) bool {
 }
 
 func permissionModeIDAllowedForProvider(provider string, mode string) bool {
+	if profile, ok := migratedProviderComposerProfile(provider); ok {
+		mode = strings.TrimSpace(mode)
+		for _, candidate := range profile.PermissionModes {
+			if strings.TrimSpace(candidate.ID) == mode {
+				return true
+			}
+		}
+		return false
+	}
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return isClaudeCodePermissionModeID(mode)
-	case ProviderCodex, ProviderTuttiAgent, ProviderNexight:
+	case ProviderTuttiAgent, ProviderNexight:
 		switch strings.TrimSpace(mode) {
 		case "read-only", "auto", "full-access":
 			return true
@@ -1250,7 +1264,17 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			session.UpdatedAtUnixMS = unixMS(now())
 		}
 		session = c.preserveCurrentSessionSettings(session)
-		c.store(session)
+		terminal := turnHasTerminalEvent(events, turnID) ||
+			turnLifecycleSnapshotSettledTurn(events, turnID) ||
+			turnSteeredIntoActiveTurn(events, turnID)
+		if terminal {
+			// Remove the controller's active-turn record before publishing a
+			// terminal/ready session. Consumers must never observe a ready session
+			// while HasActiveTurn still reports the finished turn.
+			finish(session)
+		} else {
+			c.store(session)
+		}
 		c.publish(session, events)
 		c.enqueueSessionReport(ctx, session, events)
 		logAgentSubmitTrace("runtime.async_events_emitted", session, turnID, metadata, map[string]any{
@@ -1258,11 +1282,6 @@ func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adap
 			"session_status":       session.Status,
 			"turn_phase":           turnLifecyclePhaseFromEvents(events),
 		})
-		if turnHasTerminalEvent(events, turnID) ||
-			turnLifecycleSnapshotSettledTurn(events, turnID) ||
-			turnSteeredIntoActiveTurn(events, turnID) {
-			finish(session)
-		}
 	}
 	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
 		mu.Lock()

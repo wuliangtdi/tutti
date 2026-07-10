@@ -60,7 +60,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchController.ts": 1750,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 1404,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.ts": 1443,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12705,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12703,
       "packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts": 1584,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterCard.tsx": 1330,
       "packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts": 867,
@@ -134,7 +134,7 @@
     },
     "moduleMutableGlobals": 13,
     "overlayStores": 6,
-    "providerBranches": 46,
+    "providerBranches": 44,
     "setTimeoutCount": 47,
     "swallowedCatch": 20,
     "useSyncExternalStoreCount": 10

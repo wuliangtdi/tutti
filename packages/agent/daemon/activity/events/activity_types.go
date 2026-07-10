@@ -1,11 +1,15 @@
 package events
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+)
 
 type Provider string
 
 const (
-	ProviderCodex      Provider = "codex"
+	ProviderCodex      Provider = providerregistry.CodexProviderID
 	ProviderTuttiAgent Provider = "tutti-agent"
 	ProviderCursor     Provider = "cursor"
 	ProviderNexight    Provider = "nexight"
@@ -154,9 +158,10 @@ type EventContext struct {
 }
 
 func NormalizeProvider(value string) (Provider, bool) {
+	if descriptor, ok := providerregistry.FindEventProvider(value); ok {
+		return Provider(descriptor.Identity.ID), true
+	}
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case string(ProviderCodex):
-		return ProviderCodex, true
 	case string(ProviderTuttiAgent), "tutti_agent":
 		return ProviderTuttiAgent, true
 	case string(ProviderCursor), "cursor-agent", "cursor_agent":

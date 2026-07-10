@@ -3,11 +3,13 @@ package agentruntime
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 const (
 	ProviderClaudeCode = "claude-code"
-	ProviderCodex      = "codex"
+	ProviderCodex      = providerregistry.CodexProviderID
 	ProviderTuttiAgent = "tutti-agent"
 	ProviderCursor     = "cursor"
 	ProviderNexight    = "nexight"

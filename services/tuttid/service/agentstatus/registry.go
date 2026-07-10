@@ -1,6 +1,11 @@
 package agentstatus
 
-import "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+import (
+	"fmt"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
+)
 
 type Registry struct {
 	Specs []ProviderSpec
@@ -14,9 +19,9 @@ const (
 )
 
 const DisabledReasonProviderTemporarilyUnsupported = "provider_temporarily_unsupported"
-const codexServiceTierOverride = `service_tier="fast"`
 
 type ProviderSpec struct {
+	Kind                         providerregistry.StatusKind
 	Provider                     string
 	SupportStatus                ProviderSupportStatus
 	DisabledReasonCode           string
@@ -95,21 +100,6 @@ func DefaultRegistry() Registry {
 			},
 			LoginArgs: []string{"auth", "login"},
 		},
-		agentprovider.Codex: {
-			Provider:    agentprovider.Codex,
-			BinaryNames: []string{"codex"},
-			// Codex talks to the local codex binary's built-in app-server; there
-			// is no separate ACP adapter. Resolve/probe that command directly so
-			// availability reflects "codex app-server" rather than bare `codex`
-			// (which is an interactive TUI and fails headless with
-			// "stdin is not a terminal").
-			AdapterBinaryNames: []string{"codex"},
-			AdapterCommand:     []string{"codex", "app-server"},
-			AuthStatusCommand:  []string{"login", "-c", codexServiceTierOverride, "status"},
-			AuthMarkerPaths:    []string{"~/.codex/auth.json"},
-			Install:            codexCLIInstallerSpec(),
-			LoginArgs:          []string{"login", "-c", codexServiceTierOverride},
-		},
 		agentprovider.TuttiAgent: {
 			Provider:    agentprovider.TuttiAgent,
 			BinaryNames: []string{"tutti-agent"},
@@ -187,6 +177,14 @@ func DefaultRegistry() Registry {
 			LoginArgs: []string{"auth", "login"},
 		},
 	}
+	for _, descriptor := range providerregistry.Migrated() {
+		spec, err := providerSpecFromDescriptor(descriptor)
+		if err != nil {
+			panic(fmt.Sprintf("invalid migrated provider status descriptor: %v", err))
+		}
+		spec.Provider = descriptor.Identity.ID
+		specsByProvider[descriptor.Identity.ID] = spec
+	}
 	providers := agentprovider.All()
 	specs := make([]ProviderSpec, 0, len(providers))
 	for _, provider := range providers {
@@ -198,14 +196,74 @@ func DefaultRegistry() Registry {
 	return Registry{Specs: specs}
 }
 
-// codexCLIInstallerSpec installs the first-party Codex npm package globally,
-// including its platform-specific optional dependency binary.
-func codexCLIInstallerSpec() InstallerSpec {
-	return InstallerSpec{
-		Kind:           InstallerKindCodexCLILatest,
-		DisplayCommand: "npm install -g @openai/codex --include=optional",
-		CodexCLI:       &CodexCLILatestInstallerSpec{},
+func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) (ProviderSpec, error) {
+	if err := providerregistry.Validate(descriptor); err != nil {
+		return ProviderSpec{}, err
 	}
+	install, err := installerSpecFromProviderDescriptor(descriptor.Status.Install)
+	if err != nil {
+		return ProviderSpec{}, fmt.Errorf("provider %q installer: %w", descriptor.Identity.ID, err)
+	}
+	adapterBinaryNames := append([]string(nil), descriptor.Status.AdapterBinaryNames...)
+	if len(adapterBinaryNames) == 0 && len(descriptor.Runtime.Command) > 0 {
+		adapterBinaryNames = []string{descriptor.Runtime.Command[0]}
+	}
+	return ProviderSpec{
+		Kind:               descriptor.Status.Kind,
+		Provider:           descriptor.Identity.ID,
+		BinaryNames:        append([]string(nil), descriptor.Status.BinaryNames...),
+		AdapterBinaryNames: adapterBinaryNames,
+		AdapterCommand:     append([]string(nil), descriptor.Runtime.Command...),
+		AuthStatusCommand:  append([]string(nil), descriptor.Status.AuthStatusCommand...),
+		AuthMarkerPaths:    append([]string(nil), descriptor.Status.AuthMarkerPaths...),
+		Install:            install,
+		LoginArgs:          append([]string(nil), descriptor.Status.LoginArgs...),
+	}, nil
+}
+
+func isCodexStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindCodexCLI
+}
+
+func migratedProviderStatus(provider string) (providerregistry.StatusDescriptor, bool) {
+	descriptor, ok := providerregistry.Find(provider)
+	if !ok {
+		return providerregistry.StatusDescriptor{}, false
+	}
+	return descriptor.Status, true
+}
+
+func installerSpecFromProviderDescriptor(descriptor providerregistry.InstallerDescriptor) (InstallerSpec, error) {
+	switch descriptor.Kind {
+	case providerregistry.InstallerKindCodexCLILatest:
+		return InstallerSpec{
+			Kind:           InstallerKindCodexCLILatest,
+			DisplayCommand: descriptor.DisplayCommand,
+			CodexCLI:       &CodexCLILatestInstallerSpec{},
+		}, nil
+	default:
+		return InstallerSpec{}, fmt.Errorf("unsupported installer kind %q", descriptor.Kind)
+	}
+}
+
+// codexCLIInstallerSpec remains as a focused test/injection helper. Its values
+// come from the migrated provider descriptor; it is not a second registration.
+func codexCLIInstallerSpec() InstallerSpec {
+	descriptor, ok := providerregistry.Find(providerregistry.CodexProviderID)
+	if !ok {
+		panic("codex provider descriptor is missing")
+	}
+	install, err := installerSpecFromProviderDescriptor(descriptor.Status.Install)
+	if err != nil {
+		panic(fmt.Sprintf("invalid codex installer descriptor: %v", err))
+	}
+	return install
 }
 
 func tuttiAgentInstallerSpec() InstallerSpec {

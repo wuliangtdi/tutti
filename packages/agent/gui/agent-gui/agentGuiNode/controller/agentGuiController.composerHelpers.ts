@@ -25,18 +25,6 @@ export function normalizeConfigOptionValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-export function reasoningConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "reasoning_effort" : "effort";
-}
-
-export function speedConfigOptionIdForProvider(
-  provider: AgentGUINodeData["provider"]
-): string {
-  return provider === "codex" ? "service_tier" : "fast";
-}
-
 export function composerSettingOptionsFromActivity(
   options: readonly AgentActivityComposerOptions["models"][number][]
 ): AgentGUIComposerSettingOption[] {
@@ -275,23 +263,22 @@ export function resolveEffectiveComposerSettings(input: {
 }
 
 export function runtimeConfigKeyForSetting(
-  provider: AgentGUINodeData["provider"],
+  runtimeContext: Record<string, unknown>,
   setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
 ): string {
-  if (setting === "reasoningEffort") {
-    return reasoningConfigOptionIdForProvider(provider);
+  const configOptions = runtimeContext.configOptions;
+  if (Array.isArray(configOptions)) {
+    for (const option of configOptions) {
+      const id = normalizeConfigOptionValue(recordValue(option)?.id);
+      if (shouldUpdateRuntimeConfigOption(id, setting)) {
+        return id as string;
+      }
+    }
   }
-  if (setting === "speed") {
-    return speedConfigOptionIdForProvider(provider);
-  }
-  if (setting === "permissionModeId") {
-    return "mode";
-  }
-  return "model";
+  return defaultRuntimeConfigKeyForSetting(setting);
 }
 
 export function shouldUpdateRuntimeConfigOption(
-  provider: AgentGUINodeData["provider"],
   id: string | null,
   setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
 ): boolean {
@@ -302,23 +289,31 @@ export function shouldUpdateRuntimeConfigOption(
     return id === "mode";
   }
   if (setting === "speed") {
-    return (
-      id === speedConfigOptionIdForProvider(provider) ||
-      id === "service_tier" ||
-      id === "speed" ||
-      id === "fast"
-    );
+    return id === "service_tier" || id === "speed" || id === "fast";
   }
   return (
-    id === reasoningConfigOptionIdForProvider(provider) ||
     id === "model_reasoning_effort" ||
     id === "reasoning_effort" ||
     id === "effort"
   );
 }
 
+function defaultRuntimeConfigKeyForSetting(
+  setting: "model" | "reasoningEffort" | "speed" | "permissionModeId"
+): string {
+  switch (setting) {
+    case "model":
+      return "model";
+    case "reasoningEffort":
+      return "effort";
+    case "speed":
+      return "fast";
+    case "permissionModeId":
+      return "mode";
+  }
+}
+
 export function mergeRuntimeContextComposerSettings(
-  provider: AgentGUINodeData["provider"],
   runtimeContext: Record<string, unknown> | undefined,
   settings: AgentSessionComposerSettings
 ): Record<string, unknown> | undefined {
@@ -334,25 +329,27 @@ export function mergeRuntimeContextComposerSettings(
 
   if (settings.model !== undefined) {
     const value = normalizeOptionalText(settings.model);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "model")] = value;
+    runtimeConfigPatch[runtimeConfigKeyForSetting(runtimeContext, "model")] =
+      value;
     optionPatches.push({ setting: "model", value });
   }
   if (settings.reasoningEffort !== undefined) {
     const value = normalizeOptionalText(settings.reasoningEffort);
     runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "reasoningEffort")
+      runtimeConfigKeyForSetting(runtimeContext, "reasoningEffort")
     ] = value;
     optionPatches.push({ setting: "reasoningEffort", value });
   }
   if (settings.speed !== undefined) {
     const value = normalizeOptionalText(settings.speed);
-    runtimeConfigPatch[runtimeConfigKeyForSetting(provider, "speed")] = value;
+    runtimeConfigPatch[runtimeConfigKeyForSetting(runtimeContext, "speed")] =
+      value;
     optionPatches.push({ setting: "speed", value });
   }
   if (settings.permissionModeId !== undefined) {
     const value = normalizeOptionalText(settings.permissionModeId);
     runtimeConfigPatch[
-      runtimeConfigKeyForSetting(provider, "permissionModeId")
+      runtimeConfigKeyForSetting(runtimeContext, "permissionModeId")
     ] = value;
     optionPatches.push({ setting: "permissionModeId", value });
   }
@@ -376,7 +373,7 @@ export function mergeRuntimeContextComposerSettings(
         }
         const id = normalizeConfigOptionValue(optionRecord.id);
         const patch = optionPatches.find((item) =>
-          shouldUpdateRuntimeConfigOption(provider, id, item.setting)
+          shouldUpdateRuntimeConfigOption(id, item.setting)
         );
         return patch ? { ...optionRecord, currentValue: patch.value } : option;
       }

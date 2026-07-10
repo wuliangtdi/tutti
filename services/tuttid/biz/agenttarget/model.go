@@ -8,11 +8,12 @@ import (
 	"io"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
 const (
-	IDLocalCodex      = "local:codex"
+	IDLocalCodex      = providerregistry.CodexTargetID
 	IDLocalClaudeCode = "local:claude-code"
 	IDLocalTuttiAgent = "local:tutti-agent"
 	IDLocalCursor     = "local:cursor"
@@ -48,20 +49,12 @@ type LaunchRef struct {
 }
 
 func DefaultSystemTargets(nowUnixMS int64) []Target {
-	return []Target{
-		{
-			ID:              IDLocalCodex,
-			Provider:        agentproviderbiz.Codex,
-			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Codex),
-			Name:            "Codex",
-			IconKey:         "codex",
-			Enabled:         true,
-			Source:          SourceSystem,
-			SortOrder:       10,
-			CreatedAtUnixMS: nowUnixMS,
-			UpdatedAtUnixMS: nowUnixMS,
-		},
-		{
+	targets := make([]Target, 0, len(providerregistry.Migrated())+4)
+	for _, descriptor := range providerregistry.Migrated() {
+		targets = append(targets, systemTargetFromProviderDescriptor(descriptor, nowUnixMS))
+	}
+	return append(targets,
+		Target{
 			ID:              IDLocalClaudeCode,
 			Provider:        agentproviderbiz.ClaudeCode,
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.ClaudeCode),
@@ -73,7 +66,7 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
-		{
+		Target{
 			ID:              IDLocalTuttiAgent,
 			Provider:        agentproviderbiz.TuttiAgent,
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.TuttiAgent),
@@ -85,7 +78,7 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
-		{
+		Target{
 			ID:              IDLocalCursor,
 			Provider:        agentproviderbiz.Cursor,
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.Cursor),
@@ -97,7 +90,7 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
-		{
+		Target{
 			ID:              IDLocalOpenCode,
 			Provider:        agentproviderbiz.OpenCode,
 			LaunchRefJSON:   MustLocalCLILaunchRefJSON(agentproviderbiz.OpenCode),
@@ -109,6 +102,27 @@ func DefaultSystemTargets(nowUnixMS int64) []Target {
 			CreatedAtUnixMS: nowUnixMS,
 			UpdatedAtUnixMS: nowUnixMS,
 		},
+	)
+}
+
+func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDescriptor, nowUnixMS int64) Target {
+	if err := providerregistry.Validate(descriptor); err != nil {
+		panic(fmt.Sprintf("invalid migrated provider target descriptor: %v", err))
+	}
+	if descriptor.Target.LaunchRefType != LaunchRefTypeLocalCLI {
+		panic(fmt.Sprintf("provider %q has unsupported target launch ref type %q", descriptor.Identity.ID, descriptor.Target.LaunchRefType))
+	}
+	return Target{
+		ID:              descriptor.Target.ID,
+		Provider:        descriptor.Identity.ID,
+		LaunchRefJSON:   MustLocalCLILaunchRefJSON(descriptor.Identity.ID),
+		Name:            descriptor.Identity.DisplayName,
+		IconKey:         descriptor.Identity.IconKey,
+		Enabled:         descriptor.Target.Enabled,
+		Source:          SourceSystem,
+		SortOrder:       descriptor.Target.SortOrder,
+		CreatedAtUnixMS: nowUnixMS,
+		UpdatedAtUnixMS: nowUnixMS,
 	}
 }
 

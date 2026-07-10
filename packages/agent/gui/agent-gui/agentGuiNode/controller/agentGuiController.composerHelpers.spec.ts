@@ -6,6 +6,7 @@ import {
   buildNodeDefaultComposerSettings,
   composerOptionsMissingLiveModelValues,
   liveModelOptionValuesFromRuntimeContext,
+  mergeRuntimeContextComposerSettings,
   nodeDataFromComposerSettings,
   permissionModeOptions,
   readNodeDefaultDraftPrompt,
@@ -74,6 +75,42 @@ describe("live model options from runtime context", () => {
     ).toBe(false);
     expect(composerOptionsMissingLiveModelValues(null, liveValues)).toBe(false);
     expect(composerOptionsMissingLiveModelValues(staleOptions, [])).toBe(false);
+  });
+});
+
+describe("descriptor-backed runtime config options", () => {
+  it("updates Codex config keys from daemon-provided descriptors without provider branches", () => {
+    const runtimeContext = {
+      config: {},
+      configOptions: [
+        { id: "model", currentValue: "gpt-5" },
+        { id: "reasoning_effort", currentValue: "medium" },
+        { id: "service_tier", currentValue: "standard" },
+        { id: "mode", currentValue: "auto" }
+      ]
+    };
+
+    expect(
+      mergeRuntimeContextComposerSettings(runtimeContext, {
+        model: "gpt-5.3-codex",
+        reasoningEffort: "high",
+        speed: "fast",
+        permissionModeId: "full-access"
+      })
+    ).toEqual({
+      config: {
+        model: "gpt-5.3-codex",
+        reasoning_effort: "high",
+        service_tier: "fast",
+        mode: "full-access"
+      },
+      configOptions: [
+        { id: "model", currentValue: "gpt-5.3-codex" },
+        { id: "reasoning_effort", currentValue: "high" },
+        { id: "service_tier", currentValue: "fast" },
+        { id: "mode", currentValue: "full-access" }
+      ]
+    });
   });
 });
 

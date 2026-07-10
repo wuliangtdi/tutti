@@ -18,6 +18,7 @@ test("desktop agents service maps agent targets into renderer presentations and 
       }),
       createAgentTarget({
         id: "local:codex",
+        iconKey: "codex-descriptor",
         name: "Codex",
         provider: "codex",
         sortOrder: 10
@@ -38,7 +39,7 @@ test("desktop agents service maps agent targets into renderer presentations and 
     [
       {
         agentTargetId: "local:codex",
-        iconUrl: "tutti-asset://agent/codex.png",
+        iconUrl: "tutti-asset://agent/codex-descriptor.png",
         launchRefType: "local_cli",
         provider: "codex"
       },
@@ -57,7 +58,7 @@ test("desktop agents service maps agent targets into renderer presentations and 
       {
         agentTargetId: "local:codex",
         disabled: false,
-        iconUrl: "tutti-asset://agent/codex.png",
+        iconUrl: "tutti-asset://agent/codex-descriptor.png",
         label: "Codex",
         provider: "codex",
         ref: {
@@ -87,6 +88,7 @@ test("desktop agents service maps agent targets into renderer presentations and 
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
+  iconKey?: string | null;
   name: string;
   provider: "claude-code" | "codex";
   sortOrder: number;
@@ -94,7 +96,7 @@ function createAgentTarget(input: {
   return {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
-    iconKey: null,
+    iconKey: input.iconKey ?? null,
     id: input.id,
     launchRef: {
       provider: input.provider,

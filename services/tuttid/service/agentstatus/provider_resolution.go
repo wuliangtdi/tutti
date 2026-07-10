@@ -199,7 +199,7 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	if spec.Provider == agentprovider.Cursor {
 		return s.resolveCursorProviderSpec(spec)
 	}
-	if spec.Provider != agentprovider.Codex {
+	if !isCodexStatusSpec(spec) {
 		return spec
 	}
 	if s.userNodeRuntimeAvailable(spec.AdapterEnv) {

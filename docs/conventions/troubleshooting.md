@@ -125,11 +125,17 @@ Use this shape for new entries:
   terminal `turn.completed`/`turn.failed` event.
 - Fix:
   Treat same-turn non-live lifecycle snapshots as async turn completion, in
-  addition to terminal event types and steered prompt messages.
+  addition to terminal event types and steered prompt messages. For terminal
+  async events, clear the controller turn record in the same critical update
+  before publishing the ready/settled session; publishing first creates an
+  observable window where the session is ready but `HasActiveTurn` is still
+  true.
 - Validation:
   Add controller coverage where an async adapter emits only a settled lifecycle
   snapshot for the turn and no terminal event, then verify a follow-up `Exec`
-  no longer returns `ErrSessionActiveTurn`. Run
+  no longer returns `ErrSessionActiveTurn`. Also cover a terminal event by
+  waiting until the stored session becomes ready and immediately asserting
+  that `HasActiveTurn` is false. Run
   `go test ./packages/agent/daemon/runtime`.
 - References:
   [controller.go](../../packages/agent/daemon/runtime/controller.go)

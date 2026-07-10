@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -42,9 +43,12 @@ func (s Service) providerUsesCustomConfig(provider string) bool {
 			return true
 		}
 	}
+	if status, ok := migratedProviderStatus(provider); ok {
+		if status.Kind == providerregistry.StatusKindCodexCLI {
+			return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key")
+		}
+	}
 	switch provider {
-	case agentprovider.Codex:
-		return s.codexConfigDeclares("base_url", "chatgpt_base_url", "api_key")
 	case agentprovider.ClaudeCode:
 		return s.claudeSettingsDeclares(claudeCustomConfigKeys, true)
 	default:
@@ -64,9 +68,12 @@ func (s Service) providerHasAPICredential(provider string) bool {
 			return true
 		}
 	}
+	if status, ok := migratedProviderStatus(provider); ok {
+		if status.Kind == providerregistry.StatusKindCodexCLI {
+			return s.codexConfigDeclares("api_key")
+		}
+	}
 	switch provider {
-	case agentprovider.Codex:
-		return s.codexConfigDeclares("api_key")
 	case agentprovider.ClaudeCode:
 		return s.claudeSettingsDeclares(claudeAPICredentialKeys, true)
 	default:
@@ -78,14 +85,10 @@ func (s Service) providerHasAPICredential(provider string) bool {
 // key OR a custom base URL for a provider — either axis counts as custom config
 // for the network-probe skip.
 func providerCustomConfigEnvVars(provider string) []string {
+	if status, ok := migratedProviderStatus(provider); ok {
+		return append([]string(nil), status.CustomConfigEnvVars...)
+	}
 	switch provider {
-	case agentprovider.Codex:
-		return []string{
-			"OPENAI_API_KEY",
-			"OPENAI_BASE_URL",
-			"OPENAI_API_BASE_URL",
-			"OPENAI_API_BASE",
-		}
 	case agentprovider.ClaudeCode:
 		return []string{
 			"ANTHROPIC_API_KEY",
@@ -109,9 +112,10 @@ func providerCustomConfigEnvVars(provider string) []string {
 // credential (key/token) for a provider — the billing axis only, excluding
 // custom base URLs.
 func providerCredentialEnvVars(provider string) []string {
+	if status, ok := migratedProviderStatus(provider); ok {
+		return append([]string(nil), status.CredentialEnvVars...)
+	}
 	switch provider {
-	case agentprovider.Codex:
-		return []string{"OPENAI_API_KEY"}
 	case agentprovider.ClaudeCode:
 		return []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
 	default:

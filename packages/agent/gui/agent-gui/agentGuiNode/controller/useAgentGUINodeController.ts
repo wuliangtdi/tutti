@@ -9508,7 +9508,6 @@ export function useAgentGUINodeController({
                     permissionModeId:
                       nextAppliedSettings.permissionModeId ?? undefined,
                     runtimeContext: mergeRuntimeContextComposerSettings(
-                      dataRef.current.provider,
                       existing.runtimeContext,
                       nextAppliedSettings
                     ),
@@ -9783,7 +9782,6 @@ export function useAgentGUINodeController({
               permissionModeId:
                 sessionSettingsPatch.permissionModeId ?? base.permissionModeId,
               runtimeContext: mergeRuntimeContextComposerSettings(
-                dataRef.current.provider,
                 base.runtimeContext,
                 sessionSettingsPatch
               ),

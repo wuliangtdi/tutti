@@ -54,9 +54,11 @@ func (s *Service) discoverComposerSkillOptions(provider string, cwd string, env 
 }
 
 func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]composerSkillRoot, skillTriggerFunc) {
-	switch agentprovider.Normalize(provider) {
-	case agentprovider.Codex:
+	profile := composerProfileFor(provider)
+	if profile.SkillKind == "codex" {
 		return codexComposerSkillRoots(cwd, env), codexSkillTrigger
+	}
+	switch agentprovider.Normalize(provider) {
 	case agentprovider.ClaudeCode:
 		return claudeCodeComposerSkillRoots(cwd, env), claudeCodeSkillTrigger
 	case agentprovider.Cursor:
@@ -560,9 +562,9 @@ func composerCapabilityCatalogFromSkills(provider string, skills []ComposerSkill
 		if name == "" || trigger == "" {
 			continue
 		}
-		invocation := "textTrigger"
-		if agentprovider.Normalize(provider) == agentprovider.Codex && strings.HasPrefix(trigger, "$") {
-			invocation = "promptItem"
+		invocation := strings.TrimSpace(composerProfileFor(provider).SkillInvocation)
+		if invocation == "" {
+			invocation = "textTrigger"
 		}
 		result = append(result, ComposerCapabilityOption{
 			ID:          "skill:" + name,

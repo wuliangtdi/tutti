@@ -8,6 +8,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 const (
@@ -439,11 +440,12 @@ func visibleFailureContent(provider string, phase string, code string) string {
 }
 
 func visibleProviderName(provider string) string {
+	if descriptor, ok := providerregistry.Find(provider); ok {
+		return descriptor.Identity.DisplayName
+	}
 	switch strings.TrimSpace(provider) {
 	case ProviderClaudeCode:
 		return "Claude Code"
-	case ProviderCodex:
-		return "Codex"
 	case ProviderTuttiAgent:
 		return "Tutti Agent"
 	case ProviderNexight:

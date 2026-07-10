@@ -30,6 +30,15 @@ func TestNormalizeProviderMapsSupportedAgentsToServerValues(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderUsesMigratedCodexDescriptorAliases(t *testing.T) {
+	t.Parallel()
+
+	provider, ok := NormalizeProvider(" CODEX ")
+	if !ok || provider != ProviderCodex {
+		t.Fatalf("NormalizeProvider(CODEX) = %q, %v", provider, ok)
+	}
+}
+
 func TestNormalizeProviderRejectsTuttiAsNexightAlias(t *testing.T) {
 	t.Parallel()
 

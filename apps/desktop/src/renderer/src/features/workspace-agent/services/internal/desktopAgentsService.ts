@@ -153,7 +153,8 @@ function resolveAgentTargetIconUrl(
   target: AgentTarget,
   resolveAgentIconUrl?: (provider: string) => string
 ): string {
-  return resolveAgentIconUrl?.(target.provider) ?? "";
+  const descriptorIconKey = target.iconKey?.trim() ?? "";
+  return resolveAgentIconUrl?.(descriptorIconKey || target.provider) ?? "";
 }
 
 function compareAgentTargetsForDisplay(

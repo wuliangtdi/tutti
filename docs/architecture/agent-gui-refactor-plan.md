@@ -640,7 +640,7 @@ ProviderDescriptor
 - ✅ 协议 P2（生成链）：TypeScript 侧生成管道建立（Go 侧已有），补丁类型全生成，投影字段完备性防护落地为可复用样板（规则六：Go 侧 `GeneratedWorkspaceAgentTurn/Interaction` 显式构造 + 反射覆盖测试，TS 侧 `packages/clients/tuttid-ts/src/agentProtocolGuards.ts` 的 `satisfies` 样板），生成产物无漂移的持续集成校验（`check:api-generated` 追加 `check-agent-protocol-enums.mjs` 的 openapi ↔ 事件 schema 枚举一致性校验）。三份 TypeScript 手写镜像此时标记退役路径，实际删除在切片 3 消费方切换之后（见切片 7）。
 - ✅ 协议 P3（存储与投影）：turns 与 interactions 表的版本化迁移（`workspace_agent_activity_turns_v1`）；每次 phase 变迁同步落库（写粒度约定，`ReportSessionState` → `RecordTurnTransition`/`UpsertInteraction`）；启动对账——非 `settled` 存量 turn 迁移为 `interrupted` 加 session 级系统消息（规则九，`SettleStaleTurnsOnStartup`）；历史回填（可重入，验收为旧会话渲染零变化）；messages 表 `turn_id`空串归 NULL 加 CHECK 约束（独立迁移 `workspace_agent_activity_messages_v2`）；`cancelTurn` 端到端实现（幂等，`cancelSession` 委派兼容）；daemon 投影层输出新实体（session 读路径附带 `activeTurnId`/`activeTurn`/`pendingInteractions`）。
 
-provider 切片（依赖 P1 的能力描述符 schema）：
+provider 切片（依赖 P1 的能力描述符 schema）：🚧 通用描述符类型与消费适配层已经落地，Codex 已完成 runtime、status、composer profile/目录、系统 target、事件归一化和 target 图标键接入；其余 provider、注册表全量枚举一致性、界面静态 fallback/身份表生成以及剩余行为分支清理尚未完成。
 
 - ProviderDescriptor 注册表（identity/runtime/status/composerProfile/target/events 六段）；控制器注册、事件归一化、目标种子改由注册表驱动；
 - 能力与结构化目录下发；

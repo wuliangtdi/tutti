@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
@@ -545,11 +546,14 @@ func parseAuthStatusCommandOutput(provider string, output []byte) (AuthInfo, boo
 	if auth, ok := parseAuthCommandConfigurationError(output); ok {
 		return auth, true
 	}
+	if status, ok := migratedProviderStatus(provider); ok {
+		if status.Kind == providerregistry.StatusKindCodexCLI {
+			return parseCodexAuthStatusOutput(output)
+		}
+	}
 	switch agentprovider.Normalize(provider) {
 	case agentprovider.ClaudeCode:
 		return parseClaudeAuthStatusOutput(output)
-	case agentprovider.Codex:
-		return parseCodexAuthStatusOutput(output)
 	case agentprovider.TuttiAgent:
 		// Tutti Agent is a Codex CLI fork; `tutti-agent login status` prints the
 		// same "Logged in ..." / "Not logged in" copy.

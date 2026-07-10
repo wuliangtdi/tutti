@@ -1376,6 +1376,36 @@ activity data source:
 - account or user-project lookup
 - local file picking, local file reading, and batch export helpers
 
+### Provider Registration Descriptors
+
+Provider protocol implementations and provider registration are separate
+concerns. Healthy adapters such as Codex app-server and the standard ACP
+adapter remain in `packages/agent/daemon/runtime`; cross-layer registration
+values belong to `packages/agent/daemon/providerregistry`.
+
+A migrated provider has one `ProviderDescriptor` containing identity, runtime,
+status, composer profile, system target, and event normalization sections.
+Runtime controller composition, status probing, composer capabilities and
+structured catalog vocabulary, default target seeding, and event provider
+normalization must consume that descriptor. Do not restore a migrated provider
+to the legacy maps or provider switches in those layers.
+
+Codex is the first migrated provider. Its native app-server adapter remains
+provider-specific, while its adapter selection, install/login probe values,
+permission and config-option vocabulary, model/skill catalog selection,
+`local:codex` target presentation, and event aliases are descriptor-driven.
+Unmigrated providers temporarily retain their legacy registrations; migrate
+each one atomically by adding the descriptor conversion kinds it needs and
+deleting its old entries in the same change. Production target presentation
+uses the descriptor-owned target name and icon key. Package-level static AgentGUI
+targets remain compatibility fallback until every provider is migrated and the
+generated identity catalog replaces them.
+
+Every migrated descriptor must remain present in the generated OpenAPI provider
+and agent-target enums. The daemon API test enforces this during the staged
+migration; once all providers are descriptor-backed, replace the subset check
+with exact registry-to-schema equality.
+
 ### Provider Targets
 
 AgentGUI distinguishes launch authority, real provider identity, and legacy
