@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var migratedDescriptors = []ProviderDescriptor{codexDescriptor(), openCodeDescriptor()}
+var migratedDescriptors = []ProviderDescriptor{codexDescriptor(), claudeCodeDescriptor(), openCodeDescriptor()}
 
 var providerDescriptorIndex = buildProviderDescriptorIndex(migratedDescriptors)
 
@@ -124,6 +124,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		if err := validateStandardACPRuntime(descriptor.Runtime.StandardACP); err != nil {
 			return fmt.Errorf("provider %q standard ACP runtime: %w", providerID, err)
 		}
+	case RuntimeKindClaudeSDK:
 	case "":
 		return fmt.Errorf("provider %q runtime kind is required", providerID)
 	default:
@@ -132,19 +133,21 @@ func Validate(descriptor ProviderDescriptor) error {
 	if strings.TrimSpace(descriptor.Runtime.Name) == "" {
 		return fmt.Errorf("provider %q runtime name is required", providerID)
 	}
-	if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
-		return fmt.Errorf("provider %q runtime auth required message is required", providerID)
-	}
-	if err := validateCommand(descriptor.Runtime.Command); err != nil {
-		return fmt.Errorf("provider %q runtime command: %w", providerID, err)
+	if descriptor.Runtime.Kind == RuntimeKindCodexAppServer || descriptor.Runtime.Kind == RuntimeKindStandardACP {
+		if strings.TrimSpace(descriptor.Runtime.AuthRequiredMessage) == "" {
+			return fmt.Errorf("provider %q runtime auth required message is required", providerID)
+		}
+		if err := validateCommand(descriptor.Runtime.Command); err != nil {
+			return fmt.Errorf("provider %q runtime command: %w", providerID, err)
+		}
 	}
 	switch descriptor.Runtime.Endpoint.ConfigKind {
-	case "", EndpointConfigKindCodexCLI:
+	case "", EndpointConfigKindCodexCLI, EndpointConfigKindClaudeSettings:
 	default:
 		return fmt.Errorf("provider %q endpoint config kind %q is unsupported", providerID, descriptor.Runtime.Endpoint.ConfigKind)
 	}
 	switch descriptor.Status.Kind {
-	case StatusKindCodexCLI, StatusKindOpenCodeCLI:
+	case StatusKindCodexCLI, StatusKindClaudeCLI, StatusKindOpenCodeCLI:
 	case "":
 		return fmt.Errorf("provider %q status kind is required", providerID)
 	default:
@@ -152,6 +155,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if descriptor.Status.Kind == StatusKindCodexCLI && strings.TrimSpace(descriptor.Status.MinVersion) == "" {
 		return fmt.Errorf("provider %q minimum version is required", providerID)
+	}
+	if descriptor.Status.AuthStatusCommandTimeoutSeconds < 0 {
+		return fmt.Errorf("provider %q auth status timeout must be non-negative", providerID)
 	}
 	if len(descriptor.Status.BinaryNames) == 0 {
 		return fmt.Errorf("provider %q status binary names are required", providerID)
@@ -223,7 +229,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		if descriptor.ComposerProfile.Skills.Invocation != "" {
 			return fmt.Errorf("provider %q skill invocation requires a skill kind", providerID)
 		}
-	case SkillKindCodex:
+	case SkillKindCodex, SkillKindClaudeCode:
 		switch descriptor.ComposerProfile.Skills.Invocation {
 		case SkillInvocationPromptItem, SkillInvocationTextTrigger:
 		default:
@@ -239,6 +245,14 @@ func Validate(descriptor ProviderDescriptor) error {
 		if !isKnownCapability(capability) {
 			return fmt.Errorf("provider %q capability %q is unsupported", providerID, capability)
 		}
+	}
+	switch descriptor.ComposerProfile.LiveModelDiscovery.Kind {
+	case "", LiveModelDiscoveryKindClaudeSDK:
+	default:
+		return fmt.Errorf("provider %q live model discovery kind %q is unsupported", providerID, descriptor.ComposerProfile.LiveModelDiscovery.Kind)
+	}
+	if descriptor.ComposerProfile.LiveModelDiscovery.Kind != "" && descriptor.ComposerProfile.ModelCatalog != "" {
+		return fmt.Errorf("provider %q cannot declare both live model discovery and a model catalog", providerID)
 	}
 	if err := validateSlashCommandPolicy(descriptor.ComposerProfile.SlashCommandPolicy); err != nil {
 		return fmt.Errorf("provider %q slash command policy: %w", providerID, err)
@@ -367,7 +381,7 @@ func isKnownCapability(value string) bool {
 
 func validateAuthWatch(descriptor AuthWatchDescriptor) error {
 	switch descriptor.ContentFingerprint {
-	case "", AuthWatchContentFingerprintFullFile:
+	case "", AuthWatchContentFingerprintFullFile, AuthWatchContentFingerprintClaudeState:
 	default:
 		return fmt.Errorf("content fingerprint %q is unsupported", descriptor.ContentFingerprint)
 	}

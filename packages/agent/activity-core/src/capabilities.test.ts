@@ -91,6 +91,12 @@ function composerOptions(
     permissionConfig: null,
     runtimeContext,
     skills: [],
+    behavior: {
+      modelOptionsAuthoritative: false,
+      refreshModelOptionsAfterSettings: false,
+      prewarmDraftSession: false,
+      planModeExclusiveWithPermissionMode: false
+    },
     loadedAtUnixMs: 1
   };
 }

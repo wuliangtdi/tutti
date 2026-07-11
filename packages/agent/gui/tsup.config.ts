@@ -14,7 +14,6 @@ export default defineConfig({
     "agent-title-text": "shared/utils/agentTitleText.ts",
     "provider-identity": "provider-identity.ts",
     "provider-icons": "provider-icons.ts",
-    "queued-prompt-runtime": "agentQueuedPromptRuntimeCore.ts",
     "i18n/index": "i18n/index.ts",
     "mention-file-presentation": "agent-gui/shared/mentionFilePresentation.ts",
     "plan-decision-ops": "shared/agentConversation/planImplementation.ts",

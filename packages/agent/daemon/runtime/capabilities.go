@@ -31,25 +31,8 @@ const (
 )
 
 // standardACPCapabilities derives the canonical capability list for ACP
-// family providers. claude-code has a known full surface; other providers
-// are derived conservatively from the live session state.
+// family providers from the live session state.
 func standardACPCapabilities(provider string, promptImage bool, state acpLiveStateSnapshot) []string {
-	if provider == ProviderClaudeCode {
-		capabilities := []string{
-			CapabilitySkills,
-			CapabilityCompact,
-			CapabilityTokenUsage,
-			CapabilityRateLimits,
-			CapabilityPlanMode,
-			CapabilityInterrupt,
-			CapabilityPermissionModeChangeDuringTurn,
-			"review",
-		}
-		if promptImage {
-			capabilities = append([]string{CapabilityImageInput}, capabilities...)
-		}
-		return capabilities
-	}
 	if profile, ok := migratedProviderComposerProfile(provider); ok {
 		capabilities := make([]string, 0, len(profile.Capabilities))
 		for _, capability := range profile.Capabilities {

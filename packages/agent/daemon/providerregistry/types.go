@@ -8,6 +8,7 @@ type RuntimeKind string
 const (
 	RuntimeKindCodexAppServer RuntimeKind = "codex_app_server"
 	RuntimeKindStandardACP    RuntimeKind = "standard_acp"
+	RuntimeKindClaudeSDK      RuntimeKind = "claude_sdk"
 )
 
 // EndpointConfigKind identifies an optional provider-owned config source for
@@ -16,7 +17,8 @@ const (
 type EndpointConfigKind string
 
 const (
-	EndpointConfigKindCodexCLI EndpointConfigKind = "codex_cli"
+	EndpointConfigKindCodexCLI       EndpointConfigKind = "codex_cli"
+	EndpointConfigKindClaudeSettings EndpointConfigKind = "claude_settings"
 )
 
 type RuntimeEndpointDescriptor struct {
@@ -38,6 +40,7 @@ type StatusKind string
 const (
 	StatusKindCodexCLI    StatusKind = "codex_cli"
 	StatusKindOpenCodeCLI StatusKind = "opencode_cli"
+	StatusKindClaudeCLI   StatusKind = "claude_cli"
 )
 
 type IdentityDescriptor struct {
@@ -93,19 +96,20 @@ type InstallerDescriptor struct {
 }
 
 type StatusDescriptor struct {
-	Kind                StatusKind
-	MinVersion          string
-	BinaryNames         []string
-	AdapterBinaryNames  []string
-	AuthStatusCommand   []string
-	AuthMarkerPaths     []string
-	APIEndpoints        []string
-	CustomConfigEnvVars []string
-	CredentialEnvVars   []string
-	NPMRegistryPackage  string
-	Install             InstallerDescriptor
-	LoginArgs           []string
-	AuthWatch           AuthWatchDescriptor
+	Kind                            StatusKind
+	MinVersion                      string
+	BinaryNames                     []string
+	AdapterBinaryNames              []string
+	AuthStatusCommand               []string
+	AuthStatusCommandTimeoutSeconds int
+	AuthMarkerPaths                 []string
+	APIEndpoints                    []string
+	CustomConfigEnvVars             []string
+	CredentialEnvVars               []string
+	NPMRegistryPackage              string
+	Install                         InstallerDescriptor
+	LoginArgs                       []string
+	AuthWatch                       AuthWatchDescriptor
 }
 
 type AuthWatchDescriptor struct {
@@ -127,7 +131,10 @@ type AuthWatchSourceDescriptor struct {
 
 type AuthWatchContentFingerprintKind string
 
-const AuthWatchContentFingerprintFullFile AuthWatchContentFingerprintKind = "full_file"
+const (
+	AuthWatchContentFingerprintFullFile    AuthWatchContentFingerprintKind = "full_file"
+	AuthWatchContentFingerprintClaudeState AuthWatchContentFingerprintKind = "claude_state"
+)
 
 type PermissionModeDescriptor struct {
 	ID       string
@@ -162,7 +169,10 @@ const (
 
 type SkillKind string
 
-const SkillKindCodex SkillKind = "codex"
+const (
+	SkillKindCodex      SkillKind = "codex"
+	SkillKindClaudeCode SkillKind = "claude-code"
+)
 
 type SkillInvocation string
 
@@ -195,6 +205,22 @@ type CapabilityCatalogDescriptor struct {
 	Kind CapabilityCatalogKind
 }
 
+type LiveModelDiscoveryKind string
+
+const LiveModelDiscoveryKindClaudeSDK LiveModelDiscoveryKind = "claude_sdk"
+
+type LiveModelDiscoveryDescriptor struct {
+	Kind        LiveModelDiscoveryKind
+	HiddenProbe bool
+}
+
+type ComposerBehaviorDescriptor struct {
+	ModelOptionsAuthoritative           bool
+	RefreshModelOptionsAfterSettings    bool
+	PrewarmDraftSession                 bool
+	PlanModeExclusiveWithPermissionMode bool
+}
+
 type SlashCommandEffect string
 
 const (
@@ -212,8 +238,9 @@ type SlashCommandEffectDescriptor struct {
 }
 
 type SlashCommandPolicyDescriptor struct {
-	FallbackCommands []string
-	CommandEffects   []SlashCommandEffectDescriptor
+	FallbackCommands            []string
+	CommandEffects              []SlashCommandEffectDescriptor
+	CommandCatalogAuthoritative bool
 }
 
 type ComposerProfileDescriptor struct {
@@ -230,7 +257,9 @@ type ComposerProfileDescriptor struct {
 	ConfigOptionIDs         ComposerConfigOptionIDs
 	Skills                  SkillDescriptor
 	CapabilityCatalog       CapabilityCatalogDescriptor
+	LiveModelDiscovery      LiveModelDiscoveryDescriptor
 	SlashCommandPolicy      SlashCommandPolicyDescriptor
+	Behavior                ComposerBehaviorDescriptor
 }
 
 type TargetDescriptor struct {

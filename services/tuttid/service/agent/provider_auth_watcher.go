@@ -46,31 +46,11 @@ func DefaultProviderAuthWatchEntries() []ProviderAuthWatchEntry {
 	if err != nil {
 		home = ""
 	}
-	claudeConfigDir := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
-	if claudeConfigDir == "" && home != "" {
-		claudeConfigDir = filepath.Join(home, ".claude")
-	}
-	entries := make([]ProviderAuthWatchEntry, 0, len(providerregistry.Migrated())+1)
+	entries := make([]ProviderAuthWatchEntry, 0, len(providerregistry.Migrated()))
 	for _, descriptor := range providerregistry.Migrated() {
 		if entry, ok := providerAuthWatchEntryFromDescriptor(descriptor, home); ok {
 			entries = append(entries, entry)
 		}
-	}
-	if claudeConfigDir != "" {
-		claudePaths := []string{
-			filepath.Join(claudeConfigDir, "settings.json"),
-			filepath.Join(claudeConfigDir, "auth.json"),
-		}
-		claudeStatePath := ""
-		if home != "" {
-			claudeStatePath = filepath.Join(home, ".claude.json")
-			claudePaths = append(claudePaths, claudeStatePath)
-		}
-		entries = append(entries, ProviderAuthWatchEntry{
-			Provider:           agentprovider.ClaudeCode,
-			Paths:              claudePaths,
-			ContentFingerprint: claudeProviderAuthContentFingerprint(claudeStatePath),
-		})
 	}
 	return entries
 }
@@ -129,6 +109,13 @@ func providerAuthWatchEntryFromDescriptor(
 	}
 	if watch.ContentFingerprint == providerregistry.AuthWatchContentFingerprintFullFile {
 		entry.ContentFingerprint = hashProviderAuthFileContent
+	}
+	if watch.ContentFingerprint == providerregistry.AuthWatchContentFingerprintClaudeState {
+		claudeStatePath := ""
+		if strings.TrimSpace(home) != "" {
+			claudeStatePath = filepath.Join(home, ".claude.json")
+		}
+		entry.ContentFingerprint = claudeProviderAuthContentFingerprint(claudeStatePath)
 	}
 	return entry, true
 }

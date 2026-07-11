@@ -11,7 +11,6 @@ import {
 } from "./providerIdentityCatalog.ts";
 
 const legacyAgentGUIDefaultTargetOrder = [
-  { provider: "claude-code", sortOrder: 20 },
   { provider: "cursor", sortOrder: 30 },
   { provider: "tutti-agent", sortOrder: 40 },
   { provider: "hermes", sortOrder: 60 },

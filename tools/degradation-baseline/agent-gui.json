@@ -21,7 +21,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentMentionNodeView.tsx": 2,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 5,
       "packages/agent/gui/agent-gui/agentGuiNode/composerFloatingMenu/ComposerFloatingMenuSurface.tsx": 2,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 55,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 53,
       "packages/agent/gui/agent-gui/workspaceDesktop/view/AgentProbeInfoPopover.tsx": 2,
       "packages/agent/gui/agent-gui/workspaceDesktop/view/WindowLayoutMenuButton.tsx": 1,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterAttentionDeck.tsx": 2,
@@ -52,7 +52,7 @@
       "packages/agent/gui/utils/nodeFrameResize.ts": 7
     },
     "fileLines": {
-      "packages/agent/activity-core/src/controller.ts": 1691,
+      "packages/agent/activity-core/src/controller.ts": 1864,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentComposer.tsx": 4641,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx": 871,
       "packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx": 1976,
@@ -60,14 +60,14 @@
       "packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchController.ts": 1750,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 1404,
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/agentFileMentionExtension.ts": 1443,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 12483,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 11920,
       "packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts": 1584,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterCard.tsx": 1330,
       "packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts": 864,
       "packages/agent/gui/app/renderer/components/ZoomableImage.tsx": 802,
       "packages/agent/gui/app/renderer/i18n/locales/en.ts": 2672,
       "packages/agent/gui/app/renderer/i18n/locales/zh-CN.ts": 2500,
-      "packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts": 2308,
+      "packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts": 2253,
       "packages/agent/gui/contexts/workspace/presentation/renderer/agentSessions/agentSessionViewStore.ts": 1068,
       "packages/agent/gui/shared/AgentMessageMarkdown.tsx": 1989,
       "packages/agent/gui/shared/agentConversation/components/AgentInteractivePromptSurface.tsx": 1247,
@@ -78,11 +78,11 @@
       "packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts": 1234,
       "packages/agent/gui/shared/contracts/dto/agentHost.ts": 1802,
       "packages/agent/gui/shared/workspaceAgentActivityListViewModel.ts": 1191,
-      "packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts": 1148,
+      "packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts": 1138,
       "packages/agent/gui/shared/workspaceAgentToolCallDisplay.ts": 1139,
       "packages/agent/gui/workbench/contribution.ts": 1069
     },
-    "goFileLengthExemptions": 12,
+    "goFileLengthExemptions": 11,
     "identityProviderBranches": 14,
     "memoCount": {
       "packages/agent/gui/AgentGUI.tsx": 1,
@@ -95,7 +95,7 @@
       "packages/agent/gui/agent-gui/agentGuiNode/agentRichText/AgentRichTextEditor.tsx": 7,
       "packages/agent/gui/agent-gui/agentGuiNode/composerFloatingMenu/ComposerFloatingMenuSurface.tsx": 2,
       "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIActivation.ts": 8,
-      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 114,
+      "packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts": 111,
       "packages/agent/gui/agent-gui/shared/WorkspaceNodeWindow.tsx": 1,
       "packages/agent/gui/agent-gui/workspaceDesktop/view/AgentProbeInfoPopover.tsx": 3,
       "packages/agent/gui/agent-message-center/WorkspaceAgentMessageCenterAttentionDeck.tsx": 1,
@@ -132,11 +132,11 @@
       "packages/agent/gui/shared/agentConversation/projection/useProjectedAgentConversation.ts": 1,
       "packages/agent/gui/utils/nodeFrameResize.ts": 1
     },
-    "moduleMutableGlobals": 13,
+    "moduleMutableGlobals": 12,
     "overlayStores": 6,
-    "providerBranches": 23,
+    "providerBranches": 14,
     "setTimeoutCount": 47,
-    "swallowedCatch": 20,
-    "useSyncExternalStoreCount": 10
+    "swallowedCatch": 19,
+    "useSyncExternalStoreCount": 8
   }
 }
