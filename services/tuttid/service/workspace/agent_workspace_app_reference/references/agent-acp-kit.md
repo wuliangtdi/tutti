@@ -57,9 +57,12 @@ For each run:
 1. Generate a stable run ID and use the canonical provider ID returned by the facade.
 2. Await `createManagedAgentRunContextFromHeaders(...)` directly. It reads and validates the managed credential, canonicalizes supported legacy input internally, creates a safe managed cwd, and rejects unsupported managed providers. The app must not pre-read the credential or perform a separate provider-support precheck.
 3. When no managed header exists, use an app-owned local cwd.
-4. Load Tutti skill context when platform skills are useful, passing browser/computer capability flags from trusted app policy.
+4. Load Tutti skill context when platform skills are useful. Omit browser/computer capability flags unless the app actually wires those tools and trusted server-side policy enables them.
 5. Create a run-scoped MCP/tool gateway and prompt envelope.
-6. Call the local runtime with the same canonical provider ID.
+6. Call the local runtime with the same canonical provider ID. Omit `permission`
+   for the standard App behavior: the SDK owns the `full-access` default and
+   provider-specific bypass mapping. Pass a permission only when the product
+   deliberately offers a narrower per-run choice.
 7. Adapt events to the app stream and persist only session/resume metadata.
 8. Revoke gateway tokens and clean app-owned temporary files in `finally`.
 
@@ -86,8 +89,6 @@ const tuttiContext = await loadTuttiAgentSkillContext({
   provider: providerId,
   agentSessionId: runId,
   cwd,
-  browserUse: appPolicyAllowsBrowser,
-  computerUse: appPolicyAllowsComputer,
   signal
 });
 
@@ -122,6 +123,36 @@ for await (const event of localAgentRuntime.run({
 `recommendedSystemPrompt` is advisory content. The app decides whether and where to merge it. Do not append it invisibly in a generic transport layer.
 
 Derive `appLocalRunCwd` from trusted server-side app policy. Never accept a browser-provided cwd for a managed run. Never put a credential or managed cwd in request bodies, browser state, DTOs, logs, persistence, or error text.
+
+The runtime call intentionally omits `permission`. Workspace Apps default to
+SDK-owned `full-access`: Claude receives `bypassPermissions`, Codex receives its
+unrestricted mode, and ACP permission requests are approved. Do not reproduce
+those mappings or inject a default mode in app code. If the app exposes an
+explicit lower-permission choice, pass the composer's typed `mode.id` and
+`mode.semantic`; that explicit selection overrides the SDK default.
+
+### Optional browser and computer capabilities
+
+Most apps should use the minimal skill-context call above. If an app really
+provides browser or computer-use tools, it may declare those capabilities to
+the Skill bundle loader:
+
+```ts
+const tuttiContext = await loadTuttiAgentSkillContext({
+  provider: providerId,
+  agentSessionId: runId,
+  cwd,
+  browserUse: browserToolsAreWiredAndAllowed,
+  computerUse: computerToolsAreWiredAndAllowed,
+  signal
+});
+```
+
+Only pass `true` from trusted server-side capability policy. These booleans
+filter the Skill guidance returned by Tutti; they do **not** install a tool,
+grant an OS permission, launch a browser, or bypass the app's authorization.
+Omit the fields when the capability is unavailable. Do not add placeholder
+policy variables merely to satisfy this example.
 
 ## Event mapping
 
