@@ -398,6 +398,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"kit_runtime_unavailable",
 		"@tutti-os/agent-acp-kit/tutti/contracts",
 		"claude` to `claude-code",
+		"`tutti-agent` is the canonical Tutti Agent provider ID",
+		"stale `nexight` state is rejected",
 	} {
 		if !strings.Contains(dynamicProviderReference, want) {
 			t.Fatalf("dynamic provider reference missing %q:\n%s", want, dynamicProviderReference)
@@ -410,6 +412,7 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		"agent-providers/status",
 		"TUTTI_APP_SERVER_TOKEN",
 		"nexight: \"tutti-agent\"",
+		"`nexight` and `tutti-agent` remain distinct",
 	} {
 		if strings.Contains(dynamicProviderReference, forbidden) {
 			t.Fatalf("dynamic provider reference contains obsolete guidance %q:\n%s", forbidden, dynamicProviderReference)

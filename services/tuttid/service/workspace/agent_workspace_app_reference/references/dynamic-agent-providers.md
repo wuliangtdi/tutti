@@ -14,7 +14,7 @@ Tutti CLI owns platform capability and enabled Agent Target visibility
 
 An app must not call workspace-app Agent catalog HTTP routes, build daemon URLs, read an Agent catalog bearer token, pass an app ID to provider discovery, spawn `TUTTI_CLI`, parse CLI JSON, or maintain provider ID mappings. The kit does all of that.
 
-Provider IDs are an open string set. Persist and return the canonical `providerId` supplied by the kit. Do not define a closed `"codex" | "claude-code"` union. The SDK accepts the legacy input `claude` internally and emits `claude-code`; it does not map `nexight`, `tutti`, or `tutti-agent` to each other.
+Provider IDs are an open string set. Persist and return the canonical `providerId` supplied by the kit. Do not define a closed `"codex" | "claude-code"` union. The SDK accepts the legacy input `claude` internally and emits `claude-code`. `tutti-agent` is the canonical Tutti Agent provider ID; Apps must not register, synthesize, or preserve a `nexight` provider.
 
 ## Runtime registration
 
@@ -92,7 +92,7 @@ Do not eagerly load composer options for every provider. A failure belongs to th
 
 ## Persistence and host bridge
 
-Persist the canonical catalog ID. A one-time migration may rewrite `claude` to `claude-code`. Do not migrate `nexight` and `tutti-agent` into each other.
+Persist the canonical catalog ID. A one-time migration may rewrite `claude` to `claude-code`. If persisted legacy state contains `nexight`, treat it as unavailable and select an available catalog provider; never rewrite it to `tutti-agent` or synthesize a compatibility provider.
 
 When invoking a host feature such as:
 
@@ -135,7 +135,7 @@ Add app tests that verify:
 - the app calls the kit facade and does not implement raw CLI/HTTP protocol handling;
 - every facade provider is projected and unavailable providers remain visible but disabled;
 - canonical IDs round-trip through endpoint, persistence, UI selection, host bridge, and runtime input;
-- legacy persisted `claude` migrates once to `claude-code`, while `nexight` and `tutti-agent` remain distinct;
+- legacy persisted `claude` migrates once to `claude-code`, while stale `nexight` state is rejected without synthesizing or aliasing a provider;
 - composer loading is lazy and one-provider failure is isolated;
 - App execution omits `permission` and relies on the kit's full-access Workspace App default;
 - no `mode`, app ID, Agent catalog token, alias helper, or dependency patch script is present.

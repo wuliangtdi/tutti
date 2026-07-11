@@ -57,7 +57,7 @@ Keep Tutti-hosted and standalone behavior behind the kit's fixed auto facade whi
 1. Pin an exact kit version that exports the auto catalog/composer/skill facade and managed header context helper.
 2. Call `loadTuttiAgentProviderCatalog({ runtime })`; do not pass mode or inspect `TUTTI_CLI`.
 3. Load composer options lazily for one canonical provider and expose only app/domain DTO projections.
-4. Persist canonical provider IDs; migrate legacy `claude` once to `claude-code`, but keep `nexight` and `tutti-agent` distinct.
+4. Persist only canonical provider IDs returned by the facade. Migrate legacy `claude` once to `claude-code`. Treat persisted `nexight` as stale state and select an available catalog provider; never map it to or register it alongside `tutti-agent`.
 5. Await `createManagedAgentRunContextFromHeaders(...)` directly. Do not pre-read credentials or pre-check provider support in app code.
 6. Without a managed header, use an app-owned local cwd. Pass the same canonical provider ID, selected cwd, and optional `managedAgentInvocation` into runtime execution.
 7. Delete raw Agent HTTP/CLI clients, browser credential fallbacks, request-body credential fields, alias maps, and dependency patch scripts.
