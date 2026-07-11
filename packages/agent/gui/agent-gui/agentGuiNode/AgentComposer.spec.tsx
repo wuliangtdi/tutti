@@ -4512,6 +4512,87 @@ describe("AgentComposer", () => {
     ]);
   });
 
+  it("uses the development console diagnostic sink when the upload runtime omits reportDiagnostic", async () => {
+    vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
+    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});
+    const uploadPromptContent = vi.fn(async () => ({
+      content: [
+        {
+          type: "image" as const,
+          mimeType: "image/png" as const,
+          url: "https://objects.example.test/signed/screen.png",
+          name: "screen.png"
+        }
+      ]
+    }));
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    let draftContent = createDraft("");
+    const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
+      draftContent = nextDraft;
+    });
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={draftContent}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+    await waitFor(() =>
+      expect(draftContent.images[0]).toMatchObject({
+        url: "https://objects.example.test/signed/screen.png",
+        uploading: false
+      })
+    );
+    rerender(renderComposer());
+
+    expect(
+      consoleInfo.mock.calls.some(
+        ([prefix, event, payload]) =>
+          prefix === "[agent-gui]" &&
+          event === "agent.gui.composer.image_upload.resolved" &&
+          payload?.details?.hasUrl === true
+      )
+    ).toBe(true);
+    expect(
+      consoleInfo.mock.calls.some(
+        ([prefix, event, payload]) =>
+          prefix === "[agent-gui]" &&
+          event === "agent.gui.composer.submit_state_changed" &&
+          payload?.details?.sendDisabledReason === null
+      )
+    ).toBe(true);
+  });
+
   it("marks uploaded images without usable references as failed", async () => {
     const uploadPromptContent = vi.fn(async () => ({
       content: [

@@ -868,7 +868,10 @@ Composer diagnostics expose this chain without recording prompt bytes or signed
 URLs: `agent.gui.composer.image_upload.requested`, `.resolved`, and `.failed`
 report upload availability and safe reference-shape flags, while
 `agent.gui.composer.submit_state_changed` reports the exact send-button blocker
-such as `submit_disabled`, `image_uploading`, or `image_upload_failed`.
+such as `submit_disabled`, `image_uploading`, or `image_upload_failed`. These
+composer events use the same development console fallback as controller
+diagnostics when the host runtime implements uploads but omits
+`reportDiagnostic`.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -1474,8 +1477,8 @@ UI affordance. `canUploadAttachment` applies to prompt attachment upload paths
 (pasted images, pasted large text, dropped/host-local files) and must not hide
 ordinary `@` references or workspace-reference mention selection.
 When `reportDiagnostic` is omitted, development builds use a low-cost console
-sink for AgentGUI diagnostics such as message page requests/resolutions,
-render-state changes, and caught errors. Hosts can set
+sink for AgentGUI diagnostics such as composer upload/submit state, message page
+requests/resolutions, render-state changes, and caught errors. Hosts can set
 `devDiagnosticConsoleSink: false` to keep a development runtime silent;
 production remains silent by default.
 

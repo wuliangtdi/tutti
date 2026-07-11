@@ -213,14 +213,40 @@ function reportAgentComposerDiagnostic(
   input: AgentActivityRuntimeDiagnosticInput
 ): void {
   const reportDiagnostic = runtime?.reportDiagnostic;
-  if (!reportDiagnostic) {
-    return;
-  }
   try {
-    void Promise.resolve(reportDiagnostic.call(runtime, input)).catch(() => {});
+    if (reportDiagnostic && runtime) {
+      void Promise.resolve(reportDiagnostic.call(runtime, input)).catch(
+        () => {}
+      );
+      return;
+    }
+    if (!runtime || !agentComposerDevConsoleDiagnosticSinkEnabled(runtime)) {
+      return;
+    }
+    const level = input.level ?? "info";
+    const consoleMethod =
+      level === "error"
+        ? console.error
+        : level === "warn"
+          ? console.warn
+          : level === "debug"
+            ? console.debug
+            : console.info;
+    consoleMethod.call(console, "[agent-gui]", input.event, input);
   } catch {
     // Diagnostics must never affect composer behavior.
   }
+}
+
+function agentComposerDevConsoleDiagnosticSinkEnabled(
+  runtime: AgentActivityRuntime
+): boolean {
+  return (
+    runtime.devDiagnosticConsoleSink !== false &&
+    typeof process !== "undefined" &&
+    (process.env.NODE_ENV === "development" ||
+      process.env.AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE === "1")
+  );
 }
 
 function agentComposerTextByteLength(text: string): number {
