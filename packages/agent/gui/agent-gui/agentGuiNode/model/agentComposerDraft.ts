@@ -232,6 +232,7 @@ export function agentPromptContentImageBlocks(
       block.type === "image" &&
       (typeof block.attachmentId === "string" ||
         typeof block.data === "string" ||
+        typeof block.url === "string" ||
         typeof block.path === "string") &&
       typeof block.mimeType === "string"
   );

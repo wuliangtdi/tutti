@@ -7604,7 +7604,7 @@ components:
         url:
           type: string
           format: uri
-          pattern: ^https://
+          pattern: '^https://[^@/?#\s]+([/?#]|$)'
           description: HTTPS image URL fetched directly by a capable provider. Mutually exclusive with data.
         attachmentId:
           type: string

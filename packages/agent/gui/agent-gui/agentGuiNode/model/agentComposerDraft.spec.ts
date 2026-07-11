@@ -326,6 +326,45 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
+  it("round-trips URL-only image drafts when editing queued content", () => {
+    const url = "https://bucket.example/queued.png?X-Amz-Signature=secret";
+    const draft = agentPromptContentToComposerDraft(
+      [
+        {
+          type: "image",
+          mimeType: "image/png",
+          url,
+          name: "queued.png"
+        }
+      ],
+      "queued"
+    );
+
+    expect(draft.images).toEqual([
+      {
+        id: "queued:image:0",
+        name: "queued.png",
+        mimeType: "image/png",
+        url,
+        previewUrl: url
+      }
+    ]);
+    expect(
+      agentComposerDraftToPromptContent({
+        draft,
+        provider: "codex",
+        skills: []
+      })
+    ).toEqual([
+      {
+        type: "image",
+        mimeType: "image/png",
+        url,
+        name: "queued.png"
+      }
+    ]);
+  });
+
   it("converts attachment-backed image-only drafts into prompt content", () => {
     expect(
       agentComposerDraftToPromptContent({

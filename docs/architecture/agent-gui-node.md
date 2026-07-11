@@ -855,9 +855,12 @@ userinfo and must retain a supported PNG, JPEG, or WebP MIME type. `data` and
 bypass the prompt attachment store and owner-side hydration. Capable adapters
 forward the URL as a structured image source, while protocols without a URL
 image variant fail capability validation instead of downloading, converting to
-text, or silently dropping the block. Activity projection may retain safe image
-metadata such as attachment id, name, and MIME type, but must omit both base64
-data and the full URL because signed URLs are bearer credentials.
+text, or silently dropping the block. Durable activity reports and diagnostic
+logs should retain safe image metadata such as attachment id, name, and MIME
+type without recording base64 data or full signed URLs. UI-local composer
+drafts and optimistic overlays may retain the URL when needed for preview and
+submission; they must not convert it to base64 or persist it as a local prompt
+attachment.
 Claude Code runtime options follow the same parity rule. The legacy ACP adapter
 and the Claude SDK adapter must derive system prompt append text, Tutti detail
 mode instructions, plan-mode instructions, plugin directory, custom model args,
@@ -1287,11 +1290,12 @@ Queued prompt previews must treat prompt image blocks as the same send contract
 used by the composer and runtime: an image may be inline `data`, a staged
 `path`, or an HTTPS `url`. Do not cast queued images to data-only blocks or build
 thumbnail URLs from `image.data` without checking it. URL-backed queued images
-must preserve the structured URL until submission without copying it into
-activity state. Path-backed queued prompt thumbnails should use the activity
-runtime prompt-asset reader when workspace/session context is available, and
-otherwise avoid rendering a broken image while keeping the queued content
-unchanged for sending.
+must preserve the structured URL through edit and submission and may use it
+directly for preview; they must not hydrate it through the prompt-asset reader.
+Path-backed queued prompt thumbnails should use the activity runtime
+prompt-asset reader when workspace/session context is available, and otherwise
+avoid rendering a broken image while keeping the queued content unchanged for
+sending.
 
 ### Approval And Ask-User Prompts
 
