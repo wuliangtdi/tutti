@@ -39,7 +39,9 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     content: Parameters<AgentActivityRuntime["sendInput"]>[0]["content"];
     displayPrompt?: string | null;
     guidance?: boolean;
-    metadata?: Record<string, unknown>;
+    submitDiagnostics?: Parameters<
+      AgentActivityRuntime["sendInput"]
+    >[0]["submitDiagnostics"];
     workspaceId: string;
   }): Promise<unknown>;
   submitInteractive: AgentActivityRuntime["submitInteractive"];
@@ -77,7 +79,7 @@ export function createWorkspaceAgentSessionEngineHost(
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
-      execute: (command) => {
+      execute: (command, options) => {
         switch (command.type) {
           case "attention/readState/read":
             return readDesktopWorkspaceAgentReadState({
@@ -114,8 +116,8 @@ export function createWorkspaceAgentSessionEngineHost(
               content: [...command.content],
               displayPrompt: command.displayPrompt ?? null,
               ...(command.guidance === true ? { guidance: true } : {}),
-              ...(command.metadata
-                ? { metadata: { ...command.metadata } }
+              ...(command.submitDiagnostics
+                ? { submitDiagnostics: { ...command.submitDiagnostics } }
                 : {}),
               workspaceId: command.workspaceId
             });
@@ -140,7 +142,10 @@ export function createWorkspaceAgentSessionEngineHost(
               workspaceId: command.workspaceId
             });
           case "session/activate":
-            return input.activateSession(activationInput(command));
+            return input.activateSession({
+              ...activationInput(command),
+              signal: options?.signal
+            });
           case "session/updateSettings":
             return input.updateSessionSettings({
               agentSessionId: command.agentSessionId,
@@ -220,7 +225,9 @@ function activationInput(
     ...(command.initialDisplayPrompt !== undefined
       ? { initialDisplayPrompt: command.initialDisplayPrompt }
       : {}),
-    ...(command.metadata ? { metadata: { ...command.metadata } } : {}),
+    ...(command.submitDiagnostics
+      ? { submitDiagnostics: { ...command.submitDiagnostics } }
+      : {}),
     ...(command.settings
       ? {
           settings: command.settings as AgentHostAgentSessionComposerSettings

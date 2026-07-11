@@ -7,7 +7,10 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type {
   TuttidClient,
+  AgentSubmitDiagnostics,
   AgentPromptContentBlock as TuttidAgentPromptContentBlock,
+  CreateWorkspaceAgentSessionRequest,
+  SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentProvider,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
@@ -20,77 +23,22 @@ import {
   normalizedTuttidMessageTurnId
 } from "./desktopAgentActivityMessageNormalization.ts";
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
+import { reportAgentSubmitTraceDiagnostic as reportDesktopAgentSubmitTrace } from "./desktopAgentRuntimeSubmitDiagnostics.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
-  agentSessionCreateRequestTimeoutMs?: number;
   composerOptionsRequestTimeoutMs?: number;
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
 }
 
-const defaultAgentSessionCreateRequestTimeoutMs = 30_000;
 const defaultComposerOptionsRequestTimeoutMs = 15_000;
 const agentActivitySessionListLimit = 100;
 
 export function createDesktopAgentActivityAdapter({
-  agentSessionCreateRequestTimeoutMs = defaultAgentSessionCreateRequestTimeoutMs,
   composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
   tuttidClient,
   runtimeApi
 }: CreateDesktopAgentActivityAdapterInput): AgentActivityAdapter {
-  // At most one pre-warm draft per workspace target. Switching plan/permission/model
-  // updates this draft in place via the ACP protocol instead of tearing it
-  // down and creating a brand new hidden session on every toggle.
-  const claudeDrafts = new Map<string, ClaudeDraftSessionEntry>();
-
-  const promoteClaudeDraft = async (
-    input: Parameters<AgentActivityAdapter["createSession"]>[0]
-  ): Promise<AgentActivitySession | null> => {
-    const agentSessionId = input.agentSessionId?.trim();
-    const initialContent = toTuttidPromptContentBlocks(
-      input.initialContent ?? []
-    );
-    if (!agentSessionId || initialContent.length === 0) {
-      return null;
-    }
-    const entry = claudeDrafts.get(claudeDraftCacheKey(input));
-    if (
-      !entry ||
-      entry.sessionId !== agentSessionId ||
-      entry.providerTargetKey !== claudeDraftTargetKey(input) ||
-      isDeadDraftStatus(entry.status)
-    ) {
-      return null;
-    }
-    // entry.status can flip to "failed" while awaiting the create promise.
-    await entry.promise;
-    if (isDeadDraftStatus(entry.status)) {
-      return null;
-    }
-    await tuttidClient.updateWorkspaceAgentSessionVisibility(
-      input.workspaceId,
-      agentSessionId,
-      { visible: true }
-    );
-    entry.status = "promoted";
-    if (claudeDrafts.get(entry.cacheKey) === entry) {
-      claudeDrafts.delete(entry.cacheKey);
-    }
-    const result = await tuttidClient.sendWorkspaceAgentSessionInput(
-      input.workspaceId,
-      agentSessionId,
-      {
-        clientSubmitId: input.clientSubmitId,
-        content: initialContent,
-        ...(input.metadata ? { metadata: input.metadata } : {})
-      }
-    );
-    return agentActivitySessionFromTuttidSession(
-      input.workspaceId,
-      result.session
-    );
-  };
-
   return {
     async listSessions(input) {
       const response = await tuttidClient.listWorkspaceAgentSessions(
@@ -195,71 +143,61 @@ export function createDesktopAgentActivityAdapter({
     async createSession(input) {
       reportDesktopAgentSubmitTrace(runtimeApi, {
         agentSessionId: input.agentSessionId?.trim() ?? null,
+        clientSubmitId: input.clientSubmitId,
         event: "renderer_adapter.create.entered",
-        metadata: input.metadata,
         provider: null,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
       try {
-        const promoted = await promoteClaudeDraft(input);
-        if (promoted) {
-          reportDesktopAgentSubmitTrace(runtimeApi, {
-            agentSessionId: promoted.agentSessionId,
-            event: "renderer_adapter.create.promoted_draft",
-            metadata: input.metadata,
-            provider: promoted.provider,
-            workspaceId: input.workspaceId
-          });
-          return promoted;
-        }
         const agentSessionId =
           input.agentSessionId?.trim() || createDesktopAgentActivitySessionId();
         reportDesktopAgentSubmitTrace(runtimeApi, {
           agentSessionId,
+          clientSubmitId: input.clientSubmitId,
           event: "renderer_adapter.create.http_requested",
-          metadata: input.metadata,
           provider: null,
+          submitDiagnostics: input.submitDiagnostics,
           workspaceId: input.workspaceId
         });
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
-        const session = await withAbortableRequestTimeout(
-          (signal) => {
-            return tuttidClient.createWorkspaceAgentSession(
-              input.workspaceId,
-              {
-                agentSessionId,
-                agentTargetId,
-                clientSubmitId: input.clientSubmitId,
-                cwd: input.cwd ?? null,
-                initialContent: toTuttidPromptContentBlocks(
-                  input.initialContent ?? []
-                ),
-                initialDisplayPrompt: input.initialDisplayPrompt ?? null,
-                ...(input.metadata ? { metadata: input.metadata } : {}),
-                model: input.model ?? null,
-                noProject:
-                  input.noProject ?? (normalizeText(input.cwd) ? null : true),
-                planMode: input.planMode ?? null,
-                permissionModeId: input.permissionModeId ?? null,
-                reasoningEffort: input.reasoningEffort ?? null,
-                speed: input.speed ?? null,
-                title: input.title ?? null,
-                visible: input.visible ?? null
-              },
-              { signal }
-            );
-          },
-          {
-            signal: input.signal,
-            timeoutMessage: "Agent session create request timed out.",
-            timeoutMs: agentSessionCreateRequestTimeoutMs
-          }
+        const request: CreateWorkspaceAgentSessionRequest = {
+          agentSessionId,
+          agentTargetId,
+          clientSubmitId: input.clientSubmitId,
+          cwd: input.cwd ?? null,
+          initialContent: toTuttidPromptContentBlocks(
+            input.initialContent ?? []
+          ),
+          initialDisplayPrompt: input.initialDisplayPrompt ?? null,
+          ...(input.submitDiagnostics
+            ? {
+                submitDiagnostics: toTuttidSubmitDiagnostics(
+                  input.submitDiagnostics
+                )
+              }
+            : {}),
+          model: input.model ?? null,
+          noProject:
+            input.noProject ?? (normalizeText(input.cwd) ? null : true),
+          planMode: input.planMode ?? null,
+          permissionModeId: input.permissionModeId ?? null,
+          reasoningEffort: input.reasoningEffort ?? null,
+          speed: input.speed ?? null,
+          title: input.title ?? null,
+          visible: input.visible ?? null
+        };
+        const session = await tuttidClient.createWorkspaceAgentSession(
+          input.workspaceId,
+          request,
+          { signal: input.signal }
         );
         reportDesktopAgentSubmitTrace(runtimeApi, {
           agentSessionId: session.id,
+          clientSubmitId: input.clientSubmitId,
           event: "renderer_adapter.create.resolved",
-          metadata: input.metadata,
           provider: session.provider,
+          submitDiagnostics: input.submitDiagnostics,
           workspaceId: input.workspaceId,
           fields: { sessionStatus: workspaceAgentSessionStatus(session) }
         });
@@ -268,41 +206,75 @@ export function createDesktopAgentActivityAdapter({
           session
         );
       } catch (error) {
+        reportDesktopAgentSubmitTrace(runtimeApi, {
+          agentSessionId: input.agentSessionId?.trim() ?? null,
+          clientSubmitId: input.clientSubmitId,
+          event: "renderer_adapter.create.failed",
+          fields: normalizeDesktopAgentDiagnosticError(error),
+          provider: null,
+          submitDiagnostics: input.submitDiagnostics,
+          workspaceId: input.workspaceId
+        });
         throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
       }
     },
     async sendInput(input) {
       reportDesktopAgentSubmitTrace(runtimeApi, {
         agentSessionId: input.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "renderer_adapter.send.entered",
-        metadata: input.metadata,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
       reportDesktopAgentSubmitTrace(runtimeApi, {
         agentSessionId: input.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "renderer_adapter.send.http_requested",
-        metadata: input.metadata,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
-      const result = await tuttidClient.sendWorkspaceAgentSessionInput(
-        input.workspaceId,
-        input.agentSessionId,
-        {
+      const request: SendWorkspaceAgentSessionInputRequest = {
+        clientSubmitId: input.clientSubmitId,
+        content: toTuttidPromptContentBlocks(input.content),
+        displayPrompt: input.displayPrompt ?? null,
+        ...(input.guidance === true ? { guidance: true } : {}),
+        ...(input.submitDiagnostics
+          ? {
+              submitDiagnostics: toTuttidSubmitDiagnostics(
+                input.submitDiagnostics
+              )
+            }
+          : {})
+      };
+      let result: Awaited<
+        ReturnType<TuttidClient["sendWorkspaceAgentSessionInput"]>
+      >;
+      try {
+        result = await tuttidClient.sendWorkspaceAgentSessionInput(
+          input.workspaceId,
+          input.agentSessionId,
+          request
+        );
+      } catch (error) {
+        reportDesktopAgentSubmitTrace(runtimeApi, {
+          agentSessionId: input.agentSessionId,
           clientSubmitId: input.clientSubmitId,
-          content: toTuttidPromptContentBlocks(input.content),
-          displayPrompt: input.displayPrompt ?? null,
-          ...(input.guidance === true ? { guidance: true } : {}),
-          ...(input.metadata ? { metadata: input.metadata } : {})
-        }
-      );
+          event: "renderer_adapter.send.failed",
+          fields: normalizeDesktopAgentDiagnosticError(error),
+          submitDiagnostics: input.submitDiagnostics,
+          workspaceId: input.workspaceId
+        });
+        throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
+      }
       if (!result.turn) {
         throw new Error("workspace_agent.send_response_turn_required");
       }
       reportDesktopAgentSubmitTrace(runtimeApi, {
         agentSessionId: input.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "renderer_adapter.send.resolved",
-        metadata: input.metadata,
         provider: result.session.provider,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId,
         fields: {
           sessionStatus: workspaceAgentSessionStatus(result.session),
@@ -421,69 +393,6 @@ function normalizeDesktopAgentDiagnosticError(
   };
 }
 
-function reportDesktopAgentSubmitTrace(
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">,
-  input: {
-    agentSessionId: string | null;
-    event: string;
-    metadata: Record<string, unknown> | undefined;
-    workspaceId: string;
-    provider?: string | null;
-    fields?: Record<string, unknown>;
-  }
-): void {
-  const clientSubmitId = stringMetadata(input.metadata, "clientSubmitId");
-  if (!clientSubmitId) {
-    return;
-  }
-  const submittedAtUnixMs = numberMetadata(
-    input.metadata,
-    "clientSubmittedAtUnixMs"
-  );
-  try {
-    void runtimeApi
-      .logTerminalDiagnostic({
-        details: {
-          agentSessionId: input.agentSessionId,
-          clientSubmitId,
-          clientSubmittedAtUnixMs: submittedAtUnixMs,
-          elapsedSinceClientSubmitMs:
-            submittedAtUnixMs > 0
-              ? Math.max(0, Date.now() - submittedAtUnixMs)
-              : null,
-          provider: input.provider ?? null,
-          traceEvent: input.event,
-          ...(input.fields ?? {})
-        },
-        event: "agent.submit.trace",
-        level: "info",
-        workspaceId: input.workspaceId
-      })
-      .catch(() => {});
-  } catch {
-    // Diagnostic logging must not affect agent submission.
-  }
-}
-
-function stringMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): string | null {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function numberMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): number {
-  const value = metadata?.[key];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  return 0;
-}
-
 export function createDesktopAgentActivitySessionId(): string {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
@@ -492,32 +401,26 @@ export function createDesktopAgentActivitySessionId(): string {
   return `00000000-0000-4000-8000-${fallbackHex.slice(0, 12)}`;
 }
 
-type ClaudeDraftStatus = "starting" | "ready" | "failed" | "promoted";
-
-interface ClaudeDraftSessionEntry {
-  cacheKey: string;
-  providerTargetKey: string;
-  promise: Promise<WorkspaceAgentSession>;
-  sessionId: string;
-  status: ClaudeDraftStatus;
-}
-
-function isDeadDraftStatus(status: ClaudeDraftStatus): boolean {
-  return status === "failed";
-}
-
-function claudeDraftCacheKey(input: {
-  agentTargetId?: string | null;
-  workspaceId: string;
-}): string {
-  return `${input.workspaceId}:${claudeDraftTargetKey(input)}`;
-}
-
-function claudeDraftTargetKey(input: {
-  agentTargetId?: string | null;
-}): string {
-  const agentTargetId = normalizeText(input.agentTargetId);
-  return `agentTarget:${agentTargetId ?? ""}`;
+function toTuttidSubmitDiagnostics(input: {
+  blockCount?: number;
+  hasImage?: boolean;
+  promptLength?: number;
+  queued?: boolean;
+  source?: string;
+  submittedAtUnixMs?: number;
+}): AgentSubmitDiagnostics {
+  return {
+    ...(input.blockCount !== undefined ? { blockCount: input.blockCount } : {}),
+    ...(input.hasImage !== undefined ? { hasImage: input.hasImage } : {}),
+    ...(input.promptLength !== undefined
+      ? { promptLength: input.promptLength }
+      : {}),
+    ...(input.queued !== undefined ? { queued: input.queued } : {}),
+    ...(input.source !== undefined ? { source: input.source } : {}),
+    ...(input.submittedAtUnixMs !== undefined
+      ? { submittedAtUnixMs: input.submittedAtUnixMs }
+      : {})
+  };
 }
 
 function requiredAgentTargetId(value: string | null | undefined): string {

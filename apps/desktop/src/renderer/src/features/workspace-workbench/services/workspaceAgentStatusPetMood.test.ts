@@ -66,7 +66,7 @@ test("workspace agent status pet mood shows review for an engine-owned activatio
     type: "activation/requested",
     agentSessionId: "session-new",
     agentTargetId: "target-1",
-    clientSubmitId: null,
+    clientSubmitId: "submit-new",
     content: [],
     cwd: "/workspace",
     expiresAtUnixMs: 30_000,

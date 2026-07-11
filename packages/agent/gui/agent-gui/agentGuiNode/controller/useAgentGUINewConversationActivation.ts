@@ -23,7 +23,7 @@ import {
   normalizeOptionalText
 } from "./agentGuiController.promptHelpers";
 import {
-  agentSubmitTraceMetadata,
+  agentSubmitTraceDiagnostics,
   createAgentSubmitTraceState,
   reportAgentSubmitTraceDiagnostic
 } from "./agentGuiController.reporting";
@@ -66,7 +66,6 @@ export function useAgentGUINewConversationActivation(
     isCurrentConversation,
     isConversationStale
   } = input;
-
   const startConversation = useCallback(
     (initialContentInput?: unknown, displayPrompt?: string) => {
       const target = selectedProviderTargetRef.current;
@@ -187,10 +186,11 @@ export function useAgentGUINewConversationActivation(
         mode: "new",
         agentSessionId,
         agentTargetId,
+        clientSubmitId: submitTrace.clientSubmitId,
         cwd: selectedProjectPath ?? "",
         initialContent: toRuntimeSendContent(normalizedInitialContent),
         initialDisplayPrompt,
-        metadata: agentSubmitTraceMetadata(submitTrace),
+        submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         title: initialConversationTitle,
         settings
       });
@@ -210,6 +210,7 @@ export function useAgentGUINewConversationActivation(
       isCurrentConversation,
       agentActivityRuntime,
       isConversationStale,
+      latestPendingNewActivation,
       workspaceId
     ]
   );

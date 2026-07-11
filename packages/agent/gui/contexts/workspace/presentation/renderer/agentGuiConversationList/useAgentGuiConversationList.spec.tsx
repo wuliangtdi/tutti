@@ -26,6 +26,7 @@ describe("useAgentGuiConversationList", () => {
         type: "activation/requested",
         agentSessionId: "session-1",
         agentTargetId: "local:codex",
+        clientSubmitId: "submit-1",
         cwd: "/workspace",
         expiresAtUnixMs: 100,
         mode: "new",

@@ -35,15 +35,6 @@ export interface AgentComposerProps {
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   disabled: boolean;
   disabledReason?: string | null;
-  /**
-   * False while submitting is about to start a brand-new conversation (no
-   * active conversation yet). Starting one is async (session creation +
-   * activation round trip), so the composer must NOT eagerly clear its own
-   * draft echo on submit in that case — the view would otherwise show a
-   * gap where the input is empty and nothing has happened yet. Defaults to
-   * true so existing/test call sites keep today's immediate-clear behavior.
-   */
-  hasActiveConversation?: boolean;
   submitDisabled: boolean;
   placeholder: string;
   composerSettings: AgentGUIComposerSettingsVM;

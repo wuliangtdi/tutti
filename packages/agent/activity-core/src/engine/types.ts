@@ -234,7 +234,10 @@ export interface EngineClock {
 
 /** Transport adapter surface: executes external command descriptions. */
 export interface EngineCommandPort {
-  execute(command: EngineExternalCommand): Promise<unknown>;
+  execute(
+    command: EngineExternalCommand,
+    options?: { signal?: AbortSignal }
+  ): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------

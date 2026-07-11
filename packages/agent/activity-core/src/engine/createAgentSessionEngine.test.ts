@@ -76,6 +76,7 @@ function createManualTimer(): ManualTimer {
 }
 
 interface ManualCommandPort extends EngineCommandPort {
+  abortSignalsByCommandId: Map<string, AbortSignal>;
   executedCommands: EngineExternalCommand[];
   fail(commandId: string, error: unknown): void;
   succeed(commandId: string, value?: unknown): void;
@@ -87,13 +88,18 @@ function createManualCommandPort(): ManualCommandPort {
     { reject: (error: unknown) => void; resolve: (value: unknown) => void }
   >();
   const executedCommands: EngineExternalCommand[] = [];
+  const abortSignalsByCommandId = new Map<string, AbortSignal>();
   return {
-    execute(command) {
+    execute(command, options) {
       executedCommands.push(command);
+      if (options?.signal) {
+        abortSignalsByCommandId.set(command.commandId, options.signal);
+      }
       return new Promise((resolve, reject) => {
         settlersByCommandId.set(command.commandId, { reject, resolve });
       });
     },
+    abortSignalsByCommandId,
     executedCommands,
     fail(commandId, error) {
       settlersByCommandId.get(commandId)?.reject(error);
@@ -275,6 +281,7 @@ test("command timeout settles as timedOut and a late result is ignored", async (
     type: "engine/probeRequested"
   });
   timer.advance(200);
+  assert.equal(commandPort.abortSignalsByCommandId.get("p-3")?.aborted, true);
   assert.deepEqual(engine.getSnapshot().engineRuntime.lastCommandResult, {
     commandId: "p-3",
     outcome: "timedOut"
@@ -375,6 +382,7 @@ test("dispose cancels pending frames, expiries, and in-flight results", async ()
   const notificationsBeforeDispose = notifiedStates.length;
 
   engine.dispose();
+  assert.equal(commandPort.abortSignalsByCommandId.get("p-5")?.aborted, true);
   assert.equal(timer.pendingTaskCount(), 0);
 
   timer.advance(1000);

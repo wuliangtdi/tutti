@@ -1868,12 +1868,12 @@ describe("AgentComposer", () => {
       expect(onSubmit).toHaveBeenCalledWith([
         { type: "text", text: "/goal ship the review picker" }
       ]);
-      expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+      expect(onDraftContentChange).not.toHaveBeenCalled();
       unmount();
     }
   });
 
-  it("clears the visible draft immediately after a normal prompt submit", () => {
+  it("keeps the visible draft until the engine acknowledges a normal prompt submit", () => {
     let draftContent = createDraft("run the tests");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -1920,29 +1920,22 @@ describe("AgentComposer", () => {
     expect(onSubmit).toHaveBeenCalledWith([
       { type: "text", text: "run the tests" }
     ]);
-    expect(onDraftContentChange).toHaveBeenCalledWith(createDraft(""));
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    rerender(renderComposer());
+    expect(editor).toHaveValue("run the tests");
+
+    draftContent = createDraft("");
     rerender(renderComposer());
     expect(editor).toHaveValue("");
   });
 
-  it("keeps the submitted text visible when starting a brand-new conversation, until the view catches up", () => {
-    // hasActiveConversation is derived from viewModel.rail.activeConversationId
-    // (see AgentGUINodeView wiring). startConversation in
-    // useAgentGUINodeController now flips activeConversationId synchronously
-    // on submit (optimistic entry), so in practice this prop goes true
-    // almost immediately for a brand-new conversation. This test still pins
-    // the composer's own contract — it must not eagerly clear the draft
-    // while hasActiveConversation is false — as defensive/fallback coverage
-    // for any path where the flip is delayed. Regression coverage for
-    // Feishu bug UUl2Oc: previously the composer cleared its text
-    // synchronously on submit regardless, leaving a visible gap where the
-    // input was empty and the conversation view had not appeared yet.
+  it("keeps submitted text visible until the parent acknowledges it", () => {
     let draftContent = createDraft("start a new session");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
     });
     const onSubmit = vi.fn();
-    const renderComposer = (hasActiveConversation: boolean) => (
+    const renderComposer = () => (
       <AgentComposer
         workspaceId="workspace-1"
         currentUserId="user-1"
@@ -1950,7 +1943,6 @@ describe("AgentComposer", () => {
         draftContent={draftContent}
         availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
         disabled={false}
-        hasActiveConversation={hasActiveConversation}
         submitDisabled={false}
         placeholder="placeholder"
         composerSettings={createComposerSettings()}
@@ -1974,28 +1966,22 @@ describe("AgentComposer", () => {
         onSubmitInteractivePrompt={vi.fn()}
       />
     );
-    const { container, rerender } = render(renderComposer(false));
+    const { container, rerender } = render(renderComposer());
 
     const editor = screen.getByPlaceholderText("placeholder");
     expect(editor).toHaveValue("start a new session");
 
     fireEvent.submit(container.querySelector("form")!);
 
-    // The submit still fires immediately...
     expect(onSubmit).toHaveBeenCalledWith([
       { type: "text", text: "start a new session" }
     ]);
-    // ...but with no active conversation yet, the draft is not eagerly
-    // cleared: no gap where the input is blank and nothing has happened.
     expect(onDraftContentChange).not.toHaveBeenCalled();
-    rerender(renderComposer(false));
+    rerender(renderComposer());
     expect(editor).toHaveValue("start a new session");
 
-    // Once the conversation actually activates (activeConversationId flips
-    // and the parent authoritatively clears the draft), the composer
-    // transitions to empty together with the view — no separate gap.
     draftContent = createDraft("");
-    rerender(renderComposer(true));
+    rerender(renderComposer());
     expect(editor).toHaveValue("");
   });
 
@@ -2045,11 +2031,7 @@ describe("AgentComposer", () => {
     expect(onSubmitGuidance).toHaveBeenCalledWith(
       textPromptContent("steer the running turn")
     );
-    expect(onDraftContentChange).toHaveBeenLastCalledWith({
-      prompt: "",
-      images: [],
-      files: []
-    });
+    expect(onDraftContentChange).not.toHaveBeenCalled();
   });
 
   it("toggles a persistent status panel for the local status slash command", () => {
@@ -3976,6 +3958,7 @@ describe("AgentComposer", () => {
     expect(sendButton).not.toBeDisabled();
     expect(sendButton).toHaveAttribute("data-state", "queue");
     expect(screen.queryByRole("button", { name: "停止" })).toBeNull();
+    onDraftContentChange.mockClear();
     fireEvent.click(sendButton);
     expect(onSubmit).toHaveBeenCalledWith([
       {
@@ -3985,6 +3968,8 @@ describe("AgentComposer", () => {
         name: "screen.png"
       }
     ]);
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    draftContent = createDraft("");
     rerender(renderComposer());
     expect(
       screen.queryByTestId("agent-gui-composer-image-drafts")
@@ -5003,7 +4988,7 @@ describe("AgentComposer", () => {
     }
   });
 
-  it("clears pasted image drafts immediately after submitting", () => {
+  it("keeps pasted image drafts until the engine acknowledges submitting", () => {
     let draftContent = createDraft("");
     const onDraftContentChange = vi.fn((nextDraft: AgentComposerDraft) => {
       draftContent = nextDraft;
@@ -5052,6 +5037,7 @@ describe("AgentComposer", () => {
       "data:image/png;base64,aW1hZ2U="
     );
 
+    onDraftContentChange.mockClear();
     fireEvent.submit(container.querySelector("form")!);
     expect(onSubmit).toHaveBeenCalledWith([
       {
@@ -5064,8 +5050,10 @@ describe("AgentComposer", () => {
 
     rerender(renderComposer(false));
     expect(
-      screen.queryByTestId("agent-gui-composer-image-drafts")
-    ).not.toBeInTheDocument();
+      screen.getByTestId("agent-gui-composer-image-drafts")
+    ).toBeInTheDocument();
+    expect(onDraftContentChange).not.toHaveBeenCalled();
+    draftContent = createDraft("");
     rerender(renderComposer(true));
     expect(
       screen.queryByTestId("agent-gui-composer-image-drafts")

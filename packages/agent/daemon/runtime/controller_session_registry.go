@@ -359,22 +359,23 @@ func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionC
 	c.mu.Lock()
 	var session Session
 	found := false
-	for _, candidate := range c.sessions {
+	provisional := false
+	for key, candidate := range c.sessions {
 		if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 			session = candidate
 			found = true
+			provisional = c.provisionalSessions[key]
 			break
 		}
 	}
-	c.mu.Unlock()
-	if !found {
+	if !found || provisional {
 		snapshot.AgentSessionID = agentSessionID
 		snapshot.Commands = cloneAgentSessionCommands(snapshot.Commands)
-		c.mu.Lock()
 		c.pendingCommandSnapshots[agentSessionID] = snapshot
 		c.mu.Unlock()
 		return
 	}
+	c.mu.Unlock()
 	c.applyCommandSnapshot(session, snapshot)
 }
 
@@ -446,7 +447,11 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.sessions[foundKey] = session
+	provisional := c.provisionalSessions[foundKey]
 	c.mu.Unlock()
+	if provisional {
+		return
+	}
 	c.publish(session, events)
 	c.enqueueSessionReport(context.Background(), session, events)
 }
@@ -470,23 +475,28 @@ func (c *Controller) applyConfigOptionsUpdateByAgentSessionID(update AgentSessio
 	c.mu.Lock()
 	var session Session
 	found := false
+	provisional := false
 	if roomID != "" {
-		if candidate, ok := c.sessions[sessionKey(roomID, agentSessionID)]; ok {
+		key := sessionKey(roomID, agentSessionID)
+		if candidate, ok := c.sessions[key]; ok {
 			session = candidate
 			found = true
+			provisional = c.provisionalSessions[key]
 		}
 	} else {
-		for _, candidate := range c.sessions {
+		for key, candidate := range c.sessions {
 			if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 				session = candidate
 				found = true
+				provisional = c.provisionalSessions[key]
 				break
 			}
 		}
 	}
-	if !found {
-		if roomID != "" {
-			key := sessionKey(roomID, agentSessionID)
+	if !found || provisional {
+		pendingRoomID := firstNonEmpty(roomID, session.RoomID)
+		if pendingRoomID != "" {
+			key := sessionKey(pendingRoomID, agentSessionID)
 			c.pendingConfigOptionsUpdates[key] = append(c.pendingConfigOptionsUpdates[key], update)
 		}
 		c.mu.Unlock()

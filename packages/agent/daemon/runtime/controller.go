@@ -32,6 +32,7 @@ type Controller struct {
 	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
 	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
 	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
+	provisionalSessions         map[string]bool
 	lifecycleLocks              map[string]*sessionLifecycleLock
 	hub                         *EventHub
 	reporter                    ActivityReporter
@@ -102,6 +103,7 @@ func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
 		pendingCommandSnapshots:     make(map[string]AgentSessionCommandSnapshot),
 		configOptionsUpdates:        make(map[string]AgentSessionConfigOptionsUpdate),
 		pendingConfigOptionsUpdates: make(map[string][]AgentSessionConfigOptionsUpdate),
+		provisionalSessions:         make(map[string]bool),
 		lifecycleLocks:              make(map[string]*sessionLifecycleLock),
 		hub:                         NewEventHub(),
 		reporter:                    reporter,

@@ -28,6 +28,7 @@ type Service struct {
 	ExternalImportStore            agentactivitybiz.Repository
 	TurnStore                      TurnStore
 	RuntimeOperationStore          RuntimeOperationStore
+	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
@@ -53,6 +54,12 @@ type Service struct {
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
 	liveModelPersistedScanMissAtUnixMS map[string]int64
+}
+
+type SubmitClaimStore interface {
+	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
+	AcceptSubmitClaim(context.Context, string, string, string, string, int64) (agentactivitybiz.SubmitClaim, bool, error)
+	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
 type RuntimeController interface {
@@ -292,6 +299,7 @@ type RuntimeStartInput struct {
 	Speed                  string
 	ConversationDetailMode string
 	Visible                *bool
+	Provisional            bool
 }
 
 type RuntimeResumeInput struct {

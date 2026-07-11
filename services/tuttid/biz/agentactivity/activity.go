@@ -86,6 +86,8 @@ type CompleteCancelRuntimeOperationInput = agentstore.CompleteCancelRuntimeOpera
 type CompletePlanDecisionRuntimeOperationInput = agentstore.CompletePlanDecisionRuntimeOperationInput
 type RuntimeOperationEvent = agentstore.RuntimeOperationEvent
 type RuntimeOperationCompletion = agentstore.RuntimeOperationCompletion
+type SubmitClaim = agentstore.SubmitClaim
+type SubmitClaimPrepare = agentstore.SubmitClaimPrepare
 
 var (
 	ErrRuntimeOperationConflict     = agentstore.ErrRuntimeOperationConflict

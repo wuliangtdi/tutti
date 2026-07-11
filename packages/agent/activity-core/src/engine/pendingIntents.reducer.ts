@@ -171,12 +171,14 @@ function requestActivation(
   const agentSessionId = intent.agentSessionId.trim();
   const workspaceId = intent.workspaceId.trim();
   const agentTargetId = intent.agentTargetId?.trim() || null;
+  const clientSubmitId =
+    intent.mode === "new" ? intent.clientSubmitId.trim() : null;
   if (
     !requestId ||
     !agentSessionId ||
     !workspaceId ||
     state.activationsByRequestId[requestId] ||
-    (intent.mode === "new" && !agentTargetId)
+    (intent.mode === "new" && (!agentTargetId || !clientSubmitId))
   ) {
     return unchanged(state);
   }
@@ -191,13 +193,15 @@ function requestActivation(
   const record: PendingActivationIntentRecord = {
     agentSessionId,
     agentTargetId,
-    clientSubmitId: intent.clientSubmitId?.trim() || null,
+    clientSubmitId,
     content,
     cwd: intent.cwd?.trim() ?? "",
     errorCode: null,
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
-    ...(intent.metadata ? { metadata: { ...intent.metadata } } : {}),
+    ...(intent.submitDiagnostics
+      ? { submitDiagnostics: { ...intent.submitDiagnostics } }
+      : {}),
     mode: intent.mode,
     requestedAtUnixMs: intent.requestedAtUnixMs,
     requestId,
@@ -217,26 +221,54 @@ function requestActivation(
         expiryId: activationExpiryId(requestId),
         type: "engine/scheduleExpiry"
       },
-      {
-        agentSessionId,
-        ...(agentTargetId ? { agentTargetId } : {}),
-        commandId: `activate:${requestId}`,
-        clientSubmitId: intent.clientSubmitId?.trim() || requestId,
-        correlationId: requestId,
-        ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
-        ...(content.length > 0 ? { initialContent: content } : {}),
-        ...(intent.initialDisplayPrompt?.trim()
-          ? { initialDisplayPrompt: intent.initialDisplayPrompt.trim() }
-          : {}),
-        ...(intent.metadata ? { metadata: { ...intent.metadata } } : {}),
-        mode: intent.mode,
-        ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-        timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
-        ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
-        type: "session/activate",
-        ...(intent.visible !== undefined ? { visible: intent.visible } : {}),
-        workspaceId
-      }
+      intent.mode === "new"
+        ? {
+            agentSessionId,
+            agentTargetId: agentTargetId!,
+            commandId: `activate:${requestId}`,
+            clientSubmitId: clientSubmitId!,
+            correlationId: requestId,
+            ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
+            ...(content.length > 0 ? { initialContent: content } : {}),
+            ...(intent.initialDisplayPrompt?.trim()
+              ? { initialDisplayPrompt: intent.initialDisplayPrompt.trim() }
+              : {}),
+            ...(intent.submitDiagnostics
+              ? { submitDiagnostics: { ...intent.submitDiagnostics } }
+              : {}),
+            mode: "new" as const,
+            ...(intent.settings ? { settings: { ...intent.settings } } : {}),
+            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
+            type: "session/activate",
+            ...(intent.visible !== undefined
+              ? { visible: intent.visible }
+              : {}),
+            workspaceId
+          }
+        : {
+            agentSessionId,
+            ...(agentTargetId ? { agentTargetId } : {}),
+            commandId: `activate:${requestId}`,
+            correlationId: requestId,
+            ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
+            ...(content.length > 0 ? { initialContent: content } : {}),
+            ...(intent.initialDisplayPrompt?.trim()
+              ? { initialDisplayPrompt: intent.initialDisplayPrompt.trim() }
+              : {}),
+            ...(intent.submitDiagnostics
+              ? { submitDiagnostics: { ...intent.submitDiagnostics } }
+              : {}),
+            mode: "existing" as const,
+            ...(intent.settings ? { settings: { ...intent.settings } } : {}),
+            timeoutMs: ACTIVATION_COMMAND_TIMEOUT_MS,
+            ...(intent.title?.trim() ? { title: intent.title.trim() } : {}),
+            type: "session/activate" as const,
+            ...(intent.visible !== undefined
+              ? { visible: intent.visible }
+              : {}),
+            workspaceId
+          }
     ],
     state: replaceActivation(
       markSessionActive(baseState, agentSessionId),

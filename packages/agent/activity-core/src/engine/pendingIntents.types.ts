@@ -1,6 +1,7 @@
 import type {
   AgentActivityMessage,
   AgentActivitySessionSettings,
+  AgentActivitySubmitDiagnostics,
   AgentPromptContentBlock
 } from "../types.ts";
 
@@ -19,7 +20,7 @@ export interface PendingActivationIntentRecord {
   errorCode: string | null;
   errorMessage: string | null;
   expiresAtUnixMs: number;
-  metadata?: Readonly<Record<string, unknown>>;
+  submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   mode: "existing" | "new";
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -48,7 +49,7 @@ export interface PendingSubmitIntentRecord {
   errorMessage: string | null;
   expiresAtUnixMs: number;
   guidance: boolean;
-  metadata?: Readonly<Record<string, unknown>>;
+  submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
   status: PendingSubmitStatus;
   turnId: string | null;
@@ -63,17 +64,14 @@ export interface PendingIntentsState {
   submitsByClientSubmitId: Readonly<Record<string, PendingSubmitIntentRecord>>;
 }
 
-export interface SessionActivationRequestedIntent {
+interface SessionActivationRequestedIntentBase {
   type: "activation/requested";
   agentSessionId: string;
-  agentTargetId?: string | null;
-  clientSubmitId?: string | null;
   content?: readonly AgentPromptContentBlock[];
   cwd?: string;
   expiresAtUnixMs: number;
   initialDisplayPrompt?: string;
-  metadata?: Readonly<Record<string, unknown>>;
-  mode: "existing" | "new";
+  submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
   requestId: string;
   settings?: AgentActivitySessionSettings;
@@ -81,6 +79,18 @@ export interface SessionActivationRequestedIntent {
   visible?: boolean;
   workspaceId: string;
 }
+
+export type SessionActivationRequestedIntent =
+  | (SessionActivationRequestedIntentBase & {
+      agentTargetId: string;
+      clientSubmitId: string;
+      mode: "new";
+    })
+  | (SessionActivationRequestedIntentBase & {
+      agentTargetId?: string | null;
+      clientSubmitId?: never;
+      mode: "existing";
+    });
 
 export interface SessionActivationDismissedIntent {
   type: "activation/dismissed";
@@ -115,24 +125,33 @@ export interface SessionUnactivationRequestedIntent {
   workspaceId: string;
 }
 
-export interface SessionActivateCommand {
+interface SessionActivateCommandBase {
   type: "session/activate";
   agentSessionId: string;
-  agentTargetId?: string | null;
   commandId: string;
-  clientSubmitId: string;
   correlationId: string;
   cwd?: string;
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
-  metadata?: Readonly<Record<string, unknown>>;
-  mode: "existing" | "new";
+  submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;
   title?: string;
   visible?: boolean;
   workspaceId: string;
 }
+
+export type SessionActivateCommand =
+  | (SessionActivateCommandBase & {
+      agentTargetId: string;
+      clientSubmitId: string;
+      mode: "new";
+    })
+  | (SessionActivateCommandBase & {
+      agentTargetId?: string | null;
+      clientSubmitId?: never;
+      mode: "existing";
+    });
 
 export interface SessionUnactivateCommand {
   type: "session/unactivate";
@@ -158,7 +177,7 @@ export interface SubmitRequestedIntent {
   displayPrompt?: string;
   expiresAtUnixMs: number;
   guidance?: boolean;
-  metadata?: Readonly<Record<string, unknown>>;
+  submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
   routing?: "auto" | "immediate";
   runtimeContent?: readonly AgentPromptContentBlock[];

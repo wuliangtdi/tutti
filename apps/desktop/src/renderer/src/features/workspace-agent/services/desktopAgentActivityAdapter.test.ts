@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
+  CreateWorkspaceAgentSessionRequest,
   TuttidClient,
   PermissionModeSemantic,
+  SendWorkspaceAgentSessionInputRequest,
   WorkspaceAgentSession,
   WorkspaceAgentSessionMessage
 } from "@tutti-os/client-tuttid-ts";
@@ -291,7 +293,7 @@ test("desktop agent activity adapter preserves session-level turnless messages",
   assert.equal(result.messages[0]?.turnId, null);
 });
 
-test("desktop agent activity adapter forwards submit diagnostic metadata", async () => {
+test("desktop agent activity adapter forwards typed submit diagnostics", async () => {
   const calls: unknown[] = [];
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({
@@ -319,9 +321,9 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
     agentSessionId: "agent-session-1",
     content: [{ type: "text", text: "hello" }],
     guidance: true,
-    metadata: {
-      clientSubmitId: "submit-1",
-      clientSubmittedAtUnixMs: 1234
+    submitDiagnostics: {
+      submittedAtUnixMs: 1234,
+      source: "agent-gui"
     }
   });
 
@@ -333,11 +335,11 @@ test("desktop agent activity adapter forwards submit diagnostic metadata", async
         content: [{ type: "text", text: "hello" }],
         displayPrompt: null,
         guidance: true,
-        metadata: {
-          clientSubmitId: "submit-1",
-          clientSubmittedAtUnixMs: 1234
+        submitDiagnostics: {
+          submittedAtUnixMs: 1234,
+          source: "agent-gui"
         }
-      },
+      } satisfies SendWorkspaceAgentSessionInputRequest,
       workspaceId
     }
   ]);
@@ -715,10 +717,10 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
     agentTargetId: "local:codex",
     cwd: "/workspace",
     initialContent: [{ type: "text", text: "hello" }],
-    metadata: {
-      "": "drop",
-      clientSubmitId: "submit-create-1",
-      clientSubmittedAtUnixMs: 12345
+    submitDiagnostics: {
+      blockCount: 1,
+      submittedAtUnixMs: 12345,
+      source: "agent-gui"
     },
     model: "gpt-5.5-codex-spark",
     permissionModeId: "read-only",
@@ -740,10 +742,10 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         cwd: "/workspace",
         initialContent: [{ type: "text", text: "hello" }],
         initialDisplayPrompt: null,
-        metadata: {
-          "": "drop",
-          clientSubmitId: "submit-create-1",
-          clientSubmittedAtUnixMs: 12345
+        submitDiagnostics: {
+          blockCount: 1,
+          submittedAtUnixMs: 12345,
+          source: "agent-gui"
         },
         model: "gpt-5.5-codex-spark",
         noProject: null,
@@ -753,15 +755,15 @@ test("desktop agent activity adapter sends plan mode when creating sessions", as
         speed: null,
         title: "Plan",
         visible: null
-      }
+      } satisfies CreateWorkspaceAgentSessionRequest
     ]
   ]);
 });
 
-test("desktop agent activity adapter times out create session requests", async () => {
+test("desktop agent activity adapter forwards create cancellation from the engine", async () => {
   let requestSignal: AbortSignal | undefined;
+  const controller = new AbortController();
   const adapter = createDesktopAgentActivityAdapter({
-    agentSessionCreateRequestTimeoutMs: 1,
     tuttidClient: createTuttidClient({
       async createWorkspaceAgentSession(
         _workspaceId,
@@ -769,26 +771,29 @@ test("desktop agent activity adapter times out create session requests", async (
         requestOptions
       ) {
         requestSignal = requestOptions?.signal ?? undefined;
-        return await new Promise(() => undefined);
+        return await new Promise((_resolve, reject) => {
+          requestOptions?.signal?.addEventListener(
+            "abort",
+            () => reject(requestOptions.signal?.reason),
+            { once: true }
+          );
+        });
       }
     }),
     runtimeApi: createRuntimeApi()
   });
 
-  await assert.rejects(
-    adapter.createSession({
-      clientSubmitId: "submit-timeout",
-      agentSessionId: "22222222-2222-4222-8222-222222222222",
-      agentTargetId: "local:claude-code",
-      initialContent: [],
-      model: "claude-sonnet-4-20250514",
-      workspaceId
-    }),
-    (error) =>
-      error instanceof Error &&
-      error.message === "Agent session create request timed out." &&
-      (error as NodeJS.ErrnoException).code === "ETIMEDOUT"
-  );
+  const request = adapter.createSession({
+    clientSubmitId: "submit-timeout",
+    agentSessionId: "22222222-2222-4222-8222-222222222222",
+    agentTargetId: "local:claude-code",
+    initialContent: [],
+    model: "claude-sonnet-4-20250514",
+    workspaceId,
+    signal: controller.signal
+  });
+  controller.abort(new Error("engine command timed out"));
+  await assert.rejects(request, /engine command timed out/);
   assert.equal(requestSignal?.aborted, true);
 });
 

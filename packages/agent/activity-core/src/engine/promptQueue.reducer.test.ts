@@ -39,6 +39,25 @@ test("enqueue drains immediately against the engine's available snapshot", () =>
   });
   const queued = reduce(loaded.state, enqueue("prompt-1"));
   assert.equal(queued.commands[0]?.type, "queue/sendPrompt");
+  assert.deepEqual(
+    queued.commands[0]?.type === "queue/sendPrompt"
+      ? queued.commands[0].submitDiagnostics
+      : null,
+    submitDiagnostics
+  );
+});
+
+test("immediate submit preserves diagnostics on the send command", () => {
+  const result = reduce(createInitialPromptQueueState(), {
+    ...submit("prompt-immediate"),
+    routing: "immediate"
+  });
+  assert.deepEqual(
+    result.commands[0]?.type === "queue/sendPrompt"
+      ? result.commands[0].submitDiagnostics
+      : null,
+    submitDiagnostics
+  );
 });
 
 test("successful send removes only the claimed head and waits for another lifecycle update", () => {
@@ -211,6 +230,12 @@ test("promoting a prompt while busy cancels once then sends after cancellation",
     sessions: [session("settled", 2)]
   });
   assert.equal(settledSnapshot.commands[0]?.type, "queue/sendPrompt");
+  assert.deepEqual(
+    settledSnapshot.commands[0]?.type === "queue/sendPrompt"
+      ? settledSnapshot.commands[0].submitDiagnostics
+      : null,
+    submitDiagnostics
+  );
 });
 
 test("cancel result can release send-next without waiting for snapshot ordering", () => {
@@ -446,7 +471,8 @@ function enqueue(promptId: string) {
     prompt: {
       id: promptId,
       content: [{ type: "text" as const, text: promptId }],
-      createdAtUnixMs: 1
+      createdAtUnixMs: 1,
+      submitDiagnostics
     },
     workspaceId: "workspace-1"
   };
@@ -460,9 +486,19 @@ function submit(clientSubmitId: string) {
     content: [{ type: "text" as const, text: clientSubmitId }],
     expiresAtUnixMs: 60_000,
     requestedAtUnixMs: 1,
+    submitDiagnostics,
     workspaceId: "workspace-1"
   };
 }
+
+const submitDiagnostics = {
+  blockCount: 1,
+  hasImage: false,
+  promptLength: 8,
+  queued: false,
+  source: "agent-gui",
+  submittedAtUnixMs: 1
+} as const;
 
 function session(
   phase: "running" | "settled",

@@ -69,6 +69,7 @@ type StartInput struct {
 	ProviderTargetRef map[string]any
 	PermissionModeID  string
 	Settings          *SessionSettings
+	Provisional       bool
 }
 
 type ResumeInput struct {
@@ -265,15 +266,8 @@ type StreamEvent struct {
 	Data      any    `json:"data"`
 }
 
-type SessionError struct {
-	Code         string `json:"code"`
-	Message      string `json:"message"`
-	DebugMessage string `json:"debugMessage,omitempty"`
-}
-
 type StartResult struct {
-	Session Session       `json:"session"`
-	Error   *SessionError `json:"error,omitempty"`
+	Session Session `json:"session"`
 }
 
 type CloseResult struct {

@@ -16,7 +16,9 @@ export function normalizeQueuedPrompt(
       : {}),
     ...(prompt.guidance === true ? { guidance: true } : {}),
     id,
-    ...(prompt.metadata ? { metadata: { ...prompt.metadata } } : {}),
+    ...(prompt.submitDiagnostics
+      ? { submitDiagnostics: { ...prompt.submitDiagnostics } }
+      : {}),
     ...(prompt.runtimeContent
       ? { runtimeContent: prompt.runtimeContent.map((block) => ({ ...block })) }
       : {}),

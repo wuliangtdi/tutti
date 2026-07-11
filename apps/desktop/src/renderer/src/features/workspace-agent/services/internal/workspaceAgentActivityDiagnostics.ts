@@ -32,64 +32,6 @@ export function registerAgentActivityStoreDiagnostics(
   });
 }
 
-export function reportAgentSubmitTraceDiagnostic(
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">,
-  input: {
-    agentSessionId: string | null;
-    event: string;
-    metadata: Record<string, unknown> | undefined;
-    workspaceId: string;
-    provider?: string | null;
-    fields?: Record<string, unknown>;
-  }
-): void {
-  const clientSubmitId = stringMetadata(input.metadata, "clientSubmitId");
-  if (!clientSubmitId) return;
-  const submittedAtUnixMs = numberMetadata(
-    input.metadata,
-    "clientSubmittedAtUnixMs"
-  );
-  try {
-    void runtimeApi
-      .logTerminalDiagnostic({
-        details: {
-          agentSessionId: input.agentSessionId,
-          clientSubmitId,
-          clientSubmittedAtUnixMs: submittedAtUnixMs,
-          elapsedSinceClientSubmitMs:
-            submittedAtUnixMs > 0
-              ? Math.max(0, Date.now() - submittedAtUnixMs)
-              : null,
-          provider: input.provider ?? null,
-          traceEvent: input.event,
-          ...(input.fields ?? {})
-        },
-        event: "agent.submit.trace",
-        level: "info",
-        workspaceId: input.workspaceId
-      })
-      .catch(() => {});
-  } catch {
-    // Diagnostic logging must not affect agent submission.
-  }
-}
-
-function stringMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): string | null {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function numberMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): number {
-  const value = metadata?.[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
 export function agentActivitySessionReconcileDiagnosticDetails(
   session: AgentActivitySession | null
 ): Record<string, unknown> | null {

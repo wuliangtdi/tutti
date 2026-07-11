@@ -425,7 +425,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           : undefined,
       disabled: composerDisabled,
       disabledReason: composerDisabledReason,
-      hasActiveConversation: viewModel.rail.activeConversationId !== null,
       submitDisabled,
       composerSettings: viewModel.composer.composerSettings,
       queuedPrompts: viewModel.composer.queuedPrompts,

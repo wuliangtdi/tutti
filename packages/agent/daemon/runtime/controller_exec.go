@@ -64,10 +64,23 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 		return ExecResult{}, err
 	}
 	session = startedSession
+	key := sessionKey(session.RoomID, session.AgentSessionID)
+	c.mu.Lock()
+	provisional := c.provisionalSessions[key]
+	if provisional {
+		delete(c.provisionalSessions, key)
+	}
+	c.mu.Unlock()
 	submitEvents := submittedTurnActivityEvents(session, turnID)
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
 		c.enqueueSessionReport(ctx, session, submitEvents)
+	}
+	if provisional {
+		c.publishPendingConfigOptionsUpdates(session)
+		if !c.publishPendingCommandSnapshot(session) {
+			c.publishAdapterCommandSnapshot(session, adapter)
+		}
 	}
 	logAgentSubmitTrace("runtime.submitted", session, turnID, metadata, map[string]any{
 		"phase": "submitted",

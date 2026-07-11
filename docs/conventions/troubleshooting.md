@@ -43,6 +43,75 @@ Use this shape for new entries:
 
 ## Current Entries
 
+### AgentGUI submit clears the composer but creates no session or turn
+
+- Symptom:
+  Sending from AgentGUI clears or switches the composer, but the conversation
+  rail and transcript do not change. Renderer diagnostics stop at
+  `renderer_adapter.create.http_requested` or
+  `renderer_adapter.send.http_requested`, and the daemon has no matching
+  `clientSubmitId`.
+- Quick checks:
+  Correlate `clientSubmitId` across the desktop and daemon logs. If the engine
+  records an immediate failed activation while the daemon has no create/send
+  business log, compare the adapter's exact JSON body with the generated
+  request type and the OpenAPI schema, including `additionalProperties`.
+- Root cause:
+  A conditional object spread can add a stale property to an otherwise typed
+  request without triggering excess-property checking. Strict OpenAPI request
+  validation then rejects the body before the business handler, while eager
+  composer clearing makes the failed request look successful for an instant.
+- Fix:
+  Keep `clientSubmitId` as the top-level idempotency field and carry optional
+  evidence through the typed `submitDiagnostics` contract from AgentGUI through
+  the session engine to the desktop adapter. Assign the final body to the
+  generated request type before sending. Clear a draft only after the engine
+  queues, accepts, or confirms the exact submitted content; failed sends retain
+  the draft.
+- Validation:
+  Assert the adapter's complete create/send body with generated request types,
+  verify the generated client serializes `submitDiagnostics`, and cover that
+  Composer does not clear before its parent applies engine acknowledgment.
+- References:
+  [agent-gui-node.md](../architecture/agent-gui-node.md)
+  [desktopAgentActivityAdapter.ts](../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
+  [useAgentGUISubmitInteractionActions.ts](../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
+
+### AgentGUI new session times out and appears completed without a reply
+
+- Symptom:
+  A new conversation shows the optimistic user prompt, then becomes idle or
+  completed with no assistant reply. The session has no canonical turn or
+  messages.
+- Quick checks:
+  Correlate the create `clientSubmitId`. A characteristic sequence is desktop
+  `renderer_adapter.create.failed errorCode=ETIMEDOUT` at 30 seconds, followed
+  by daemon `provider_runtime_status=failed`, `agent session is not connected`,
+  and a rejected turnless `visible-error` message.
+- Root cause:
+  Runtime command-guide construction asked the CLI registry to run live
+  capability filters. The agent-context filter probes provider availability,
+  so static guide construction could consume the entire create-request budget.
+  Cancellation then reached provider startup. The failed startup was also
+  published as a durable session plus a message without a turn, creating a
+  phantom session that the UI could only project as idle/completed.
+- Fix:
+  Build runtime command guides from static capability registration with live
+  capability filters skipped. Treat provider startup as transactional: return a
+  typed runtime error when the provider fails to start; for create-with-prompt,
+  keep the runtime Session provisional until the first Turn is accepted. A
+  failed or rolled-back attempt must not publish or store a canonical Session,
+  Turn, command/config snapshot, or turnless message.
+- Validation:
+  Cover the non-blocking command-catalog context, typed failed-start mapping,
+  provisional provider callback isolation and rollback, and controller behavior
+  proving that startup failure returns diagnostics but creates no canonical
+  session or activity report.
+- References:
+  [command_catalog.go](../../services/tuttid/service/agentsidecar/command_catalog.go)
+  [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
+  [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:

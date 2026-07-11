@@ -249,6 +249,7 @@ export type {
   AgentActivitySubmitInteractiveInput,
   AgentActivitySubmitInteractiveResult,
   AgentActivitySnapshot,
+  AgentActivitySubmitDiagnostics,
   AgentActivityTurn,
   AgentActivityTurnCancelResponse,
   AgentActivityInteraction,

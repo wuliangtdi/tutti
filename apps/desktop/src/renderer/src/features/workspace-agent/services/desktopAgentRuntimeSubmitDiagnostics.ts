@@ -1,4 +1,5 @@
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { AgentActivitySubmitDiagnostics } from "@tutti-os/agent-activity-core";
 import {
   resolveComposerPermissionMode,
   resolveDesktopAgentGUIProvider,
@@ -11,27 +12,28 @@ type AgentComposerSettingsChange = {
   to: boolean | string | null;
 };
 
-export function reportAgentSubmitTraceDiagnostic(input: {
-  agentSessionId: string | null;
-  event: string;
-  metadata: Record<string, unknown> | undefined;
-  runtimeApi?: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
-  workspaceId: string;
-  fields?: Record<string, unknown>;
-}): void {
-  if (!input.runtimeApi) {
+export function reportAgentSubmitTraceDiagnostic(
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic"> | undefined,
+  input: {
+    agentSessionId: string | null;
+    clientSubmitId: string | null | undefined;
+    event: string;
+    submitDiagnostics: AgentActivitySubmitDiagnostics | undefined;
+    workspaceId: string;
+    provider?: string | null;
+    fields?: Record<string, unknown>;
+  }
+): void {
+  if (!runtimeApi) {
     return;
   }
-  const clientSubmitId = stringMetadata(input.metadata, "clientSubmitId");
+  const clientSubmitId = input.clientSubmitId?.trim() ?? "";
   if (!clientSubmitId) {
     return;
   }
-  const submittedAtUnixMs = numberMetadata(
-    input.metadata,
-    "clientSubmittedAtUnixMs"
-  );
+  const submittedAtUnixMs = input.submitDiagnostics?.submittedAtUnixMs ?? 0;
   try {
-    void input.runtimeApi
+    void runtimeApi
       .logTerminalDiagnostic({
         details: {
           agentSessionId: input.agentSessionId,
@@ -41,6 +43,7 @@ export function reportAgentSubmitTraceDiagnostic(input: {
             submittedAtUnixMs > 0
               ? Math.max(0, Date.now() - submittedAtUnixMs)
               : null,
+          provider: input.provider ?? null,
           traceEvent: input.event,
           ...(input.fields ?? {})
         },
@@ -52,25 +55,6 @@ export function reportAgentSubmitTraceDiagnostic(input: {
   } catch {
     // Diagnostic logging must not affect agent submission.
   }
-}
-
-export function stringMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): string | null {
-  const value = metadata?.[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-export function numberMetadata(
-  metadata: Record<string, unknown> | undefined,
-  key: string
-): number {
-  const value = metadata?.[key];
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  return 0;
 }
 
 export function promptContentDisplayText(

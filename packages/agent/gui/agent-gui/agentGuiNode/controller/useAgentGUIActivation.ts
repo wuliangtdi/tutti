@@ -1,6 +1,7 @@
 import {
   selectSessionActivationPresentations,
   sessionActivationPresentationMapsEqual,
+  type AgentActivitySubmitDiagnostics,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useCallback, useMemo, useRef } from "react";
@@ -13,18 +14,28 @@ import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 
 type AgentGUILiveState = "inactive" | "activating" | "active" | "failed";
 
-interface AgentGUIActivateInput {
+interface AgentGUIActivateInputBase {
   agentSessionId: string;
-  agentTargetId?: string | null;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
-  metadata?: Record<string, unknown>;
-  mode: "existing" | "new";
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   settings?: AgentSessionComposerSettings;
   title?: string;
   visible?: boolean;
 }
+
+type AgentGUIActivateInput =
+  | (AgentGUIActivateInputBase & {
+      agentTargetId: string;
+      clientSubmitId: string;
+      mode: "new";
+    })
+  | (AgentGUIActivateInputBase & {
+      agentTargetId?: string | null;
+      clientSubmitId?: never;
+      mode: "existing";
+    });
 
 interface UseAgentGUIActivationInput {
   engine: AgentSessionEngine;
@@ -66,23 +77,22 @@ export function useAgentGUIActivation({
 
       const requestedAtUnixMs = Date.now();
       const requestId = nextRequestId("activation", agentSessionId);
-      const clientSubmitId =
-        typeof input.metadata?.clientSubmitId === "string"
-          ? input.metadata.clientSubmitId.trim()
-          : "";
-      engine.dispatch({
+      const clientSubmitId = input.clientSubmitId?.trim() ?? "";
+      if (input.mode === "new" && !clientSubmitId) {
+        return null;
+      }
+      const sharedIntent = {
         type: "activation/requested",
         agentSessionId,
-        ...(agentTargetId ? { agentTargetId } : {}),
-        ...(clientSubmitId ? { clientSubmitId } : {}),
         ...(input.initialContent ? { content: input.initialContent } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
           : {}),
-        ...(input.metadata ? { metadata: input.metadata } : {}),
-        mode: input.mode,
+        ...(input.submitDiagnostics
+          ? { submitDiagnostics: input.submitDiagnostics }
+          : {}),
         requestedAtUnixMs,
         requestId,
         ...(input.settings
@@ -93,7 +103,21 @@ export function useAgentGUIActivation({
         ...(input.title ? { title: input.title } : {}),
         ...(input.visible !== undefined ? { visible: input.visible } : {}),
         workspaceId
-      });
+      } as const;
+      if (input.mode === "new") {
+        engine.dispatch({
+          ...sharedIntent,
+          agentTargetId,
+          clientSubmitId,
+          mode: "new"
+        });
+      } else {
+        engine.dispatch({
+          ...sharedIntent,
+          ...(agentTargetId ? { agentTargetId } : {}),
+          mode: "existing"
+        });
+      }
       return requestId;
     },
     [engine, workspaceId]

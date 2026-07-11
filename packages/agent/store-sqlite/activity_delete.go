@@ -50,6 +50,9 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return false, err
 	}
 	if removed {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_submit_claims WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
+			return false, fmt.Errorf("delete workspace agent submit claims: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_messages
 SET deleted_at_unix_ms = ?,
@@ -143,6 +146,9 @@ WHERE workspace_id = ?
 `, workspaceID)
 	if err != nil {
 		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent messages: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_submit_claims WHERE workspace_id = ?`, workspaceID); err != nil {
+		return ClearSessionsResult{}, fmt.Errorf("clear workspace agent submit claims: %w", err)
 	}
 	// Explicit deletes rather than FK cascades: SQLite only cascades with
 	// PRAGMA foreign_keys enabled, which hosts do not guarantee.

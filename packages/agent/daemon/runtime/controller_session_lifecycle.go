@@ -63,34 +63,31 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if err != nil {
 		detail := cleanVisibleErrorText(err.Error())
 		code := visibleFailureCode(detail)
-		sessionError := &SessionError{
+		startError := &AppError{
 			Code:         code,
 			Message:      visibleFailureContent(provider, "start", code),
 			DebugMessage: detail,
+			Cause:        err,
 		}
-		events = []activityshared.Event{newSessionActivityEvent(session, EventSessionFailed, SessionStatusFailed, map[string]any{
-			"error":      detail,
-			"code":       code,
-			"retryable":  visibleFailureRetryable(code, detail),
-			"startError": true,
-		})}
-		session = applySessionEvents(session, events)
-		session.Status = SessionStatusFailed
-		session.LastError = detail
-		session.UpdatedAtUnixMS = unixMS(now())
+		// Provider adapters may emit command/config snapshots before Start returns.
+		// Roll those provisional side channels back with the failed transaction so
+		// a retry cannot consume stale state from an attempt that never committed.
 		c.mu.Lock()
-		c.sessions[sessionKey(roomID, agentSessionID)] = session
+		delete(c.pendingCommandSnapshots, agentSessionID)
+		delete(c.pendingConfigOptionsUpdates, sessionKey(roomID, agentSessionID))
 		c.mu.Unlock()
-		c.publish(session, events)
-		c.publishPendingConfigOptionsUpdates(session)
-		c.publishPendingCommandSnapshot(session)
-		c.enqueueSessionReport(ctx, session, events)
-		return StartResult{Session: session, Error: sessionError}, nil
+		return StartResult{}, startError
 	}
 	session = applySessionEvents(session, events)
 	c.mu.Lock()
 	c.sessions[sessionKey(roomID, agentSessionID)] = session
+	if input.Provisional {
+		c.provisionalSessions[sessionKey(roomID, agentSessionID)] = true
+	}
 	c.mu.Unlock()
+	if input.Provisional {
+		return StartResult{Session: session}, nil
+	}
 	c.publish(session, events)
 	c.publishPendingConfigOptionsUpdates(session)
 	if !c.publishPendingCommandSnapshot(session) {
@@ -195,6 +192,20 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	if err := adapter.Close(ctx, session); err != nil {
 		return CloseResult{}, err
 	}
+	c.mu.Lock()
+	provisional := c.provisionalSessions[key]
+	if provisional {
+		delete(c.provisionalSessions, key)
+		delete(c.sessions, key)
+		delete(c.turns, key)
+		delete(c.commands, key)
+		delete(c.pendingCommandSnapshots, session.AgentSessionID)
+		delete(c.pendingConfigOptionsUpdates, key)
+	}
+	c.mu.Unlock()
+	if provisional {
+		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
+	}
 	session.Status = SessionStatusCompleted
 	events := []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionCompleted, SessionStatusCompleted, map[string]any{
@@ -208,6 +219,8 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	delete(c.turns, key)
 	delete(c.commands, key)
 	delete(c.pendingCommandSnapshots, session.AgentSessionID)
+	delete(c.pendingConfigOptionsUpdates, key)
+	delete(c.provisionalSessions, key)
 	c.mu.Unlock()
 	return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 }

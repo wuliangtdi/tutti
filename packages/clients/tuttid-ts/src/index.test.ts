@@ -311,7 +311,12 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
       agentTargetId: "local:codex",
       clientSubmitId: "submit-1",
       initialContent: [{ type: "text", text: "hello" }],
-      planMode: true
+      planMode: true,
+      submitDiagnostics: {
+        blockCount: 1,
+        submittedAtUnixMs: 1234,
+        source: "agent-gui"
+      }
     },
     { signal: abortController.signal }
   );
@@ -326,7 +331,12 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
     agentTargetId: "local:codex",
     clientSubmitId: "submit-1",
     initialContent: [{ type: "text", text: "hello" }],
-    planMode: true
+    planMode: true,
+    submitDiagnostics: {
+      blockCount: 1,
+      submittedAtUnixMs: 1234,
+      source: "agent-gui"
+    }
   });
   assert.deepEqual(session, {
     id: "agent-session-1",
@@ -336,6 +346,64 @@ test("shared tuttid client creates workspace agent sessions with bearer auth", a
     title: "Investigate renderer bridge",
     createdAt: "2026-05-30T12:00:00Z",
     updatedAt: "2026-05-30T12:00:01Z"
+  });
+});
+
+test("shared tuttid client sends workspace agent input diagnostics in the HTTP body", async () => {
+  let requestPath = "";
+  let requestBody: unknown;
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requestPath = new URL(request.url).pathname;
+      requestBody = await request.json();
+      return new Response(
+        JSON.stringify({
+          session: {
+            id: "agent-session-1",
+            provider: "codex",
+            cwd: "/workspace",
+            status: "running",
+            title: "Investigate renderer bridge",
+            createdAt: "2026-05-30T12:00:00Z",
+            updatedAt: "2026-05-30T12:00:01Z"
+          },
+          turnId: "turn-1"
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+
+  await client.sendWorkspaceAgentSessionInput("ws-1", "agent-session-1", {
+    clientSubmitId: "submit-2",
+    content: [{ type: "text", text: "continue" }],
+    submitDiagnostics: {
+      blockCount: 1,
+      hasImage: false,
+      promptLength: 8,
+      queued: false,
+      source: "agent-gui",
+      submittedAtUnixMs: 2345
+    }
+  });
+
+  assert.equal(
+    requestPath,
+    "/v1/workspaces/ws-1/agent-sessions/agent-session-1/input"
+  );
+  assert.deepEqual(requestBody, {
+    clientSubmitId: "submit-2",
+    content: [{ type: "text", text: "continue" }],
+    submitDiagnostics: {
+      blockCount: 1,
+      hasImage: false,
+      promptLength: 8,
+      queued: false,
+      source: "agent-gui",
+      submittedAtUnixMs: 2345
+    }
   });
 });
 

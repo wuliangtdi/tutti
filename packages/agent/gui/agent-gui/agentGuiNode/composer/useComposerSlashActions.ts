@@ -55,7 +55,6 @@ type Props = Pick<
   | "isSendingTurn"
   | "isSubmittingPrompt"
   | "showStopButton"
-  | "hasActiveConversation"
   | "promptImagesSupported"
   | "availableSkills"
   | "composerSettings"
@@ -110,7 +109,6 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton,
-    hasActiveConversation,
     promptImagesSupported,
     availableSkills = [],
     composerSettings,
@@ -466,16 +464,10 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           onSubmit(submitContent);
         }
       }
-      // Session creation is async. Keep the draft visible until the controller
-      // clears it after activation, or preserves it on failure.
-      if (hasActiveConversation) {
-        draftPromptRef.current = "";
-        draftImagesRef.current = [];
-        draftFilesRef.current = [];
-        draftLargeTextsRef.current = [];
-        setPaletteDraftPrompt("");
-        onDraftContentChange(emptyAgentComposerDraft());
-      }
+      // Submission acknowledgment is asynchronous. The controller owns draft
+      // clearing after the engine accepts or confirms this exact content, so a
+      // rejected send cannot erase the user's prompt and a later edit cannot
+      // be overwritten by an in-flight submission.
     }
   );
 

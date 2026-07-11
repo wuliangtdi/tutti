@@ -300,6 +300,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ExternalImportStore = agentActivityRepo
 	agentSessionService.TurnStore = agentActivityRepo
 	agentSessionService.RuntimeOperationStore = agentActivityRepo
+	agentSessionService.SubmitClaimStore = agentActivityRepo
 	agentSessionService.RuntimeOperationEventPublisher = agentActivityProjection
 	agentSessionService.RuntimeOperationOwner = uuid.NewString()
 	agentSessionService.SessionDirectoryAllocator = agentservice.LocalSessionDirectoryAllocator{

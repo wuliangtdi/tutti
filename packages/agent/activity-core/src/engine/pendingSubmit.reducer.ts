@@ -40,7 +40,9 @@ export function requestSubmit(
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
     guidance: intent.guidance === true,
-    ...(intent.metadata ? { metadata: { ...intent.metadata } } : {}),
+    ...(intent.submitDiagnostics
+      ? { submitDiagnostics: { ...intent.submitDiagnostics } }
+      : {}),
     requestedAtUnixMs: intent.requestedAtUnixMs,
     status: "requested",
     turnId: null,

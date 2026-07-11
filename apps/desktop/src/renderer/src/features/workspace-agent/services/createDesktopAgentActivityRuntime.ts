@@ -160,11 +160,11 @@ export function createDesktopAgentActivityRuntime(
       return workspaceAgentActivityService.getSessionEngine(workspaceId);
     },
     async activateSession(input) {
-      reportAgentSubmitTraceDiagnostic({
+      reportAgentSubmitTraceDiagnostic(options.runtimeApi, {
         agentSessionId: input.agentSessionId,
+        clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
         event: "activity_runtime.activate.entered",
-        metadata: input.metadata,
-        runtimeApi: options.runtimeApi,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId,
         fields: {
           mode: input.mode,
@@ -194,11 +194,11 @@ export function createDesktopAgentActivityRuntime(
         });
         throw error;
       }
-      reportAgentSubmitTraceDiagnostic({
+      reportAgentSubmitTraceDiagnostic(options.runtimeApi, {
         agentSessionId: activation.session.agentSessionId,
+        clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
         event: "activity_runtime.activate.resolved",
-        metadata: input.metadata,
-        runtimeApi: options.runtimeApi,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId,
         fields: {
           mode: input.mode,
@@ -314,11 +314,11 @@ export function createDesktopAgentActivityRuntime(
       return workspaceAgentActivityService.ensureSessionSynchronized(input);
     },
     async sendInput(input) {
-      reportAgentSubmitTraceDiagnostic({
+      reportAgentSubmitTraceDiagnostic(options.runtimeApi, {
         agentSessionId: input.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_runtime.send.entered",
-        metadata: input.metadata,
-        runtimeApi: options.runtimeApi,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
       let result: Awaited<
@@ -338,11 +338,11 @@ export function createDesktopAgentActivityRuntime(
         });
         throw error;
       }
-      reportAgentSubmitTraceDiagnostic({
+      reportAgentSubmitTraceDiagnostic(options.runtimeApi, {
         agentSessionId: result.session.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_runtime.send.resolved",
-        metadata: input.metadata,
-        runtimeApi: options.runtimeApi,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId,
         fields: {
           provider: result.session.provider,

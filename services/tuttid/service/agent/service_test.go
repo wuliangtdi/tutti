@@ -503,6 +503,25 @@ func TestServiceCreateReportsNodeResults(t *testing.T) {
 	}
 }
 
+func TestServiceCreateDoesNotExecuteDuplicateInitialSubmit(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.SubmitClaimStore = openAgentServiceSQLiteStore(t)
+	input := CreateSessionInput{
+		AgentSessionID: "session-create-idempotent", AgentTargetID: agenttargetbiz.IDLocalCodex,
+		InitialContent: TextPromptContent("hello"), Metadata: map[string]any{"clientSubmitId": "submit-create-1"},
+	}
+	if _, err := service.Create(context.Background(), "ws-1", input); err != nil {
+		t.Fatalf("first Create() error = %v", err)
+	}
+	if _, err := service.Create(context.Background(), "ws-1", input); err != nil {
+		t.Fatalf("duplicate Create() error = %v", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
+	}
+}
+
 func TestServiceImportExternalSessionsOmitsProjectsWithoutValidSessions(t *testing.T) {
 	ctx := context.Background()
 	store := openAgentServiceSQLiteStore(t)
@@ -2170,6 +2189,28 @@ func TestServiceSendInputPassesDisplayPromptToRuntime(t *testing.T) {
 	}
 	if _, ok := call.Metadata[""]; ok {
 		t.Fatalf("runtime metadata includes blank key: %#v", call.Metadata)
+	}
+}
+
+func TestServiceSendInputDoesNotExecuteDuplicateClientSubmitID(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	store := openAgentServiceSQLiteStore(t)
+	service.SubmitClaimStore = store
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "session-idempotent", AgentTargetID: agenttargetbiz.IDLocalCodex,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	input := SendInput{Content: TextPromptContent("hello"), Metadata: map[string]any{"clientSubmitId": "submit-1"}}
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-idempotent", input); err != nil {
+		t.Fatalf("first SendInput() error = %v", err)
+	}
+	if _, err := service.SendInput(context.Background(), "ws-1", "session-idempotent", input); !errors.Is(err, ErrSubmitDeliveryUnknown) {
+		t.Fatalf("duplicate SendInput() error = %v, want delivery unknown without replay", err)
+	}
+	if len(runtime.execCalls) != 1 {
+		t.Fatalf("exec calls = %d, want 1", len(runtime.execCalls))
 	}
 }
 
@@ -5107,6 +5148,8 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 		Status:         "started",
 		Accepted:       true,
 		SessionStatus:  "working",
+		TurnID:         "turn-1",
+		TurnLifecycle:  TurnLifecycle{Phase: "submitted"},
 	}, nil
 }
 

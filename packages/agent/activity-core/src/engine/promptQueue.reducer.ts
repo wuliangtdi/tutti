@@ -231,7 +231,9 @@ function enqueueSubmit(
             ? { displayPrompt: intent.displayPrompt }
             : {}),
           ...(intent.guidance === true ? { guidance: true } : {}),
-          ...(intent.metadata ? { metadata: intent.metadata } : {}),
+          ...(intent.submitDiagnostics
+            ? { submitDiagnostics: intent.submitDiagnostics }
+            : {}),
           promptId: intent.clientSubmitId,
           timeoutMs: QUEUE_SEND_TIMEOUT_MS,
           type: "queue/sendPrompt",
@@ -260,10 +262,14 @@ function enqueueSubmit(
       ...(intent.displayPrompt ? { displayPrompt: intent.displayPrompt } : {}),
       ...(intent.guidance === true ? { guidance: true } : {}),
       id: intent.clientSubmitId,
-      metadata: {
-        ...(intent.metadata ?? {}),
-        clientSubmitId: intent.clientSubmitId,
-        clientSubmittedAtUnixMs: intent.requestedAtUnixMs
+      submitDiagnostics: {
+        ...(intent.submitDiagnostics ?? {}),
+        blockCount:
+          intent.submitDiagnostics?.blockCount ?? intent.content.length,
+        queued: visibleInQueue,
+        submittedAtUnixMs:
+          intent.submitDiagnostics?.submittedAtUnixMs ??
+          intent.requestedAtUnixMs
       },
       ...(intent.runtimeContent
         ? { runtimeContent: intent.runtimeContent }
@@ -568,7 +574,9 @@ function startEligibleCommand(
         content: head.runtimeContent ?? head.content,
         ...(head.displayPrompt ? { displayPrompt: head.displayPrompt } : {}),
         ...(head.guidance === true ? { guidance: true } : {}),
-        ...(head.metadata ? { metadata: head.metadata } : {}),
+        ...(head.submitDiagnostics
+          ? { submitDiagnostics: head.submitDiagnostics }
+          : {}),
         promptId: head.id,
         timeoutMs: QUEUE_SEND_TIMEOUT_MS,
         type: "queue/sendPrompt",

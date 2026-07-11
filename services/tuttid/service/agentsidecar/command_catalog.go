@@ -19,8 +19,9 @@ func commandGuideFromCatalog(ctx context.Context, catalog CommandCatalog, worksp
 		return fallbackCommandGuide(cliName)
 	}
 	return commandGuideFromCapabilities(cliName, catalog.Capabilities(ctx, cliservice.InvokeContext{
-		Source:      "agent-runtime",
-		WorkspaceID: strings.TrimSpace(workspaceID),
+		Source:                "agent-runtime",
+		WorkspaceID:           strings.TrimSpace(workspaceID),
+		SkipCapabilityFilters: true,
 	}))
 }
 

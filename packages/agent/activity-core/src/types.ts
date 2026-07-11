@@ -278,7 +278,7 @@ export interface AgentActivityCreateSessionInput {
   initialContent?: AgentPromptContentBlock[] | null;
   /** 仅展示用的首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
-  metadata?: Record<string, unknown>;
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   model?: string | null;
   planMode?: boolean | null;
   permissionModeId?: string | null;
@@ -297,8 +297,17 @@ export interface AgentActivitySendInput {
   /** 仅展示用文本(bundle 折叠成一个 chip);content 仍带展开后的文件。 */
   displayPrompt?: string | null;
   guidance?: boolean;
-  metadata?: Record<string, unknown>;
+  submitDiagnostics?: AgentActivitySubmitDiagnostics;
   signal?: AbortSignal;
+}
+
+export interface AgentActivitySubmitDiagnostics {
+  submittedAtUnixMs?: number;
+  blockCount?: number;
+  hasImage?: boolean;
+  promptLength?: number;
+  queued?: boolean;
+  source?: string;
 }
 
 export interface AgentActivityMessageSemantics {

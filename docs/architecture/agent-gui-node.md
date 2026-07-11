@@ -210,6 +210,25 @@ Multi-step behavior belongs in daemon workflows or engine commands. If a panel
 needs several durable mutations, expose one semantic command rather than
 sequencing transport calls in React effects.
 
+## Submit And Startup Transactions
+
+`clientSubmitId` is the daemon-owned idempotency key, not merely a diagnostic
+field. Before invoking a provider, the daemon persists a submit claim scoped by
+workspace, session, and client submit ID. A duplicate accepted claim returns
+the existing turn; a prepared claim reports delivery as unknown/confirming and
+must never invoke the provider again.
+
+Creating a session with initial content is one transaction. Provider startup
+may create provisional runtime state, but the Session is not published or
+persisted until the first Turn is accepted. Validation or execution failure
+rolls the provisional runtime and its pending command/config snapshots back;
+it must not leave a turnless Session or a synthetic message without a Turn.
+
+The session engine owns activation deadlines. It passes one cancellation signal
+through the desktop command port and HTTP adapter. Adapters must not race the
+engine with an independent timeout budget; command timeout, cancellation, and
+uncertain-delivery reconciliation are one engine workflow.
+
 ## Validation
 
 Use focused tests while iterating, then the repository checks for the changed
@@ -245,6 +264,13 @@ Diagnostics follow one command or event across boundaries using stable IDs:
 - `turnId`
 - `clientSubmitId` or command ID
 - provider ID and provider session ID when available
+
+Submit correlation and submit diagnostics are separate typed contracts.
+`clientSubmitId` remains a top-level idempotency identity; optional timing and
+content-shape evidence travels as `submitDiagnostics` with the same field names
+as the OpenAPI request schema. Generic metadata bags must not cross the engine
+or daemon command seam because conditional object spreads can otherwise hide
+request-contract drift from TypeScript.
 
 For one investigated problem, every diagnostic log uses the same prefix and
 serializes its payload with `JSON.stringify`. Investigation logs remain enabled

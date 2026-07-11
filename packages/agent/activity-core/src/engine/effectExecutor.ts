@@ -34,6 +34,7 @@ export function createEngineEffectExecutor({
 }: CreateEngineEffectExecutorInput): EngineEffectExecutor {
   let disposed = false;
   const timeoutTasks = new Set<EngineScheduledTask>();
+  const abortControllers = new Set<AbortController>();
 
   const settle = (intent: EngineCommandResultIntent): void => {
     if (disposed) {
@@ -53,12 +54,19 @@ export function createEngineEffectExecutor({
         task.cancel();
       }
       timeoutTasks.clear();
+      for (const controller of abortControllers) {
+        controller.abort(new Error("engine disposed"));
+      }
+      abortControllers.clear();
     },
     execute(command) {
       let settled = false;
       let timeoutTask: EngineScheduledTask | null = null;
+      const abortController = new AbortController();
+      abortControllers.add(abortController);
 
       const finishTimeoutTask = (): void => {
+        abortControllers.delete(abortController);
         if (timeoutTask !== null) {
           timeoutTasks.delete(timeoutTask);
           timeoutTask.cancel();
@@ -73,6 +81,7 @@ export function createEngineEffectExecutor({
             return;
           }
           settled = true;
+          abortController.abort(new Error("engine command timed out"));
           finishTimeoutTask();
           settle({
             commandId: command.commandId,
@@ -85,7 +94,7 @@ export function createEngineEffectExecutor({
         timeoutTasks.add(timeoutTask);
       }
 
-      commandPort.execute(command).then(
+      commandPort.execute(command, { signal: abortController.signal }).then(
         (value) => {
           if (settled) {
             diagnosticSink?.({

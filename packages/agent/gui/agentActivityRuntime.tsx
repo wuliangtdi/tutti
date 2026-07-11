@@ -190,11 +190,12 @@ interface AgentActivityRuntimeActivateSessionInputBase {
   initialContent?: AgentActivitySendInput["content"];
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
-  metadata?: Record<string, unknown>;
+  submitDiagnostics?: AgentActivitySendInput["submitDiagnostics"];
   settings?: AgentActivitySessionSettings;
   title?: string;
   visible?: boolean;
   workspaceId: string;
+  signal?: AbortSignal;
 }
 
 export type AgentActivityRuntimeActivateSessionInput =

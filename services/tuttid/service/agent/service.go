@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -82,6 +83,25 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
+	var submitClaim agentactivitybiz.SubmitClaim
+	claimPending := false
+	if len(normalizedContent) > 0 {
+		submitClaim, claimPending, err = s.prepareSubmitClaim(ctx, workspaceID, input.AgentSessionID, input.Metadata)
+		if err != nil {
+			return Session{}, err
+		}
+		if submitClaim.ClientSubmitID != "" && !claimPending {
+			if submitClaim.Status == "accepted" {
+				return s.Get(ctx, workspaceID, input.AgentSessionID)
+			}
+			return Session{}, ErrSubmitDeliveryUnknown
+		}
+		defer func() {
+			if claimPending {
+				s.abandonSubmitClaim(workspaceID, input.AgentSessionID, submitClaim.ClientSubmitID)
+			}
+		}()
+	}
 	nodeStartedAt := time.Now()
 	if err := s.ensureProviderRuntimeInstalled(ctx, provider); err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "provider_runtime_checked", provider, nodeStartedAt, err)
@@ -164,6 +184,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			),
 			ConversationDetailMode: input.ConversationDetailMode,
 			Visible:                input.Visible,
+			Provisional:            len(normalizedContent) > 0,
 		})
 	}()
 	if err != nil {
@@ -210,13 +231,14 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 	displayPrompt := strings.TrimSpace(input.InitialDisplayPrompt)
 	logAgentSubmitTrace("service.create.exec_requested", workspaceID, session.ID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	if _, err := s.controller().Exec(ctx, RuntimeExecInput{
+	execResult, err := s.controller().Exec(ctx, RuntimeExecInput{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: session.ID,
 		Content:        content,
 		DisplayPrompt:  displayPrompt,
 		Metadata:       cloneMetadata(input.Metadata),
-	}); err != nil {
+	})
+	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
 		s.reportAgentServiceNodeFailure(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt, normalizedErr)
 		closeErr := s.controller().Close(ctx, RuntimeCloseInput{
@@ -224,6 +246,12 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 			AgentSessionID: session.ID,
 		})
 		return Session{}, cleanupPrepared(errors.Join(normalizedErr, closeErr))
+	}
+	if submitClaim.ClientSubmitID != "" {
+		claimPending = false
+		if err := s.acceptSubmitClaim(workspaceID, session.ID, submitClaim.ClientSubmitID, execResult.TurnID); err != nil {
+			return Session{}, err
+		}
 	}
 	s.reportAgentServiceNodeSuccess(ctx, session.ID, "session_create", "runtime_exec", session.Provider, nodeStartedAt)
 	logAgentSubmitTrace("service.create.exec_resolved", workspaceID, session.ID, input.Metadata, nil)

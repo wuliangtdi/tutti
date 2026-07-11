@@ -175,6 +175,18 @@ func (s *SQLiteStore) PrepareRuntimeOperation(ctx context.Context, input agentac
 	return s.agentStore().PrepareRuntimeOperation(ctx, input)
 }
 
+func (s *SQLiteStore) PrepareSubmitClaim(ctx context.Context, input agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error) {
+	return s.agentStore().PrepareSubmitClaim(ctx, input)
+}
+
+func (s *SQLiteStore) AcceptSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID, turnID string, nowUnixMS int64) (agentactivitybiz.SubmitClaim, bool, error) {
+	return s.agentStore().AcceptSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID, turnID, nowUnixMS)
+}
+
+func (s *SQLiteStore) DeleteSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID string) (bool, error) {
+	return s.agentStore().DeleteSubmitClaim(ctx, workspaceID, agentSessionID, clientSubmitID)
+}
+
 func (s *SQLiteStore) GetRuntimeOperation(ctx context.Context, workspaceID string, operationID string) (agentactivitybiz.RuntimeOperation, bool, error) {
 	return s.agentStore().GetRuntimeOperation(ctx, workspaceID, operationID)
 }

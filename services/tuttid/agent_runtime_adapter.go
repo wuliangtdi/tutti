@@ -303,7 +303,8 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 			PermissionModeID:       input.PermissionModeID,
 			ConversationDetailMode: input.ConversationDetailMode,
 		},
-		Visible: input.Visible,
+		Visible:     input.Visible,
+		Provisional: input.Provisional,
 	})
 	if err != nil {
 		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)

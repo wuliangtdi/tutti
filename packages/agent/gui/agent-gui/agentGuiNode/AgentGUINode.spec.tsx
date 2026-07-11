@@ -4299,7 +4299,7 @@ describe("AgentGUINode", () => {
     });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/web query"));
-    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
+    expect(mockUpdateDraftContent).not.toHaveBeenCalled();
   });
 
   it("does not match slash commands after non-command text", () => {
@@ -4335,7 +4335,7 @@ describe("AgentGUINode", () => {
     fireEvent.keyDown(editor, { key: "Enter" });
 
     expect(mockSubmitPrompt).toHaveBeenCalledWith(promptBlocks("/"));
-    expect(mockUpdateDraftContent).toHaveBeenCalledWith(createDraft(""));
+    expect(mockUpdateDraftContent).not.toHaveBeenCalled();
   });
 
   it("filters slash commands and closes the palette after the command token", () => {

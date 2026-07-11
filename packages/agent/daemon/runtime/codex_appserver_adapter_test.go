@@ -4017,9 +4017,6 @@ func TestCodexAppServerAdapterRefreshesStartupMetadataAsync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if started.Error != nil {
-		t.Fatalf("Start error = %#v", started.Error)
-	}
 	waitForCondition(t, func() bool {
 		state, err := controller.State("room-1", started.Session.AgentSessionID)
 		if err != nil {

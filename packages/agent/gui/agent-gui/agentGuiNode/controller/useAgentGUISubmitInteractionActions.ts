@@ -41,7 +41,7 @@ import {
 } from "./agentGuiController.errors";
 import { createAgentGUIConversationId } from "./agentGuiController.promptHelpers";
 import {
-  agentSubmitTraceMetadata,
+  agentSubmitTraceDiagnostics,
   createAgentSubmitTraceState,
   reportAgentGUISubmitRecoveredActiveConversation,
   reportAgentGUISubmitWithoutActiveConversation,
@@ -215,7 +215,7 @@ export function useAgentGUISubmitInteractionActions(
         expiresAtUnixMs: submittedAtUnixMs + 120_000,
         ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         ...(options?.guidance === true ? { guidance: true } : {}),
-        metadata: agentSubmitTraceMetadata(submitTrace),
+        submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         requestedAtUnixMs: submittedAtUnixMs,
         ...(options?.immediate === true ? { routing: "immediate" } : {}),
         runtimeContent: toRuntimeSendContent(normalizedContent),

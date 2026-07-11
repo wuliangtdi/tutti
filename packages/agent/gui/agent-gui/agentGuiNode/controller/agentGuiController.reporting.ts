@@ -1,6 +1,7 @@
 import type {
   AgentActivityDisplayStatus,
   AgentActivityMessage,
+  AgentActivitySubmitDiagnostics,
   CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
 import { toast } from "@tutti-os/ui-system";
@@ -538,14 +539,13 @@ export function createAgentSubmitTraceState(input: {
   };
 }
 
-export function agentSubmitTraceMetadata(
+export function agentSubmitTraceDiagnostics(
   trace: AgentSubmitTraceState
-): Record<string, unknown> {
+): AgentActivitySubmitDiagnostics {
   return {
-    clientSubmitId: trace.clientSubmitId,
-    clientSubmittedAtUnixMs: trace.startedAtUnixMs,
-    promptBlockCount: trace.blockCount,
-    promptHasImage: trace.hasImage,
+    submittedAtUnixMs: trace.startedAtUnixMs,
+    blockCount: trace.blockCount,
+    hasImage: trace.hasImage,
     promptLength: trace.promptLength,
     queued: trace.queued,
     source: "agent-gui"

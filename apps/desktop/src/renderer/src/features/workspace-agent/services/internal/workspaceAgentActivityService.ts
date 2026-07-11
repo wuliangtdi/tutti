@@ -34,9 +34,9 @@ import { WorkspaceAgentActivityReconcileBridge } from "./workspaceAgentActivityR
 import {
   agentActivitySessionReconcileDiagnosticDetails,
   normalizeWorkspaceId,
-  registerAgentActivityStoreDiagnostics,
-  reportAgentSubmitTraceDiagnostic
+  registerAgentActivityStoreDiagnostics
 } from "./workspaceAgentActivityDiagnostics.ts";
+import { reportAgentSubmitTraceDiagnostic } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 
 export interface WorkspaceAgentActivityServiceDependencies {
   eventStreamClient?: TuttidEventStreamClient;
@@ -367,36 +367,40 @@ export class WorkspaceAgentActivityService
   ): Promise<AgentActivitySession> {
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: input.agentSessionId?.trim() ?? null,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.create.entered",
-      metadata: input.metadata,
       provider: null,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
     const entry = this.controllerEntry(input.workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: input.agentSessionId?.trim() ?? null,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.create.adapter_requested",
-      metadata: input.metadata,
       provider: null,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId: input.workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null }
     });
     const session = await entry.adapter.createSession(input);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.create.adapter_resolved",
-      metadata: input.metadata,
       provider: session.provider,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId: input.workspaceId,
       fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
     });
     this.upsertAuthoritativeSession(session, "create_session_result");
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.create.resolved",
-      metadata: input.metadata,
       provider: session.provider,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId: input.workspaceId,
       fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
     });
@@ -410,18 +414,20 @@ export class WorkspaceAgentActivityService
     const requestedAgentSessionId = input.agentSessionId.trim();
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: requestedAgentSessionId,
+      clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
       event: "activity_service.activate.entered",
-      metadata: input.metadata,
       provider: null,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId,
       fields: { agentTargetId: input.agentTargetId ?? null, mode: input.mode }
     });
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: requestedAgentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_service.activate.cwd_resolve_requested",
-        metadata: input.metadata,
         provider: null,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId
       });
     }
@@ -436,9 +442,10 @@ export class WorkspaceAgentActivityService
     if (input.mode === "new") {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: requestedAgentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_service.activate.cwd_resolved",
-        metadata: input.metadata,
         provider: null,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId,
         fields: {
           agentTargetId: input.agentTargetId ?? null,
@@ -452,9 +459,10 @@ export class WorkspaceAgentActivityService
     } else {
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: requestedAgentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_service.activate.create_requested",
-        metadata: input.metadata,
         provider: null,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId,
         fields: { agentTargetId: input.agentTargetId ?? null }
       });
@@ -466,7 +474,7 @@ export class WorkspaceAgentActivityService
         cwd: resolvedCwd?.cwd ?? null,
         initialContent: input.initialContent ?? [],
         initialDisplayPrompt: input.initialDisplayPrompt ?? null,
-        metadata: input.metadata,
+        submitDiagnostics: input.submitDiagnostics,
         model: input.settings?.model ?? null,
         planMode: input.settings?.planMode ?? null,
         permissionModeId: resolveComposerPermissionMode(input.settings),
@@ -474,13 +482,15 @@ export class WorkspaceAgentActivityService
         ...(resolvedCwd?.noProject ? { noProject: true } : {}),
         speed: input.settings?.speed ?? null,
         title: input.title ?? null,
-        visible: input.visible ?? true
+        visible: input.visible ?? true,
+        signal: input.signal
       });
       reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
         agentSessionId: session.agentSessionId,
+        clientSubmitId: input.clientSubmitId,
         event: "activity_service.activate.create_resolved",
-        metadata: input.metadata,
         provider: session.provider,
+        submitDiagnostics: input.submitDiagnostics,
         workspaceId,
         fields: { activeTurnPhase: session.activeTurn?.phase ?? null }
       });
@@ -489,9 +499,10 @@ export class WorkspaceAgentActivityService
     const activationFailed = activationError !== undefined;
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId: session.agentSessionId,
+      clientSubmitId: input.mode === "new" ? input.clientSubmitId : null,
       event: "activity_service.activate.resolved",
-      metadata: input.metadata,
       provider: session.provider,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId,
       fields: {
         mode: input.mode,
@@ -520,15 +531,17 @@ export class WorkspaceAgentActivityService
     const agentSessionId = input.agentSessionId.trim();
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.send.entered",
-      metadata: input.metadata,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId
     });
     const entry = this.controllerEntry(workspaceId);
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.send.adapter_requested",
-      metadata: input.metadata,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId
     });
     const result = await entry.adapter.sendInput({
@@ -537,9 +550,10 @@ export class WorkspaceAgentActivityService
     });
     reportAgentSubmitTraceDiagnostic(this.dependencies.runtimeApi, {
       agentSessionId,
+      clientSubmitId: input.clientSubmitId,
       event: "activity_service.send.adapter_resolved",
-      metadata: input.metadata,
       provider: result.session.provider,
+      submitDiagnostics: input.submitDiagnostics,
       workspaceId,
       fields: {
         turnOutcome: result.turn.outcome ?? null,

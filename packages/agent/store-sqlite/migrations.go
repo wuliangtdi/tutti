@@ -38,6 +38,7 @@ const schemaMigrationWorkspaceAgentEntityInvariantsV1 = "workspace_agent_entity_
 const schemaMigrationWorkspaceAgentRuntimeOperationsV1 = "workspace_agent_runtime_operations_v1"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtime_operations_v2"
 const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
+const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
@@ -128,7 +129,10 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentRuntimeOperationsV2(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentRuntimeOperationsV3(ctx)
+	if err := s.applyWorkspaceAgentRuntimeOperationsV3(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentSubmitClaimsV1(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were

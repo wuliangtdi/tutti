@@ -59,11 +59,13 @@ func (r *recordingReporter) waitForCalls(t *testing.T, count int) []reportCall {
 	}
 }
 
-func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *testing.T) {
+func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t *testing.T) {
 	t.Parallel()
 
 	reporter := &recordingReporter{}
 	controller := NewController([]Adapter{failingStartAdapter{}}, reporter)
+	controller.pendingCommandSnapshots["agent-session-1"] = AgentSessionCommandSnapshot{AgentSessionID: "agent-session-1"}
+	controller.pendingConfigOptionsUpdates[sessionKey("room-1", "agent-session-1")] = []AgentSessionConfigOptionsUpdate{{AgentSessionID: "agent-session-1"}}
 
 	started, err := controller.Start(context.Background(), StartInput{
 		RoomID:         "room-1",
@@ -72,37 +74,110 @@ func TestControllerStartFailureCreatesFailedSessionAndVisibleErrorReport(t *test
 		CWD:            "/workspace",
 		Title:          "Hermes",
 	})
+	if err == nil {
+		t.Fatal("Start error = nil")
+	}
+	if code := AppErrorCode(err); code != "process_exited" {
+		t.Fatalf("start error code = %q, want process_exited", code)
+	}
+	if detail := AppErrorDebugMessage(err); detail != "acp process exited with code 1: Config invalid" {
+		t.Fatalf("start error detail = %q", detail)
+	}
+	if started.Session.AgentSessionID != "" {
+		t.Fatalf("start result = %#v, want no failed session result", started)
+	}
+	if stored, ok := controller.get("room-1", "agent-session-1"); ok {
+		t.Fatalf("stored session = %#v, want no canonical session", stored)
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("reports = %#v, want no turnless failure report", reports)
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
+		t.Fatalf("pending snapshots survived failed start: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+}
+
+func TestControllerProvisionalStartRollsBackWithoutCanonicalReport(t *testing.T) {
+	t.Parallel()
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+		CWD: "/workspace", Provisional: true,
+	})
+	if err != nil || started.Session.AgentSessionID != "agent-session-1" {
+		t.Fatalf("Start() = %#v, %v", started, err)
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("reports before commit = %#v", reports)
+	}
+	controller.applySessionEventsByAgentSessionID("agent-session-1", []activityshared.Event{
+		newSessionActivityEvent(started.Session, EventSessionStarted, SessionStatusReady, nil),
+	})
+	controller.applyCommandSnapshotByAgentSessionID(AgentSessionCommandSnapshot{
+		AgentSessionID: "agent-session-1",
+		Commands:       []AgentSessionCommand{{Name: "review"}},
+	})
+	controller.applyConfigOptionsUpdateByAgentSessionID(AgentSessionConfigOptionsUpdate{
+		RoomID: "room-1", AgentSessionID: "agent-session-1",
+	})
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("provider callbacks leaked reports before commit = %#v", reports)
+	}
+	controller.mu.Lock()
+	if _, ok := controller.commands[sessionKey("room-1", "agent-session-1")]; ok {
+		controller.mu.Unlock()
+		t.Fatal("provider command callback became canonical before commit")
+	}
+	if len(controller.pendingCommandSnapshots) != 1 || len(controller.pendingConfigOptionsUpdates) != 1 {
+		controller.mu.Unlock()
+		t.Fatalf("provider callbacks were not retained transactionally: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+	controller.mu.Unlock()
+	if _, err := controller.Close(context.Background(), CloseInput{RoomID: "room-1", AgentSessionID: "agent-session-1"}); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if _, ok := controller.get("room-1", "agent-session-1"); ok {
+		t.Fatal("provisional session survived rollback")
+	}
+	if reports := reporter.snapshot(); len(reports) != 0 {
+		t.Fatalf("rollback reports = %#v", reports)
+	}
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if len(controller.pendingCommandSnapshots) != 0 || len(controller.pendingConfigOptionsUpdates) != 0 {
+		t.Fatalf("rollback retained provider callbacks: commands=%#v config=%#v", controller.pendingCommandSnapshots, controller.pendingConfigOptionsUpdates)
+	}
+}
+
+func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
+	t.Parallel()
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, reporter)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex,
+		CWD: "/workspace", Provisional: true,
+	})
 	if err != nil {
-		t.Fatalf("Start: %v", err)
+		t.Fatalf("Start() error = %v", err)
 	}
-	if started.Session.Status != SessionStatusFailed {
-		t.Fatalf("session status = %q, want failed", started.Session.Status)
-	}
-	if started.Error == nil || started.Error.Code != "process_exited" {
-		t.Fatalf("start error = %#v, want process_exited", started.Error)
-	}
-	if started.Session.LastError != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("session last error = %q, want visible start failure detail", started.Session.LastError)
-	}
-	stored, ok := controller.get("room-1", "agent-session-1")
-	if !ok || stored.Status != SessionStatusFailed {
-		t.Fatalf("stored session = %#v, ok=%v", stored, ok)
-	}
-	if stored.LastError != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("stored last error = %q, want visible start failure detail", stored.LastError)
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1",
+		Content: []PromptContentBlock{{Type: "text", Text: "hello"}},
+	})
+	if err != nil || result.TurnID == "" {
+		t.Fatalf("Exec() = %#v, %v", result, err)
 	}
 	reports := reporter.waitForCalls(t, 1)
-	if len(reports[0].report.StatePatches) != 1 {
-		t.Fatalf("state patches = %#v, want failed session patch", reports[0].report.StatePatches)
+	if len(reports[0].report.StatePatches) == 0 {
+		t.Fatalf("commit report = %#v, want session and turn state", reports[0].report)
 	}
-	if len(reports[0].report.MessageUpdates) != 1 {
-		t.Fatalf("message updates = %#v, want visible failure message", reports[0].report.MessageUpdates)
-	}
-	item := reports[0].report.MessageUpdates[0]
-	if item.Payload["kind"] != visibleErrorKind ||
-		item.Payload["phase"] != "start" ||
-		item.Payload["detail"] != "acp process exited with code 1: Config invalid" {
-		t.Fatalf("visible start failure item = %#v", item)
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+	if controller.provisionalSessions[sessionKey("room-1", "agent-session-1")] {
+		t.Fatal("session remained provisional after first turn acceptance")
 	}
 }
 
