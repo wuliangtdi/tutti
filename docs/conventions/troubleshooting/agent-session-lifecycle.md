@@ -520,8 +520,10 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   Claude Code session id.
 - Quick checks:
   Inspect the source message shape without logging its content. Visible text
-  must come from ordered `content[type=text]` blocks, never top-level
-  `message.text`. Inspect the persisted runtime context for
+  must come from ordered `content[type=text]` blocks; legacy human messages
+  with no content blocks may fall back to top-level `message.text`, but
+  assistant messages never may (that field mixes in hidden thinking and tool
+  material). Inspect the persisted runtime context for
   `externalImportResumeSupported: false`, and confirm the source path is not
   forwarded as an external Claude Code rollout path. For a branched fixture,
   confirm every imported message belongs to the selected latest leaf's ancestor
