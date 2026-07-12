@@ -1775,7 +1775,7 @@ export const countWorkspaceAgentSessionSection = <
   });
 
 /**
- * Scan external local agent session history that can be imported into one workspace
+ * Scan local agent history or a supported provider export that can be imported into one workspace
  */
 export const scanWorkspaceExternalAgentSessionImports = <
   ThrowOnError extends boolean = false
@@ -1797,7 +1797,7 @@ export const scanWorkspaceExternalAgentSessionImports = <
   });
 
 /**
- * Import selected external local agent session history into one workspace
+ * Import selected local agent history or provider-export conversations into one workspace
  */
 export const importWorkspaceExternalAgentSessions = <
   ThrowOnError extends boolean = false

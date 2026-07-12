@@ -190,6 +190,7 @@ export interface IWorkspaceAgentActivityService {
     workspaceId: string,
     request: ImportExternalAgentSessionsRequest
   ): Promise<ExternalAgentImportResultResponse>;
+  selectExternalSessionImportArchive(): Promise<string | null>;
   load(
     workspaceId: string,
     signal?: AbortSignal

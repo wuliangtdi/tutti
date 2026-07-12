@@ -19,125 +19,11 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
-type ExternalImportScanInput struct {
-	Providers []string
-	// Days limits the scan window to conversations updated within the last N
-	// days. 0 keeps the default 30-day window; a negative value scans all
-	// available history.
-	Days int
-}
-
-type ExternalImportInput struct {
-	Projects []ExternalImportProjectSelection
-}
-
-type ExternalImportProjectSelection struct {
-	Path       string
-	Providers  []string
-	SessionIDs []string
-}
-
-type ExternalImportScanResult struct {
-	Providers       []ExternalImportProvider
-	Projects        []ExternalImportProject
-	Sessions        []ExternalImportSession
-	ScannedSessions int
-	ScannedMessages int
-	SkippedSessions int
-	Errors          []ExternalImportError
-}
-
-type ExternalImportProvider struct {
-	Provider     string
-	Root         string
-	Available    bool
-	SessionCount int
-	MessageCount int
-	Error        string
-}
-
-type ExternalImportProject struct {
-	Path                string
-	Label               string
-	Providers           []string
-	SessionCount        int
-	MessageCount        int
-	LastUpdatedAtUnixMS int64
-}
-
-type ExternalImportSession struct {
-	ID                  string
-	ProjectPath         string
-	Provider            string
-	SourcePath          string
-	Title               string
-	MessageCount        int
-	LastUpdatedAtUnixMS int64
-}
-
-type ExternalImportError struct {
-	Provider   string
-	SourcePath string
-	Message    string
-}
-
-type ExternalImportResult struct {
-	ImportedProjects int
-	ImportedSessions int
-	ImportedMessages int
-	SkippedSessions  int
-	Errors           []ExternalImportError
-	// ProjectPaths lists the selected project paths that matched at least one
-	// valid imported session. Callers use it to avoid registering user projects
-	// that would surface with no sessions underneath them.
-	ProjectPaths []string
-}
-
-type externalImportedSession struct {
-	Provider          string
-	ProviderSessionID string
-	SourcePath        string
-	Cwd               string
-	Title             string
-	// SummaryTitle holds an authoritative, provider-supplied conversation title
-	// (e.g. Claude `custom-title`/`summary` transcript lines or the Codex
-	// app-server `threads.title`). When present it wins over message-derived
-	// titles.
-	SummaryTitle     string
-	NoProject        bool
-	EventUserMessage externalImportedMessage
-	StartedAtUnixMS  int64
-	UpdatedAtUnixMS  int64
-	Messages         []externalImportedMessage
-	// Model and ReasoningEffort capture the provider-reported model/effort the
-	// local CLI was actually using (Codex `turn_context.model`/`effort`,
-	// Claude Code `message.model`) so imported sessions preserve the user's
-	// local model configuration instead of falling back to workspace
-	// defaults when the conversation is continued.
-	Model           string
-	ReasoningEffort string
-}
-
-type externalImportedMessage struct {
-	RawID             string
-	MessageIDSeed     string
-	Role              string
-	Kind              string
-	Status            string
-	Text              string
-	Payload           map[string]any
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	CompletedAtUnixMS int64
-}
-
-type externalScanData struct {
-	result   ExternalImportScanResult
-	sessions []externalImportedSession
-}
-
 func (*Service) ScanExternalImports(ctx context.Context, input ExternalImportScanInput) (ExternalImportScanResult, error) {
-	data := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days)
+	data, err := scanExternalAgentSessions(ctx, normalizeExternalImportProviders(input.Providers), input.Days, input.ArchivePath)
+	if err != nil {
+		return ExternalImportScanResult{}, err
+	}
 	return data.result, nil
 }
 
@@ -156,7 +42,15 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 	// Scan all available history when importing: the request already filters by
 	// explicit project paths and session ids, and the picker may surface
 	// conversations older than the default 30-day window.
-	data := scanExternalAgentSessions(ctx, providersFromExternalImportSelections(selections), -1)
+	data, err := scanExternalAgentSessions(
+		ctx,
+		providersFromExternalImportSelections(selections),
+		-1,
+		input.ArchivePath,
+	)
+	if err != nil {
+		return ExternalImportResult{}, err
+	}
 	result := ExternalImportResult{
 		SkippedSessions: data.result.SkippedSessions,
 		Errors:          append([]ExternalImportError(nil), data.result.Errors...),
@@ -303,7 +197,10 @@ func externalImportAgentTargetID(provider string) string {
 	}
 }
 
-func scanExternalAgentSessions(ctx context.Context, providers []string, days int) externalScanData {
+func scanExternalAgentSessions(ctx context.Context, providers []string, days int, archivePath string) (externalScanData, error) {
+	if strings.TrimSpace(archivePath) != "" {
+		return scanClaudeExportArchive(ctx, archivePath, externalScanCutoffUnixMS(days))
+	}
 	data := externalScanData{}
 	projects := map[string]*ExternalImportProject{}
 	cutoffUnixMS := externalScanCutoffUnixMS(days)
@@ -343,7 +240,7 @@ func scanExternalAgentSessions(ctx context.Context, providers []string, days int
 		}
 		return data.result.Sessions[left].LastUpdatedAtUnixMS > data.result.Sessions[right].LastUpdatedAtUnixMS
 	})
-	return data
+	return data, nil
 }
 
 // externalScanCutoffUnixMS resolves the "updated since" cutoff for a scan
@@ -505,6 +402,15 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 			CompletedAtUnixMS: message.CompletedAtUnixMS,
 		})
 	}
+	runtimeContext := map[string]any{
+		"visible":                 true,
+		"imported":                true,
+		"externalImportNoProject": session.NoProject,
+		"externalSourcePath":      session.SourcePath,
+	}
+	if session.ResumeSupported != nil {
+		runtimeContext["externalImportResumeSupported"] = *session.ResumeSupported
+	}
 	if _, err := s.ExternalImportStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:       workspaceID,
 		AgentSessionID:    agentSessionID,
@@ -514,19 +420,14 @@ func (s *Service) importExternalSession(ctx context.Context, workspaceID string,
 		ProviderSessionID: session.ProviderSessionID,
 		Model:             session.Model,
 		Settings:          externalImportedSessionSettings(session),
-		RuntimeContext: map[string]any{
-			"visible":                 true,
-			"imported":                true,
-			"externalImportNoProject": session.NoProject,
-			"externalSourcePath":      session.SourcePath,
-		},
-		Cwd:              session.Cwd,
-		Title:            session.Title,
-		Status:           "completed",
-		CurrentPhase:     "completed",
-		OccurredAtUnixMS: session.UpdatedAtUnixMS,
-		StartedAtUnixMS:  session.StartedAtUnixMS,
-		EndedAtUnixMS:    session.UpdatedAtUnixMS,
+		RuntimeContext:    runtimeContext,
+		Cwd:               session.Cwd,
+		Title:             session.Title,
+		Status:            "completed",
+		CurrentPhase:      "completed",
+		OccurredAtUnixMS:  session.UpdatedAtUnixMS,
+		StartedAtUnixMS:   session.StartedAtUnixMS,
+		EndedAtUnixMS:     session.UpdatedAtUnixMS,
 	}); err != nil {
 		return 0, false, err
 	}

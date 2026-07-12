@@ -2,6 +2,15 @@ package agent
 
 import "testing"
 
+func TestExternalImportResumeSupportedDefaultsLegacyButFailsClosedForMalformedMarker(t *testing.T) {
+	if !externalImportResumeSupported(nil) {
+		t.Fatal("legacy import without marker should remain resumable")
+	}
+	if externalImportResumeSupported(map[string]any{"externalImportResumeSupported": "false"}) {
+		t.Fatal("malformed daemon-owned resume marker should fail closed")
+	}
+}
+
 // TestMergePersistedSessionStatePreservesImportedFlagWithLiveRuntimeContext
 // guards against a regression where opening/resuming an imported Codex or
 // Claude Code session dropped the "imported" RuntimeContext marker the
@@ -13,9 +22,10 @@ import "testing"
 func TestMergePersistedSessionStatePreservesImportedFlagWithLiveRuntimeContext(t *testing.T) {
 	persisted := PersistedSession{
 		RuntimeContext: map[string]any{
-			"imported":                true,
-			"externalImportNoProject": true,
-			"externalSourcePath":      "/home/user/.codex/sessions/abc.jsonl",
+			"imported":                      true,
+			"externalImportNoProject":       true,
+			"externalImportResumeSupported": false,
+			"externalSourcePath":            "/home/user/.codex/sessions/abc.jsonl",
 		},
 	}
 	// A live RuntimeSession's own RuntimeContext is never empty in practice
@@ -35,6 +45,9 @@ func TestMergePersistedSessionStatePreservesImportedFlagWithLiveRuntimeContext(t
 	}
 	if merged.RuntimeContext["externalImportNoProject"] != true {
 		t.Fatalf("RuntimeContext = %#v, want externalImportNoProject preserved from persisted state", merged.RuntimeContext)
+	}
+	if merged.RuntimeContext["externalImportResumeSupported"] != false {
+		t.Fatalf("RuntimeContext = %#v, want externalImportResumeSupported preserved from persisted state", merged.RuntimeContext)
 	}
 	if merged.RuntimeContext["externalSourcePath"] != "/home/user/.codex/sessions/abc.jsonl" {
 		t.Fatalf("RuntimeContext = %#v, want externalSourcePath preserved from persisted state", merged.RuntimeContext)
