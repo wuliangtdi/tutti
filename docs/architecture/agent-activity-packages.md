@@ -335,9 +335,13 @@ Composer-options loading may be suppressed while a new-session activation is
 pending, but that guard follows the current engine state rather than a
 mount-time snapshot. The transition from creating to settled must trigger a
 fresh target-scoped load so model, reasoning, skill, and slash-command metadata
-cannot remain absent for the lifetime of the node. Slash command fallback and
-effect policy remain provider-descriptor-owned; every supported provider that
-exposes local fallback commands declares them in its registry descriptor.
+cannot remain absent for the lifetime of the node. Before the first
+target-scoped composer-options snapshot arrives, configurable-setting support is
+unknown rather than unsupported: the composer footer renders disabled loading
+controls for permission and model/reasoning selection, then replaces or removes
+them according to the authoritative snapshot. Slash command fallback and effect
+policy remain provider-descriptor-owned; every supported provider that exposes
+local fallback commands declares them in its registry descriptor.
 
 `AgentActivityCreateSessionInput.providerTargetRef` is an optional opaque
 host-owned legacy reference for selecting which target under the real provider

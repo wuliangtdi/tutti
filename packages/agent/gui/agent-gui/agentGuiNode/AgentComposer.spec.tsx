@@ -523,6 +523,57 @@ vi.mock("./AgentMentionSearchController", () => ({
 }));
 
 describe("AgentComposer", () => {
+  it("shows settings loading controls before new-session composer options arrive", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("")}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          supportsModel: false,
+          supportsReasoningEffort: false,
+          supportsSpeed: false,
+          supportsPermissionMode: false,
+          isSettingsLoading: true,
+          availableModels: [],
+          availableReasoningEfforts: [],
+          availableSpeeds: [],
+          availablePermissionModes: []
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-permission-mode-dropdown")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("agent-model-reasoning-dropdown")
+    ).toBeInTheDocument();
+  });
+
   it("hides the permission dropdown and the plan badge when only plan mode is supported and inactive", () => {
     render(
       <AgentComposer

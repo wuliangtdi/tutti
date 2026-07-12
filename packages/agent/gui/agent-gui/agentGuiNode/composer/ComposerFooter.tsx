@@ -110,6 +110,7 @@ export function ComposerFooter({
   onSubmit,
   onClearGoalMode: clearGoalModeBadge
 }: Props) {
+  const showSettingsLoadingPlaceholders = composerSettings.isSettingsLoading;
   return (
     <>
       <div className={styles.composerFooter}>
@@ -473,7 +474,8 @@ export function ComposerFooter({
               }}
             />
           ) : null}
-          {composerSettings.supportsPermissionMode ? (
+          {showSettingsLoadingPlaceholders ||
+          composerSettings.supportsPermissionMode ? (
             <AgentPermissionModeDropdown
               composerSettings={composerSettings}
               disabled={permissionModeControlsDisabled}
@@ -485,7 +487,8 @@ export function ComposerFooter({
               onSettingsChange={(patch) => onSettingsChange(patch)}
             />
           ) : null}
-          {composerSettings.supportsModel ||
+          {showSettingsLoadingPlaceholders ||
+          composerSettings.supportsModel ||
           composerSettings.supportsReasoningEffort ? (
             <AgentModelReasoningDropdown
               composerSettings={composerSettings}
