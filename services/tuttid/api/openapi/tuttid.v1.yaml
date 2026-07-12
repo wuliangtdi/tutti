@@ -4365,6 +4365,10 @@ components:
           type: string
           description: Client source label such as cli. This is not an authorization boundary.
           minLength: 1
+        appId:
+          type: string
+          description: Calling workspace app id hint. Managed-model commands validate it against their grant binding.
+          nullable: true
         workspaceID:
           type: string
           nullable: true

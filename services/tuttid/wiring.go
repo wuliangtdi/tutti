@@ -28,6 +28,7 @@ import (
 	computercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/computer"
 	diagnosticscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/diagnostics"
 	issuemanagercli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/issuemanager"
+	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
@@ -385,6 +386,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	}
 	cliProviders := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
+		managedmodelscli.NewProvider(managedCredentials),
 		issuemanagercli.NewProvider(workspaceService, issueService, appCenterService),
 		referencescli.NewProvider(workspaceService, appCenterService, issueService),
 		workbenchappscli.NewProvider(

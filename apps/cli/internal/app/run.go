@@ -38,6 +38,8 @@ func RunWithProgram(ctx context.Context, program string, args []string, stdout i
 			return 2
 		}
 		return runStatus(ctx, commandName, opts, stdout, stderr)
+	case "managed-model":
+		return runManagedModel(ctx, commandName, opts, rest[1:], stdout, stderr)
 	default:
 		return runDynamic(ctx, commandName, opts, rest, stdout, stderr)
 	}
@@ -179,6 +181,7 @@ func includeIntegrationCapabilitiesFromEnv() bool {
 
 func cliInvokeContextFromEnv() daemon.InvokeContext {
 	return daemon.InvokeContext{
+		AppID:           strings.TrimSpace(os.Getenv("TUTTI_APP_ID")),
 		Source:          "cli",
 		WorkspaceID:     strings.TrimSpace(os.Getenv("TUTTI_WORKSPACE_ID")),
 		ParentCommandID: strings.TrimSpace(os.Getenv("TUTTI_APP_CLI_PARENT_COMMAND_ID")),

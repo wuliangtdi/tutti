@@ -66,12 +66,14 @@ func TestRunWithProgramUsesCommandNameInSubcommandUsage(t *testing.T) {
 }
 
 func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
+	t.Setenv("TUTTI_APP_ID", " automation-app ")
 	t.Setenv("TUTTI_WORKSPACE_ID", " workspace-1 ")
 	t.Setenv("TUTTI_APP_CLI_PARENT_COMMAND_ID", " parent-1 ")
 	t.Setenv("TUTTI_AGENT_SESSION_ID", " session-1 ")
 
 	context := cliInvokeContextFromEnv()
-	if context.Source != "cli" ||
+	if context.AppID != "automation-app" ||
+		context.Source != "cli" ||
 		context.WorkspaceID != "workspace-1" ||
 		context.ParentCommandID != "parent-1" ||
 		context.AgentSessionID != "session-1" {

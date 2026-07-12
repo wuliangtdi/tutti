@@ -197,6 +197,10 @@ export type CliInvokeContext = {
    * Client source label such as cli. This is not an authorization boundary.
    */
   source: string;
+  /**
+   * Calling workspace app id hint. Managed-model commands validate it against their grant binding.
+   */
+  appId?: string | null;
   workspaceID?: string | null;
   parentCommandId?: string | null;
   /**
