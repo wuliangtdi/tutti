@@ -148,9 +148,12 @@ export const zhCN = {
         apps: "应用",
         browser: "浏览器",
         close: "关闭",
+        closeRightPanel: "收起右侧面板",
         expandPanel: "扩大面板",
         files: "文件",
         messages: "消息",
+        newTab: "新建面板标签",
+        openRightPanel: "展开右侧面板",
         resizeSidebar: "调整工具侧栏宽度",
         shrinkPanel: "缩小面板",
         terminal: "终端",
@@ -477,14 +480,13 @@ export const zhCN = {
         wallpaperUploading: "上传中..."
       },
       general: {
-        workspaceUiModeLabel: "启动界面",
-        workspaceUiModeDescription:
-          "选择 Tutti 启动或打开工作区时创建哪一种原生窗口。",
+        workspaceUiModeLabel: "窗口交互模式",
         workspaceUiModeOptions: {
-          agentTitle: "Agent 模式",
-          agentDescription: "直接启动独立 Agent 窗口，工具从右侧栏展开。",
-          osTitle: "OS 模式",
-          osDescription: "保留原来的窗口、桌面、Dock 和启动台。"
+          agentTitle: "独立 Agent 窗口模式",
+          agentDescription:
+            "直接启动独立的 Agent 窗口，文件、工具等通过右侧面板打开",
+          osTitle: "沉浸 OS 模式",
+          osDescription: "保留沉浸式桌面体验，包括多窗口、Dock栏、启动台等"
         },
         workspaceUiModeSaveFailed: "暂时无法更新启动界面。",
         defaultAgentProviderDescription:

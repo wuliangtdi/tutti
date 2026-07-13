@@ -79,6 +79,10 @@ test("workspace settings general panel lists system controls", () => {
     source,
     /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.workspaceUiModeLabel[\s\S]*desktopWorkspaceUiModes\.map[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
   );
+  assert.doesNotMatch(
+    source,
+    /workspace\.settings\.general\.workspaceUiModeDescription/
+  );
   assert.match(source, /settingsService\.changeWorkspaceUiMode\(mode\)/);
 });
 

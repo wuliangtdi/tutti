@@ -4473,6 +4473,20 @@ aside.workspace-agents-status-panel
   cursor: grabbing !important;
 }
 
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .workbench-window__header {
+  z-index: calc(var(--z-panel) + 1);
+}
+
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header::after {
+  display: none;
+}
+
 .workbench-window:has([data-agent-gui-workbench-header="true"])
   .workbench-window__body {
   grid-row: 1;
@@ -4698,6 +4712,22 @@ aside.workspace-agents-status-panel
   grid-column: 1 / -1;
   width: min(100%, 720px);
   background: transparent;
+}
+
+/*
+ * The standalone window's tool actions belong to native-window chrome, so
+ * collapsing the conversation rail must not pull them into the 720px content
+ * cap. Let the primary row span the window and keep the same trailing inset as
+ * the expanded detail row.
+ */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"][data-agent-gui-workbench-header-collapsed="true"]
+  .agent-gui-workbench-header__primary {
+  width: 100%;
+}
+
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__secondary-accessory {
+  padding-right: 0;
 }
 
 /*
@@ -4929,6 +4959,24 @@ aside.workspace-agents-status-panel
   pointer-events: none;
 }
 
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header__session-title,
+.workbench-window:has(
+    .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  )
+  .agent-gui-workbench-header__detail-title {
+  box-sizing: border-box;
+  width: auto;
+  max-width: calc(
+    100% - var(--agent-gui-tool-sidebar-layout-width, 0px) - 16px
+  );
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
   .agent-gui-workbench-header__agent-brand,
 .agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
@@ -4995,7 +5043,8 @@ aside.workspace-agents-status-panel
 
 .agent-gui-workbench-header__detached-window
   + .agent-gui-workbench-header__rail-toggle {
-  margin-left: 0;
+  /* The primary row gap is 12px; keep this icon pair at a net 8px. */
+  margin-left: -4px;
 }
 
 .workbench-window:has([data-workbench-node-render-error="true"])
@@ -8788,7 +8837,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   flex: 1 1 auto;
   flex-direction: column;
   align-items: center;
-  padding: 2px 0 12px;
+  padding: 2px 0 16px;
   overflow-x: hidden;
   overflow-y: auto;
   mask-image: linear-gradient(
@@ -8815,8 +8864,20 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 0 0 12px;
+  padding: 0;
   -webkit-app-region: no-drag;
+}
+
+.agent-gui-node__provider-rail-config-footer {
+  padding-bottom: 8px;
+}
+
+.agent-gui-node__provider-rail-config-footer:last-child {
+  padding-bottom: 12px;
+}
+
+.agent-gui-node__provider-rail-sidebar-footer {
+  padding-bottom: 12px;
 }
 
 .agent-gui-node__provider-rail-config-button {
@@ -9067,6 +9128,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-hero {
+  /* Center one shared frame instead of each state's intrinsic content height.
+     Wrapped titles, composer controls, and readiness actions then grow down. */
+  --agent-gui-empty-hero-anchor-block-size: 398px;
+
   display: flex;
   width: 100%;
   min-height: 100%;
@@ -9080,6 +9145,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
   display: grid;
   width: min(820px, 100%);
+  block-size: var(--agent-gui-empty-hero-anchor-block-size);
+  align-content: start;
   gap: var(--agent-gui-empty-hero-gap);
   justify-items: center;
 }
@@ -9451,7 +9518,6 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__empty-provider-gate {
   max-width: 520px;
   gap: 8px;
-  transform: translateY(-40px);
 }
 
 /* Gate gap is 8px; add 16px so the icon-to-title spacing is 24px. */

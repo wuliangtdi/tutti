@@ -70,7 +70,7 @@ export const desktopWorkspaceUiModes = ["agent", "os"] as const;
 
 export type DesktopWorkspaceUiMode = (typeof desktopWorkspaceUiModes)[number];
 
-export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "agent";
+export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "os";
 
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;

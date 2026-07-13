@@ -9,7 +9,6 @@ import type {
   WorkbenchDisplayMode,
   WorkbenchHostNodeHeaderWindowActions
 } from "@tutti-os/workbench-surface";
-import { ExternalLink } from "lucide-react";
 import {
   Button,
   PanelIcon,
@@ -20,6 +19,7 @@ import {
   cn
 } from "@tutti-os/ui-system";
 import { CreateChatIcon } from "@tutti-os/ui-system/icons";
+import openLinkLinedIconUrl from "../app/renderer/assets/icons/open-link-lined.svg";
 import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 
 const headerChromeIconButtonClassName =
@@ -63,6 +63,7 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   onOpenDetachedWindow?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
   showAppTitle?: boolean;
+  showConversationRailToggle?: boolean;
   showWindowControls?: boolean;
   title?: string;
   windowActions?: Pick<
@@ -90,6 +91,7 @@ export function AgentGuiWorkbenchHeader({
   onOpenDetachedWindow,
   onToggleConversationRail,
   showAppTitle = true,
+  showConversationRailToggle = true,
   showWindowControls = true,
   title: _title,
   windowActions,
@@ -210,29 +212,31 @@ export function AgentGuiWorkbenchHeader({
             onOpenDetachedWindow
           })
         : null,
-      createElement(
-        Button as never,
-        {
-          "aria-label": toggleLabel,
-          className: conversationRailToggleButtonClassName,
-          "data-agent-gui-conversation-rail-auto-collapsed":
-            isConversationRailAutoCollapsed ? "true" : undefined,
-          "data-agent-gui-conversation-rail-collapsed":
-            isConversationRailCollapsed ? "true" : undefined,
-          "data-testid": "agent-gui-toggle-conversation-rail",
-          size: "icon-sm",
-          title: toggleLabel,
-          type: "button",
-          variant: "ghost",
-          onClick: (event) => {
-            event.stopPropagation();
-            onToggleConversationRail(!isConversationRailCollapsed);
-          },
-          onDoubleClick: (event) => event.stopPropagation(),
-          onPointerDown: (event) => event.stopPropagation()
-        },
-        createElement(PanelIcon, { className: headerChromeIconClassName })
-      ),
+      showConversationRailToggle
+        ? createElement(
+            Button as never,
+            {
+              "aria-label": toggleLabel,
+              className: conversationRailToggleButtonClassName,
+              "data-agent-gui-conversation-rail-auto-collapsed":
+                isConversationRailAutoCollapsed ? "true" : undefined,
+              "data-agent-gui-conversation-rail-collapsed":
+                isConversationRailCollapsed ? "true" : undefined,
+              "data-testid": "agent-gui-toggle-conversation-rail",
+              size: "icon-sm",
+              title: toggleLabel,
+              type: "button",
+              variant: "ghost",
+              onClick: (event) => {
+                event.stopPropagation();
+                onToggleConversationRail(!isConversationRailCollapsed);
+              },
+              onDoubleClick: (event) => event.stopPropagation(),
+              onPointerDown: (event) => event.stopPropagation()
+            },
+            createElement(PanelIcon, { className: headerChromeIconClassName })
+          )
+        : null,
       isConversationRailCollapsed && onCreateConversation
         ? createElement(
             Button as never,
@@ -350,9 +354,22 @@ function createDetachedWindowButton({
       onDoubleClick: (event) => event.stopPropagation(),
       onPointerDown: (event) => event.stopPropagation()
     },
-    createElement(ExternalLink, {
+    createElement("span", {
       "aria-hidden": true,
-      className: headerChromeIconClassName
+      className: headerChromeIconClassName,
+      "data-agent-gui-icon": "open-link-lined",
+      style: {
+        backgroundColor: "currentColor",
+        display: "block",
+        WebkitMaskImage: `url("${openLinkLinedIconUrl}")`,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskImage: `url("${openLinkLinedIconUrl}")`,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain"
+      }
     })
   );
 

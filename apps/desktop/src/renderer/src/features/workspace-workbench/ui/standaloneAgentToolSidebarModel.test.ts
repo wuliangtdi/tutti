@@ -84,7 +84,26 @@ test("standalone agent tool sidebar opens a requested panel without toggling it 
   assert.deepEqual(appsOpen.mountedPanels, ["files", "apps"]);
 });
 
-test("standalone agent tool sidebar keeps the browser panel and terminal tray independent", () => {
+test("standalone agent tool sidebar switches between mounted file and terminal tabs", () => {
+  const filesOpen = reduceStandaloneAgentToolSidebarState(
+    createStandaloneAgentToolSidebarState(),
+    { panel: "files", type: "open-panel" }
+  );
+  const terminalOpen = reduceStandaloneAgentToolSidebarState(filesOpen, {
+    panel: "terminal",
+    type: "open-panel"
+  });
+  const filesReopened = reduceStandaloneAgentToolSidebarState(terminalOpen, {
+    panel: "files",
+    type: "open-panel"
+  });
+
+  assert.equal(terminalOpen.activePanel, "terminal");
+  assert.equal(filesReopened.activePanel, "files");
+  assert.deepEqual(filesReopened.mountedPanels, ["files", "terminal"]);
+});
+
+test("standalone agent tool sidebar opens terminal in the right panel", () => {
   const initial = createStandaloneAgentToolSidebarState();
   const browserOpen = reduceStandaloneAgentToolSidebarState(initial, {
     panel: "browser",
@@ -113,8 +132,8 @@ test("standalone agent tool sidebar keeps the browser panel and terminal tray in
     terminalOpen: false
   });
   assert.deepEqual(terminalOpen, {
-    activePanel: "browser",
-    mountedPanels: ["browser"],
+    activePanel: "terminal",
+    mountedPanels: ["browser", "terminal"],
     terminalMounted: true,
     terminalOpen: true
   });
@@ -122,10 +141,14 @@ test("standalone agent tool sidebar keeps the browser panel and terminal tray in
   assert.equal(browserReopened.terminalOpen, true);
   assert.equal(browserClosed.activePanel, null);
   assert.equal(browserClosed.terminalOpen, true);
-  assert.deepEqual(browserClosed.mountedPanels, ["browser", "files"]);
+  assert.deepEqual(browserClosed.mountedPanels, [
+    "browser",
+    "terminal",
+    "files"
+  ]);
 });
 
-test("standalone agent terminal stays open while every right-sidebar panel switches", () => {
+test("standalone agent terminal remains mounted while right-sidebar panels switch", () => {
   const panels = ["files", "browser", "apps", "messages"] as const;
   let state = reduceStandaloneAgentToolSidebarState(
     createStandaloneAgentToolSidebarState(),
@@ -157,7 +180,7 @@ test("standalone agent tool sidebar reports browser and terminal as one active g
   );
   assert.equal(
     isStandaloneAgentToolGroupActive({
-      activePanel: "apps",
+      activePanel: "terminal",
       mountedPanels: [],
       terminalMounted: true,
       terminalOpen: true

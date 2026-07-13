@@ -151,9 +151,12 @@ export const en = {
         apps: "Apps",
         browser: "Browser",
         close: "Close",
+        closeRightPanel: "Close right panel",
         expandPanel: "Expand panel",
         files: "Files",
         messages: "Messages",
+        newTab: "New panel tab",
+        openRightPanel: "Open right panel",
         resizeSidebar: "Resize tool sidebar",
         shrinkPanel: "Shrink panel",
         terminal: "Terminal",
@@ -502,16 +505,14 @@ export const en = {
         wallpaperUploading: "Uploading..."
       },
       general: {
-        workspaceUiModeLabel: "Startup interface",
-        workspaceUiModeDescription:
-          "Choose which native window Tutti creates when it starts or opens a workspace.",
+        workspaceUiModeLabel: "Window interaction mode",
         workspaceUiModeOptions: {
-          agentTitle: "Agent mode",
+          agentTitle: "Standalone Agent window mode",
           agentDescription:
-            "Start in a focused standalone Agent window with tools in the right sidebar.",
-          osTitle: "OS mode",
+            "Launch directly into a standalone Agent window, with files, tools, and more opening in the right-side panel",
+          osTitle: "Immersive OS mode",
           osDescription:
-            "The original workspace with windows, desktop, dock, and launchpad."
+            "Keep the immersive desktop experience, including multiple windows, the Dock, Launchpad, and more"
         },
         workspaceUiModeSaveFailed:
           "We couldn't update the startup interface right now.",

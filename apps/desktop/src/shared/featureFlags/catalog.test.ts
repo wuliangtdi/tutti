@@ -26,15 +26,18 @@ test("labFeatureDefinitions excludes the master switch", () => {
   assert.ok(labFeatureDefinitions().every((d) => d.group === "lab"));
 });
 
-test("workspace UI mode defaults to Agent and preserves an explicit OS override", () => {
-  const osFlags = withDesktopWorkspaceUiMode(
+test("workspace UI mode defaults to OS and preserves explicit selections", () => {
+  const agentFlags = withDesktopWorkspaceUiMode(
     { [LAB_ENABLED_FLAG]: true },
-    "os"
+    "agent"
   );
-  const agentFlags = withDesktopWorkspaceUiMode(osFlags, "agent");
+  const osFlags = withDesktopWorkspaceUiMode(agentFlags, "os");
 
-  assert.equal(resolveDesktopWorkspaceUiMode({}), "agent");
+  assert.equal(resolveDesktopWorkspaceUiMode({}), "os");
+  assert.equal(resolveDesktopWorkspaceUiMode(agentFlags), "agent");
   assert.equal(resolveDesktopWorkspaceUiMode(osFlags), "os");
+  assert.equal(agentFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG], true);
   assert.equal(osFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG], false);
-  assert.deepEqual(agentFlags, { [LAB_ENABLED_FLAG]: true });
+  assert.equal(agentFlags[LAB_ENABLED_FLAG], true);
+  assert.equal(osFlags[LAB_ENABLED_FLAG], true);
 });

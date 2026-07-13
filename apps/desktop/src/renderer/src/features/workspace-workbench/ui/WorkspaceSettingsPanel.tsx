@@ -3916,14 +3916,9 @@ function WorkspaceGeneralSettingsSection({
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
       <div className="flex w-full flex-col gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.general.workspaceUiModeLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.general.workspaceUiModeDescription")}
-          </p>
-        </div>
+        <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+          {t("workspace.settings.general.workspaceUiModeLabel")}
+        </strong>
         <div
           aria-label={t("workspace.settings.general.workspaceUiModeLabel")}
           className="grid w-full grid-cols-2 gap-2 max-[430px]:grid-cols-1"

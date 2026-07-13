@@ -66,11 +66,8 @@ export function withDesktopWorkspaceUiMode(
   flags: DesktopFeatureFlags,
   mode: DesktopWorkspaceUiMode
 ): DesktopFeatureFlags {
-  const nextFlags = { ...flags };
-  if (mode === "agent") {
-    delete nextFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG];
-  } else {
-    nextFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG] = false;
-  }
-  return nextFlags;
+  return {
+    ...flags,
+    [WORKSPACE_STANDALONE_AGENT_MODE_FLAG]: mode === "agent"
+  };
 }

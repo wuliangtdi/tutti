@@ -169,6 +169,7 @@ export function WorkspaceFileManagerPane({
       resolveEntryIconUrl={resolveEntryIconUrl}
       renderExternalLocationContent={renderExternalLocationContent}
       session={session}
+      showPreviewPanel={false}
       surface="embedded"
     />
   );

@@ -23,9 +23,9 @@ standalone Agent windows.
 
 The mode belongs to the desktop host, not AgentGUI. It is encoded through the
 existing durable desktop feature-preference map under
-`workspace.standaloneAgentMode`; an absent flag resolves to Agent mode, while
-an explicit `false` value preserves the user's OS-mode choice. The mode helper
-preserves unrelated flags when it changes this value.
+`workspace.standaloneAgentMode`; an absent flag resolves to OS mode. A manual
+selection is always durable: `true` preserves Agent mode and `false` preserves
+OS mode. The mode helper preserves unrelated flags when it changes this value.
 
 Electron main resolves the preference before window creation. Agent mode uses
 `windowKind: "agent"` plus `view=agent`; OS mode uses the original workspace

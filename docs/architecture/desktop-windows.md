@@ -8,7 +8,7 @@ The desktop app currently has three user-facing shells:
 
 - a launcher-style dashboard window for no-context startup
 - a workspace window for an opened workspace
-- an Agent-only window used as the default focused Agent experience
+- an Agent-only window used as an optional focused Agent experience
 
 The window model is intentionally simple:
 
@@ -51,8 +51,8 @@ The current renderer content is intentionally minimal. The shell exists so the s
 
 ### Agent-Only Window
 
-The Agent-only window is the default product shell for users who want AgentGUI
-without the full workspace desktop around it.
+The Agent-only window is the focused product shell for users who select Agent
+mode and want AgentGUI without the full workspace desktop around it.
 
 It is responsible for:
 
@@ -79,8 +79,8 @@ Desktop startup currently follows this sequence:
 1. start or reconnect to `tuttid`
 2. ask `tuttid` for the daemon-selected startup workspace
 3. if a startup workspace exists, read the desktop startup-interface preference
-4. create the Agent-only window by default, or the workspace window when the
-   user explicitly selected OS mode
+4. create the OS workspace window by default, or the Agent-only window when the
+   user explicitly selected Agent mode
 5. otherwise open the dashboard window
 
 On macOS activation with no open windows, the app follows the same startup resolution instead of always forcing the dashboard.
@@ -117,7 +117,8 @@ preference and immediately replaces the current native window with the selected
 Agent-only or OS workspace window. The replacement request carries the selected
 window kind explicitly, so it does not depend on asynchronous preference-event
 delivery in the main process. Desktop waits until the replacement is ready
-before closing the source window.
+before closing the source window. An absent preference resolves to OS mode;
+manual selections persist `true` for Agent mode and `false` for OS mode.
 
 ## Current Renderer Shell Mapping
 
