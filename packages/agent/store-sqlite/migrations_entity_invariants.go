@@ -14,7 +14,7 @@ func (s *Store) applyWorkspaceAgentEntityInvariantsV1(ctx context.Context) error
 	if err != nil {
 		return fmt.Errorf("begin workspace agent entity invariants v1: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 CREATE TRIGGER workspace_agent_sessions_validate_insert
 BEFORE INSERT ON workspace_agent_sessions BEGIN

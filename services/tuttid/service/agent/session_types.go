@@ -75,7 +75,8 @@ type RuntimeController interface {
 	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
 	Sessions(workspaceID string) []ProviderRuntimeSession
 	Start(context.Context, RuntimeStartInput) (ProviderRuntimeSession, error)
-	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) error
+	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
+	InteractiveDisposition(workspaceID string, agentSessionID string, turnID string, requestID string) RuntimeInteractiveDisposition
 	Subscribe(workspaceID string, agentSessionID string) (<-chan RuntimeStreamEvent, func(), bool)
 	UpdateSettings(context.Context, RuntimeUpdateSettingsInput) error
 	ValidatePromptContent(context.Context, RuntimeExecInput) error
@@ -295,24 +296,12 @@ type ProviderRuntimeSession struct {
 	Status             string
 	TurnLifecycle      *TurnLifecycle
 	SubmitAvailability *SubmitAvailability
-	PendingInteractive *RuntimeInteractivePrompt
 	Visible            bool
 	Title              string
 	LastError          string
 	PinnedAtUnixMS     int64
 	CreatedAtUnixMS    int64
 	UpdatedAtUnixMS    int64
-}
-
-type RuntimeInteractivePrompt struct {
-	Kind      string
-	RequestID string
-	ToolName  string
-	Status    string
-	Input     map[string]any
-	Output    map[string]any
-	Error     map[string]any
-	Metadata  map[string]any
 }
 
 type RuntimeStartInput struct {
@@ -430,11 +419,27 @@ type RuntimeCloseInput struct {
 type RuntimeSubmitInteractiveInput struct {
 	WorkspaceID    string
 	AgentSessionID string
+	TurnID         string
 	RequestID      string
 	Action         string
 	OptionID       string
 	Payload        map[string]any
 }
+
+type RuntimeSubmitInteractiveResult struct {
+	Disposition RuntimeInteractiveDisposition
+}
+
+type RuntimeInteractiveDisposition string
+
+const (
+	RuntimeInteractiveDispositionPending     RuntimeInteractiveDisposition = "pending"
+	RuntimeInteractiveDispositionResolving   RuntimeInteractiveDisposition = "resolving"
+	RuntimeInteractiveDispositionAnswered    RuntimeInteractiveDisposition = "answered"
+	RuntimeInteractiveDispositionSuperseded  RuntimeInteractiveDisposition = "superseded"
+	RuntimeInteractiveDispositionInterrupted RuntimeInteractiveDisposition = "interrupted"
+	RuntimeInteractiveDispositionUnknown     RuntimeInteractiveDisposition = "unknown"
+)
 
 type RuntimeUpdateSettingsInput struct {
 	WorkspaceID    string

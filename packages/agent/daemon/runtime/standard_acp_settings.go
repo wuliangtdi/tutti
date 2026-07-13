@@ -424,8 +424,10 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	promptImage := acpSession.promptImage
 	var prompt *SessionInteractivePrompt
 	for _, pending := range acpSession.pendingApprovals {
-		prompt = pending.snapshotPrompt()
-		break
+		if candidate := pending.snapshotPrompt(); candidate != nil {
+			prompt = candidate
+			break
+		}
 	}
 	a.mu.Unlock()
 

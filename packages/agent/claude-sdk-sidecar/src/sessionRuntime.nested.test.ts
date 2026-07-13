@@ -181,6 +181,7 @@ test("nested approval after parent task completed still carries a turn id", asyn
     assert.equal(request?.payload?.turnId, "turn-1");
 
     session.submitInteractive(
+      "turn-1",
       String(request?.payload?.requestId ?? ""),
       "submit",
       "allow",

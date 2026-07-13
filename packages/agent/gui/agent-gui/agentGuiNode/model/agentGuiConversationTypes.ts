@@ -98,7 +98,6 @@ export interface AgentGUITimelineRow {
   eventType: string;
   status: string | null;
   callType?: string;
-  approval?: AgentGUIApprovalRequest | null;
   occurredAtUnixMs: number;
 }
 

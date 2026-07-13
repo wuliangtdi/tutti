@@ -25,6 +25,11 @@ describe("dispatchAgentPlanPromptAction", () => {
         type: "session/snapshotReceived",
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             workspaceId: "workspace-1",
             agentSessionId: "session-1",
             provider: "codex",

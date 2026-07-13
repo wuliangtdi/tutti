@@ -1,4 +1,5 @@
 import type { AgentActivityInteraction, AgentActivityTurn } from "../types.ts";
+import { shouldUseIncomingInteraction } from "../interactionMonotonicity.ts";
 import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivitySessionInput } from "../sessionNormalization.ts";
 import type {
@@ -34,7 +35,7 @@ export function replaceCanonicalSessionSnapshot(
       : current!;
     operationBySessionId[id] =
       state.operationBySessionId[id] ?? createOperation();
-    if (useIncoming && source.pendingInteractions !== undefined) {
+    if (useIncoming) {
       authoritativePendingVersionBySessionId[id] =
         sessionVersion(incomingSession);
     }
@@ -45,8 +46,8 @@ export function replaceCanonicalSessionSnapshot(
       mergeTurnInto(turnsById, state.turnsById, source.latestTurn);
     }
     for (const interaction of [
-      ...(source.latestTurnInteractions ?? []),
-      ...(source.pendingInteractions ?? [])
+      ...source.latestTurnInteractions,
+      ...source.pendingInteractions
     ]) {
       if (interaction.agentSessionId === id) {
         mergeInteractionInto(interactionsById, interaction);
@@ -129,7 +130,7 @@ export function upsertCanonicalSession(
   if (useIncoming && source.latestTurn?.agentSessionId === id) {
     next = upsertCanonicalTurn(next, source.latestTurn);
   }
-  for (const interaction of source.latestTurnInteractions ?? []) {
+  for (const interaction of source.latestTurnInteractions) {
     next = upsertCanonicalInteraction(next, interaction);
   }
   if (useIncoming) {
@@ -140,7 +141,7 @@ export function upsertCanonicalSession(
       sessionVersion(incoming)
     );
   }
-  for (const interaction of source.pendingInteractions ?? []) {
+  for (const interaction of source.pendingInteractions) {
     next = upsertCanonicalInteraction(next, interaction);
   }
   return next;
@@ -149,18 +150,27 @@ export function upsertCanonicalSession(
 function removeMissingPendingInteractions(
   state: SessionLifecycleState,
   agentSessionId: string,
-  incoming: readonly AgentActivityInteraction[] | undefined,
+  incoming: readonly AgentActivityInteraction[],
   authoritativeVersion: number
 ): SessionLifecycleState {
-  if (!incoming) return state;
-  const incomingIds = new Set(incoming.map((item) => item.requestId));
+  const incomingKeys = new Set(
+    incoming.map((item) =>
+      canonicalInteractionKey(item.agentSessionId, item.turnId, item.requestId)
+    )
+  );
   const interactionsById = { ...state.interactionsById };
   let changed = false;
   for (const [key, interaction] of Object.entries(state.interactionsById)) {
     if (
       interaction.agentSessionId === agentSessionId &&
       interaction.status === "pending" &&
-      !incomingIds.has(interaction.requestId) &&
+      !incomingKeys.has(
+        canonicalInteractionKey(
+          interaction.agentSessionId,
+          interaction.turnId,
+          interaction.requestId
+        )
+      ) &&
       authoritativeVersion >= interaction.updatedAtUnixMs
     ) {
       delete interactionsById[key];
@@ -229,24 +239,6 @@ function mergeInteractionInto(
   if (shouldUseIncomingInteraction(target[key], interaction)) {
     target[key] = { ...interaction };
   }
-}
-
-function shouldUseIncomingInteraction(
-  current: AgentActivityInteraction | undefined,
-  incoming: AgentActivityInteraction
-): boolean {
-  if (!current) return true;
-  if (incoming.updatedAtUnixMs < current.updatedAtUnixMs) return false;
-  const currentTerminal = current.status !== "pending";
-  const incomingTerminal = incoming.status !== "pending";
-  if (currentTerminal && incoming.status !== current.status) return false;
-  if (
-    incoming.updatedAtUnixMs === current.updatedAtUnixMs &&
-    currentTerminal !== incomingTerminal
-  ) {
-    return incomingTerminal;
-  }
-  return true;
 }
 
 function shouldUseIncomingTurn(

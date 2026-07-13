@@ -197,7 +197,7 @@ func TestCodexAppServerAdapterApprovalErrorPathResumesLifecycle(t *testing.T) {
 		}, nil)
 	}()
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 	})
 
 	adapter.rejectPendingRequests(session.AgentSessionID, errPermissionRequestCanceled)

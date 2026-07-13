@@ -10,6 +10,11 @@ function activatedSession(input: {
   workspaceId?: string | null;
 }) {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId: input.workspaceId ?? "workspace-1",
     agentSessionId: input.agentSessionId,
     provider: "codex" as const,

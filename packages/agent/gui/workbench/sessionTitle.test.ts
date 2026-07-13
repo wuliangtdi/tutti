@@ -156,6 +156,11 @@ function sessionState(input: {
   return {
     messages: input.messages ?? [],
     session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
       workspaceId: "workspace-1",
       agentSessionId: input.agentSessionId,
       provider: "codex",

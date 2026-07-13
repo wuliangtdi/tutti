@@ -1044,6 +1044,7 @@ func TestControllerExecRunsOutsideRequestContext(t *testing.T) {
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         execResult.TurnID,
 		RequestID:      "permission-1",
 		OptionID:       "allow_once",
 	}); err != nil {
@@ -1069,11 +1070,12 @@ func TestControllerExecTurnContextHasNoDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	_, err = controller.Exec(context.Background(), ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("wait for approval"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	adapter.waitForPrompt(t, "wait for approval")
@@ -1168,7 +1170,8 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	t.Parallel()
 
 	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
-	controller := NewController([]Adapter{adapter}, nil)
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
 	ctx := context.Background()
 
 	started, err := controller.Start(ctx, StartInput{
@@ -1181,11 +1184,12 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(ctx, ExecInput{
+	first, err := controller.Exec(ctx, ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("first prompt"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("first Exec: %v", err)
 	}
 	adapter.waitForPrompt(t, "first prompt")
@@ -1195,18 +1199,47 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide current turn"),
 		Guidance:       true,
+		Metadata: map[string]any{
+			"clientSubmitId": "guidance-submit-1",
+		},
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)
 	}
-	if !result.Accepted || result.TurnID == "" {
-		t.Fatalf("guidance result = %#v, want accepted turn id", result)
+	if !result.Accepted || result.TurnID != first.TurnID {
+		t.Fatalf("guidance result = %#v, want active turn id %q", result, first.TurnID)
 	}
 	if got := adapter.guidanceCalls.Load(); got != 1 {
 		t.Fatalf("guidance calls = %d, want 1", got)
 	}
 	if prompts := adapter.prompts(); len(prompts) != 1 || prompts[0] != "first prompt" {
 		t.Fatalf("adapter prompts after guidance = %#v, want only first prompt running", prompts)
+	}
+	reports := reporter.waitForReports(t, "guidance user message report", func(calls []reportCall) bool {
+		for _, call := range calls {
+			for _, update := range call.report.MessageUpdates {
+				if update.Payload["clientSubmitId"] == "guidance-submit-1" {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	var guidanceUpdate *agentsessionstore.WorkspaceAgentMessageUpdate
+	for _, report := range reportInputs(reports) {
+		for index := range report.MessageUpdates {
+			update := &report.MessageUpdates[index]
+			if update.Payload["clientSubmitId"] == "guidance-submit-1" {
+				guidanceUpdate = update
+				break
+			}
+		}
+		if guidanceUpdate != nil {
+			break
+		}
+	}
+	if guidanceUpdate == nil || guidanceUpdate.TurnID != first.TurnID {
+		t.Fatalf("guidance message update = %#v, want active turn id %q", guidanceUpdate, first.TurnID)
 	}
 
 	adapter.releaseNext()
@@ -1906,11 +1939,12 @@ func TestControllerCancelStopsBackgroundTurn(t *testing.T) {
 		t.Fatal("Subscribe returned ok=false")
 	}
 	defer unsubscribe()
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("run tests"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	waitForPublishedSessionEvent(t, events, EventCallStarted, "approval", "waiting_approval")
@@ -1926,6 +1960,7 @@ func TestControllerCancelStopsBackgroundTurn(t *testing.T) {
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         execResult.TurnID,
 		RequestID:      "permission-1",
 		OptionID:       "allow_once",
 	}); !errors.Is(err, ErrInteractiveRequestNotLive) {
@@ -3026,13 +3061,13 @@ type guidanceBlockingAdapter struct {
 	guidanceCalls atomic.Int64
 }
 
-func (a *guidanceBlockingAdapter) GuideActiveTurn(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+func (a *guidanceBlockingAdapter) GuideActiveTurn(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
 	a.guidanceCalls.Add(1)
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", map[string]any{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"guidance": true,
 			"steered":  true,
-		})),
+		}))),
 	}
 	if emit != nil {
 		emit(events)
@@ -4439,6 +4474,18 @@ func TestControllerSubmitInteractiveDoesNotSyncUnsupportedPermissionSelections(t
 	}
 }
 
+func TestControllerKeepsTerminalInteractiveDispositionAfterSessionRemoval(t *testing.T) {
+	controller := NewController(nil, nil)
+	controller.recordTerminalInteractiveDisposition("session-1", "turn-1", "request-1", InteractiveDispositionAnswered)
+
+	if got := controller.InteractiveDisposition("room-1", "session-1", "turn-1", "request-1"); got != InteractiveDispositionAnswered {
+		t.Fatalf("disposition without live session = %q, want answered", got)
+	}
+	if got := controller.InteractiveDisposition("room-1", "session-1", "turn-2", "request-1"); got != InteractiveDispositionUnknown {
+		t.Fatalf("different-turn disposition = %q, want unknown", got)
+	}
+}
+
 func TestControllerSubmitInteractivePermissionSyncPreservesCurrentSessionState(t *testing.T) {
 	t.Parallel()
 
@@ -5172,11 +5219,8 @@ func TestEnrichStreamStateEventsWithSessionSnapshotFillsRuntimeContext(t *testin
 		patch.SubmitAvailability.Reason != "active_turn" {
 		t.Fatalf("submit availability = %#v, want active_turn blocked", patch.SubmitAvailability)
 	}
-	if !patch.PendingInteractivePresent {
-		t.Fatal("pending interactive present = false, want true")
-	}
-	if patch.PendingInteractive == nil || patch.PendingInteractive.RequestID != "request-1" {
-		t.Fatalf("pending interactive = %#v, want request-1", patch.PendingInteractive)
+	if patch.InteractionTransition != nil {
+		t.Fatalf("snapshot enrichment interaction transition = %#v, want nil", patch.InteractionTransition)
 	}
 }
 

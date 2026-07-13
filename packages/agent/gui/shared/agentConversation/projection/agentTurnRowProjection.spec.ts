@@ -4,10 +4,11 @@ import type {
   AgentThinkingContentVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
-import type {
-  AgentComputedToolGroupVM,
-  AgentTurnSequenceItemVM
+import {
+  computeAgentToolGroups,
+  type AgentComputedToolGroupVM
 } from "./agentToolGroupingProjection";
+import type { AgentTurnSequenceItemVM } from "./agentTurnSequenceProjection";
 import {
   renderRun,
   tagOf,
@@ -62,6 +63,18 @@ const messageItem = (id: string): AgentTurnSequenceItemVM => ({
   kind: "assistant-message",
   message: message(id)
 });
+const userMessageItem = (id: string): AgentTurnSequenceItemVM => ({
+  kind: "user-message",
+  row: {
+    kind: "message",
+    id: `message:user:${id}`,
+    turnId: TURN,
+    speaker: "user",
+    messages: [message(id)],
+    thinking: [],
+    occurredAtUnixMs: null
+  }
+});
 const toolItem = (id: string): AgentTurnSequenceItemVM => ({
   kind: "tool-call",
   call: toolCall(id)
@@ -72,6 +85,7 @@ const noSkips = new Set<number>();
 
 describe("tagOf", () => {
   const table: { item: AgentTurnSequenceItemVM; expected: string }[] = [
+    { item: userMessageItem("u"), expected: "user-message" },
     { item: messageItem("m"), expected: "message" },
     { item: thinkingItem("t"), expected: "thinking" },
     { item: toolItem("c"), expected: "tool" }
@@ -121,6 +135,19 @@ describe("toRenderUnits", () => {
     ]);
   });
 
+  it("keeps user messages in the turn sequence", () => {
+    const units = toRenderUnits(
+      [messageItem("m1"), userMessageItem("u"), messageItem("m2")],
+      noGroups,
+      noSkips
+    );
+    expect(units.map((unit) => unit.tag)).toEqual([
+      "message",
+      "user-message",
+      "message"
+    ]);
+  });
+
   it("emits one unit per group and skips its span", () => {
     const sequence = [toolItem("c0"), toolItem("c1"), messageItem("m")];
     const group: AgentComputedToolGroupVM = {
@@ -145,6 +172,30 @@ describe("toRenderUnits", () => {
       new Set([1])
     );
     expect(units.map((unit) => unit.tag)).toEqual(["thinking", "message"]);
+  });
+});
+
+describe("computeAgentToolGroups", () => {
+  it("does not group tool calls across a mid-turn user message", () => {
+    const result = computeAgentToolGroups(
+      [
+        toolItem("c0"),
+        toolItem("c1"),
+        userMessageItem("u"),
+        toolItem("c2"),
+        toolItem("c3")
+      ],
+      { allowTrailingFinalization: true }
+    );
+
+    expect(
+      [...result.groups.values()].map((group) =>
+        group.calls.map((call) => call.id)
+      )
+    ).toEqual([
+      ["c0", "c1"],
+      ["c2", "c3"]
+    ]);
   });
 });
 
@@ -207,6 +258,14 @@ describe("renderRun", () => {
   it("renders a message row with empty thinking when none precedes it", () => {
     const row = renderRun([{ tag: "message", message: message("m") }], TURN);
     expect(row.kind === "message" && row.thinking).toEqual([]);
+  });
+
+  it("renders a user message row without changing its identity", () => {
+    const item = userMessageItem("u");
+    if (item.kind !== "user-message") throw new Error("expected user message");
+    expect(renderRun([{ tag: "user-message", row: item.row }], TURN)).toBe(
+      item.row
+    );
   });
 });
 
@@ -298,6 +357,20 @@ describe("projectTurnRows (behaviour preserved end-to-end)", () => {
     );
     expect(rowShape(rows)).toEqual([
       { kind: "message", id: "message:assistant:m", thinking: ["t"] }
+    ]);
+  });
+
+  it("a user message is a visible boundary between assistant rows", () => {
+    const rows = projectTurnRows(
+      [messageItem("m1"), userMessageItem("u"), messageItem("m2")],
+      noGroups,
+      noSkips,
+      TURN
+    );
+    expect(rows.map((row) => row.id)).toEqual([
+      "message:assistant:m1",
+      "message:user:u",
+      "message:assistant:m2"
     ]);
   });
 });

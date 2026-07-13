@@ -170,11 +170,11 @@ type ActivityStateReport struct {
 }
 
 type ActivityStateReportResult struct {
-	State               StateReportResult
-	Turn                Turn
-	TurnAccepted        bool
-	Interaction         Interaction
-	InteractionAccepted bool
+	State             StateReportResult
+	Turn              Turn
+	TurnAccepted      bool
+	Interaction       Interaction
+	InteractionResult InteractionTransitionResult
 }
 
 // Closed protocol v2 turn phase vocabulary. The storage CHECK constraints
@@ -280,6 +280,14 @@ type InteractionUpsert struct {
 	Metadata         map[string]any
 	OccurredAtUnixMS int64
 }
+
+type InteractionTransitionResult string
+
+const (
+	InteractionTransitionApplied        InteractionTransitionResult = "applied"
+	InteractionTransitionAlreadyApplied InteractionTransitionResult = "already_applied"
+	InteractionTransitionConflict       InteractionTransitionResult = "conflict"
+)
 
 type ListSessionInteractionsInput struct {
 	WorkspaceID    string

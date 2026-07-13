@@ -133,7 +133,9 @@ func isReportableActivityType(eventType activityshared.EventType) bool {
 		activityshared.EventMessageCreated,
 		activityshared.EventCallStarted,
 		activityshared.EventCallCompleted,
-		activityshared.EventCallFailed:
+		activityshared.EventCallFailed,
+		activityshared.EventInteractionRequested,
+		activityshared.EventInteractionSuperseded:
 		return true
 	default:
 		return false

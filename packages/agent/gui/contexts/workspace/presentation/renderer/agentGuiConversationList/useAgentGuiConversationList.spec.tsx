@@ -49,6 +49,11 @@ describe("useAgentGuiConversationList", () => {
         type: "session/snapshotReceived",
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             createdAtUnixMs: 2,
             cwd: "/workspace",

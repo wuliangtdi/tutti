@@ -22,24 +22,26 @@ const (
 type EventType string
 
 const (
-	EventPresenceHeartbeat EventType = "presence.heartbeat"
-	EventSessionStarted    EventType = "session.started"
-	EventSessionUpdated    EventType = "session.updated"
-	EventSessionCompleted  EventType = "session.completed"
-	EventSessionFailed     EventType = "session.failed"
-	EventTurnStarted       EventType = "turn.started"
-	EventTurnUpdated       EventType = "turn.updated"
-	EventTurnCompleted     EventType = "turn.completed"
-	EventTurnFailed        EventType = "turn.failed"
-	EventMessageAppended   EventType = "message.appended"
-	EventMessageCreated    EventType = "message.created"
-	EventActivityStarted   EventType = "activity.started"
-	EventActivityUpdated   EventType = "activity.updated"
-	EventActivityCompleted EventType = "activity.completed"
-	EventActivityFailed    EventType = "activity.failed"
-	EventCallStarted       EventType = "call.started"
-	EventCallCompleted     EventType = "call.completed"
-	EventCallFailed        EventType = "call.failed"
+	EventPresenceHeartbeat     EventType = "presence.heartbeat"
+	EventSessionStarted        EventType = "session.started"
+	EventSessionUpdated        EventType = "session.updated"
+	EventSessionCompleted      EventType = "session.completed"
+	EventSessionFailed         EventType = "session.failed"
+	EventTurnStarted           EventType = "turn.started"
+	EventTurnUpdated           EventType = "turn.updated"
+	EventTurnCompleted         EventType = "turn.completed"
+	EventTurnFailed            EventType = "turn.failed"
+	EventMessageAppended       EventType = "message.appended"
+	EventMessageCreated        EventType = "message.created"
+	EventActivityStarted       EventType = "activity.started"
+	EventActivityUpdated       EventType = "activity.updated"
+	EventActivityCompleted     EventType = "activity.completed"
+	EventActivityFailed        EventType = "activity.failed"
+	EventCallStarted           EventType = "call.started"
+	EventCallCompleted         EventType = "call.completed"
+	EventCallFailed            EventType = "call.failed"
+	EventInteractionRequested  EventType = "interaction.requested"
+	EventInteractionSuperseded EventType = "interaction.superseded"
 )
 
 type PresenceStatus string
@@ -119,6 +121,20 @@ type Event struct {
 	Payload           EventPayload
 }
 
+// InteractionTransition is the provider-independent runtime statement for an
+// actionable interaction. Runtime reporters may create pending interactions
+// or supersede them; answered is owned exclusively by the durable response
+// operation.
+type InteractionTransition struct {
+	RequestID string
+	TurnID    string
+	Kind      string
+	Status    string
+	ToolName  string
+	Input     map[string]any
+	Metadata  map[string]any
+}
+
 type EventPayload struct {
 	PresenceStatus  string
 	LifecycleStatus string
@@ -142,6 +158,7 @@ type EventPayload struct {
 	Metadata        map[string]any
 	LeaseTTLSeconds int
 	Title           string
+	Interaction     *InteractionTransition
 }
 
 type EventContext struct {
@@ -249,6 +266,42 @@ func NewTurnFailed(ctx EventContext, turnID string) Event {
 		TurnOutcome: string(TurnOutcomeFailed),
 		CWD:         strings.TrimSpace(ctx.CWD),
 	})
+}
+
+func NewInteractionRequested(ctx EventContext, transition InteractionTransition) Event {
+	transition.Status = "pending"
+	return newInteractionTransitionEvent(ctx, EventInteractionRequested, transition)
+}
+
+func NewInteractionSuperseded(ctx EventContext, transition InteractionTransition) Event {
+	transition.Status = "superseded"
+	return newInteractionTransitionEvent(ctx, EventInteractionSuperseded, transition)
+}
+
+func newInteractionTransitionEvent(ctx EventContext, eventType EventType, transition InteractionTransition) Event {
+	transition.RequestID = strings.TrimSpace(transition.RequestID)
+	transition.TurnID = strings.TrimSpace(transition.TurnID)
+	transition.Kind = strings.TrimSpace(transition.Kind)
+	transition.Status = strings.TrimSpace(transition.Status)
+	transition.ToolName = strings.TrimSpace(transition.ToolName)
+	transition.Input = cloneMap(transition.Input)
+	transition.Metadata = cloneMap(transition.Metadata)
+	event := eventFromContext(ctx, eventType, EventPayload{
+		TurnID:      transition.TurnID,
+		Interaction: &transition,
+	})
+	return event
+}
+
+func cloneMap(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
 }
 
 func NewMessageAppended(ctx EventContext, role MessageRole, content string) Event {

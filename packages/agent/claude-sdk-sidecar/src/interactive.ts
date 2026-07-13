@@ -3,6 +3,7 @@ import type {
   PermissionResult,
   PermissionUpdate
 } from "@anthropic-ai/claude-agent-sdk";
+import { isDeepStrictEqual } from "node:util";
 import { answersFromInteractivePayload } from "./normalizer.ts";
 import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 import { stringValue } from "./runtimeValues.ts";
@@ -35,8 +36,29 @@ type PendingInteraction = {
   readonly reject: (error: Error) => void;
 };
 
+export type InteractiveDisposition =
+  | "pending"
+  | "answered"
+  | "superseded"
+  | "conflict"
+  | "unknown";
+
+export type InteractiveSubmitResult = {
+  readonly disposition: InteractiveDisposition;
+  readonly replayed?: boolean;
+};
+
+type TerminalInteraction = {
+  readonly disposition: "answered" | "superseded";
+  readonly submission?: InteractiveSubmission;
+};
+
+const TERMINAL_INTERACTION_CAPACITY = 1024;
+
 export class InteractiveCoordinator {
   private readonly pending = new Map<string, PendingInteraction>();
+  private readonly terminal = new Map<string, TerminalInteraction>();
+  private readonly terminalOrder: string[] = [];
   private readonly settings: SidecarSessionSettings;
   private readonly resolveTurnId: (options: ToolPermissionOptions) => string;
   private readonly activateSyntheticTurn: () => string;
@@ -55,28 +77,65 @@ export class InteractiveCoordinator {
   }
 
   submit(
+    turnId: string,
     requestId: string,
     action: string,
     optionId: string,
     payload: Record<string, unknown>
-  ): void {
-    const pending = this.pending.get(requestId);
-    if (!pending) {
-      throw new Error(`interactive request ${requestId} is no longer live`);
+  ): InteractiveSubmitResult {
+    const key = interactionKey(turnId, requestId);
+    const submission = { requestId, action, optionId, payload, turnId };
+    const previous = this.terminal.get(key);
+    if (previous) {
+      if (previous.disposition === "superseded") {
+        return { disposition: "superseded", replayed: true };
+      }
+      if (isDeepStrictEqual(previous.submission, submission)) {
+        return { disposition: "answered", replayed: true };
+      }
+      return { disposition: "conflict" };
     }
-    this.pending.delete(requestId);
-    pending.resolve({
-      requestId,
-      action,
-      optionId,
-      payload,
-      turnId: pending.turnId
-    });
+    const pending = this.pending.get(key);
+    if (!pending) {
+      return { disposition: "unknown" };
+    }
+    this.pending.delete(key);
+    this.recordTerminal(key, { disposition: "answered", submission });
+    pending.resolve(submission);
+    return { disposition: "answered", replayed: false };
+  }
+
+  disposition(
+    turnId: string,
+    requestId: string,
+    expected?: Omit<InteractiveSubmission, "requestId" | "turnId">
+  ): InteractiveSubmitResult {
+    const key = interactionKey(turnId, requestId);
+    const terminal = this.terminal.get(key);
+    if (terminal) {
+      if (
+        terminal.disposition === "answered" &&
+        expected !== undefined &&
+        !isDeepStrictEqual(terminal.submission, {
+          requestId,
+          turnId,
+          ...expected
+        })
+      ) {
+        return { disposition: "conflict" };
+      }
+      return { disposition: terminal.disposition, replayed: true };
+    }
+    if (this.pending.has(key)) {
+      return { disposition: "pending" };
+    }
+    return { disposition: "unknown" };
   }
 
   rejectAll(error: Error): void {
-    for (const [requestId, pending] of this.pending) {
-      this.pending.delete(requestId);
+    for (const [key, pending] of this.pending) {
+      this.pending.delete(key);
+      this.recordTerminal(key, { disposition: "superseded" });
       pending.reject(error);
     }
   }
@@ -186,14 +245,16 @@ export class InteractiveCoordinator {
     const turnId =
       this.resolveTurnId(callbackOptions) || this.activateSyntheticTurn();
     const request = new Promise<InteractiveSubmission>((resolve, reject) => {
-      this.pending.set(requestId, { turnId, resolve, reject });
+      const key = interactionKey(turnId, requestId);
+      this.pending.set(key, { turnId, resolve, reject });
       callbackOptions.signal.addEventListener(
         "abort",
         () => {
-          if (!this.pending.has(requestId)) {
+          if (!this.pending.has(key)) {
             return;
           }
-          this.pending.delete(requestId);
+          this.pending.delete(key);
+          this.recordTerminal(key, { disposition: "superseded" });
           reject(new Error("Tool use aborted"));
         },
         { once: true }
@@ -235,4 +296,22 @@ export class InteractiveCoordinator {
       }
     });
   }
+
+  private recordTerminal(key: string, terminal: TerminalInteraction): void {
+    if (this.terminal.has(key)) {
+      return;
+    }
+    this.terminal.set(key, terminal);
+    this.terminalOrder.push(key);
+    while (this.terminalOrder.length > TERMINAL_INTERACTION_CAPACITY) {
+      const oldest = this.terminalOrder.shift();
+      if (oldest !== undefined) {
+        this.terminal.delete(oldest);
+      }
+    }
+  }
+}
+
+function interactionKey(turnId: string, requestId: string): string {
+  return `${turnId.trim()}\u0000${requestId.trim()}`;
 }

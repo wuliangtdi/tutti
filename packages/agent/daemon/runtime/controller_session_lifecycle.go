@@ -226,14 +226,20 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 }
 
 func (c *Controller) HasActiveTurn(roomID, agentSessionID string) bool {
+	_, ok := c.activeTurnID(roomID, agentSessionID)
+	return ok
+}
+
+func (c *Controller) activeTurnID(roomID, agentSessionID string) (string, bool) {
 	if c == nil {
-		return false
+		return "", false
 	}
 	key := sessionKey(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	_, ok := c.turns[key]
-	return ok
+	turn, ok := c.turns[key]
+	turnID := strings.TrimSpace(turn.turnID)
+	return turnID, ok && turnID != ""
 }
 
 func (c *Controller) SetVisible(ctx context.Context, roomID, agentSessionID string, visible bool) (Session, error) {

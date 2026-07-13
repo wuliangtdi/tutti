@@ -130,6 +130,87 @@ test("controller updates canonical turn and interaction entities independently",
   assert.equal(updated?.pendingInteractions?.[0]?.requestId, "request-1");
 });
 
+test("controller does not revive a terminal interaction from a delayed pending update", () => {
+  const controller = loadedController();
+  controller.applyActivityUpdatedEvent(
+    interactionUpdatedEvent({ status: "pending", updatedAtUnixMs: 100 })
+  );
+  controller.applyActivityUpdatedEvent(
+    interactionUpdatedEvent({ status: "answered", updatedAtUnixMs: 200 })
+  );
+
+  const delayed = controller.applyActivityUpdatedEvent(
+    interactionUpdatedEvent({ status: "pending", updatedAtUnixMs: 100 })
+  );
+  const updated = controller.getSnapshot().sessions[0];
+
+  assert.equal(delayed.applied, false);
+  assert.deepEqual(updated?.pendingInteractions, []);
+  assert.equal(updated?.latestTurnInteractions[0]?.status, "answered");
+});
+
+test("controller scopes pending interaction removal by turn and request id", () => {
+  const controller = loadedController();
+  controller.applyActivityUpdatedEvent(
+    interactionUpdatedEvent({
+      status: "pending",
+      turnId: "turn-2",
+      updatedAtUnixMs: 200
+    })
+  );
+
+  controller.applyActivityUpdatedEvent(
+    interactionUpdatedEvent({
+      status: "answered",
+      turnId: "turn-1",
+      updatedAtUnixMs: 300
+    })
+  );
+  const updated = controller.getSnapshot().sessions[0];
+
+  assert.equal(updated?.pendingInteractions.length, 1);
+  assert.equal(updated?.pendingInteractions[0]?.turnId, "turn-2");
+  assert.equal(updated?.pendingInteractions[0]?.requestId, "request-1");
+  assert.equal(updated?.latestTurnInteractions.length, 1);
+  assert.equal(updated?.latestTurnInteractions[0]?.turnId, "turn-2");
+  assert.equal(updated?.latestTurnInteractions[0]?.status, "pending");
+});
+
+function interactionUpdatedEvent(
+  overrides: Partial<{
+    requestId: string;
+    status: "answered" | "pending" | "superseded";
+    turnId: string;
+    updatedAtUnixMs: number;
+  }>
+): AgentActivityUpdatedEvent {
+  const updatedAtUnixMs = overrides.updatedAtUnixMs ?? 100;
+  return {
+    agentSessionId: "session-1",
+    workspaceId: "workspace-1",
+    eventType: "interaction_update",
+    data: {
+      agentSessionId: "session-1",
+      eventType: "interaction_update",
+      interaction: {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 50,
+        input: null,
+        kind: "question",
+        metadata: null,
+        output: null,
+        requestId: overrides.requestId ?? "request-1",
+        status: overrides.status ?? "pending",
+        turnId: overrides.turnId ?? "turn-1",
+        toolName: null,
+        updatedAtUnixMs
+      },
+      occurredAtUnixMs: updatedAtUnixMs,
+      workspaceId: "workspace-1"
+    }
+  };
+}
+
 function loadedController() {
   const controller = createAgentActivityController({
     adapter: adapter(),
@@ -141,6 +222,11 @@ function loadedController() {
 
 function session(): AgentActivitySession {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     activeTurnId: null,
     agentSessionId: "session-1",
     cwd: "/workspace",

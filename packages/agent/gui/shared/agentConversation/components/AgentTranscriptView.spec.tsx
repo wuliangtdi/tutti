@@ -1046,6 +1046,11 @@ describe("AgentTranscriptView", () => {
         conversation={projectAgentConversationVM(
           detailViewModel({
             session: normalizeAgentActivitySession({
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               workspaceId: "workspace-1",
               agentSessionId: "session-1",
               userId: "user-1",
@@ -1720,6 +1725,11 @@ function detailViewModel(
       userAvatarUrl: ""
     },
     session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
       workspaceId: "workspace-1",
       agentSessionId: "session-1",
       userId: "user-1",

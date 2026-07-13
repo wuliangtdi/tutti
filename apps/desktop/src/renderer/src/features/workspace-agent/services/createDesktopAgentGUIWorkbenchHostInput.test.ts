@@ -1377,6 +1377,11 @@ function createWorkspaceAgentActivityService(
           status: input.mode === "existing" ? "already_attached" : "attached"
         },
         session: normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           agentSessionId: input.agentSessionId,
           createdAtUnixMs: 1,
           workspaceId: input.workspaceId,
@@ -1570,6 +1575,11 @@ function createWorkspaceAgentActivityService(
 
 function emptySession(): AgentActivitySnapshot["sessions"][number] {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId,
     agentSessionId: "session-1",
     provider: "codex",

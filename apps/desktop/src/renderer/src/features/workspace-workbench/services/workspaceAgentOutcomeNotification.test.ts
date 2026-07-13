@@ -238,6 +238,11 @@ function canonicalTurn(
 
 function activitySession(): AgentActivitySession {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     activeTurn: null,
     agentSessionId: "session-1",
     cwd: "/workspace",

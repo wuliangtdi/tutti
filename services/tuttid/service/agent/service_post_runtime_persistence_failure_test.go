@@ -32,9 +32,14 @@ func TestSubmitInteractiveCompletionFailureIsRecoveredFromLeasedOperation(t *tes
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusLeased || len(runtime.submitInteractiveCalls) != 1 {
 		t.Fatalf("after completion failure operation=%#v runtime calls=%d", store.operation, len(runtime.submitInteractiveCalls))
 	}
+	if runtime.submitInteractiveCalls[0].TurnID != "turn-1" {
+		t.Fatalf("runtime interactive turn id = %q, want turn-1", runtime.submitInteractiveCalls[0].TurnID)
+	}
 
 	store.completeErr = nil
 	runtime.submitInteractiveErr = ErrInteractiveRequestNotLive
+	runtime.interactiveDisposition = RuntimeInteractiveDispositionAnswered
+	delete(runtime.sessions, "ws-1:session-1")
 	now = now.Add(runtimeOperationLeaseDuration)
 	if err := service.StepRuntimeOperationWorker(context.Background(), false); err != nil {
 		t.Fatalf("StepRuntimeOperationWorker() error = %v", err)
@@ -148,6 +153,7 @@ func TestRetryableRuntimeFailureReturnsReconciliationState(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
 	runtime.submitInteractiveErr = ErrRuntimeSessionDisconnected
+	runtime.interactiveDisposition = RuntimeInteractiveDispositionPending
 	store := &runtimeOperationMemoryStore{}
 	service := newIsolatedAgentService(runtime)
 	service.RuntimeOperationStore = store
@@ -164,6 +170,54 @@ func TestRetryableRuntimeFailureReturnsReconciliationState(t *testing.T) {
 	}
 	if store.operation.NextAttemptAtMS <= now.UnixMilli() {
 		t.Fatalf("next attempt = %d, want backoff after %d", store.operation.NextAttemptAtMS, now.UnixMilli())
+	}
+}
+
+func TestTerminalRuntimeDispositionCompletesInteractiveOperationAsSuperseded(t *testing.T) {
+	for _, disposition := range []RuntimeInteractiveDisposition{
+		RuntimeInteractiveDispositionSuperseded,
+		RuntimeInteractiveDispositionInterrupted,
+	} {
+		t.Run(string(disposition), func(t *testing.T) {
+			runtime := newFakeRuntime()
+			runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
+			runtime.submitInteractiveErr = ErrInteractiveRequestNotLive
+			runtime.interactiveDisposition = disposition
+			store := &runtimeOperationMemoryStore{}
+			service := newIsolatedAgentService(runtime)
+			service.RuntimeOperationStore = store
+			service.RuntimeOperationOwner = "worker-a"
+			service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+			service.TurnStore = runtimeOperationTurnStore("turn-1", "request-1")
+
+			if _, err := service.SubmitInteractive(context.Background(), "ws-1", "session-1", "request-1", SubmitInteractiveInput{OptionID: stringRef("approve")}); err != nil {
+				t.Fatalf("SubmitInteractive() error = %v", err)
+			}
+			if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted ||
+				store.operation.Result != agentactivitybiz.RuntimeOperationResultSuperseded {
+				t.Fatalf("operation = %#v, want completed superseded", store.operation)
+			}
+		})
+	}
+}
+
+func TestUnknownRuntimeDispositionFailsInteractiveOperation(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
+	runtime.submitInteractiveErr = ErrInteractiveRequestNotLive
+	runtime.interactiveDisposition = RuntimeInteractiveDispositionUnknown
+	store := &runtimeOperationMemoryStore{}
+	service := newIsolatedAgentService(runtime)
+	service.RuntimeOperationStore = store
+	service.RuntimeOperationOwner = "worker-a"
+	service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+	service.TurnStore = runtimeOperationTurnStore("turn-1", "request-1")
+
+	if _, err := service.SubmitInteractive(context.Background(), "ws-1", "session-1", "request-1", SubmitInteractiveInput{OptionID: stringRef("approve")}); err == nil {
+		t.Fatal("SubmitInteractive() error = nil, want unknown disposition error")
+	}
+	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusFailed {
+		t.Fatalf("operation = %#v, want failed", store.operation)
 	}
 }
 

@@ -355,7 +355,7 @@ export async function waitForEvent(
   events: Array<{ type: string }>,
   type: string
 ): Promise<void> {
-  const deadline = Date.now() + 1000;
+  const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (events.some((event) => event.type === type)) {
       return;

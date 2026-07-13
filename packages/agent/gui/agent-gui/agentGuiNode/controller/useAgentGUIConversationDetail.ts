@@ -28,9 +28,7 @@ import type {
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { providerSkillsFromComposerOptions } from "./agentGuiController.composerHelpers";
 import {
-  approvalRequestFromConversation,
   interactiveApprovalFromInteraction,
-  interactivePromptFromConversation,
   interactivePromptFromInteraction
 } from "./agentGuiController.interactiveHelpers";
 import { isNonRetryableResumeErrorCode } from "./agentGuiController.errors";
@@ -248,22 +246,16 @@ export function useAgentGUIConversationDetail(
       [...input.activePendingInteractions]
         .reverse()
         .find((candidate) => candidate.kind === "approval") ?? null;
-    return (
-      interactiveApprovalFromInteraction(interaction) ??
-      approvalRequestFromConversation(conversation)
-    );
-  }, [input.activePendingInteractions, conversation]);
+    return interactiveApprovalFromInteraction(interaction);
+  }, [input.activePendingInteractions]);
   const rawPendingInteractivePrompt =
     useMemo<AgentGUIInteractivePrompt | null>(() => {
       const interaction =
         [...input.activePendingInteractions]
           .reverse()
           .find((candidate) => candidate.kind !== "approval") ?? null;
-      return (
-        interactivePromptFromInteraction(interaction) ??
-        interactivePromptFromConversation(conversation)
-      );
-    }, [input.activePendingInteractions, conversation]);
+      return interactivePromptFromInteraction(interaction);
+    }, [input.activePendingInteractions]);
   const queuedPrompts: AgentGUIQueuedPromptVM[] = input.activeConversationId
     ? input.activeQueuedPrompts.map((prompt) => ({
         id: prompt.id,

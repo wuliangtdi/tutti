@@ -14,6 +14,11 @@ test("consumer status is derived only from canonical turn and interaction entiti
   state = rootEngineReducer(state, {
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         activeTurn: {
           agentSessionId: "session-1",
           phase: "running",

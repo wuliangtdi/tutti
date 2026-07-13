@@ -120,7 +120,7 @@ func (s *Store) applyWorkspaceAgentActivityInteractionsV2(ctx context.Context) e
 	if err != nil {
 		return fmt.Errorf("begin workspace agent interactions v2: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 CREATE TABLE workspace_agent_interactions_v2 (
   workspace_id TEXT NOT NULL,

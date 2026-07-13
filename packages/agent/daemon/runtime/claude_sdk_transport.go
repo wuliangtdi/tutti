@@ -30,8 +30,13 @@ func (s *claudeSDKAdapterSession) send(request claudeSDKSidecarRequest) error {
 }
 
 func (a *ClaudeCodeSDKAdapter) roundTripClaudeSDK(ctx context.Context, agentSessionID string, adapterSession *claudeSDKAdapterSession, request claudeSDKSidecarRequest) error {
+	_, err := a.roundTripClaudeSDKResponse(ctx, agentSessionID, adapterSession, request)
+	return err
+}
+
+func (a *ClaudeCodeSDKAdapter) roundTripClaudeSDKResponse(ctx context.Context, agentSessionID string, adapterSession *claudeSDKAdapterSession, request claudeSDKSidecarRequest) (claudeSDKSidecarEvent, error) {
 	if adapterSession == nil {
-		return ErrSessionDisconnected
+		return claudeSDKSidecarEvent{}, ErrSessionDisconnected
 	}
 	if strings.TrimSpace(request.ID) == "" {
 		request.ID = newID()
@@ -41,38 +46,38 @@ func (a *ClaudeCodeSDKAdapter) roundTripClaudeSDK(ctx context.Context, agentSess
 	a.mu.Unlock()
 	if !readerStarted {
 		if err := adapterSession.send(request); err != nil {
-			return err
+			return claudeSDKSidecarEvent{}, err
 		}
-		return adapterSession.roundTripDirect(ctx, request)
+		return adapterSession.roundTripDirectResponse(ctx, request)
 	}
 	response := a.registerClaudeSDKResponse(adapterSession, request.ID)
 	if err := adapterSession.send(request); err != nil {
 		a.unregisterClaudeSDKResponse(adapterSession, request.ID, response)
-		return err
+		return claudeSDKSidecarEvent{}, err
 	}
 	select {
 	case event := <-response:
-		return claudeSDKRoundTripResponseError(event)
+		return event, claudeSDKRoundTripResponseError(event)
 	case <-ctx.Done():
 		a.unregisterClaudeSDKResponse(adapterSession, request.ID, response)
 		_ = agentSessionID
-		return ctx.Err()
+		return claudeSDKSidecarEvent{}, ctx.Err()
 	}
 }
 
-func (s *claudeSDKAdapterSession) roundTripDirect(ctx context.Context, request claudeSDKSidecarRequest) error {
+func (s *claudeSDKAdapterSession) roundTripDirectResponse(ctx context.Context, request claudeSDKSidecarRequest) (claudeSDKSidecarEvent, error) {
 	if s == nil || s.reader == nil {
-		return nil
+		return claudeSDKSidecarEvent{}, nil
 	}
 	for {
 		event, err := s.reader.next(ctx)
 		if err != nil {
-			return err
+			return claudeSDKSidecarEvent{}, err
 		}
 		if strings.TrimSpace(event.ID) != strings.TrimSpace(request.ID) {
 			continue
 		}
-		return claudeSDKRoundTripResponseError(event)
+		return event, claudeSDKRoundTripResponseError(event)
 	}
 }
 

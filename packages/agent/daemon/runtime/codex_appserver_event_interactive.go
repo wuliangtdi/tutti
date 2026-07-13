@@ -42,7 +42,7 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 	return nil, nil
 }
 
-func (a *CodexAppServerAdapter) respondAppServerServerRequest(
+func (*CodexAppServerAdapter) respondAppServerServerRequest(
 	ctx context.Context,
 	client *codexAppServerClient,
 	session Session,
@@ -55,9 +55,9 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 	if pending == nil {
 		return
 	}
-	defer a.deletePendingRequest(session.AgentSessionID, pending.requestID)
 	selection, err := pending.wait(ctx)
 	if err != nil {
+		pending.finish(pendingInteractiveRequestStateInterrupted)
 		resolved := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
 		// The shared error path emits only call.failed; append the
 		// back-to-running turn.updated so the lifecycle cannot strand in
@@ -79,16 +79,15 @@ func (a *CodexAppServerAdapter) respondAppServerServerRequest(
 		}
 		return
 	}
-	resolved := normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
-	if emit != nil {
-		emit(resolved)
-	}
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
-		if emit != nil {
+		if pending.finish(pendingInteractiveRequestStateSuperseded) && emit != nil {
 			emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, err))
 		}
 		return
+	}
+	if pending.finish(pendingInteractiveRequestStateAnswered) && emit != nil {
+		emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil))
 	}
 }
 
@@ -122,6 +121,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	}
 	pending := &pendingInteractiveRequest{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
+		turnID:         strings.TrimSpace(turnID),
 		requestID:      requestID,
 		eventID:        newID(),
 		callID:         callID,
@@ -149,6 +149,7 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 			title,
 			payload,
 		),
+		normalizedInteractionRequestedEvent(session, turnID, pending),
 	}, pending, nil
 }
 
@@ -223,6 +224,7 @@ func (a *CodexAppServerAdapter) appServerUserInputRequested(
 	}
 	pending := &pendingInteractiveRequest{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
+		turnID:         strings.TrimSpace(turnID),
 		requestID:      requestID,
 		eventID:        newID(),
 		callID:         callID,
@@ -250,6 +252,7 @@ func (a *CodexAppServerAdapter) appServerUserInputRequested(
 			"AskUserQuestion",
 			payload,
 		),
+		normalizedInteractionRequestedEvent(session, turnID, pending),
 	}, pending, nil
 }
 

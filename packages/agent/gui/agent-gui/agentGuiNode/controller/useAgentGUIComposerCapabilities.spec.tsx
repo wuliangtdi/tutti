@@ -10,6 +10,11 @@ import { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabiliti
 describe("useAgentGUIComposerCapabilities", () => {
   it("projects typed canonical session usage into the composer footer", () => {
     const normalized = normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
       workspaceId: "workspace-1",
       agentSessionId: "session-1",
       provider: "opencode",

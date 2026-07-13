@@ -20,7 +20,7 @@ export function workspaceAgentSessionStatus(
     "activeTurn" | "latestTurn" | "pendingInteractions"
   >
 ): WorkspaceAgentSessionDerivedStatus {
-  if ((session.pendingInteractions?.length ?? 0) > 0) return "waiting";
+  if (session.pendingInteractions.length > 0) return "waiting";
   const activeTurn = session.activeTurn;
   if (activeTurn && activeTurn.phase !== "settled") {
     return activeTurn.phase === "waiting" ? "waiting" : "working";

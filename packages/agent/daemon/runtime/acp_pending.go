@@ -63,6 +63,7 @@ func acpPermissionOutOfBandResolvedEvents(session Session, turnID string, pendin
 	}
 	callType := firstNonEmpty(strings.TrimSpace(pending.callType), "approval")
 	return []activityshared.Event{
+		normalizedInteractionSupersededEvent(session, turnID, pending),
 		newTurnActivityEventWithID(session, pending.eventID, EventCallFailed, turnID, messageStreamStateFailed, "", pending.name, map[string]any{
 			"callId": pending.callID, "callType": callType, "name": pending.name, "toolName": pending.toolName,
 			"status": messageStreamStateFailed,

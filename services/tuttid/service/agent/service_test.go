@@ -4680,19 +4680,13 @@ func TestServiceEnsureRuntimeSessionDeletesStalePersistedHiddenLiveModelDiscover
 	}
 }
 
-func TestServiceGetDoesNotReconcileLiveRuntimePendingInteractive(t *testing.T) {
+func TestServiceGetDoesNotReconcileActionableInteractionFromStaleTranscript(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "claude-code",
 		Status:      "created",
-		PendingInteractive: &RuntimeInteractivePrompt{
-			Kind:      "exit-plan",
-			RequestID: "plan-1",
-			ToolName:  "ExitPlanMode",
-			Status:    "waiting",
-		},
 	}
 	service := newIsolatedAgentService(runtime)
 	service.SessionReader = fakeSessionReader{
@@ -4908,6 +4902,7 @@ type fakeRuntime struct {
 	sessions               map[string]ProviderRuntimeSession
 	submitInteractiveCalls []RuntimeSubmitInteractiveInput
 	submitInteractiveErr   error
+	interactiveDisposition RuntimeInteractiveDisposition
 	startErr               error
 	startCalls             []RuntimeStartInput
 	startHook              func(RuntimeStartInput, ProviderRuntimeSession) ProviderRuntimeSession
@@ -5179,12 +5174,23 @@ func (f *fakeRuntime) ValidatePromptContent(_ context.Context, input RuntimeExec
 	return f.validateErr
 }
 
-func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) error {
+func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error) {
 	f.submitInteractiveCalls = append(f.submitInteractiveCalls, input)
-	if f.submitInteractiveErr != nil {
-		return f.submitInteractiveErr
+	disposition := f.interactiveDisposition
+	if disposition == "" && f.submitInteractiveErr == nil {
+		disposition = RuntimeInteractiveDispositionAnswered
 	}
-	return nil
+	if f.submitInteractiveErr != nil {
+		return RuntimeSubmitInteractiveResult{Disposition: disposition}, f.submitInteractiveErr
+	}
+	return RuntimeSubmitInteractiveResult{Disposition: disposition}, nil
+}
+
+func (f *fakeRuntime) InteractiveDisposition(string, string, string, string) RuntimeInteractiveDisposition {
+	if f.interactiveDisposition == "" {
+		return RuntimeInteractiveDispositionUnknown
+	}
+	return f.interactiveDisposition
 }
 
 func (f *fakeRuntime) UpdateSettings(_ context.Context, input RuntimeUpdateSettingsInput) error {
@@ -5463,7 +5469,7 @@ func (r *activityProjectionRepoStub) ReportActivityState(_ context.Context, inpu
 			Kind:           input.Interaction.Kind,
 			Status:         input.Interaction.Status,
 		}
-		result.InteractionAccepted = true
+		result.InteractionResult = agentactivitybiz.InteractionTransitionApplied
 	}
 	return result, nil
 }
@@ -5558,7 +5564,7 @@ func (r *activityProjectionRepoStub) SettleStaleTurns(context.Context) ([]agenta
 	return nil, r.settleStaleErr
 }
 
-func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, bool, error) {
+func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert agentactivitybiz.InteractionUpsert) (agentactivitybiz.Interaction, agentactivitybiz.InteractionTransitionResult, error) {
 	return agentactivitybiz.Interaction{
 		WorkspaceID:    upsert.WorkspaceID,
 		AgentSessionID: upsert.AgentSessionID,
@@ -5566,7 +5572,7 @@ func (*activityProjectionRepoStub) UpsertInteraction(_ context.Context, upsert a
 		TurnID:         upsert.TurnID,
 		Kind:           upsert.Kind,
 		Status:         upsert.Status,
-	}, true, nil
+	}, agentactivitybiz.InteractionTransitionApplied, nil
 }
 
 func (*activityProjectionRepoStub) ListSessionInteractions(context.Context, agentactivitybiz.ListSessionInteractionsInput) ([]agentactivitybiz.Interaction, error) {

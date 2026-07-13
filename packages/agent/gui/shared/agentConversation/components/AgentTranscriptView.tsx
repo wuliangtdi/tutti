@@ -194,7 +194,9 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
   });
   const handleLocateUserMessage = useCallback(
     (item: AgentMessageLocatorItem) => {
-      const scrollParent = virtualizerHostRef.current?.parentElement ?? null;
+      const scrollParent = virtualizerHostRef.current
+        ? findMessageLocatorScrollParent(virtualizerHostRef.current)
+        : null;
       const scrollToRenderedRow = (): boolean => {
         const renderedRow = (
           scrollParent ?? document
@@ -229,7 +231,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
       setVirtualScrollElement(null);
       return;
     }
-    setVirtualScrollElement(virtualizerHostRef.current?.parentElement ?? null);
+    setVirtualScrollElement(
+      virtualizerHostRef.current
+        ? findMessageLocatorScrollParent(virtualizerHostRef.current)
+        : null
+    );
   }, [shouldVirtualize]);
 
   const renderRow = (

@@ -6,36 +6,39 @@ import {
   selectNeedsAttentionItems
 } from "./selectors.ts";
 import type {
+  AgentActivityInteraction,
   AgentActivityMessage,
-  AgentActivityNeedsAttentionKind,
   AgentActivitySession,
   AgentActivitySnapshot
 } from "./types.ts";
 import { normalizeAgentActivitySession } from "./sessionNormalization.ts";
 
-test("needs-attention selectors count pending permission and question items", () => {
-  const snapshot = snapshotWithMessages([
-    message({
-      messageId: "permission-1",
-      kind: "tool.permission_request",
-      payload: { summary: "Approve file edit" },
-      occurredAtUnixMs: 10
-    }),
-    message({
-      messageId: "question-1",
-      kind: "ask_user_question",
-      payload: { title: "Choose an option" },
-      occurredAtUnixMs: 20
-    }),
-    message({
-      messageId: "done-1",
-      kind: "tool.permission_request",
-      status: "completed",
-      occurredAtUnixMs: 30
-    })
-  ]);
+test("needs-attention selectors read only canonical pending interactions", () => {
+  const canonical = session({
+    pendingInteractions: [
+      interaction({
+        requestId: "approval-1",
+        kind: "approval",
+        input: { summary: "Approve file edit" },
+        updatedAtUnixMs: 10
+      }),
+      interaction({
+        requestId: "question-1",
+        kind: "question",
+        input: { questions: [{ question: "Choose an option" }] },
+        updatedAtUnixMs: 20
+      }),
+      interaction({
+        requestId: "plan-1",
+        kind: "plan",
+        toolName: "ExitPlanMode",
+        updatedAtUnixMs: 30
+      })
+    ]
+  });
+  const snapshot = snapshotWithSessions([canonical]);
 
-  assert.equal(selectNeedsAttentionCount(snapshot), 2);
+  assert.equal(selectNeedsAttentionCount(snapshot), 3);
   assert.deepEqual(
     selectNeedsAttentionItems(snapshot).map((item) => [
       item.kind,
@@ -44,8 +47,81 @@ test("needs-attention selectors count pending permission and question items", ()
       item.title
     ]),
     [
+      ["constraint", "ExitPlanMode", "codex", "Status card fields"],
       ["question", "Choose an option", "codex", "Status card fields"],
       ["permission", "Approve file edit", "codex", "Status card fields"]
+    ]
+  );
+});
+
+test("stale waiting transcript has no attention when canonical pending is empty", () => {
+  const snapshot = snapshotWithSessions([session()], {
+    "session-1": [
+      message({
+        messageId: "approval-stale",
+        status: "waiting_approval",
+        payload: { callType: "approval", toolName: "Approval" }
+      }),
+      message({
+        messageId: "question-stale",
+        status: "waiting_input",
+        payload: { callType: "interactive", toolName: "AskUserQuestion" }
+      })
+    ]
+  });
+
+  assert.equal(selectNeedsAttentionCount(snapshot), 0);
+  assert.deepEqual(selectNeedsAttentionItems(snapshot), []);
+});
+
+test("needs-attention selectors ignore non-pending interaction rows", () => {
+  const snapshot = snapshotWithSessions([
+    session({
+      pendingInteractions: [
+        interaction({ requestId: "answered", status: "answered" }),
+        interaction({ requestId: "superseded", status: "superseded" })
+      ]
+    })
+  ]);
+
+  assert.deepEqual(selectNeedsAttentionItems(snapshot), []);
+});
+
+test("needs-attention selectors sort canonical interactions by recency and composite id", () => {
+  const snapshot = snapshotWithSessions([
+    session({
+      pendingInteractions: [
+        interaction({ requestId: "b", updatedAtUnixMs: 100 }),
+        interaction({ requestId: "a", updatedAtUnixMs: 100 })
+      ]
+    }),
+    session({
+      agentSessionId: "session-2",
+      provider: "claude",
+      title: "Other session",
+      cwd: "/other",
+      pendingInteractions: [
+        interaction({
+          agentSessionId: "session-2",
+          requestId: "latest",
+          input: { title: "Newest" },
+          updatedAtUnixMs: 200
+        })
+      ]
+    })
+  ]);
+
+  assert.deepEqual(
+    selectNeedsAttentionItems(snapshot).map((item) => [
+      item.id,
+      item.provider,
+      item.summary,
+      item.occurredAtUnixMs
+    ]),
+    [
+      ["session-2:turn-1:latest", "claude", "Newest", 200],
+      ["session-1:turn-1:a", "codex", "approval", 100],
+      ["session-1:turn-1:b", "codex", "approval", 100]
     ]
   );
 });
@@ -66,315 +142,9 @@ test("agent activity display status normalizes raw status aliases", () => {
   assert.equal(normalizeAgentActivityDisplayStatus("error"), "failed");
 });
 
-test("needs-attention selectors treat waiting assistant constraints as actionable", () => {
-  const snapshot = snapshotWithMessages([
-    message({
-      messageId: "constraint-1",
-      kind: "message.assistant",
-      status: "waiting",
-      payload: { action: "constraint_adjustment", text: "Confirm constraint" }
-    }),
-    message({
-      messageId: "failed-1",
-      kind: "message.assistant",
-      status: "failed"
-    })
-  ]);
-
-  const items = selectNeedsAttentionItems(snapshot);
-  assert.equal(items.length, 1);
-  assert.equal(items[0]?.kind, "constraint");
-});
-
-test("needs-attention selectors classify adapter-normalized action metadata", () => {
-  const cases: Array<{
-    name: string;
-    expectedKind: AgentActivityNeedsAttentionKind;
-    message: Partial<AgentActivityMessage>;
-  }> = [
-    {
-      name: "permission from kind",
-      expectedKind: "permission",
-      message: {
-        messageId: "permission-kind",
-        kind: "tool.permission_request"
-      }
-    },
-    {
-      name: "approval from payload type",
-      expectedKind: "permission",
-      message: {
-        messageId: "approval-type",
-        kind: "tool.call",
-        payload: { type: "ApprovalRequest" }
-      }
-    },
-    {
-      name: "approval from call type",
-      expectedKind: "permission",
-      message: {
-        messageId: "approval-call-type",
-        kind: "tool_call",
-        status: "waiting_approval",
-        payload: { callType: "approval", toolName: "Approval" }
-      }
-    },
-    {
-      name: "permission from request type",
-      expectedKind: "permission",
-      message: {
-        messageId: "permission-request-type",
-        kind: "tool.call",
-        payload: { requestType: "permission" }
-      }
-    },
-    {
-      name: "question from kind",
-      expectedKind: "question",
-      message: {
-        messageId: "question-kind",
-        kind: "ask-user-question"
-      }
-    },
-    {
-      name: "question from action",
-      expectedKind: "question",
-      message: {
-        messageId: "question-action",
-        kind: "message.assistant",
-        payload: { action: "ask_user" }
-      }
-    },
-    {
-      name: "question from interactive tool name",
-      expectedKind: "question",
-      message: {
-        messageId: "question-tool",
-        kind: "tool_call",
-        status: "waiting_input",
-        payload: { callType: "interactive", toolName: "AskUserQuestion" }
-      }
-    },
-    {
-      name: "constraint from payload type",
-      expectedKind: "constraint",
-      message: {
-        messageId: "constraint-type",
-        kind: "message.assistant",
-        payload: { type: "ConstraintAdjustment" }
-      }
-    },
-    {
-      name: "fallback waiting assistant item",
-      expectedKind: "other",
-      message: {
-        messageId: "other-waiting",
-        kind: "message.assistant",
-        payload: { text: "Waiting for input" }
-      }
-    },
-    {
-      name: "fallback waiting system item",
-      expectedKind: "other",
-      message: {
-        messageId: "system-waiting",
-        role: "system",
-        kind: "system.prompt",
-        payload: { text: "Confirm system prompt" }
-      }
-    }
-  ];
-
-  for (const item of cases) {
-    const items = selectNeedsAttentionItems(
-      snapshotWithMessages([message(item.message)])
-    );
-    assert.equal(items.length, 1, item.name);
-    assert.equal(items[0]?.kind, item.expectedKind, item.name);
-  }
-});
-
-test("needs-attention selectors prefer more specific categories", () => {
-  const items = selectNeedsAttentionItems(
-    snapshotWithMessages([
-      message({
-        messageId: "permission-before-question",
-        kind: "ask_user_question",
-        payload: { type: "permission" }
-      }),
-      message({
-        messageId: "question-before-constraint",
-        kind: "message.assistant",
-        payload: { action: "ask_user_constraint" }
-      })
-    ])
-  );
-
-  assert.deepEqual(
-    items.map((item) => [item.id, item.kind]),
-    [
-      ["session-1:permission-before-question", "permission"],
-      ["session-1:question-before-constraint", "question"]
-    ]
-  );
-});
-
-test("needs-attention selectors ignore terminal and non-agent waiting messages", () => {
-  const snapshot = snapshotWithMessages([
-    message({
-      messageId: "completed-permission",
-      kind: "tool.permission_request",
-      status: "Completed"
-    }),
-    message({
-      messageId: "answered-question",
-      kind: "ask_user_question",
-      status: "answered"
-    }),
-    message({
-      messageId: "user-waiting",
-      role: "user",
-      kind: "message.user",
-      status: "waiting"
-    }),
-    message({
-      messageId: "assistant-working",
-      role: "assistant",
-      kind: "message.assistant",
-      status: "working"
-    })
-  ]);
-
-  assert.equal(selectNeedsAttentionCount(snapshot), 0);
-  assert.deepEqual(selectNeedsAttentionItems(snapshot), []);
-});
-
-test("needs-attention selectors use summary and timestamp fallbacks", () => {
-  const items = selectNeedsAttentionItems(
-    snapshotWithMessages([
-      message({
-        messageId: "display-prompt",
-        payload: {
-          displayPrompt: "Display prompt wins",
-          summary: "Summary loses"
-        },
-        occurredAtUnixMs: 60
-      }),
-      message({
-        messageId: "summary",
-        payload: { summary: "Summary wins", title: "Title loses" },
-        occurredAtUnixMs: 50
-      }),
-      message({
-        messageId: "title",
-        occurredAtUnixMs: undefined as unknown as number,
-        payload: { title: "Title wins", content: "Content loses" },
-        startedAtUnixMs: 40
-      }),
-      message({
-        messageId: "content",
-        occurredAtUnixMs: undefined as unknown as number,
-        payload: { content: "Content loses", text: "Text wins" },
-        completedAtUnixMs: 30
-      }),
-      message({
-        messageId: "text",
-        occurredAtUnixMs: undefined as unknown as number,
-        payload: { text: "Text wins" }
-      }),
-      message({
-        messageId: "kind",
-        occurredAtUnixMs: undefined as unknown as number,
-        payload: {}
-      })
-    ])
-  );
-
-  assert.deepEqual(
-    items.map((item) => [item.id, item.summary, item.occurredAtUnixMs]),
-    [
-      ["session-1:display-prompt", "Display prompt wins", 60],
-      ["session-1:summary", "Summary wins", 50],
-      ["session-1:title", "Title wins", 40],
-      ["session-1:content", "Text wins", 30],
-      ["session-1:kind", "message.assistant", 1],
-      ["session-1:text", "Text wins", 1]
-    ]
-  );
-});
-
-test("needs-attention selectors sort by recency then id across sessions", () => {
-  const snapshot = snapshotWithSessionMessages(
-    [
-      session({ agentSessionId: "session-1", updatedAtUnixMs: 10 }),
-      session({
-        agentSessionId: "session-2",
-        title: "Other session",
-        cwd: "/other",
-        provider: "claude",
-        updatedAtUnixMs: 30
-      })
-    ],
-    {
-      "session-1": [
-        message({
-          agentSessionId: "session-1",
-          messageId: "b",
-          occurredAtUnixMs: 100
-        }),
-        message({
-          agentSessionId: "session-1",
-          messageId: "a",
-          occurredAtUnixMs: 100
-        })
-      ],
-      "session-2": [
-        message({
-          agentSessionId: "session-2",
-          messageId: "latest",
-          payload: { title: "Newest" },
-          occurredAtUnixMs: 200
-        })
-      ],
-      "missing-session": [
-        message({
-          agentSessionId: "missing-session",
-          messageId: "fallback",
-          occurredAtUnixMs: 150
-        })
-      ]
-    }
-  );
-
-  const items = selectNeedsAttentionItems(snapshot);
-  assert.deepEqual(
-    items.map((item) => [
-      item.id,
-      item.provider,
-      item.title,
-      item.cwd,
-      item.occurredAtUnixMs
-    ]),
-    [
-      ["session-2:latest", "claude", "Other session", "/other", 200],
-      ["missing-session:fallback", "", "", "", 150],
-      ["session-1:a", "codex", "Status card fields", "/repo", 100],
-      ["session-1:b", "codex", "Status card fields", "/repo", 100]
-    ]
-  );
-});
-
-function snapshotWithMessages(
-  messages: AgentActivityMessage[]
-): AgentActivitySnapshot {
-  return snapshotWithSessionMessages([session()], {
-    "session-1": messages
-  });
-}
-
-function snapshotWithSessionMessages(
+function snapshotWithSessions(
   sessions: AgentActivitySession[],
-  sessionMessagesById: Record<string, AgentActivityMessage[]>
+  sessionMessagesById: Record<string, AgentActivityMessage[]> = {}
 ): AgentActivitySnapshot {
   return {
     workspaceId: "workspace-1",
@@ -389,6 +159,9 @@ function session(
   overrides: Partial<AgentActivitySession> = {}
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
+    activeTurnId: null,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     provider: "codex",
@@ -397,6 +170,25 @@ function session(
     updatedAtUnixMs: 1,
     ...overrides
   });
+}
+
+function interaction(
+  overrides: Partial<AgentActivityInteraction> = {}
+): AgentActivityInteraction {
+  return {
+    agentSessionId: "session-1",
+    requestId: "request-1",
+    turnId: "turn-1",
+    kind: "approval",
+    status: "pending",
+    toolName: null,
+    input: null,
+    metadata: null,
+    output: null,
+    createdAtUnixMs: 1,
+    updatedAtUnixMs: 1,
+    ...overrides
+  };
 }
 
 function message(
@@ -409,8 +201,8 @@ function message(
     version: 1,
     turnId: "turn-1",
     role: "assistant",
-    kind: "message.assistant",
-    status: "waiting",
+    kind: "tool_call",
+    status: "waiting_input",
     payload: {},
     occurredAtUnixMs: 1,
     ...overrides

@@ -70,6 +70,8 @@ type AsyncExecAdapter interface {
 }
 
 type ActiveTurnGuidanceAdapter interface {
+	// GuideActiveTurn appends guidance to the exact controller turn identified
+	// by turnID. The guidance submit does not own a separate turn lifecycle.
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 
@@ -107,6 +109,16 @@ type ConfigOptionsUpdateSinkAdapter interface {
 
 type InteractiveAdapter interface {
 	SubmitInteractive(context.Context, Session, SubmitInteractiveInput) (SubmitInteractiveResult, error)
+}
+
+type InteractiveDispositionAdapter interface {
+	InteractiveDisposition(Session, string, string) InteractiveDisposition
+}
+
+type InteractiveDispositionSink func(string, string, string, InteractiveDisposition)
+
+type InteractiveDispositionSinkAdapter interface {
+	SetInteractiveDispositionSink(InteractiveDispositionSink)
 }
 
 // InteractiveSelectionState is the provider adapter's narrow projection of a

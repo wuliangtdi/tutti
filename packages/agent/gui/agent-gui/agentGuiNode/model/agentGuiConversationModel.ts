@@ -65,11 +65,6 @@ export {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   resolveAgentGUIConversationSortTimeUnixMs
 } from "./agentGuiConversationTypes";
-export {
-  selectPendingApproval,
-  selectPendingApprovalFromTimelineItems,
-  selectPendingInteractivePromptFromTimelineItems
-} from "./agentGuiInteractiveProjection";
 export { resolveAgentGUIConversationProject } from "./agentGuiConversationProjectResolver";
 export type {
   AgentGUIConversationNoProjectPathResolver,

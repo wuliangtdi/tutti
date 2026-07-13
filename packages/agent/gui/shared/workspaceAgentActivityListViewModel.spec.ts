@@ -14,15 +14,31 @@ import {
   type WorkspaceAgentActivityCard
 } from "./workspaceAgentActivityListViewModel";
 
+type TestAgentActivitySessionInput = Omit<
+  AgentActivitySessionInput,
+  "activeTurnId" | "latestTurnInteractions" | "pendingInteractions"
+> &
+  Partial<
+    Pick<
+      AgentActivitySessionInput,
+      "activeTurnId" | "latestTurnInteractions" | "pendingInteractions"
+    >
+  >;
+
 function canonicalSource<
-  Source extends { sessions: readonly AgentActivitySessionInput[] }
+  Source extends { sessions: readonly TestAgentActivitySessionInput[] }
 >(
   source: Source
 ): Omit<Source, "sessions"> & { sessions: AgentActivitySession[] } {
   return {
     ...source,
     sessions: source.sessions.map((session) =>
-      normalizeAgentActivitySession(session)
+      normalizeAgentActivitySession({
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        ...session
+      })
     )
   };
 }

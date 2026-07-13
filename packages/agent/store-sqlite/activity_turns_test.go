@@ -117,7 +117,7 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
 		RequestID: "request-1", Kind: "approval", Status: InteractionStatusPending,
 		OccurredAtUnixMS: 110,
-	}); err != nil || !accepted {
+	}); err != nil || accepted != InteractionTransitionApplied {
 		t.Fatalf("UpsertInteraction() accepted=%v error=%v", accepted, err)
 	}
 
@@ -383,7 +383,7 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 
-	result, err := store.ReportActivityState(ctx, ActivityStateReport{
+	report := ActivityStateReport{
 		Session: SessionStateReport{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
 			Provider: "codex", OccurredAtUnixMS: 100,
@@ -397,11 +397,12 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 			TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
 			OccurredAtUnixMS: 100,
 		},
-	})
+	}
+	result, err := store.ReportActivityState(ctx, report)
 	if err != nil {
 		t.Fatalf("ReportActivityState() error = %v", err)
 	}
-	if !result.State.Accepted || !result.TurnAccepted || !result.InteractionAccepted {
+	if !result.State.Accepted || !result.TurnAccepted || result.InteractionResult != InteractionTransitionApplied {
 		t.Fatalf("ReportActivityState() result = %#v, want all entities accepted", result)
 	}
 	session, ok, err := store.GetSession(ctx, "ws-1", "session-1")
@@ -418,6 +419,20 @@ func TestReportActivityStateCommitsSessionTurnAndInteractionTogether(t *testing.
 	if err != nil || len(interactions) != 1 || interactions[0].RequestID != "request-1" {
 		t.Fatalf("ListSessionInteractions() interactions=%#v error=%v", interactions, err)
 	}
+
+	replayed, err := store.ReportActivityState(ctx, report)
+	if err != nil || replayed.InteractionResult != InteractionTransitionAlreadyApplied {
+		t.Fatalf("replayed ReportActivityState() result=%#v error=%v", replayed, err)
+	}
+	conflicting := report
+	conflicting.Interaction = &InteractionUpsert{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
+		TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
+		Input: map[string]any{"question": "changed identity"}, OccurredAtUnixMS: 100,
+	}
+	if _, err := store.ReportActivityState(ctx, conflicting); err == nil {
+		t.Fatal("conflicting ReportActivityState() error = nil")
+	}
 }
 
 func TestUpsertInteractionKeepsIndependentPendingRequests(t *testing.T) {
@@ -431,7 +446,7 @@ func TestUpsertInteractionKeepsIndependentPendingRequests(t *testing.T) {
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: requestID,
 			TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
 			OccurredAtUnixMS: int64(100 + index),
-		}); err != nil || !accepted {
+		}); err != nil || accepted != InteractionTransitionApplied {
 			t.Fatalf("UpsertInteraction(%s) accepted=%v error=%v", requestID, accepted, err)
 		}
 	}
@@ -457,7 +472,7 @@ func TestUpsertInteractionCreatesCanonicalWaitingTurnAndActivePointer(t *testing
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
 		TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
 		OccurredAtUnixMS: 100,
-	}); err != nil || !accepted {
+	}); err != nil || accepted != InteractionTransitionApplied {
 		t.Fatalf("UpsertInteraction() accepted=%v error=%v", accepted, err)
 	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
@@ -470,27 +485,72 @@ func TestUpsertInteractionCreatesCanonicalWaitingTurnAndActivePointer(t *testing
 	}
 }
 
-func TestUpsertInteractionRejectsOlderPayload(t *testing.T) {
+func TestUpsertInteractionDistinguishesReplayFromConflictAndPreservesFirstTerminal(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+
+	base := InteractionUpsert{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
+		TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
+		ToolName: "AskUserQuestion", Input: map[string]any{"question": "Scope?"},
+		Metadata: map[string]any{"source": "provider"}, OccurredAtUnixMS: 100,
+	}
+	if _, result, err := store.UpsertInteraction(ctx, base); err != nil || result != InteractionTransitionApplied {
+		t.Fatalf("first pending result=%v error=%v", result, err)
+	}
+	if _, result, err := store.UpsertInteraction(ctx, base); err != nil || result != InteractionTransitionAlreadyApplied {
+		t.Fatalf("pending replay result=%v error=%v", result, err)
+	}
+
+	answered := base
+	answered.Status = InteractionStatusAnswered
+	answered.Output = map[string]any{"answer": "workspace"}
+	answered.OccurredAtUnixMS = 200
+	if _, result, err := store.UpsertInteraction(ctx, answered); err != nil || result != InteractionTransitionApplied {
+		t.Fatalf("answered result=%v error=%v", result, err)
+	}
+
+	lateSuperseded := base
+	lateSuperseded.Status = InteractionStatusSuperseded
+	lateSuperseded.OccurredAtUnixMS = 300
+	interaction, result, err := store.UpsertInteraction(ctx, lateSuperseded)
+	if err != nil || result != InteractionTransitionAlreadyApplied {
+		t.Fatalf("late superseded result=%v error=%v", result, err)
+	}
+	if interaction.Status != InteractionStatusAnswered || interaction.Output["answer"] != "workspace" {
+		t.Fatalf("terminal interaction = %#v, want first answered terminal preserved", interaction)
+	}
+
+	conflict := base
+	conflict.Input = map[string]any{"question": "Different identity?"}
+	if _, result, err := store.UpsertInteraction(ctx, conflict); err != nil || result != InteractionTransitionConflict {
+		t.Fatalf("identity conflict result=%v error=%v", result, err)
+	}
+}
+
+func TestUpsertInteractionConflictsWhenImmutableIdentityChanges(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
 	seedTurnTestSession(t, store, "ws-1", "session-1")
 
 	for _, input := range []struct {
-		occurred     int64
-		question     string
-		wantAccepted bool
+		occurred   int64
+		question   string
+		wantResult InteractionTransitionResult
 	}{
-		{occurred: 200, question: "new", wantAccepted: true},
-		{occurred: 100, question: "old", wantAccepted: false},
+		{occurred: 200, question: "new", wantResult: InteractionTransitionApplied},
+		{occurred: 100, question: "old", wantResult: InteractionTransitionConflict},
 	} {
-		_, accepted, err := store.UpsertInteraction(ctx, InteractionUpsert{
+		_, result, err := store.UpsertInteraction(ctx, InteractionUpsert{
 			WorkspaceID: "ws-1", AgentSessionID: "session-1", RequestID: "request-1",
 			TurnID: "turn-1", Kind: InteractionKindQuestion, Status: InteractionStatusPending,
 			Input: map[string]any{"question": input.question}, OccurredAtUnixMS: input.occurred,
 		})
-		if err != nil || accepted != input.wantAccepted {
-			t.Fatalf("UpsertInteraction(%d) accepted=%v error=%v", input.occurred, accepted, err)
+		if err != nil || result != input.wantResult {
+			t.Fatalf("UpsertInteraction(%d) result=%v error=%v", input.occurred, result, err)
 		}
 	}
 	pending, err := store.ListSessionInteractions(ctx, ListSessionInteractionsInput{
@@ -553,7 +613,7 @@ func TestInteractionsAllowSameRequestIDInDifferentTurns(t *testing.T) {
 			RequestID: "same-request", Kind: InteractionKindApproval,
 			Status: InteractionStatusPending, OccurredAtUnixMS: int64(10 + index),
 		})
-		if err != nil || !accepted || interaction.TurnID != turnID {
+		if err != nil || accepted != InteractionTransitionApplied || interaction.TurnID != turnID {
 			t.Fatalf("UpsertInteraction(%s) interaction=%#v accepted=%v error=%v", turnID, interaction, accepted, err)
 		}
 		if index == 0 {

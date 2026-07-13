@@ -76,13 +76,27 @@ async function handleRequest(request: ClaudeSDKSidecarRequest): Promise<void> {
       case "submit_interactive": {
         const payload = request.payload ?? {};
         const session = requireSession(stringValue(payload.agentSessionId));
-        session.submitInteractive(
+        const result = session.submitInteractive(
+          stringValue(payload.turnId),
           stringValue(payload.requestId),
           stringValue(payload.action),
           stringValue(payload.optionId),
           recordValue(payload.payload) ?? {}
         );
-        emit({ id, type: "ok" });
+        emit({ id, type: "ok", payload: result });
+        return;
+      }
+      case "interactive_disposition": {
+        const payload = request.payload ?? {};
+        const session = requireSession(stringValue(payload.agentSessionId));
+        const result = session.interactiveDisposition(
+          stringValue(payload.turnId),
+          stringValue(payload.requestId),
+          stringValue(payload.action),
+          stringValue(payload.optionId),
+          recordValue(payload.payload) ?? {}
+        );
+        emit({ id, type: "ok", payload: result });
         return;
       }
       case "apply_settings": {

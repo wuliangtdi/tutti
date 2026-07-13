@@ -1223,7 +1223,7 @@ func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.
 		close(execDone)
 	}()
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 	})
 
 	err := adapter.ReleaseLiveSession(context.Background(), session)
@@ -1234,6 +1234,7 @@ func TestCodexAppServerAdapterReleaseLiveSessionSkipsPendingRequests(t *testing.
 		t.Fatalf("HasLiveSession = false, want pending request to keep live session")
 	}
 	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-local-1",
 		RequestID: "approval-1",
 		OptionID:  "deny",
 	}); err != nil {
@@ -2334,14 +2335,27 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 	}()
 
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 	})
 	state := adapter.SessionState(session)
 	if state.PendingInteractive == nil || state.PendingInteractive.Kind != "approval" {
 		t.Fatalf("pending interactive = %#v, want approval", state.PendingInteractive)
 	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := adapter.SubmitInteractive(canceled, session, SubmitInteractiveInput{
+		TurnID:    "turn-local-1",
+		RequestID: "approval-1",
+		OptionID:  "approve",
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled SubmitInteractive error = %v, want context canceled", err)
+	}
+	if pending := adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1"); pending == nil || pending.disposition() != pendingInteractiveRequestStatePending {
+		t.Fatalf("pending disposition after canceled submit = %v, want pending", runtimeInteractiveDisposition(pending))
+	}
 
 	result, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-local-1",
 		RequestID: "approval-1",
 		OptionID:  "approve",
 	})
@@ -2352,11 +2366,16 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 		t.Fatalf("submit result = %#v", result)
 	}
 
-	events := <-execDone
+	<-execDone
 	waitForCondition(t, func() bool {
 		transport.conn.mu.Lock()
 		defer transport.conn.mu.Unlock()
 		return transport.conn.approvalResponse != nil
+	})
+	waitForCondition(t, func() bool {
+		streamedMu.Lock()
+		defer streamedMu.Unlock()
+		return len(eventsOfType(streamed, activityshared.EventCallCompleted)) > 0
 	})
 	transport.conn.mu.Lock()
 	response := transport.conn.approvalResponse
@@ -2370,17 +2389,26 @@ func TestCodexAppServerAdapterCommandApprovalApprove(t *testing.T) {
 	streamedCopy := append([]activityshared.Event(nil), streamed...)
 	streamedMu.Unlock()
 	var sawWaiting bool
+	var sawRequested bool
 	for _, event := range streamedCopy {
 		if event.Type == activityshared.EventCallStarted &&
 			asString(event.Payload.Metadata["callType"]) == "approval" {
 			sawWaiting = true
 		}
+		if event.Type == activityshared.EventInteractionRequested &&
+			event.Payload.Interaction != nil &&
+			event.Payload.Interaction.RequestID == "approval-1" {
+			sawRequested = true
+		}
 	}
 	if !sawWaiting {
 		t.Fatalf("approval call.started was not streamed: %#v", streamedCopy)
 	}
-	if completedCalls := eventsOfType(events, activityshared.EventCallCompleted); len(completedCalls) == 0 {
-		t.Fatalf("approval resolution missing call.completed: %#v", events)
+	if !sawRequested {
+		t.Fatalf("approval interaction.requested was not streamed: %#v", streamedCopy)
+	}
+	if completedCalls := eventsOfType(streamedCopy, activityshared.EventCallCompleted); len(completedCalls) == 0 {
+		t.Fatalf("approval resolution missing call.completed: %#v", streamedCopy)
 	}
 }
 
@@ -2405,7 +2433,7 @@ func TestCodexAppServerAdapterServerRequestResolvedFailsPendingApprovalWithoutCl
 	}()
 
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 	})
 	if state := adapter.SessionState(session); state.PendingInteractive == nil {
 		t.Fatalf("pending interactive should be visible before serverRequest/resolved")
@@ -2416,7 +2444,7 @@ func TestCodexAppServerAdapterServerRequestResolvedFailsPendingApprovalWithoutCl
 		"requestId": "approval-1",
 	})
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "approval-1") == nil
+		return adapter.InteractiveDisposition(session, "turn-local-1", "approval-1") == InteractiveDispositionSuperseded
 	})
 	// The provider resolved this request without ever telling tutti the
 	// decision, so we must not claim the underlying call succeeded (that
@@ -2526,9 +2554,10 @@ func TestCodexAppServerAdapterCommandApprovalDecisionMapping(t *testing.T) {
 			close(execDone)
 		}()
 		waitForCondition(t, func() bool {
-			return adapter.getPendingRequest(session.AgentSessionID, "approval-1") != nil
+			return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "approval-1") != nil
 		})
 		if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+			TurnID:    "turn-local-1",
 			RequestID: "approval-1",
 			OptionID:  optionID,
 		}); err != nil {
@@ -2558,7 +2587,7 @@ func TestCodexAppServerAdapterRequestUserInput(t *testing.T) {
 		close(execDone)
 	}()
 	waitForCondition(t, func() bool {
-		return adapter.getPendingRequest(session.AgentSessionID, "question-1") != nil
+		return adapter.getPendingRequest(session.AgentSessionID, "turn-local-1", "question-1") != nil
 	})
 	state := adapter.SessionState(session)
 	if state.PendingInteractive == nil || state.PendingInteractive.Kind != "ask-user" {
@@ -2568,6 +2597,7 @@ func TestCodexAppServerAdapterRequestUserInput(t *testing.T) {
 	// Mirror the GUI contract: `answers` is a flat display list and the
 	// per-question map lives under answersByQuestionId.
 	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-local-1",
 		RequestID: "question-1",
 		Action:    "submit",
 		Payload: map[string]any{
@@ -3982,7 +4012,7 @@ func TestCodexAppServerAdapterSessionStateIncludesModelsAccountAndRateLimits(t *
 		t.Fatalf("account = %#v", account)
 	}
 	capabilities, _ := state.RuntimeContext["capabilities"].([]string)
-	if !containsString(capabilities, "steer") || !containsString(capabilities, "rateLimits") {
+	if !containsString(capabilities, CapabilityActiveTurnGuidance) || !containsString(capabilities, CapabilityRateLimits) {
 		t.Fatalf("capabilities = %#v", capabilities)
 	}
 	commands, _ := state.RuntimeContext["commands"].([]string)

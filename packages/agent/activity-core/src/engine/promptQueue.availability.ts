@@ -12,7 +12,7 @@ export function promptQueueAvailabilityFromSession(
     activeTurnId && session.activeTurn?.turnId === activeTurnId
       ? session.activeTurn
       : null;
-  const hasPendingInteraction = (session.pendingInteractions ?? []).some(
+  const hasPendingInteraction = session.pendingInteractions.some(
     (interaction) =>
       interaction.status === "pending" &&
       interaction.turnId === activeTurnId &&
@@ -141,7 +141,7 @@ function activityVersion(session: AgentActivitySessionInput): number | null {
       session.createdAtUnixMs ??
       session.startedAtUnixMs,
     session.activeTurn?.updatedAtUnixMs,
-    ...(session.pendingInteractions ?? []).map(
+    ...session.pendingInteractions.map(
       (interaction) => interaction.updatedAtUnixMs
     )
   ].filter((value): value is number => typeof value === "number");

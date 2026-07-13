@@ -8,21 +8,14 @@ import type {
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
-import {
-  buildAgentTurnSequenceItems,
-  computeAgentToolGroups
-} from "./agentToolGroupingProjection";
+import { computeAgentToolGroups } from "./agentToolGroupingProjection";
+import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
 import {
   projectAgentTurnSummaryRowForTurn,
   projectAgentTurnSummaryRows
 } from "./agentTurnSummaryProjection";
-import {
-  selectConversationPendingApproval,
-  selectConversationPendingInteractivePrompt
-} from "./agentConversationInteractionProjection";
-import { projectConversationUserRows } from "./agentConversationUserProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -43,9 +36,8 @@ export function projectAgentConversationVM(
   const allowTrailingToolGrouping = !isSessionWorking(detail);
 
   turns.forEach((turn, index) => {
-    rows.push(...projectConversationUserRows(turn, detail.session.workspaceId));
     rows.push(
-      ...projectTurnAgentRows(turn, {
+      ...projectTurnConversationRows(turn, detail.session.workspaceId, {
         agentSessionId: detail.session.agentSessionId,
         turnIndex: index,
         allowTrailingFinalization:
@@ -91,10 +83,7 @@ export function projectAgentConversationVM(
     activity: detail.activity,
     workspaceRoot: detail.workspaceRoot,
     sourceDetail: detail,
-    rows: normalizedRows,
-    pendingApproval: selectConversationPendingApproval(normalizedRows),
-    pendingInteractivePrompt:
-      selectConversationPendingInteractivePrompt(normalizedRows)
+    rows: normalizedRows
   };
 }
 
@@ -123,20 +112,8 @@ export function reconcileProjectedAgentConversationVM(
 
   return {
     ...next,
-    rows: rowsArrayReused ? previous.rows : rows,
-    pendingApproval: reuseEquivalentValue(
-      previous.pendingApproval,
-      next.pendingApproval
-    ),
-    pendingInteractivePrompt: reuseEquivalentValue(
-      previous.pendingInteractivePrompt,
-      next.pendingInteractivePrompt
-    )
+    rows: rowsArrayReused ? previous.rows : rows
   };
-}
-
-function reuseEquivalentValue<T>(previous: T, next: T): T {
-  return equivalentValue(previous, next) ? previous : next;
 }
 
 function equivalentTranscriptRowForRender(
@@ -147,38 +124,6 @@ function equivalentTranscriptRowForRender(
     previous,
     next,
     RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS
-  );
-}
-
-function equivalentValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true;
-  }
-  if (typeof left !== typeof right || left === null || right === null) {
-    return false;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return (
-      Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((value, index) => equivalentValue(value, right[index]))
-    );
-  }
-  if (typeof left !== "object" || typeof right !== "object") {
-    return false;
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  return (
-    leftKeys.length === rightKeys.length &&
-    leftKeys.every(
-      (key) =>
-        Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-        equivalentValue(leftRecord[key], rightRecord[key])
-    )
   );
 }
 
@@ -604,8 +549,9 @@ function isSessionWorking(
   return detail.showProcessingIndicator === true;
 }
 
-function projectTurnAgentRows(
+function projectTurnConversationRows(
   turn: WorkspaceAgentSessionDetailTurn,
+  workspaceId: string | null | undefined,
   options: {
     agentSessionId: string;
     turnIndex: number;
@@ -613,7 +559,7 @@ function projectTurnAgentRows(
     avoidGroupingEdits?: boolean;
   }
 ): AgentTranscriptRowVM[] {
-  const sequence = buildAgentTurnSequenceItems(turn);
+  const sequence = buildAgentTurnSequenceItems(turn, workspaceId);
   const { groups, groupedIndices, suppressedIndices } = computeAgentToolGroups(
     sequence,
     options

@@ -2,6 +2,8 @@ package storesqlite
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -113,6 +115,64 @@ func TestCompleteInteractiveRuntimeOperationIsAtomicAndSessionScoped(t *testing.
 	events, err := store.ListPendingRuntimeOperationEvents(context.Background(), "ws-1", 10)
 	if err != nil || len(events) != 1 || events[0].OperationID != "operation-1" {
 		t.Fatalf("events = %#v err=%v", events, err)
+	}
+}
+
+func TestInteractiveAnswerAndCallCompletionConvergeWhenCommittedConcurrently(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-1", "turn-1", "request-1")
+	prepareRuntimeInteractive(t, store, "operation-1", "session-1", "turn-1", "request-1")
+	claimRuntimeOperation(t, store, "operation-1", "worker-a")
+
+	start := make(chan struct{})
+	errors := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	go func() {
+		ready.Done()
+		<-start
+		_, _, err := store.CompleteInteractiveRuntimeOperation(context.Background(), CompleteInteractiveRuntimeOperationInput{
+			WorkspaceID: "ws-1", OperationID: "operation-1", LeaseOwner: "worker-a",
+			Disposition: InteractionStatusAnswered, NowUnixMS: 30,
+		})
+		errors <- err
+	}()
+	go func() {
+		ready.Done()
+		<-start
+		result, err := store.ReportSessionMessages(context.Background(), SessionMessageReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime", Provider: "codex",
+			Messages: []MessageUpdate{{
+				MessageID: "toolcall:call-1", TurnID: "turn-1", Role: "assistant", Kind: "tool_call",
+				Status: "completed", Payload: map[string]any{"callId": "call-1", "toolName": "AskUserQuestion"},
+				OccurredAtUnixMS: 31, CompletedAtUnixMS: 31,
+			}},
+		})
+		if err == nil && result.AcceptedCount != 1 {
+			err = fmt.Errorf("accepted call completion count = %d", result.AcceptedCount)
+		}
+		errors <- err
+	}()
+	ready.Wait()
+	close(start)
+	for range 2 {
+		if err := <-errors; err != nil {
+			t.Fatalf("concurrent commit error = %v", err)
+		}
+	}
+
+	interactions, err := store.ListSessionInteractions(context.Background(), ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1",
+	})
+	if err != nil || len(interactions) != 1 || interactions[0].Status != InteractionStatusAnswered {
+		t.Fatalf("interactions = %#v error=%v, want answered", interactions, err)
+	}
+	page, ok, err := store.ListSessionMessages(context.Background(), ListSessionMessagesInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Limit: 10,
+	})
+	if err != nil || !ok || len(page.Messages) != 1 || page.Messages[0].Status != "completed" {
+		t.Fatalf("messages = %#v ok=%v error=%v, want persisted call.completed", page.Messages, ok, err)
 	}
 }
 
@@ -235,7 +295,7 @@ func seedRuntimeInteractiveSubjectInWorkspace(t *testing.T, store *Store, worksp
 	if _, accepted, err := store.UpsertInteraction(context.Background(), InteractionUpsert{
 		WorkspaceID: workspaceID, AgentSessionID: sessionID, TurnID: turnID, RequestID: requestID,
 		Kind: InteractionKindQuestion, Status: InteractionStatusPending, OccurredAtUnixMS: 3,
-	}); err != nil || !accepted {
+	}); err != nil || accepted != InteractionTransitionApplied {
 		t.Fatalf("seed interaction accepted=%v err=%v", accepted, err)
 	}
 }

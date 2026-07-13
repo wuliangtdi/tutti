@@ -112,10 +112,10 @@ func (c *Controller) guideActiveTurn(
 	if !ok {
 		return ExecResult{}, ErrActiveTurnGuidanceUnsupported
 	}
-	if !c.HasActiveTurn(session.RoomID, session.AgentSessionID) {
+	turnID, ok := c.activeTurnID(session.RoomID, session.AgentSessionID)
+	if !ok {
 		return ExecResult{}, ErrSessionNoActiveTurn
 	}
-	turnID := newID()
 	runCtx := ctx
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)

@@ -12,6 +12,7 @@ import (
 
 func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
+	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -89,6 +90,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 
 func TestClaudeCodeSDKAdapterExecApprovalWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
+	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -137,6 +139,7 @@ func TestClaudeCodeSDKAdapterExecApprovalWithSidecarTestDriver(t *testing.T) {
 	}
 
 	result, err := adapter.SubmitInteractive(ctx, session, SubmitInteractiveInput{
+		TurnID:    "turn-sdk-approval",
 		RequestID: requestID,
 		OptionID:  "allow",
 	})
@@ -434,6 +437,7 @@ func TestClaudeCodeSDKAdapterMapsToolFailed(t *testing.T) {
 
 func TestClaudeCodeSDKAdapterControllerPublishesUIActivityWithSidecarTestDriver(t *testing.T) {
 	t.Setenv(claudeSDKSidecarTestDriverEnv, "1")
+	t.Setenv(claudeSDKSidecarEntryPathEnv, "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

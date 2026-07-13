@@ -31,41 +31,36 @@ func (p *ActivityProjection) publishPersistedTurnState(
 		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "turn_update",
 			activityTurnUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.Turn, input.State.OccurredAtUnixMS))
 	}
-	if result.InteractionAccepted {
+	if result.InteractionResult == agentactivitybiz.InteractionTransitionApplied {
 		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "interaction_update",
 			activityInteractionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.Interaction, input.State.OccurredAtUnixMS))
 	}
 }
 
-func pendingInteractionFromStateInput(
+func interactionTransitionFromStateInput(
 	input agentsessionstore.ReportSessionStateInput,
-	transition *agentactivitybiz.TurnTransition,
 ) (*agentactivitybiz.InteractionUpsert, error) {
-	prompt := input.State.PendingInteractive
-	if prompt == nil {
+	transition := input.State.InteractionTransition
+	if transition == nil {
 		return nil, nil
 	}
-	if strings.TrimSpace(prompt.RequestID) == "" {
+	status := strings.TrimSpace(transition.Status)
+	if status != agentactivitybiz.InteractionStatusPending && status != agentactivitybiz.InteractionStatusSuperseded {
 		return nil, ErrInvalidArgument
 	}
-	turnID := activeTurnIDFromStateInput(input)
-	if transition != nil && transition.Phase != agentactivitybiz.TurnPhaseSettled {
-		turnID = strings.TrimSpace(transition.TurnID)
-	}
-	if turnID == "" {
+	if strings.TrimSpace(transition.RequestID) == "" || strings.TrimSpace(transition.TurnID) == "" {
 		return nil, ErrInvalidArgument
 	}
 	return &agentactivitybiz.InteractionUpsert{
 		WorkspaceID:      strings.TrimSpace(input.WorkspaceID),
 		AgentSessionID:   strings.TrimSpace(input.AgentSessionID),
-		RequestID:        strings.TrimSpace(prompt.RequestID),
-		TurnID:           turnID,
-		Kind:             interactionKindFromPrompt(prompt.Kind),
-		Status:           agentactivitybiz.InteractionStatusPending,
-		ToolName:         strings.TrimSpace(prompt.ToolName),
-		Input:            clonePayload(prompt.Input),
-		Output:           clonePayload(prompt.Output),
-		Metadata:         clonePayload(prompt.Metadata),
+		RequestID:        strings.TrimSpace(transition.RequestID),
+		TurnID:           strings.TrimSpace(transition.TurnID),
+		Kind:             normalizeInteractionKind(transition.Kind),
+		Status:           status,
+		ToolName:         strings.TrimSpace(transition.ToolName),
+		Input:            clonePayload(transition.Input),
+		Metadata:         clonePayload(transition.Metadata),
 		OccurredAtUnixMS: input.State.OccurredAtUnixMS,
 	}, nil
 }
@@ -141,18 +136,6 @@ func turnTransitionFromStateInput(
 	return agentactivitybiz.TurnTransition{}, false
 }
 
-func activeTurnIDFromStateInput(input agentsessionstore.ReportSessionStateInput) string {
-	if turn := input.State.Turn; turn != nil {
-		if phase := normalizeTurnPhaseV2(turn.Phase, turn.Settling); phase != "" && phase != agentactivitybiz.TurnPhaseSettled {
-			return strings.TrimSpace(turn.TurnID)
-		}
-	}
-	if lifecycle := input.State.TurnLifecycle; lifecycle != nil && lifecycle.ActiveTurnID != nil {
-		return strings.TrimSpace(*lifecycle.ActiveTurnID)
-	}
-	return ""
-}
-
 // normalizeTurnPhaseV2 maps the open runtime phase vocabulary onto the
 // closed protocol v2 enum. Unknown phases return "" and are skipped rather
 // than guessed.
@@ -195,16 +178,19 @@ func normalizeTurnOutcomeV2(outcome string) string {
 	}
 }
 
-// interactionKindFromPrompt maps runtime interactive prompt kinds onto the
-// closed protocol v2 interaction kind enum.
-func interactionKindFromPrompt(kind string) string {
+// normalizeInteractionKind maps the explicit runtime transition vocabulary
+// onto the closed protocol v2 interaction kind enum. Unknown kinds stay
+// invalid so the atomic report fails instead of silently becoming approval.
+func normalizeInteractionKind(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "ask-user", "question":
 		return agentactivitybiz.InteractionKindQuestion
 	case "exit-plan", "plan":
 		return agentactivitybiz.InteractionKindPlan
-	default:
+	case "approval":
 		return agentactivitybiz.InteractionKindApproval
+	default:
+		return ""
 	}
 }
 

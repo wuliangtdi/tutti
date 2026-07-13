@@ -179,6 +179,70 @@ user-visible copy belongs to consumer i18n. Provider-originated exit-plan
 prompts remain ordinary durable interaction responses and use the existing
 `interactive_response` operation rather than this synthetic-plan endpoint.
 
+Provider interaction lifecycle is an explicit entity stream, independent of
+transcript projection and runtime session snapshots:
+
+```text
+provider request
+  -> interaction.requested
+  -> runtime state report InteractionTransition(pending)
+  -> durable Interaction(pending)
+  -> interaction_update
+  -> AgentSessionEngine selectors
+```
+
+`call.started` / `call.completed` / `call.failed` continue to own historical
+tool-call messages, but they never create or restore an actionable Interaction.
+Likewise, a runtime session snapshot may describe provider-local execution
+state but must not enrich a report with an Interaction transition. Runtime
+reports may submit only `pending` and `superseded`; `answered` belongs solely to
+the durable `interactive_response` operation. That operation reads the typed
+runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
+`interrupted`) and atomically commits the answered/superseded Interaction,
+completed operation, and outbox event. Absence from an in-memory request map is
+not evidence of success.
+
+Cancellation of the caller waiting on an interactive-response operation is not
+a provider outcome and must not terminalize the runtime request. Before a
+response is dispatched it remains `pending` for durable retry; after dispatch it
+remains `resolving` until the provider response transport reports success,
+failure, or an explicit provider-side interruption.
+
+Runtime request identity is the full
+`(workspace/session, turnId, requestId)` tuple. The turn ID must cross the
+coordinator, runtime controller, provider adapter, live request registry, and
+disposition lookup; a request ID alone is never sufficient because providers
+may reuse it in a later turn. Live registries contain only `pending` and
+`resolving` requests. The first terminal disposition is copied to a bounded
+tombstone registry before the live request or provider session is removed, so a
+durable retry can still distinguish `answered`, `superseded`, and `interrupted`
+from `unknown`. Provider command transports that expose an acknowledgment (for
+example a sidecar `ok`/`error` response) must consume it before reporting
+success; writing bytes to the transport is not acceptance. A missing
+acknowledgment is not an explicit provider rejection: Claude SDK interactive
+submissions remain `resolving` while the daemon queries the sidecar's bounded,
+idempotent disposition registry by `(turnId, requestId)`. Only an authoritative
+`answered` or `superseded` result may terminalize the request; an identical
+answered replay is accepted without resolving the provider promise twice, and
+a changed replay is a conflict. A disposition-query error remains `resolving`,
+while an authoritative `pending` result releases the claim back to `pending` so
+the durable operation can retry. Once the provider session itself is confirmed
+dead, both pending and resolving requests become `superseded` because they are
+no longer actionable; preserving an exact applied result across process death
+would require a persistent provider-side journal rather than an in-memory
+tombstone. Provider session cleanup first detaches the exact adapter-session
+object under the registry lock and only then terminalizes its pending requests
+outside the lock, so a stale reader or close path cannot delete a concurrently
+installed replacement session. Resume rollback restores a previous session
+only when no replacement is current and the previous session has not been
+marked failed or closed.
+
+Interaction persistence returns `applied`, `already_applied`, or `conflict`.
+Exact replays and late transitions after the first terminal state are
+`already_applied`; a changed immutable identity (`kind`, `toolName`, `input`, or
+`metadata`) is a hard `conflict` for the whole state report. A terminal state
+never transitions back to `pending`.
+
 Protocol-v2 session responses expose `activeTurnId` (required and nullable),
 `pendingInteractions` (required and never null), independent `activeTurn` /
 `latestTurn` projections, typed capabilities/usage/background-agent/goal/import

@@ -1,6 +1,6 @@
 import type {
   AgentActivityDisplayStatus,
-  AgentActivityMessage,
+  AgentActivityInteraction,
   AgentActivityNeedsAttentionItem,
   AgentActivityNeedsAttentionKind,
   AgentActivitySession,
@@ -12,15 +12,6 @@ export function selectCanonicalAgentActivitySessions(
 ): readonly AgentActivitySession[] {
   return snapshot.sessions;
 }
-
-const terminalMessageStatuses = new Set([
-  "completed",
-  "canceled",
-  "failed",
-  "rejected",
-  "answered",
-  "resolved"
-]);
 
 export function selectNeedsAttentionCount(
   snapshot: AgentActivitySnapshot
@@ -110,22 +101,15 @@ export function normalizeAgentActivityDisplayStatus(
 export function selectNeedsAttentionItems(
   snapshot: AgentActivitySnapshot
 ): AgentActivityNeedsAttentionItem[] {
-  const sessionsById = new Map(
-    snapshot.sessions.map((session) => [session.agentSessionId, session])
-  );
   const items: AgentActivityNeedsAttentionItem[] = [];
 
-  for (const [agentSessionId, messages] of Object.entries(
-    snapshot.sessionMessagesById
-  )) {
-    const session = sessionsById.get(agentSessionId);
-    for (const message of messages) {
-      const kind = needsAttentionKindForMessage(message);
-      if (!kind) {
+  for (const session of snapshot.sessions) {
+    for (const interaction of session.pendingInteractions) {
+      if (interaction.status !== "pending") {
         continue;
       }
       items.push(
-        needsAttentionItemFromMessage(snapshot, message, kind, session)
+        needsAttentionItemFromInteraction(snapshot, session, interaction)
       );
     }
   }
@@ -137,138 +121,82 @@ export function selectNeedsAttentionItems(
   );
 }
 
-function needsAttentionKindForMessage(
-  message: AgentActivityMessage
-): AgentActivityNeedsAttentionKind | null {
-  if (isTerminalMessageStatus(message.status)) {
-    return null;
-  }
-
-  const kind = normalizeKind(message.kind);
-  const payloadType = normalizeMetadataValue(message.payload.type);
-  const action = normalizeMetadataValue(message.payload.action);
-  const requestType = normalizeMetadataValue(message.payload.requestType);
-  const callType = normalizeMetadataValue(message.payload.callType);
-  const toolName = normalizeMetadataValue(message.payload.toolName);
-  const name = normalizeMetadataValue(message.payload.name);
-  const status = normalizeStatus(message.status);
-  const payloadStatus = normalizeMetadataValue(message.payload.status);
-
-  if (
-    includesAny(
-      [
-        kind,
-        payloadType,
-        requestType,
-        callType,
-        toolName,
-        name,
-        status,
-        payloadStatus
-      ].join(" "),
-      ["permission", "approval"]
-    )
-  ) {
-    return "permission";
-  }
-
-  if (
-    includesAny(
-      [
-        kind,
-        payloadType,
-        action,
-        callType,
-        toolName,
-        name,
-        status,
-        payloadStatus
-      ].join(" "),
-      ["ask_user", "ask-user", "askuserquestion", "question"]
-    )
-  ) {
-    return "question";
-  }
-
-  if (
-    includesAny([kind, payloadType, action, toolName, name].join(" "), [
-      "constraint"
-    ])
-  ) {
-    return "constraint";
-  }
-
-  if (
-    isWaitingStatus(status, payloadStatus) &&
-    (message.role === "assistant" || message.role === "system")
-  ) {
-    return "other";
-  }
-
-  return null;
-}
-
-function needsAttentionItemFromMessage(
+function needsAttentionItemFromInteraction(
   snapshot: AgentActivitySnapshot,
-  message: AgentActivityMessage,
-  kind: AgentActivityNeedsAttentionKind,
-  session: AgentActivitySession | undefined
+  session: AgentActivitySession,
+  interaction: AgentActivityInteraction
 ): AgentActivityNeedsAttentionItem {
   return {
-    id: `${message.agentSessionId}:${message.messageId}`,
-    workspaceId: message.workspaceId || snapshot.workspaceId,
-    agentSessionId: message.agentSessionId,
-    provider: session?.provider ?? "",
-    title: session?.title ?? "",
-    cwd: session?.cwd ?? "",
-    kind,
-    summary: messageSummary(message),
+    id: `${session.agentSessionId}:${interaction.turnId}:${interaction.requestId}`,
+    workspaceId: session.workspaceId || snapshot.workspaceId,
+    agentSessionId: session.agentSessionId,
+    provider: session.provider,
+    title: session.title,
+    cwd: session.cwd,
+    kind: needsAttentionKindForInteraction(interaction),
+    summary: interactionSummary(interaction),
     occurredAtUnixMs:
-      message.occurredAtUnixMs ??
-      message.startedAtUnixMs ??
-      message.completedAtUnixMs ??
-      session?.updatedAtUnixMs ??
-      session?.lastEventUnixMs ??
+      interaction.updatedAtUnixMs ||
+      interaction.createdAtUnixMs ||
+      session.updatedAtUnixMs ||
+      session.lastEventUnixMs ||
       0
   };
 }
 
-function messageSummary(message: AgentActivityMessage): string {
-  return (
-    stringValue(message.payload.displayPrompt) ||
-    stringValue(message.payload.summary) ||
-    stringValue(message.payload.title) ||
-    stringValue(message.payload.text) ||
-    stringValue(message.payload.content) ||
-    message.kind
-  );
+function needsAttentionKindForInteraction(
+  interaction: AgentActivityInteraction
+): AgentActivityNeedsAttentionKind {
+  switch (interaction.kind) {
+    case "approval":
+      return "permission";
+    case "question":
+      return "question";
+    case "plan":
+      return "constraint";
+  }
 }
 
-function isTerminalMessageStatus(status: string | null | undefined): boolean {
-  return terminalMessageStatuses.has(normalizeStatus(status));
+function interactionSummary(interaction: AgentActivityInteraction): string {
+  const input = interaction.input ?? {};
+  const metadata = interaction.metadata ?? {};
+  return (
+    stringValue(input.displayPrompt) ||
+    stringValue(input.summary) ||
+    stringValue(input.title) ||
+    firstQuestionText(input.questions) ||
+    stringValue(input.question) ||
+    stringValue(input.prompt) ||
+    stringValue(input.text) ||
+    stringValue(metadata.summary) ||
+    stringValue(metadata.title) ||
+    interaction.toolName?.trim() ||
+    interaction.kind
+  );
 }
 
 function normalizeStatus(status: string | null | undefined): string {
   return status?.trim().toLowerCase() ?? "";
 }
 
-function isWaitingStatus(...values: readonly string[]): boolean {
-  return values.some((value) => {
-    const normalized = value.trim().toLowerCase();
-    return normalized === "waiting" || normalized.startsWith("waiting_");
-  });
-}
-
-function normalizeKind(kind: string): string {
-  return kind.trim().toLowerCase();
-}
-
-function normalizeMetadataValue(value: unknown): string {
-  return stringValue(value).toLowerCase();
-}
-
-function includesAny(value: string, needles: readonly string[]): boolean {
-  return needles.some((needle) => value.includes(needle));
+function firstQuestionText(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  for (const candidate of value) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+    if (candidate && typeof candidate === "object") {
+      const question = stringValue(
+        (candidate as Record<string, unknown>).question
+      );
+      if (question) {
+        return question;
+      }
+    }
+  }
+  return "";
 }
 
 function stringValue(value: unknown): string {

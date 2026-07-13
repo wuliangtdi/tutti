@@ -17,7 +17,9 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		activityshared.EventTurnStarted,
 		activityshared.EventTurnUpdated,
 		activityshared.EventTurnCompleted,
-		activityshared.EventTurnFailed:
+		activityshared.EventTurnFailed,
+		activityshared.EventInteractionRequested,
+		activityshared.EventInteractionSuperseded:
 	default:
 		return agentsessionstore.WorkspaceAgentStatePatch{}, false
 	}
@@ -31,6 +33,17 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		LifecycleStatus:   event.Payload.LifecycleStatus,
 		LastError:         statePatchLastError(event),
 		OccurredAtUnixMS:  timestamp,
+	}
+	if transition := event.Payload.Interaction; transition != nil {
+		patch.InteractionTransition = &agentsessionstore.WorkspaceAgentInteractionTransition{
+			RequestID: strings.TrimSpace(transition.RequestID),
+			TurnID:    strings.TrimSpace(transition.TurnID),
+			Kind:      strings.TrimSpace(transition.Kind),
+			Status:    strings.TrimSpace(transition.Status),
+			ToolName:  strings.TrimSpace(transition.ToolName),
+			Input:     clonePayload(transition.Input),
+			Metadata:  clonePayload(transition.Metadata),
+		}
 	}
 	if runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext"); len(runtimeContext) > 0 {
 		patch.RuntimeContext = clonePayload(runtimeContext)
@@ -123,22 +136,6 @@ func cloneTurnLifecycle(value *agentsessionstore.WorkspaceAgentTurnLifecycle) *a
 		Settling:         value.Settling,
 		Outcome:          cloneStringPointer(value.Outcome),
 		CompletedCommand: cloneCompletedCommand(value.CompletedCommand),
-	}
-}
-
-func cloneInteractivePrompt(value *agentsessionstore.WorkspaceAgentInteractivePrompt) *agentsessionstore.WorkspaceAgentInteractivePrompt {
-	if value == nil {
-		return nil
-	}
-	return &agentsessionstore.WorkspaceAgentInteractivePrompt{
-		Kind:      strings.TrimSpace(value.Kind),
-		RequestID: strings.TrimSpace(value.RequestID),
-		ToolName:  strings.TrimSpace(value.ToolName),
-		Status:    strings.TrimSpace(value.Status),
-		Input:     clonePayload(value.Input),
-		Output:    clonePayload(value.Output),
-		Error:     clonePayload(value.Error),
-		Metadata:  clonePayload(value.Metadata),
 	}
 }
 

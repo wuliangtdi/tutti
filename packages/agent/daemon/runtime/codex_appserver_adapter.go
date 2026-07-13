@@ -110,16 +110,18 @@ const startupModelSteadyRetryCount = 36
 const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 
 type CodexAppServerAdapter struct {
-	transport       ProcessTransport
-	host            HostMetadata
-	config          appServerAdapterConfig
-	preparer        ProviderLaunchPreparer
-	commandResolver ProviderCommandResolver
-	mu              sync.Mutex
-	sessions        map[string]*codexAppServerSession
-	commandSink     CommandSnapshotSink
-	eventSink       SessionEventSink
-	configSink      ConfigOptionsUpdateSink
+	transport                  ProcessTransport
+	host                       HostMetadata
+	config                     appServerAdapterConfig
+	preparer                   ProviderLaunchPreparer
+	commandResolver            ProviderCommandResolver
+	mu                         sync.Mutex
+	sessions                   map[string]*codexAppServerSession
+	terminalInteractions       terminalInteractiveDispositionStore
+	interactiveDispositionSink InteractiveDispositionSink
+	commandSink                CommandSnapshotSink
+	eventSink                  SessionEventSink
+	configSink                 ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize
 	// Start/Resume/Close/ReleaseLiveSession per agent session so concurrent
 	// lifecycle calls can never leave two live app-server processes for the

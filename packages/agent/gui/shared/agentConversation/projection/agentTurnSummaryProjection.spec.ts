@@ -940,6 +940,11 @@ describe("projectAgentTurnSummaryRows", () => {
         sortTimeUnixMs: 1_000
       } satisfies WorkspaceAgentActivityCard,
       session: normalizeAgentActivitySession({
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         workspaceId: "workspace-1",
         agentSessionId: "session-errored-call",
         provider: "codex",
@@ -1013,6 +1018,11 @@ describe("projectAgentTurnSummaryRows", () => {
         sortTimeUnixMs: 1_000
       },
       session: normalizeAgentActivitySession({
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         provider: "openclaw",

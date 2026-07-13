@@ -82,6 +82,11 @@ function session(
   agentTargetId: string | null
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     agentSessionId,
     agentTargetId,
     cwd: "/repo",

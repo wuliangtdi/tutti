@@ -1,11 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeAgentActivitySession } from "@tutti-os/agent-activity-core";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 
 const virtualizerMockState = vi.hoisted(() => ({
-  virtualIndexes: [100, 101, 102, 103, 104]
+  virtualIndexes: [100, 101, 102, 103, 104],
+  scrollToIndex: vi.fn()
 }));
 
 vi.mock("../../../i18n/index", () => ({
@@ -25,7 +26,8 @@ vi.mock("@tanstack/react-virtual", () => ({
         start: index * 100,
         size: 100
       })),
-    measureElement: vi.fn()
+    measureElement: vi.fn(),
+    scrollToIndex: virtualizerMockState.scrollToIndex
   }))
 }));
 
@@ -33,6 +35,10 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { AgentTranscriptView } from "./AgentTranscriptView";
 
 describe("AgentTranscriptView virtual rendering", () => {
+  beforeEach(() => {
+    virtualizerMockState.scrollToIndex.mockClear();
+  });
+
   it("does not virtualize normal short conversations", () => {
     virtualizerMockState.virtualIndexes = [0];
 
@@ -185,6 +191,49 @@ describe("AgentTranscriptView virtual rendering", () => {
     expect(screen.queryByText("virtual transcript row 0")).toBeNull();
     expect(screen.queryByText("virtual transcript row 199")).toBeNull();
   });
+
+  it("uses the timeline viewport when locating an unmounted virtualized message", async () => {
+    virtualizerMockState.virtualIndexes = [10];
+
+    render(
+      <div
+        data-testid="agent-gui-timeline"
+        style={{ height: "480px", overflow: "auto" }}
+      >
+        <div data-slot="scroll-area-content">
+          <AgentTranscriptView
+            conversation={conversationWithMultiRowTurns(40)}
+            labels={{
+              thinkingLabel: "Thought process",
+              toolCallsLabel: (count) => `Tool calls (${count})`,
+              processing: "Planning next moves",
+              turnSummary: "Changed files",
+              userMessageLocator: "User messages"
+            }}
+          />
+        </div>
+      </div>
+    );
+
+    await waitFor(() => {
+      const virtualizerOptions = vi
+        .mocked(useVirtualizer)
+        .mock.calls.at(-1)?.[0];
+      expect(virtualizerOptions?.getScrollElement()).toBe(
+        screen.getByTestId("agent-gui-timeline")
+      );
+    });
+
+    fireEvent.click(
+      screen
+        .getByTestId("agent-message-locator")
+        .querySelectorAll(".agent-gui-message-locator__tick")[0]!
+    );
+
+    expect(virtualizerMockState.scrollToIndex).toHaveBeenCalledWith(0, {
+      align: "center"
+    });
+  });
 });
 
 function conversationWithRows(
@@ -226,6 +275,11 @@ function conversationWithRows(
         userAvatarUrl: ""
       },
       session: normalizeAgentActivitySession({
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         userId: "user-1",
@@ -250,9 +304,7 @@ function conversationWithRows(
       })),
       showProcessingIndicator: false
     },
-    rows,
-    pendingApproval: null,
-    pendingInteractivePrompt: null
+    rows
   };
 }
 

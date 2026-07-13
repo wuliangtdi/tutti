@@ -12,7 +12,9 @@ type pendingInteractiveRequestState string
 
 const (
 	pendingInteractiveRequestStatePending     pendingInteractiveRequestState = "pending"
-	pendingInteractiveRequestStateResolved    pendingInteractiveRequestState = "resolved"
+	pendingInteractiveRequestStateResolving   pendingInteractiveRequestState = "resolving"
+	pendingInteractiveRequestStateAnswered    pendingInteractiveRequestState = "answered"
+	pendingInteractiveRequestStateSuperseded  pendingInteractiveRequestState = "superseded"
 	pendingInteractiveRequestStateInterrupted pendingInteractiveRequestState = "interrupted"
 )
 
@@ -68,12 +70,11 @@ func (a *CodexAppServerAdapter) resolvePendingRequestFromProvider(
 	var pending *pendingInteractiveRequest
 	if appSession != nil && appSession.pendingRequests != nil {
 		pending = appSession.pendingRequests[requestID]
-		if pending != nil {
-			pending.state = pendingInteractiveRequestStateResolved
-			delete(appSession.pendingRequests, requestID)
-		}
 	}
 	a.mu.Unlock()
+	if pending != nil && !pending.finish(pendingInteractiveRequestStateSuperseded) {
+		pending = nil
+	}
 	if pending == nil {
 		return false
 	}

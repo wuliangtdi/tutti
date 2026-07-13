@@ -58,17 +58,19 @@ type standardACPConfig struct {
 }
 
 type standardACPAdapter struct {
-	config         standardACPConfig
-	transport      ProcessTransport
-	host           HostMetadata
-	preparer       ProviderLaunchPreparer
-	mu             sync.Mutex
-	sessions       map[string]*standardACPSession
-	commandSink    CommandSnapshotSink
-	eventSink      SessionEventSink
-	configSink     ConfigOptionsUpdateSink
-	lifecycleMu    sync.Mutex
-	lifecycleLocks map[string]*standardACPSessionLock
+	config                     standardACPConfig
+	transport                  ProcessTransport
+	host                       HostMetadata
+	preparer                   ProviderLaunchPreparer
+	mu                         sync.Mutex
+	sessions                   map[string]*standardACPSession
+	terminalInteractions       terminalInteractiveDispositionStore
+	interactiveDispositionSink InteractiveDispositionSink
+	commandSink                CommandSnapshotSink
+	eventSink                  SessionEventSink
+	configSink                 ConfigOptionsUpdateSink
+	lifecycleMu                sync.Mutex
+	lifecycleLocks             map[string]*standardACPSessionLock
 }
 
 type standardACPSession struct {

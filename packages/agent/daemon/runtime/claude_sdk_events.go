@@ -365,6 +365,7 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 	if a == nil || adapterSession == nil {
 		return
 	}
+	a.markSessionInvalid(adapterSession)
 	a.mu.Lock()
 	turns := make([]*claudeSDKTurnWaiter, 0, len(adapterSession.turns))
 	for turnID, waiter := range adapterSession.turns {
@@ -384,7 +385,7 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 		}
 	}
 	for _, response := range responses {
-		response <- claudeSDKSidecarEvent{Type: "error", Payload: map[string]any{"error": err.Error()}}
+		response <- claudeSDKSidecarEvent{Type: "error", Payload: map[string]any{"error": err.Error(), "transport": true}}
 	}
 	// Any interactive/permission request still awaiting a human decision when
 	// the sidecar connection is lost must be resolved explicitly. Without
@@ -398,7 +399,7 @@ func (a *ClaudeCodeSDKAdapter) failClaudeSDKReader(agentSessionID string, adapte
 		session.AgentSessionID = agentSessionID
 	}
 	pendingFailureEvents := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", err)
-	a.removeSession(agentSessionID)
+	a.removeSession(agentSessionID, adapterSession)
 	a.emitClaudeSDKSessionEvents(agentSessionID, pendingFailureEvents)
 }
 

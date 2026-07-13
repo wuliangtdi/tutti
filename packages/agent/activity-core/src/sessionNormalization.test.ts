@@ -4,6 +4,11 @@ import { normalizeAgentActivitySession } from "./sessionNormalization.ts";
 
 test("normalizes a transport session into the complete canonical contract", () => {
   const session = normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     agentSessionId: "session-1",
     cwd: "/workspace",
     provider: "codex",

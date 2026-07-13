@@ -40,7 +40,7 @@ func (s *Store) RecordTurnTransition(ctx context.Context, transition TurnTransit
 	return turn, accepted, nil
 }
 
-func (s *Store) recordTurnTransitionTx(
+func (*Store) recordTurnTransitionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	transition TurnTransition,
@@ -451,7 +451,7 @@ func (s *Store) upsertInteractionTx(
 	tx *sql.Tx,
 	upsert InteractionUpsert,
 	now int64,
-) (Interaction, bool, error) {
+) (Interaction, InteractionTransitionResult, error) {
 	workspaceID := strings.TrimSpace(upsert.WorkspaceID)
 	agentSessionID := strings.TrimSpace(upsert.AgentSessionID)
 	requestID := strings.TrimSpace(upsert.RequestID)
@@ -459,13 +459,13 @@ func (s *Store) upsertInteractionTx(
 	kind := strings.TrimSpace(upsert.Kind)
 	status := strings.TrimSpace(upsert.Status)
 	if workspaceID == "" || agentSessionID == "" || requestID == "" || turnID == "" {
-		return Interaction{}, false, errors.New("workspace id, agent session id, request id, and turn id are required")
+		return Interaction{}, InteractionTransitionConflict, errors.New("workspace id, agent session id, request id, and turn id are required")
 	}
 	if !isKnownInteractionKind(kind) {
-		return Interaction{}, false, fmt.Errorf("unknown workspace agent interaction kind %q", kind)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("unknown workspace agent interaction kind %q", kind)
 	}
 	if !isKnownInteractionStatus(status) {
-		return Interaction{}, false, fmt.Errorf("unknown workspace agent interaction status %q", status)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("unknown workspace agent interaction status %q", status)
 	}
 
 	occurred := upsert.OccurredAtUnixMS
@@ -475,19 +475,22 @@ func (s *Store) upsertInteractionTx(
 
 	existing, hasExisting, err := getAgentInteractionTx(ctx, tx, workspaceID, agentSessionID, turnID, requestID)
 	if err != nil {
-		return Interaction{}, false, err
+		return Interaction{}, InteractionTransitionConflict, err
 	}
 	if hasExisting {
-		if occurred < existing.UpdatedAtUnixMS {
-			return existing, false, nil
+		if !interactionImmutableIdentityEqual(existing, upsert) {
+			return existing, InteractionTransitionConflict, nil
 		}
-		if existing.Status != InteractionStatusPending && status != existing.Status {
-			return existing, false, nil
+		if existing.Status != InteractionStatusPending || status == existing.Status {
+			return existing, InteractionTransitionAlreadyApplied, nil
+		}
+		if status == InteractionStatusPending {
+			return existing, InteractionTransitionConflict, nil
 		}
 	}
 
 	if _, hasTurn, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
-		return Interaction{}, false, err
+		return Interaction{}, InteractionTransitionConflict, err
 	} else if !hasTurn {
 		if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
 			WorkspaceID:      workspaceID,
@@ -496,23 +499,23 @@ func (s *Store) upsertInteractionTx(
 			Phase:            TurnPhaseWaiting,
 			OccurredAtUnixMS: occurred,
 		}, now); err != nil {
-			return Interaction{}, false, fmt.Errorf("ensure workspace agent turn for interaction: %w", err)
+			return Interaction{}, InteractionTransitionConflict, fmt.Errorf("ensure workspace agent turn for interaction: %w", err)
 		} else if !accepted {
-			return Interaction{}, false, errors.New("workspace agent interaction turn transition was rejected")
+			return Interaction{}, InteractionTransitionConflict, errors.New("workspace agent interaction turn transition was rejected")
 		}
 	}
 
 	inputJSON, err := marshalJSONMap(upsert.Input)
 	if err != nil {
-		return Interaction{}, false, fmt.Errorf("encode workspace agent interaction input: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("encode workspace agent interaction input: %w", err)
 	}
 	outputJSON, err := marshalJSONMap(upsert.Output)
 	if err != nil {
-		return Interaction{}, false, fmt.Errorf("encode workspace agent interaction output: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("encode workspace agent interaction output: %w", err)
 	}
 	metadataJSON, err := marshalJSONMap(upsert.Metadata)
 	if err != nil {
-		return Interaction{}, false, fmt.Errorf("encode workspace agent interaction metadata: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("encode workspace agent interaction metadata: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -531,17 +534,24 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id, request_id) DO UPDATE SET
 	`, workspaceID, agentSessionID, requestID, turnID, kind, status,
 		strings.TrimSpace(upsert.ToolName), inputJSON, outputJSON, metadataJSON,
 		occurred, occurred); err != nil {
-		return Interaction{}, false, fmt.Errorf("upsert workspace agent interaction: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("upsert workspace agent interaction: %w", err)
 	}
 
 	stored, ok, err := getAgentInteractionTx(ctx, tx, workspaceID, agentSessionID, turnID, requestID)
 	if err != nil {
-		return Interaction{}, false, err
+		return Interaction{}, InteractionTransitionConflict, err
 	}
 	if !ok {
-		return Interaction{}, false, fmt.Errorf("read upserted workspace agent interaction: %w", sql.ErrNoRows)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("read upserted workspace agent interaction: %w", sql.ErrNoRows)
 	}
-	return stored, true, nil
+	return stored, InteractionTransitionApplied, nil
+}
+
+func interactionImmutableIdentityEqual(existing Interaction, incoming InteractionUpsert) bool {
+	return existing.Kind == strings.TrimSpace(incoming.Kind) &&
+		existing.ToolName == strings.TrimSpace(incoming.ToolName) &&
+		jsonMapsEqual(existing.Input, incoming.Input) &&
+		jsonMapsEqual(existing.Metadata, incoming.Metadata)
 }
 
 func (s *Store) ListSessionInteractions(ctx context.Context, input ListSessionInteractionsInput) ([]Interaction, error) {

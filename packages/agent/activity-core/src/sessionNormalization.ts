@@ -1,10 +1,20 @@
 import type { AgentActivitySession } from "./types.ts";
 
+type RequiredSessionInputFields =
+  | "activeTurnId"
+  | "agentSessionId"
+  | "cwd"
+  | "latestTurnInteractions"
+  | "pendingInteractions"
+  | "provider"
+  | "title"
+  | "workspaceId";
+
 export type AgentActivitySessionInput = Pick<
   AgentActivitySession,
-  "agentSessionId" | "cwd" | "provider" | "title" | "workspaceId"
+  RequiredSessionInputFields
 > &
-  Partial<AgentActivitySession>;
+  Partial<Omit<AgentActivitySession, RequiredSessionInputFields>>;
 
 export function normalizeAgentActivitySession<const Provider extends string>(
   source: AgentActivitySessionInput & {
@@ -25,11 +35,11 @@ export function normalizeAgentActivitySession(
     ...source,
     agentTargetId: source.agentTargetId ?? null,
     providerSessionId: source.providerSessionId ?? null,
-    activeTurnId: source.activeTurnId ?? source.activeTurn?.turnId ?? null,
+    activeTurnId: source.activeTurnId,
     activeTurn: source.activeTurn ?? null,
     latestTurn: source.latestTurn ?? source.activeTurn ?? null,
-    latestTurnInteractions: source.latestTurnInteractions ?? [],
-    pendingInteractions: source.pendingInteractions ?? [],
+    latestTurnInteractions: source.latestTurnInteractions,
+    pendingInteractions: source.pendingInteractions,
     settings: source.settings ?? {},
     permissionConfig: source.permissionConfig ?? {
       configurable: false,

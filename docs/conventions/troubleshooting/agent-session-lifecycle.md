@@ -172,8 +172,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Fix:
   In AgentGUI, drive active projection, active live state, submit blocking, and
   queue decisions from a live `AgentActivityRuntime` lifecycle before falling
-  back to `activeSessionState`. Keep guidance/steer as the explicit queue
-  bypass path; ordinary composer sends while busy should queue. In the daemon,
+  back to `activeSessionState`. Ordinary composer sends while busy should
+  queue; explicit send-now intents must use capability-selected native guidance
+  or exact-turn cancel-then-send. In the daemon,
   keep the steer exception, but require the terminal provider id to be non-empty
   and drop empty-id terminal notifications for bound active turns. Keep the
   narrow exception for goal-adopted turns whose ownership came from
@@ -190,6 +191,41 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [useAgentGUINodeController.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx)
   [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+
+### Busy-turn message insertion fails or ends without sending the prompt
+
+- Symptom:
+  Sending a prompt with the composer guidance shortcut or choosing “send now”
+  on a queued prompt fails for ACP-backed agents, reports a turn-scoped
+  cancellation/guidance error, or cancels the turn without sending the prompt.
+- Quick checks:
+  Inspect the canonical session capabilities and engine commands. Codex and
+  Claude sessions should advertise `activeTurnGuidance`; standard ACP sessions
+  should advertise `interrupt` without `activeTurnGuidance`. Confirm that no
+  renderer branch selects behavior from a provider ID.
+- Root cause:
+  Message insertion is one product intent with two transport realizations.
+  Treating every provider as native guidance sends a same-turn request that the
+  standard ACP protocol does not define. Treating every provider as
+  cancel-then-send discards
+  Codex `turn/steer` and Claude SDK `guide`, and can couple prompt delivery to a
+  server-owned queue that does not exist.
+- Fix:
+  Keep the prompt queue in the workspace `AgentSessionEngine`. Resolve send-now
+  from typed runtime capabilities: use native guidance when
+  `activeTurnGuidance` is true; otherwise use exact-turn cancel when `interrupt`
+  is true, retain the prompt in the frontend queue, and send it normally only
+  after validated cancellation or authoritative turn settlement. Route both the
+  composer shortcut and queued-item action through the same atomic engine
+  transition.
+- Validation:
+  Cover both entry points and both capability combinations. Native guidance must
+  emit a guidance send with no cancel. ACP fallback must emit cancel with no
+  prompt send, then emit one normal prompt send after cancellation settles.
+- References:
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+  [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
 ### Codex goal stops after a turn while the goal remains active
 
@@ -382,13 +418,17 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   same symptom even though the user never selected a project.
 - Quick checks:
   Inspect the session `cwd` from the activity snapshot. Generated no-project
-  sessions should resolve as no-project before `cwd` is matched against parent
-  user-project paths. For imported sessions, inspect `runtimeContext` for the
-  daemon-owned `externalImportNoProject` marker. Claude data-export sessions
-  should also carry `externalImportResumeSupported: false`. Check both the in-memory
-  `rememberNoProjectPath` path and the restart fallback that recognizes
-  `Documents/tutti/session-<uuid>`. Codex external history can also record its
-  own scratch cwd under `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
+  sessions should carry `runtimeContext.noProject: true` in the daemon report
+  before `cwd` is matched against parent user-project paths. If the create
+  request contains that marker but the reported state does not, inspect
+  `runtime.Controller.State`: it must preserve the session launch context while
+  adding provider adapter state. For imported sessions, inspect `runtimeContext`
+  for the daemon-owned `externalImportNoProject` marker. Claude data-export
+  sessions should also carry `externalImportResumeSupported: false`. Check both
+  the in-memory `rememberNoProjectPath` path and the restart fallback that
+  recognizes `Documents/tutti/session-<uuid>`. Codex external history can also
+  record its own scratch cwd under
+  `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
   Conversation project grouping is a view-model join of `cwd x userProjects`.
   If a generated no-project cwd is not recognized before prefix/parent project
@@ -400,8 +440,15 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   trap because provider transcripts may record `$HOME` or a provider-owned
   scratch working directory as the cwd when no project was selected; that intent
   must be persisted as session metadata rather than inferred later from
-  user-project prefix matching.
+  user-project prefix matching. A second loss point is runtime state projection:
+  rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
+  or replacing it wholesale with `StateAdapter` output, drops launch-scoped
+  markers such as `noProject` before durable rail classification runs.
 - Fix:
+  Build runtime state from a clone of the session launch `RuntimeContext`, overlay
+  canonical session fields, and merge provider `StateAdapter` context as a patch
+  instead of replacing the map. Provider values win on collisions, while
+  launch-only markers remain available to the durable classifier.
   Persist Agent GUI rail grouping in daemon-owned
   `workspace_agent_sessions.rail_section_*` fields from the shared
   `services/tuttid/data/workspace` classifier. Migration and session-state
@@ -413,10 +460,13 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
+  `cd packages/agent/daemon && go test ./runtime`,
   `cd services/tuttid && go test ./service/agent ./api -run 'ExternalImport|ParseCodex|ParseClaude'`,
   `node --import ./test/register-asset-stub.mjs --test --experimental-strip-types ./src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.test.ts`
   from `apps/desktop`, then run `pnpm check:changed`.
 - References:
+  [controller_state.go](../../../packages/agent/daemon/runtime/controller_state.go)
+  [controller_state_test.go](../../../packages/agent/daemon/runtime/controller_state_test.go)
   [external_import_parse.go](../../../services/tuttid/service/agent/external_import_parse.go)
   [external_import_projects.go](../../../services/tuttid/service/agent/external_import_projects.go)
   [agentGuiConversationModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)

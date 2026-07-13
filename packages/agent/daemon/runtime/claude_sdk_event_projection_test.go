@@ -94,7 +94,7 @@ func TestClaudeCodeSDKAdapterApprovalDoesNotMergeWithApprovedToolCall(t *testing
 			"input":      map[string]any{"query": "current weather in Tokyo Japan"},
 		},
 	})
-	if err != nil || terminal || len(approvalEvents) != 2 {
+	if err != nil || terminal || len(approvalEvents) != 3 || approvalEvents[2].Type != activityshared.EventInteractionRequested {
 		t.Fatalf("approval events=%#v terminal=%v err=%v", approvalEvents, terminal, err)
 	}
 	toolEvents, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-web", claudeSDKSidecarEvent{
@@ -501,7 +501,7 @@ func TestClaudeCodeSDKAdapterMapsAskUserQuestionInteractive(t *testing.T) {
 	if err != nil || terminal {
 		t.Fatalf("user_input_requested err=%v terminal=%v", err, terminal)
 	}
-	if len(events) != 2 || events[1].Payload.CallType != "interactive" {
+	if len(events) != 3 || events[1].Payload.CallType != "interactive" || events[2].Type != activityshared.EventInteractionRequested {
 		t.Fatalf("events = %#v, want interactive call", events)
 	}
 	prompt := adapter.SessionState(session).PendingInteractive
@@ -537,7 +537,7 @@ func TestClaudeCodeSDKAdapterMapsExitPlanModeInteractive(t *testing.T) {
 	if err != nil || terminal {
 		t.Fatalf("exit plan request err=%v terminal=%v", err, terminal)
 	}
-	if len(events) != 2 || events[1].Payload.CallType != "interactive" {
+	if len(events) != 3 || events[1].Payload.CallType != "interactive" || events[2].Type != activityshared.EventInteractionRequested {
 		t.Fatalf("events = %#v, want interactive exit plan call", events)
 	}
 	prompt := adapter.SessionState(session).PendingInteractive
@@ -596,12 +596,12 @@ func TestClaudeCodeSDKAdapterCancelClearsPendingInteractive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	if len(events) != 2 || events[0].Type != activityshared.EventCallFailed {
+	if len(events) != 3 || events[0].Type != activityshared.EventInteractionSuperseded || events[1].Type != activityshared.EventCallFailed {
 		t.Fatalf("cancel events = %#v, want failed pending approval and interrupted turn", events)
 	}
-	if events[1].Type != activityshared.EventTurnCompleted ||
-		events[1].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
-		t.Fatalf("cancel turn event = %#v, want interrupted turn", events[1])
+	if events[2].Type != activityshared.EventTurnCompleted ||
+		events[2].Payload.TurnOutcome != string(activityshared.TurnOutcomeInterrupted) {
+		t.Fatalf("cancel turn event = %#v, want interrupted turn", events[2])
 	}
 	if prompt := adapter.SessionState(session).PendingInteractive; prompt != nil {
 		t.Fatalf("pending prompt after cancel = %#v, want nil", prompt)
@@ -658,11 +658,11 @@ func TestClaudeCodeSDKAdapterReaderFailureFailsPendingInteractive(t *testing.T) 
 	mu.Lock()
 	events := append([]activityshared.Event(nil), received...)
 	mu.Unlock()
-	if len(events) != 1 || events[0].Type != activityshared.EventCallFailed {
-		t.Fatalf("disconnect events = %#v, want a single failed pending approval event", events)
+	if len(events) != 2 || events[0].Type != activityshared.EventInteractionSuperseded || events[1].Type != activityshared.EventCallFailed {
+		t.Fatalf("disconnect events = %#v, want superseded interaction and failed pending approval", events)
 	}
-	if msg, _ := events[0].Payload.Error["message"].(string); msg != "sidecar connection lost" {
-		t.Fatalf("failed approval error = %#v, want the disconnect reason", events[0].Payload.Error)
+	if msg, _ := events[1].Payload.Error["message"].(string); msg != "sidecar connection lost" {
+		t.Fatalf("failed approval error = %#v, want the disconnect reason", events[1].Payload.Error)
 	}
 	if adapter.getSession(session.AgentSessionID) != nil {
 		t.Fatal("session should be removed after the reader fails")

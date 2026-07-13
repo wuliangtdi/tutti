@@ -50,22 +50,8 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         : null
     ).toBe("Need to inspect before editing.");
 
-    expect(conversation.pendingApproval?.requestId).toBe("approval-request-1");
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "ask-request-1",
-      title: "AskUserQuestion",
-      questions: [
-        {
-          id: "approach",
-          header: "Approach",
-          question: "Which direction should we take?",
-          options: [{ label: "Use typed renderer", description: "Keep going" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingApproval" in conversation).toBe(false);
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
 
     const summaryRow = conversation.rows.find(
       (
@@ -613,6 +599,11 @@ function session(
     ...canonical
   } = overrides;
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     userId: "user-1",

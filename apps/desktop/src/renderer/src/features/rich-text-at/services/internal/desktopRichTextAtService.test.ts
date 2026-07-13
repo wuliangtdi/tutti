@@ -374,6 +374,9 @@ test("desktop rich text @ service assembles agent session providers by capabilit
           workspaceId,
           sessions: [
             {
+              activeTurnId: "turn-1",
+              latestTurnInteractions: [],
+              pendingInteractions: [],
               activeTurn: {
                 agentSessionId: "session-1",
                 completedCommand: null,
@@ -960,7 +963,9 @@ function createAgentsService(
   const snapshot: AgentsSnapshot = {
     agentTargets,
     capturedAtUnixMs: 1780272000000,
-    agents: mapAgentTargetPresentationsToAgents(agentTargets)
+    agents: mapAgentTargetPresentationsToAgents(agentTargets),
+    error: null,
+    status: "ready"
   };
   return {
     async load() {
@@ -1135,6 +1140,9 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
           workspaceId,
           sessions: [
             {
+              activeTurnId: "turn-1",
+              latestTurnInteractions: [],
+              pendingInteractions: [],
               activeTurn: {
                 agentSessionId: "session-1",
                 completedCommand: null,
@@ -1159,6 +1167,9 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
       },
       async getWorkspaceAgentSession(workspaceId: string, id: string) {
         return {
+          activeTurnId: "turn-1",
+          latestTurnInteractions: [],
+          pendingInteractions: [],
           activeTurn: {
             agentSessionId: id,
             completedCommand: null,
@@ -1315,6 +1326,9 @@ test("desktop rich text @ service enriches cached agent session providers", asyn
           workspaceId,
           sessions: [
             {
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: [],
               createdAt: "2026-06-01T00:00:00Z",
               cwd: null,
               id: "session-1",

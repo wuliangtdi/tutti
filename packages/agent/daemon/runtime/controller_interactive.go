@@ -19,6 +19,14 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	}
 	if interactiveAdapter, ok := adapter.(InteractiveAdapter); ok {
 		result, err := interactiveAdapter.SubmitInteractive(ctx, session, input)
+		if result.Disposition == "" {
+			if dispositionAdapter, ok := adapter.(InteractiveDispositionAdapter); ok {
+				result.Disposition = dispositionAdapter.InteractiveDisposition(session, input.TurnID, input.RequestID)
+			}
+		}
+		if isTerminalInteractiveDisposition(result.Disposition) {
+			c.recordTerminalInteractiveDisposition(session.AgentSessionID, input.TurnID, input.RequestID, result.Disposition)
+		}
 		if err == nil {
 			c.syncInteractiveSelectionState(adapter, session, result.OptionID)
 			if adapterShouldReceiveInteractiveDenyFollowUp(adapter) {
@@ -28,6 +36,45 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 		return result, err
 	}
 	return SubmitInteractiveResult{}, fmt.Errorf("agent provider %q does not support interactive submission", session.Provider)
+}
+
+func (c *Controller) InteractiveDisposition(roomID string, agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if disposition := c.terminalInteractiveDisposition(agentSessionID, turnID, requestID); disposition != InteractiveDispositionUnknown {
+		return disposition
+	}
+	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if err != nil {
+		return InteractiveDispositionUnknown
+	}
+	interactiveAdapter, ok := adapter.(InteractiveDispositionAdapter)
+	if !ok {
+		return InteractiveDispositionUnknown
+	}
+	return interactiveAdapter.InteractiveDisposition(session, turnID, requestID)
+}
+
+func isTerminalInteractiveDisposition(disposition InteractiveDisposition) bool {
+	return disposition == InteractiveDispositionAnswered ||
+		disposition == InteractiveDispositionSuperseded ||
+		disposition == InteractiveDispositionInterrupted
+}
+
+func (c *Controller) recordTerminalInteractiveDisposition(agentSessionID string, turnID string, requestID string, disposition InteractiveDisposition) {
+	if c == nil || !isTerminalInteractiveDisposition(disposition) {
+		return
+	}
+	c.mu.Lock()
+	c.terminalInteractions.put(newInteractiveRequestKey(agentSessionID, turnID, requestID), disposition)
+	c.mu.Unlock()
+}
+
+func (c *Controller) terminalInteractiveDisposition(agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if c == nil {
+		return InteractiveDispositionUnknown
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.terminalInteractions.get(newInteractiveRequestKey(agentSessionID, turnID, requestID))
 }
 
 // syncInteractiveSelectionState asks the adapter to interpret its protocol

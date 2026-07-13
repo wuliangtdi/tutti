@@ -24,12 +24,6 @@ export function agentGUIConversationDiagnosticDetails(
   );
   return {
     activityStatus: conversation.activity.status,
-    pendingApprovalRequestId: conversation.pendingApproval?.requestId ?? null,
-    pendingInteractivePromptKind:
-      conversation.pendingInteractivePrompt?.kind ?? null,
-    pendingInteractivePromptRequestId: promptRequestId(
-      conversation.pendingInteractivePrompt
-    ),
     processingRowCount: processingRows.length,
     processingTurnIds: processingRows
       .map((row) => row.turnId)

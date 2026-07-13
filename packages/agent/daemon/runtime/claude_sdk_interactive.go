@@ -5,22 +5,31 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+const claudeSDKInteractiveAckTimeout = 30 * time.Second
+
+type claudeSDKInteractiveAck struct {
+	disposition InteractiveDisposition
+	conflict    bool
+	err         error
+}
+
 func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
 		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
 	}
-	pending := a.getClaudeSDKPendingRequest(session.AgentSessionID, requestID)
+	adapterSession, pending := a.getClaudeSDKPendingRequestWithSession(session.AgentSessionID, turnID, requestID)
 	if pending == nil {
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
-	}
-	adapterSession := a.getSession(session.AgentSessionID)
-	if adapterSession == nil {
-		return SubmitInteractiveResult{}, ErrSessionDisconnected
 	}
 
 	optionID := strings.TrimSpace(input.OptionID)
@@ -37,32 +46,216 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 		}
 		optionID = resolvedOptionID
 	}
+	response := pendingInteractiveResponse{
+		optionID: optionID,
+		action:   strings.TrimSpace(input.Action),
+		payload:  clonePayload(input.Payload),
+	}
+	if state, claimed := pending.beginResolving(); !claimed {
+		if state == pendingInteractiveRequestStateResolving {
+			ack := a.queryClaudeSDKInteractiveDisposition(ctx, session, adapterSession, pending, response)
+			a.applyClaudeSDKInteractiveAck(adapterSession, session, pending, response, ack)
+			if ack.conflict {
+				return claudeSDKInteractiveConflictResult(session, requestID, optionID, ack.err)
+			}
+			return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, ack.err)
+		}
+		return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
+	}
+	if err := ctx.Err(); err != nil {
+		pending.releaseResolving()
+		return SubmitInteractiveResult{}, err
+	}
 
 	payload := map[string]any{
 		"agentSessionId": session.AgentSessionID,
+		"turnId":         turnID,
 		"requestId":      requestID,
-		"action":         strings.TrimSpace(input.Action),
+		"action":         response.action,
 		"optionId":       optionID,
-		"payload":        clonePayload(input.Payload),
+		"payload":        response.payload,
 	}
+	acknowledged := make(chan claudeSDKInteractiveAck, 1)
+	go func() {
+		ackTimeout := a.interactiveAckTimeout
+		if ackTimeout <= 0 {
+			ackTimeout = claudeSDKInteractiveAckTimeout
+		}
+		ackCtx, cancel := context.WithTimeout(context.Background(), ackTimeout)
+		defer cancel()
+		event, err := a.roundTripClaudeSDKResponse(ackCtx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
+			ID:      newID(),
+			Type:    "submit_interactive",
+			Payload: payload,
+		})
+		ack := claudeSDKSubmitAckFromResponse(event, err)
+		if err != nil && (event.Type != "error" || payloadBoolValue(event.Payload, "transport")) {
+			queryCtx, queryCancel := context.WithTimeout(context.Background(), ackTimeout)
+			ack = a.queryClaudeSDKInteractiveDisposition(queryCtx, session, adapterSession, pending, response)
+			queryCancel()
+			if ack.err != nil {
+				ack.err = fmt.Errorf("submit interactive acknowledgment is uncertain (%v); disposition query failed: %w", err, ack.err)
+			}
+		}
+		a.applyClaudeSDKInteractiveAck(adapterSession, session, pending, response, ack)
+		acknowledged <- ack
+	}()
 	select {
+	case ack := <-acknowledged:
+		if ack.conflict {
+			return claudeSDKInteractiveConflictResult(session, requestID, optionID, ack.err)
+		}
+		if ack.disposition == InteractiveDispositionPending {
+			return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, ack.err)
+		}
+		if ack.err != nil && runtimeInteractiveDisposition(pending) != InteractiveDispositionAnswered {
+			return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, ack.err)
+		}
 	case <-ctx.Done():
 		return SubmitInteractiveResult{}, ctx.Err()
-	default:
 	}
-	if err := adapterSession.send(claudeSDKSidecarRequest{
-		ID:      newID(),
-		Type:    "submit_interactive",
-		Payload: payload,
-	}); err != nil {
-		return SubmitInteractiveResult{}, err
+	if state, err := pending.waitForDisposition(ctx); err != nil {
+		return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, err)
+	} else if state != pendingInteractiveRequestStateAnswered {
+		return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, interactiveDispositionError(requestID, state))
+	}
+	return claudeSDKInteractiveSubmitResult(session, requestID, optionID, pending, nil)
+}
+
+func claudeSDKInteractiveConflictResult(session Session, requestID string, optionID string, err error) (SubmitInteractiveResult, error) {
+	return SubmitInteractiveResult{
+		AgentSessionID: session.AgentSessionID,
+		RequestID:      requestID,
+		OptionID:       optionID,
+		Disposition:    InteractiveDispositionUnknown,
+	}, err
+}
+
+func claudeSDKInteractiveSubmitResult(session Session, requestID string, optionID string, pending *pendingInteractiveRequest, err error) (SubmitInteractiveResult, error) {
+	disposition := runtimeInteractiveDisposition(pending)
+	if err == nil && disposition != InteractiveDispositionAnswered {
+		err = interactiveDispositionError(requestID, pending.disposition())
 	}
 	return SubmitInteractiveResult{
 		AgentSessionID: session.AgentSessionID,
 		RequestID:      requestID,
-		Accepted:       true,
+		Accepted:       disposition == InteractiveDispositionAnswered,
 		OptionID:       optionID,
-	}, nil
+		Disposition:    disposition,
+	}, err
+}
+
+func claudeSDKSubmitAckFromResponse(event claudeSDKSidecarEvent, err error) claudeSDKInteractiveAck {
+	if event.Type == "error" {
+		if payloadBoolValue(event.Payload, "transport") {
+			return claudeSDKInteractiveAck{disposition: InteractiveDispositionResolving, err: err}
+		}
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionSuperseded, err: err}
+	}
+	return claudeSDKDispositionFromResponse(event, err)
+}
+
+func claudeSDKDispositionQueryFromResponse(event claudeSDKSidecarEvent, err error) claudeSDKInteractiveAck {
+	if event.Type == "error" {
+		if err == nil {
+			err = errors.New("interactive disposition query failed")
+		}
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionResolving, err: err}
+	}
+	return claudeSDKDispositionFromResponse(event, err)
+}
+
+func claudeSDKDispositionFromResponse(event claudeSDKSidecarEvent, err error) claudeSDKInteractiveAck {
+	switch payloadString(event.Payload, "disposition") {
+	case string(InteractiveDispositionPending):
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionPending, err: err}
+	case string(InteractiveDispositionAnswered):
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionAnswered, err: err}
+	case string(InteractiveDispositionSuperseded):
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionSuperseded, err: err}
+	case "conflict":
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionUnknown, conflict: true, err: errors.New("interactive response conflicts with the sidecar terminal result")}
+	case "unknown":
+		if err == nil {
+			err = errors.New("interactive request has unknown sidecar disposition")
+		}
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionResolving, err: err}
+	default:
+		return claudeSDKInteractiveAck{disposition: InteractiveDispositionUnknown, err: err}
+	}
+}
+
+func (a *ClaudeCodeSDKAdapter) queryClaudeSDKInteractiveDisposition(
+	ctx context.Context,
+	session Session,
+	adapterSession *claudeSDKAdapterSession,
+	pending *pendingInteractiveRequest,
+	response pendingInteractiveResponse,
+) claudeSDKInteractiveAck {
+	event, err := a.roundTripClaudeSDKResponse(ctx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
+		ID:   newID(),
+		Type: "interactive_disposition",
+		Payload: map[string]any{
+			"agentSessionId": session.AgentSessionID,
+			"turnId":         pending.turnID,
+			"requestId":      pending.requestID,
+			"action":         response.action,
+			"optionId":       response.optionID,
+			"payload":        response.payload,
+		},
+	})
+	ack := claudeSDKDispositionQueryFromResponse(event, err)
+	if ack.disposition == InteractiveDispositionUnknown {
+		ack.disposition = InteractiveDispositionResolving
+		if ack.err == nil {
+			ack.err = errors.New("interactive disposition query returned no disposition")
+		}
+	}
+	return ack
+}
+
+func (a *ClaudeCodeSDKAdapter) applyClaudeSDKInteractiveAck(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	pending *pendingInteractiveRequest,
+	response pendingInteractiveResponse,
+	ack claudeSDKInteractiveAck,
+) {
+	var state pendingInteractiveRequestState
+	var terminalErr error
+	switch ack.disposition {
+	case InteractiveDispositionAnswered:
+		state = pendingInteractiveRequestStateAnswered
+	case InteractiveDispositionSuperseded:
+		state = pendingInteractiveRequestStateSuperseded
+		terminalErr = ack.err
+		if terminalErr == nil {
+			terminalErr = errors.New("interactive request was superseded by the provider")
+		}
+	case InteractiveDispositionPending:
+		pending.releaseResolving()
+		return
+	default:
+		return
+	}
+	if !pending.finish(state) {
+		return
+	}
+	events := normalizedPermissionResolvedEvents(session, pending.turnID, pending, response, terminalErr)
+	events = a.stampTurnLifecycleSnapshots(adapterSession, events)
+	a.updateClaudeSDKSessionSnapshot(adapterSession, events)
+	if waiter := a.claudeSDKTurnWaiter(adapterSession, pending.turnID); waiter != nil {
+		a.completeClaudeSDKWaiterEvent(adapterSession, waiter, pending.turnID, events, false, nil)
+		return
+	}
+	a.emitClaudeSDKSessionEvents(session.AgentSessionID, events)
+}
+
+func (a *ClaudeCodeSDKAdapter) InteractiveDisposition(session Session, turnID string, requestID string) InteractiveDisposition {
+	if pending := a.getClaudeSDKPendingRequest(session.AgentSessionID, turnID, requestID); pending != nil {
+		return runtimeInteractiveDisposition(pending)
+	}
+	return a.terminalInteractiveDisposition(session.AgentSessionID, turnID, requestID)
 }
 
 func (*ClaudeCodeSDKAdapter) StateAfterInteractiveSelection(
@@ -181,6 +374,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 			title,
 			eventPayload,
 		),
+		normalizedInteractionRequestedEvent(session, turnID, pending),
 	}, nil
 }
 
@@ -191,7 +385,15 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 	payload map[string]any,
 ) []activityshared.Event {
 	requestID := payloadString(payload, "requestId")
-	pending := a.deleteClaudeSDKPendingRequest(adapterSession, requestID)
+	eventTurnID := firstNonEmptyString(
+		strings.TrimSpace(turnID),
+		payloadString(payload, "turnId"),
+		payloadString(payload, "turnID"),
+	)
+	pending := a.getClaudeSDKPendingRequest(session.AgentSessionID, eventTurnID, requestID)
+	if pending == nil && eventTurnID == "" {
+		pending = a.getUniqueClaudeSDKPendingRequestByRequestID(session.AgentSessionID, requestID)
+	}
 	if pending == nil {
 		return nil
 	}
@@ -210,7 +412,13 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 		payload:  payloadMap(payload, "payload"),
 	}
 	if errText := payloadString(payload, "error"); errText != "" {
+		if !pending.finish(pendingInteractiveRequestStateSuperseded) {
+			return nil
+		}
 		return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, pendingInteractiveResponse{}, errors.New(errText))
+	}
+	if !pending.finish(pendingInteractiveRequestStateAnswered) {
+		return nil
 	}
 	return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, response, nil)
 }
@@ -226,13 +434,15 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
 	}
 	a.mu.Lock()
 	pending := make([]*pendingInteractiveRequest, 0, len(adapterSession.pendingRequests))
-	for requestID, request := range adapterSession.pendingRequests {
+	for _, request := range adapterSession.pendingRequests {
 		pending = append(pending, request)
-		delete(adapterSession.pendingRequests, requestID)
 	}
 	a.mu.Unlock()
 	events := make([]activityshared.Event, 0, len(pending))
 	for _, request := range pending {
+		if !request.finish(pendingInteractiveRequestStateSuperseded) {
+			continue
+		}
 		effectiveTurnID := firstNonEmptyString(strings.TrimSpace(turnID), request.turnID)
 		events = append(events, normalizedPermissionResolvedEvents(session, effectiveTurnID, request, pendingInteractiveResponse{}, err)...)
 	}
@@ -294,15 +504,34 @@ func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *clau
 	if a == nil || adapterSession == nil || pending == nil {
 		return
 	}
+	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if adapterSession.pendingRequests == nil {
 		adapterSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 	}
-	adapterSession.pendingRequests[strings.TrimSpace(pending.requestID)] = pending
+	adapterSession.pendingRequests[claudeSDKPendingRequestKey(pending.turnID, pending.requestID)] = pending
 }
 
-func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, requestID string) *pendingInteractiveRequest {
+func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, turnID string, requestID string) *pendingInteractiveRequest {
+	_, pending := a.getClaudeSDKPendingRequestWithSession(agentSessionID, turnID, requestID)
+	return pending
+}
+
+func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequestWithSession(agentSessionID string, turnID string, requestID string) (*claudeSDKAdapterSession, *pendingInteractiveRequest) {
+	if a == nil {
+		return nil, nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	adapterSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if adapterSession == nil || adapterSession.invalid {
+		return nil, nil
+	}
+	return adapterSession, adapterSession.pendingRequests[claudeSDKPendingRequestKey(turnID, requestID)]
+}
+
+func (a *ClaudeCodeSDKAdapter) getUniqueClaudeSDKPendingRequestByRequestID(agentSessionID string, requestID string) *pendingInteractiveRequest {
 	adapterSession := a.getSession(agentSessionID)
 	if adapterSession == nil {
 		return nil
@@ -312,21 +541,61 @@ func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string,
 	if adapterSession.pendingRequests == nil {
 		return nil
 	}
-	return adapterSession.pendingRequests[strings.TrimSpace(requestID)]
+	requestID = strings.TrimSpace(requestID)
+	var match *pendingInteractiveRequest
+	for _, pending := range adapterSession.pendingRequests {
+		if strings.TrimSpace(pending.requestID) != requestID {
+			continue
+		}
+		if match != nil {
+			return nil
+		}
+		match = pending
+	}
+	return match
 }
 
-func (a *ClaudeCodeSDKAdapter) deleteClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, requestID string) *pendingInteractiveRequest {
-	if a == nil || adapterSession == nil {
-		return nil
+func claudeSDKPendingRequestKey(turnID string, requestID string) string {
+	return strings.TrimSpace(turnID) + "\x00" + strings.TrimSpace(requestID)
+}
+
+func (a *ClaudeCodeSDKAdapter) recordTerminalInteractiveRequest(pending *pendingInteractiveRequest, state pendingInteractiveRequestState) {
+	if a == nil || pending == nil {
+		return
+	}
+	disposition := interactiveDispositionFromState(state)
+	key := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
+	a.mu.Lock()
+	if adapterSession := a.sessions[key.agentSessionID]; adapterSession != nil && adapterSession.pendingRequests != nil {
+		mapKey := claudeSDKPendingRequestKey(key.turnID, key.requestID)
+		if adapterSession.pendingRequests[mapKey] == pending {
+			delete(adapterSession.pendingRequests, mapKey)
+		}
+	}
+	a.terminalInteractions.put(key, disposition)
+	sink := a.interactiveDispositionSink
+	a.mu.Unlock()
+	if sink != nil {
+		sink(key.agentSessionID, key.turnID, key.requestID, disposition)
+	}
+}
+
+func (a *ClaudeCodeSDKAdapter) SetInteractiveDispositionSink(sink InteractiveDispositionSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.interactiveDispositionSink = sink
+	a.mu.Unlock()
+}
+
+func (a *ClaudeCodeSDKAdapter) terminalInteractiveDisposition(agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if a == nil {
+		return InteractiveDispositionUnknown
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if adapterSession.pendingRequests == nil {
-		return nil
-	}
-	pending := adapterSession.pendingRequests[strings.TrimSpace(requestID)]
-	delete(adapterSession.pendingRequests, strings.TrimSpace(requestID))
-	return pending
+	return a.terminalInteractions.get(newInteractiveRequestKey(agentSessionID, turnID, requestID))
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKPendingInteractive(adapterSession *claudeSDKAdapterSession) *SessionInteractivePrompt {
@@ -339,7 +608,9 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKPendingInteractive(adapterSession *claud
 		return nil
 	}
 	for _, pending := range adapterSession.pendingRequests {
-		return pending.snapshotPrompt()
+		if prompt := pending.snapshotPrompt(); prompt != nil {
+			return prompt
+		}
 	}
 	return nil
 }

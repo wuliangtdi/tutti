@@ -502,25 +502,22 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 
 func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessionStateUpdate) WorkspaceAgentStatePatch {
 	patch := WorkspaceAgentStatePatch{
-		AgentSessionID:     strings.TrimSpace(agentSessionID),
-		AgentTargetID:      strings.TrimSpace(state.AgentTargetID),
-		DeviceID:           strings.TrimSpace(state.DeviceID),
-		Provider:           strings.TrimSpace(state.Provider),
-		ProviderSessionID:  strings.TrimSpace(state.ProviderSessionID),
-		Model:              strings.TrimSpace(state.Model),
-		Settings:           clonePayloadMap(state.Settings),
-		RuntimeContext:     clonePayloadMap(state.RuntimeContext),
-		TurnLifecycle:      cloneTurnLifecycle(state.TurnLifecycle),
-		SubmitAvailability: cloneSubmitAvailability(state.SubmitAvailability),
-		PendingInteractive: cloneInteractivePrompt(state.PendingInteractive),
-		CWD:                strings.TrimSpace(state.CWD),
-		Title:              strings.TrimSpace(state.Title),
-		LifecycleStatus:    strings.TrimSpace(state.LifecycleStatus),
-		CurrentPhase:       strings.TrimSpace(state.CurrentPhase),
-		OccurredAtUnixMS:   state.OccurredAtUnixMS,
-	}
-	if state.PendingInteractive != nil {
-		patch.PendingInteractivePresent = true
+		AgentSessionID:        strings.TrimSpace(agentSessionID),
+		AgentTargetID:         strings.TrimSpace(state.AgentTargetID),
+		DeviceID:              strings.TrimSpace(state.DeviceID),
+		Provider:              strings.TrimSpace(state.Provider),
+		ProviderSessionID:     strings.TrimSpace(state.ProviderSessionID),
+		Model:                 strings.TrimSpace(state.Model),
+		Settings:              clonePayloadMap(state.Settings),
+		RuntimeContext:        clonePayloadMap(state.RuntimeContext),
+		TurnLifecycle:         cloneTurnLifecycle(state.TurnLifecycle),
+		SubmitAvailability:    cloneSubmitAvailability(state.SubmitAvailability),
+		InteractionTransition: cloneInteractionTransition(state.InteractionTransition),
+		CWD:                   strings.TrimSpace(state.CWD),
+		Title:                 strings.TrimSpace(state.Title),
+		LifecycleStatus:       strings.TrimSpace(state.LifecycleStatus),
+		CurrentPhase:          strings.TrimSpace(state.CurrentPhase),
+		OccurredAtUnixMS:      state.OccurredAtUnixMS,
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{

@@ -75,7 +75,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		Payload: startPayload,
 	}); err != nil {
 		_ = conn.Close()
-		a.removeSession(session.AgentSessionID)
+		a.removeSession(session.AgentSessionID, adapterSession)
 		return nil, err
 	}
 
@@ -83,7 +83,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		event, err := adapterSession.reader.next(ctx)
 		if err != nil {
 			_ = conn.Close()
-			a.removeSession(session.AgentSessionID)
+			a.removeSession(session.AgentSessionID, adapterSession)
 			return nil, err
 		}
 		if next := a.applySidecarSessionEvent(adapterSession, session, event); next != nil {
@@ -94,7 +94,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		}
 		if event.Type == "error" {
 			_ = conn.Close()
-			a.removeSession(session.AgentSessionID)
+			a.removeSession(session.AgentSessionID, adapterSession)
 			return nil, errors.New(payloadString(event.Payload, "error"))
 		}
 	}
@@ -107,9 +107,10 @@ func (a *ClaudeCodeSDKAdapter) Resume(ctx context.Context, session Session) erro
 	previous := a.getSession(session.AgentSessionID)
 	_, err := a.Start(ctx, session)
 	if err != nil && previous != nil {
-		a.storeSession(session.AgentSessionID, previous)
+		a.restorePreviousSession(session.AgentSessionID, previous)
 	}
 	if err == nil && previous != nil {
+		a.removeSession(session.AgentSessionID, previous)
 		_ = previous.conn.Close()
 	}
 	return classifyClaudeSDKResumeError(session, err)
@@ -134,12 +135,12 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 		},
 	}); err != nil {
 		if errors.Is(err, ErrSessionDisconnected) {
-			a.removeSession(session.AgentSessionID)
+			a.removeSession(session.AgentSessionID, adapterSession)
 			_ = adapterSession.conn.Close()
 		}
 		return err
 	}
-	a.removeSession(session.AgentSessionID)
+	a.removeSession(session.AgentSessionID, adapterSession)
 	if graceful, ok := adapterSession.conn.(GracefulProcessConnection); ok {
 		_ = graceful.CloseInput()
 	}
@@ -147,7 +148,8 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 }
 
 func (a *ClaudeCodeSDKAdapter) HasLiveSession(session Session) bool {
-	return a.getSession(session.AgentSessionID) != nil
+	adapterSession := a.getSession(session.AgentSessionID)
+	return a.sessionIsUsable(session.AgentSessionID, adapterSession)
 }
 
 func (a *ClaudeCodeSDKAdapter) ReleaseLiveSession(ctx context.Context, session Session) error {

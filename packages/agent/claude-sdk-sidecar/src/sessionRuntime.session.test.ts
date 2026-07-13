@@ -423,6 +423,7 @@ test("bypass permission mode still surfaces AskUserQuestion", async () => {
       (event) => event.type === "user_input_requested"
     );
     session.submitInteractive(
+      "turn-1",
       String(request?.payload?.requestId ?? ""),
       "submit",
       "Yes",

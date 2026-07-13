@@ -19,9 +19,6 @@ import {
   buildAgentGUITimelineRows,
   mergeAgentGUITimelineRows,
   selectAgentGUIConversationId,
-  selectPendingApproval,
-  selectPendingApprovalFromTimelineItems,
-  selectPendingInteractivePromptFromTimelineItems,
   resolveAgentGUIConversationProject,
   type AgentGUIConversationUserProject
 } from "./agentGuiConversationModel";
@@ -179,6 +176,11 @@ describe("agentGuiConversationModel", () => {
       presences: [],
       sessions: [
         normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           workspaceId: "workspace-1",
           agentSessionId: "imported-home-session",
           provider: "codex",
@@ -270,6 +272,11 @@ describe("agentGuiConversationModel", () => {
       presences: [],
       sessions: [
         normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           workspaceId: "workspace-1",
           agentSessionId: "core-runtime-codex",
           provider: "codex",
@@ -711,6 +718,11 @@ describe("agentGuiConversationModel", () => {
     expect(
       conversationSummaryFromAgentSession(
         normalizeAgentActivitySession({
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           workspaceId: "room-1",
           agentSessionId: "session-hermes",
           provider: "hermes",
@@ -1054,20 +1066,7 @@ describe("agentGuiConversationModel", () => {
       ]
     });
 
-    expect(conversation?.pendingApproval).toEqual(
-      expect.objectContaining({
-        requestId: "4a3caced-db7a-4a15-9e7a-4ebbf5d61616",
-        callId: "call_ySuHUYSLqzwC2DXTSZk2hNbk",
-        status: "waiting_approval",
-        options: [
-          expect.objectContaining({ id: "approved", label: "Yes, proceed" }),
-          expect.objectContaining({
-            id: "abort",
-            label: "No, and tell Codex what to do differently"
-          })
-        ]
-      })
-    );
+    expect(conversation && "pendingApproval" in conversation).toBe(false);
   });
 
   it("merges local and remote timeline rows without duplicating rows", () => {
@@ -1399,279 +1398,34 @@ describe("agentGuiConversationModel", () => {
     expect(detail?.session.provider).toBe("claude-code");
   });
 
-  it("extracts ask-user interactive prompts from timeline items", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "codex",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "AskUserQuestion",
-          status: "waiting",
-          payload: {
-            requestId: "request-ask",
-            input: {
-              questions: [
-                {
-                  id: "scope",
-                  header: "Scope",
-                  question: "Which scope should we use?",
-                  options: [{ label: "Small", description: "Minimal change" }]
-                }
-              ]
-            }
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "ask-user",
-        requestId: "request-ask"
-      })
-    );
-  });
-
-  it("treats waiting_input interactive timeline items as pending prompts", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "codex",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "ExitPlanMode",
-          status: "waiting_input",
-          payload: {
-            requestId: "request-exit",
-            input: {
-              plan: "# Plan"
-            }
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "exit-plan",
-        requestId: "request-exit"
-      })
-    );
-  });
-
-  it("treats streaming AskUserQuestion timeline items as pending prompts", () => {
-    expect(
-      selectPendingInteractivePromptFromTimelineItems([
-        {
-          id: 1,
-          workspaceId: "room-1",
-          agentSessionId: "session-1",
-          seq: 1,
-          eventId: "call-1",
-          actorType: "agent",
-          actorId: "claude-code",
-          itemType: "call.started",
-          role: "assistant",
-          callType: "interactive",
-          callId: "call-1",
-          name: "AskUserQuestion",
-          status: "streaming",
-          payload: {
-            input: {
-              requestId: "request-ask",
-              questions: [
-                {
-                  header: "Color",
-                  question: "What's your favorite color?",
-                  options: [
-                    { label: "Blue", description: "The color of the sky" }
-                  ]
-                }
-              ],
-              toolName: "AskUserQuestion"
-            },
-            metadata: {
-              adapter: "claude-agent-sdk",
-              callType: "interactive",
-              interactiveKind: "ask-user",
-              toolName: "AskUserQuestion"
-            },
-            status: "streaming",
-            toolName: "AskUserQuestion"
-          },
-          occurredAtUnixMs: 10,
-          createdAtUnixMs: 10
-        }
-      ])
-    ).toEqual(
-      expect.objectContaining({
-        kind: "ask-user",
-        requestId: "request-ask"
-      })
-    );
-  });
-
-  it("treats switch-mode approval timeline items as exit-plan prompts", () => {
-    const item: WorkspaceAgentActivityTimelineItem = {
-      id: 1,
-      workspaceId: "room-1",
-      agentSessionId: "session-1",
-      seq: 1,
-      eventId: "call-1",
-      actorType: "agent",
-      actorId: "claude-code",
-      itemType: "call.started",
-      role: "assistant",
-      callType: "approval",
-      callId: "call-1",
-      name: "Approval",
-      status: "waiting_approval",
-      payload: {
-        input: {
-          requestId: "0",
-          toolCall: {
-            kind: "switch_mode",
-            title: "Ready to code?",
-            toolCallId: "call-1"
-          },
-          options: [
-            { kind: "allow_once", name: "Yes", optionId: "default" },
-            {
-              kind: "reject_once",
-              name: "No, keep planning",
-              optionId: "plan"
-            }
-          ]
-        }
-      },
-      occurredAtUnixMs: 10,
-      createdAtUnixMs: 10
-    };
-
-    expect(selectPendingApprovalFromTimelineItems([item])).toBeNull();
-    expect(selectPendingInteractivePromptFromTimelineItems([item])).toEqual(
-      expect.objectContaining({
-        kind: "exit-plan",
-        requestId: "0",
-        title: "Ready to code?"
-      })
-    );
-  });
-
-  it("selects the newest waiting approval from timeline item ordering instead of request id sort order", () => {
-    const approval = selectPendingApprovalFromTimelineItems([
-      {
+  it("keeps waiting transcript calls historical and non-actionable", () => {
+    const rows = buildAgentGUITimelineRows([
+      timelineItem({
         id: 1,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
+        eventId: "call-1",
         turnId: "turn-1",
-        seq: 10,
-        eventId: "approval-old",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
-        callType: "approval",
-        callId: "approval-1",
-        name: "First approval",
-        status: "waiting_approval",
-        payload: {
-          input: {
-            requestId: "request-z",
-            options: [
-              { id: "allow_once", label: "Allow once", kind: "allow_once" }
-            ]
-          }
-        },
-        occurredAtUnixMs: 100,
-        createdAtUnixMs: 100
-      },
-      {
-        id: 2,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        turnId: "turn-2",
-        seq: 11,
-        eventId: "approval-new",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
-        callType: "approval",
-        callId: "approval-2",
-        name: "Second approval",
-        status: "waiting_approval",
-        payload: {
-          input: {
-            requestId: "request-a",
-            options: [{ id: "deny", label: "Deny", kind: "deny" }]
-          }
-        },
-        occurredAtUnixMs: 200,
-        createdAtUnixMs: 200
-      }
-    ]);
-
-    expect(approval).toEqual(
-      expect.objectContaining({
-        requestId: "request-a",
-        callId: "approval-2",
-        title: "Second approval"
-      })
-    );
-  });
-
-  it("accepts durable awaiting_approval statuses when projecting pending approval chrome", () => {
-    const approval = selectPendingApprovalFromTimelineItems([
-      {
-        id: 1,
-        workspaceId: "room-1",
-        agentSessionId: "session-1",
-        turnId: "turn-1",
-        seq: 10,
-        eventId: "approval-durable",
-        actorType: "agent",
-        actorId: "codex",
-        itemType: "approval.requested",
+        itemType: "call",
         callType: "approval",
         callId: "approval-1",
         name: "Run command",
-        status: "awaiting_approval",
+        status: "waiting_approval",
         payload: {
           input: {
             requestId: "request-1",
-            options: [
-              { id: "allow_once", label: "Allow once", kind: "allow_once" }
-            ]
+            options: [{ optionId: "allow_once", label: "Allow once" }]
           }
         },
-        occurredAtUnixMs: 100,
-        createdAtUnixMs: 100
-      }
+        occurredAtUnixMs: 12
+      })
     ]);
 
-    expect(approval).toEqual(
+    expect(rows).toEqual([
       expect.objectContaining({
-        requestId: "request-1",
-        callId: "approval-1",
-        title: "Run command"
+        content: "Run command",
+        status: "waiting_approval"
       })
-    );
+    ]);
+    expect(rows[0]).not.toHaveProperty("approval");
   });
 
   it("replaces streaming message snapshots with the latest content for the same event id", () => {
@@ -1773,105 +1527,6 @@ describe("agentGuiConversationModel", () => {
     expect(rows.map((row) => [row.role, row.content, row.status])).toEqual([
       ["tool", "Run command", "completed"]
     ]);
-  });
-
-  it("builds pending approval rows from live timeline items", () => {
-    const rows = buildAgentGUITimelineRows([
-      timelineItem({
-        id: 1,
-        eventId: "approval-started",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "waiting_approval",
-        payload: {
-          status: "waiting_approval",
-          input: {
-            requestId: "request-1",
-            options: [
-              {
-                optionId: "allow_once",
-                label: "Allow once",
-                kind: "allow_once"
-              }
-            ]
-          }
-        },
-        occurredAtUnixMs: 12
-      })
-    ]);
-
-    expect(selectPendingApproval(rows)).toEqual(
-      expect.objectContaining({
-        kind: "approval",
-        id: expect.any(String),
-        turnId: "turn-1",
-        requestId: "request-1",
-        callId: "approval-1",
-        title: "Run command",
-        status: "waiting_approval",
-        toolName: "Run command",
-        input: {
-          requestId: "request-1",
-          options: [
-            { optionId: "allow_once", label: "Allow once", kind: "allow_once" }
-          ]
-        },
-        options: [
-          { id: "allow_once", label: "Allow once", kind: "allow_once" }
-        ],
-        output: null,
-        occurredAtUnixMs: 12
-      })
-    );
-  });
-
-  it("clears pending approval when a resolved call snapshot arrives", () => {
-    const rows = buildAgentGUITimelineRows([
-      timelineItem({
-        id: 1,
-        eventId: "approval-started",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "waiting_approval",
-        payload: {
-          status: "waiting_approval",
-          input: {
-            requestId: "request-1",
-            options: [{ optionId: "allow_once", label: "Allow once" }]
-          }
-        },
-        occurredAtUnixMs: 12
-      }),
-      timelineItem({
-        id: 2,
-        eventId: "approval-completed",
-        turnId: "turn-1",
-        itemType: "call",
-        callType: "approval",
-        callId: "approval-1",
-        name: "Run command",
-        content: "Run command",
-        status: "completed",
-        payload: {
-          status: "completed",
-          output: {
-            requestId: "request-1",
-            selectedId: "allow_once"
-          }
-        },
-        occurredAtUnixMs: 14
-      })
-    ]);
-
-    expect(selectPendingApproval(rows)).toBeNull();
   });
 
   it("does not assemble assistant chunks in the renderer", () => {
@@ -2230,6 +1885,11 @@ function workspaceAgentSession(
     ...canonical
   } = overrides;
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     userId: "user-1",

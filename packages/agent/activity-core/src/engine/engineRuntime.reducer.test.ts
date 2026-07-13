@@ -9,6 +9,7 @@ import {
   rootEngineReducer
 } from "./rootReducer.ts";
 import type { EngineIntent, EngineRuntimeState } from "./types.ts";
+import type { AgentActivitySessionCapabilities } from "../types.ts";
 
 function reduceAll(intents: readonly EngineIntent[]): EngineRuntimeState {
   let state = createInitialEngineRuntimeState();
@@ -212,6 +213,11 @@ test("canceling a queued submit atomically removes queue and pending intent", ()
   state = rootEngineReducer(state, {
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         activeTurn: {
           agentSessionId: "session-1",
           phase: "running",
@@ -289,6 +295,11 @@ test("submit acceptance rejects unknown and cross-workspace canonical sessions a
   let state = rootEngineReducer(createInitialAgentSessionEngineState(), {
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         agentSessionId: "session-1",
         cwd: "/workspace",
         provider: "codex",
@@ -325,6 +336,8 @@ test("an uncertain queued submit cannot be half-canceled", () => {
     agentSessionId: "session-1",
     cwd: "/workspace",
     provider: "codex",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     status: "working",
     title: "Session",
     updatedAtUnixMs: 1,
@@ -346,6 +359,11 @@ test("an uncertain queued submit cannot be half-canceled", () => {
   state = rootEngineReducer(state, {
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         ...runningSession,
         activeTurn: {
           ...runningSession.activeTurn,
@@ -390,6 +408,11 @@ test("session tombstone blocks late queue and snapshot resurrection across domai
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         agentSessionId: "session-1",
         cwd: "/workspace",
         provider: "codex",
@@ -421,6 +444,11 @@ test("session tombstone blocks late queue and snapshot resurrection across domai
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         agentSessionId: "session-1",
         cwd: "/workspace",
         provider: "codex",
@@ -455,12 +483,17 @@ test("session tombstone blocks late queue and snapshot resurrection across domai
   );
 });
 
-test("an invalid queue promotion cannot cancel an unrelated active turn", () => {
+test("an invalid send-now request cannot cancel an unrelated active turn", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         activeTurn: {
           agentSessionId: "session-1",
           phase: "running",
@@ -479,7 +512,7 @@ test("an invalid queue promotion cannot cancel an unrelated active turn", () => 
     ]
   }).state;
   const invalid = rootEngineReducer(state, {
-    type: "queue/promoted",
+    type: "queue/sendNowRequested",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     cancelCommandId: "cancel-1",
@@ -494,15 +527,21 @@ test("an invalid queue promotion cannot cancel an unrelated active turn", () => 
   );
 });
 
-test("an accepted promotion waits with a deadline when the referenced turn entity is late", () => {
+test("ACP send-now fallback waits for the exact turn before canceling", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         activeTurn: null,
         activeTurnId: "turn-1",
         agentSessionId: "session-1",
+        capabilities: capabilities({ interrupt: true }),
         cwd: "/workspace",
         provider: "codex",
         title: "Session",
@@ -522,7 +561,7 @@ test("an accepted promotion waits with a deadline when the referenced turn entit
     workspaceId: "workspace-1"
   }).state;
   const promoted = rootEngineReducer(state, {
-    type: "queue/promoted",
+    type: "queue/sendNowRequested",
     agentSessionId: "session-1",
     awaitingTurnExpiresAtUnixMs: 30_000,
     cancelCommandId: "cancel-1",
@@ -542,3 +581,103 @@ test("an accepted promotion waits with a deadline when the referenced turn entit
     }
   ]);
 });
+
+test("composer send-now uses native guidance without canceling the active turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [runningSession(capabilities({ activeTurnGuidance: true }))]
+  }).state;
+  const result = rootEngineReducer(state, sendNowSubmit("submit-guidance"));
+  const send = result.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(send?.type, "queue/sendPrompt");
+  assert.equal(send?.type === "queue/sendPrompt" && send.guidance, true);
+  assert.equal(
+    result.commands.some((command) => command.type === "turn/cancel"),
+    false
+  );
+});
+
+test("composer send-now uses exact-turn cancel before a normal ACP prompt", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [runningSession(capabilities({ interrupt: true }))]
+  }).state;
+  const result = rootEngineReducer(state, sendNowSubmit("submit-fallback"));
+  const cancel = result.commands.find(
+    (command) => command.type === "turn/cancel"
+  );
+  assert.equal(cancel?.type, "turn/cancel");
+  assert.equal(cancel?.type === "turn/cancel" ? cancel.turnId : null, "turn-1");
+  assert.equal(
+    result.commands.some((command) => command.type === "queue/sendPrompt"),
+    false
+  );
+  assert.equal(
+    result.state.promptQueue.recordsBySessionId["session-1"]?.sendNextPromptId,
+    "submit-fallback"
+  );
+});
+
+function runningSession(capabilityList: AgentActivitySessionCapabilities) {
+  return {
+    activeTurn: {
+      agentSessionId: "session-1",
+      phase: "running" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    },
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    capabilities: capabilityList,
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "opencode",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "workspace-1"
+  };
+}
+
+function sendNowSubmit(clientSubmitId: string) {
+  return {
+    agentSessionId: "session-1",
+    clientSubmitId,
+    content: [{ type: "text" as const, text: "inserted" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 2,
+    routing: "send_now" as const,
+    type: "submit/requested" as const,
+    workspaceId: "workspace-1"
+  };
+}
+
+function capabilities(
+  overrides: Partial<AgentActivitySessionCapabilities>
+): AgentActivitySessionCapabilities {
+  return {
+    activeTurnGuidance: false,
+    browserUse: false,
+    compact: false,
+    computerUse: false,
+    goalPause: false,
+    imageInput: false,
+    interrupt: false,
+    modelImageInputRequired: false,
+    permissionModeChangeDeferred: false,
+    permissionModeChangeDuringTurn: false,
+    planImplementation: false,
+    planMode: false,
+    rateLimits: false,
+    resumeRunningTurn: false,
+    review: false,
+    skills: false,
+    tokenUsage: false,
+    ...overrides
+  };
+}

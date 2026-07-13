@@ -40,6 +40,11 @@ const activity: WorkspaceAgentActivityCard = {
 };
 
 const session: AgentActivitySession = normalizeAgentActivitySession({
+  ...{
+    activeTurnId: null,
+    latestTurnInteractions: [],
+    pendingInteractions: []
+  },
   workspaceId: "workspace-1",
   agentSessionId: "session-1",
   provider: "codex",

@@ -333,6 +333,7 @@ func TestCursorAdapterAgentTierPromptsForPermission(t *testing.T) {
 	})
 
 	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		TurnID:    "turn-1",
 		RequestID: "permission-1",
 		OptionID:  "reject",
 	}); err != nil {
@@ -1015,9 +1016,15 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 	}
 	session.ProviderSessionID = "hermes-session-interactive-1"
 
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
 	execDone := make(chan error, 1)
 	go func() {
-		_, err := adapter.Exec(context.Background(), session, textPrompt("choose renderer"), "", "turn-ask-user", func([]activityshared.Event) {}, nil)
+		_, err := adapter.Exec(context.Background(), session, textPrompt("choose renderer"), "", "turn-ask-user", func(events []activityshared.Event) {
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+		}, nil)
 		execDone <- err
 	}()
 
@@ -1039,10 +1046,32 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 	if len(questions) == 0 {
 		t.Fatalf("interactive input = %#v, want questions", snapshot.PendingInteractive.Input)
 	}
+	mu.Lock()
+	events := append([]activityshared.Event(nil), emittedActivity...)
+	mu.Unlock()
+	if requested := eventsOfType(events, activityshared.EventInteractionRequested); len(requested) != 1 ||
+		requested[0].Payload.Interaction == nil || requested[0].Payload.Interaction.Kind != "question" {
+		t.Fatalf("ask-user events = %#v, want explicit question interaction.requested", events)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := adapter.SubmitInteractive(canceled, session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-ask-user",
+		RequestID:      "permission-1",
+		Action:         "submit",
+	}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled SubmitInteractive error = %v, want context canceled", err)
+	}
+	if pending := adapter.getPendingApproval(session.AgentSessionID, "turn-ask-user", "permission-1"); pending == nil || pending.disposition() != pendingInteractiveRequestStatePending {
+		t.Fatalf("pending disposition after canceled submit = %v, want pending", runtimeInteractiveDisposition(pending))
+	}
 
 	_, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
 		RoomID:         session.RoomID,
 		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-ask-user",
 		RequestID:      "permission-1",
 		Action:         "submit",
 		// Canonical GUI ask-user payload: flat display list + keyed map.
@@ -1100,6 +1129,7 @@ func TestStandardACPAdapterSessionStateExposesPendingExitPlanPrompt(t *testing.T
 	_, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
 		RoomID:         session.RoomID,
 		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-plan",
 		RequestID:      "permission-1",
 		Action:         "allow",
 		OptionID:       "acceptEdits",

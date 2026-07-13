@@ -9,6 +9,14 @@ const standaloneWindowSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentWindow.tsx"),
   "utf8"
 );
+const standaloneWindowPanelHostsSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentWindowPanelHosts.tsx"),
+  "utf8"
+);
+const standaloneLaunchRoutingSource = readFileSync(
+  resolve(currentDirectory, "useStandaloneAgentLaunchRouting.ts"),
+  "utf8"
+);
 const workbenchBodySource = readFileSync(
   resolve(
     currentDirectory,
@@ -20,11 +28,11 @@ const workbenchBodySource = readFileSync(
 test("standalone Agent reuses the OS account menu in the sidebar footer", () => {
   assert.match(
     standaloneWindowSource,
-    /import \{ WorkspaceAccountMenu \} from "\.\/WorkspaceAccountMenu";/
+    /import\("\.\/WorkspaceAccountMenu"\)[\s\S]*?default: WorkspaceAccountMenu/
   );
   assert.match(
     standaloneWindowSource,
-    /function renderStandaloneAgentSidebarFooter\(\): ReactNode \{[\s\S]*<WorkspaceAccountMenu showLeadingDivider=\{false\} \/>/
+    /function renderStandaloneAgentSidebarFooter\(\): ReactNode \{[\s\S]*<LazyWorkspaceAccountMenu \/>/
   );
   assert.match(
     standaloneWindowSource,
@@ -36,10 +44,29 @@ test("standalone Agent reuses the OS account menu in the sidebar footer", () => 
   );
 });
 
-test("standalone Agent keeps the app runtime lifecycle active for inline apps", () => {
+test("standalone Agent defers non-critical panel hosts until after the first frame", () => {
   assert.match(
     standaloneWindowSource,
-    /useEffect\(\s*\(\) => workspaceAppCenterService\.startWorkspacePolling\(workspaceId\),\s*\[workspaceAppCenterService, workspaceId\]\s*\)/
+    /window\.requestAnimationFrame\(\(\) => \{\s*setPanelHostsReady\(true\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /panelHostsReady \? \([\s\S]*?<LazyStandaloneAgentWindowPanelHosts/
+  );
+});
+
+test("standalone Agent starts the app runtime lifecycle only when apps open", () => {
+  assert.match(
+    standaloneWindowSource,
+    /const ensureWorkspaceAppPolling = useCallback\([\s\S]*?startWorkspacePolling\(workspaceId\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /onAppsOpen=\{ensureWorkspaceAppPolling\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /setWorkspaceAppLauncher\([\s\S]*?ensureWorkspaceAppPolling\(\);[\s\S]*?state: \{ openAppId: appId \}/
   );
 });
 
@@ -50,7 +77,7 @@ test("standalone Agent routes files and apps into the right sidebar", () => {
   );
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(
-    standaloneWindowSource,
+    standaloneLaunchRoutingSource,
     /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path \}\) => openFileInSidebar\(path\)/
   );
   assert.match(
@@ -69,12 +96,16 @@ test("standalone Agent routes files and apps into the right sidebar", () => {
 
 test("standalone Agent handles task and app Agent launch requests", () => {
   assert.match(
-    standaloneWindowSource,
+    standaloneLaunchRoutingSource,
     /registerWorkspaceAgentGuiLaunchHandler\(workspaceId, \(request\) =>[\s\S]*?handleStandaloneAgentGuiLaunch\(request, \{/
   );
   assert.match(
-    standaloneWindowSource,
+    standaloneLaunchRoutingSource,
     /registerWorkspaceIssueManagerLaunchHandler\(workspaceId, \(request\) => \{[\s\S]*?createStandaloneAgentIssueManagerOpenRequest/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /useStandaloneAgentLaunchRouting\(\{[\s\S]*?agentDirectorySnapshot,[\s\S]*?headerProvider,[\s\S]*?openFileInSidebar/
   );
   assert.match(
     standaloneWindowSource,
@@ -149,13 +180,13 @@ test("standalone Agent duplicates the active window without minimizing its sourc
   );
   assert.match(
     standaloneWindowSource,
-    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?agents: agents \?\? undefined[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
+    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
   );
 });
 
 test("standalone Agent opens Agent settings on the General section", () => {
   assert.match(
-    standaloneWindowSource,
+    standaloneWindowPanelHostsSource,
     /workspaceSettingsService\.openPanel\([\s\S]*?settingsPanelRequest\.section === "agent"[\s\S]*?\? "general"/
   );
 });

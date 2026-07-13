@@ -49,6 +49,11 @@ test("historical snapshot completion stays read unless persistence says unread",
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         provider: "codex",
@@ -76,6 +81,11 @@ test("historical snapshot completion stays read unless persistence says unread",
     type: "session/snapshotReceived",
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         provider: "codex",
@@ -194,10 +204,13 @@ test("a turn that arrives before its session is replayed when user ownership arr
     {
       type: "session/upserted",
       session: {
+        activeTurnId: null,
         workspaceId: "workspace-1",
         agentSessionId: "session-1",
         userId: "user-1",
         provider: "codex",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
         cwd: "/workspace",
         title: "Session"
       }
@@ -226,7 +239,9 @@ test("a settled latest turn on a session upsert is historical until persistence 
       title: "Session",
       activeTurnId: null,
       activeTurn: null,
-      latestTurn: turn
+      latestTurnInteractions: [],
+      latestTurn: turn,
+      pendingInteractions: []
     }
   }).state;
   assert.equal(

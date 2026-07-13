@@ -77,6 +77,7 @@ type TurnTransition = agentstore.TurnTransition
 type Interaction = agentstore.Interaction
 
 type InteractionUpsert = agentstore.InteractionUpsert
+type InteractionTransitionResult = agentstore.InteractionTransitionResult
 
 type ListSessionInteractionsInput = agentstore.ListSessionInteractionsInput
 
@@ -122,6 +123,10 @@ const (
 	InteractionStatusPending    = agentstore.InteractionStatusPending
 	InteractionStatusAnswered   = agentstore.InteractionStatusAnswered
 	InteractionStatusSuperseded = agentstore.InteractionStatusSuperseded
+
+	InteractionTransitionApplied        = agentstore.InteractionTransitionApplied
+	InteractionTransitionAlreadyApplied = agentstore.InteractionTransitionAlreadyApplied
+	InteractionTransitionConflict       = agentstore.InteractionTransitionConflict
 
 	RuntimeOperationKindInteractiveResponse    = agentstore.RuntimeOperationKindInteractiveResponse
 	RuntimeOperationKindCancelTurn             = agentstore.RuntimeOperationKindCancelTurn

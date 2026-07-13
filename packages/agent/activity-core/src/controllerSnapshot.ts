@@ -123,13 +123,13 @@ export function cloneAgentActivitySession(
           session.latestTurn
         ) as AgentActivitySession["latestTurn"])
       : session.latestTurn,
-    latestTurnInteractions: session.latestTurnInteractions?.map(
+    latestTurnInteractions: session.latestTurnInteractions.map(
       (interaction) =>
         cloneJSONValue(interaction) as NonNullable<
           AgentActivitySession["latestTurnInteractions"]
         >[number]
     ),
-    pendingInteractions: session.pendingInteractions?.map(
+    pendingInteractions: session.pendingInteractions.map(
       (interaction) =>
         cloneJSONValue(interaction) as NonNullable<
           AgentActivitySession["pendingInteractions"]

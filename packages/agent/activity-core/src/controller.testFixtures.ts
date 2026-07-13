@@ -35,7 +35,14 @@ export function testSession(
   overrides: Partial<AgentActivitySession> = {}
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     activeTurnId: null,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     agentSessionId: "session-1",
     cwd: "/workspace",
     provider: "codex",

@@ -15,7 +15,7 @@ func (s *Store) applyWorkspaceAgentSessionMetadataV1(ctx context.Context) error 
 	if err != nil {
 		return fmt.Errorf("begin workspace agent session metadata v1: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 ALTER TABLE workspace_agent_sessions ADD COLUMN session_metadata_json TEXT NOT NULL DEFAULT '{"visible":true,"imported":false,"capabilities":[]}'
   CHECK (json_valid(session_metadata_json)
@@ -129,7 +129,7 @@ func (s *Store) applyWorkspaceAgentSessionMetadataV2(ctx context.Context) error 
 	if err != nil {
 		return fmt.Errorf("begin workspace agent session metadata v2: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, column := range []string{"status", "current_phase", "last_error", "runtime_context_json"} {
 		exists, err := hasColumnTx(ctx, tx, "workspace_agent_sessions", column)
 		if err != nil {

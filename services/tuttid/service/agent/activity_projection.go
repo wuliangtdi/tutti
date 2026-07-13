@@ -149,7 +149,7 @@ func (p *ActivityProjection) ReportSessionState(
 	if transition, ok := turnTransitionFromStateInput(input); ok {
 		activityReport.Turn = &transition
 	}
-	interaction, err := pendingInteractionFromStateInput(input, activityReport.Turn)
+	interaction, err := interactionTransitionFromStateInput(input)
 	if err != nil {
 		return agentsessionstore.ReportSessionStateReply{}, err
 	}
@@ -165,8 +165,8 @@ func (p *ActivityProjection) ReportSessionState(
 		LastEventAtUnixMS: result.LastEventUnixMS,
 		RequestBodyBytes:  result.RequestBodyBytes,
 	}
+	p.publishPersistedTurnState(ctx, input, activityResult)
 	if result.Accepted {
-		p.publishPersistedTurnState(ctx, input, activityResult)
 		p.publishActivityUpdated(
 			ctx,
 			input.WorkspaceID,

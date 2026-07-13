@@ -29,8 +29,8 @@ test("sidecar protocol rejects missing and unknown versions", () => {
     /protocol version missing/
   );
   assert.throws(
-    () => parseClaudeSDKSidecarRequest({ version: 2, type: "exec" }),
-    /protocol version 2/
+    () => parseClaudeSDKSidecarRequest({ version: 1, type: "exec" }),
+    /protocol version 1/
   );
 });
 

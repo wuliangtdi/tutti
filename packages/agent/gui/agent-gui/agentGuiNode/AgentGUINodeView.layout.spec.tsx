@@ -3045,6 +3045,11 @@ describe("AgentGUINodeView layout persistence", () => {
         hasMore: false,
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             ...createRuntimeSession(input.workspaceId, "old-pinned-session"),
             pinnedAtUnixMs: 2000,
             updatedAtUnixMs: 10
@@ -3092,6 +3097,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(input.workspaceId, "older-pinned-session"),
           pinnedAtUnixMs: 1000,
           updatedAtUnixMs: 5
@@ -3107,6 +3117,11 @@ describe("AgentGUINodeView layout persistence", () => {
         nextCursor: "2000|newer-pinned-session",
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             ...createRuntimeSession(input.workspaceId, "newer-pinned-session"),
             pinnedAtUnixMs: 2000,
             updatedAtUnixMs: 10
@@ -3381,6 +3396,11 @@ describe("AgentGUINodeView layout persistence", () => {
           project,
           sessions: [
             {
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               ...createRuntimeSession(
                 input.workspaceId,
                 "project-session-1",
@@ -3436,6 +3456,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             input.workspaceId,
             "project-extra",
@@ -3505,6 +3530,11 @@ describe("AgentGUINodeView layout persistence", () => {
         createRuntimeConversationsSection({
           sessions: [
             {
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               ...createRuntimeSession(input.workspaceId, "session-1"),
               title: "Initial title",
               updatedAtUnixMs: 100
@@ -3635,6 +3665,11 @@ describe("AgentGUINodeView layout persistence", () => {
             project,
             sessions: [
               {
+                ...{
+                  activeTurnId: null,
+                  latestTurnInteractions: [],
+                  pendingInteractions: []
+                },
                 ...createRuntimeSession(
                   input.workspaceId,
                   "codex-project-session",
@@ -3759,6 +3794,11 @@ describe("AgentGUINodeView layout persistence", () => {
           project,
           sessions: [
             {
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               ...createRuntimeSession(
                 input.workspaceId,
                 "project-session-1",
@@ -3783,6 +3823,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             input.workspaceId,
             "project-extra",
@@ -3950,6 +3995,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             input.workspaceId,
             "chat-extra",
@@ -4049,6 +4099,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             input.workspaceId,
             "project-third",
@@ -4295,6 +4350,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             "room-1",
             "stale-project-extra",
@@ -4448,6 +4508,11 @@ describe("AgentGUINodeView layout persistence", () => {
       hasMore: false,
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           ...createRuntimeSession(
             input.workspaceId,
             "project-extra",
@@ -5697,6 +5762,11 @@ function createRuntimeSession(
   } = {}
 ) {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId,
     agentSessionId,
     ...(options.agentTargetId ? { agentTargetId: options.agentTargetId } : {}),
@@ -5904,9 +5974,7 @@ function createActiveRenderBudgetViewModel(): AgentGUINodeViewModel {
       activity: conversationDetail.activity,
       workspaceRoot: "/workspace",
       sourceDetail: conversationDetail,
-      rows: [],
-      pendingApproval: null,
-      pendingInteractivePrompt: null
+      rows: []
     }
   });
 }
@@ -5945,6 +6013,11 @@ function createConversationDetail(): WorkspaceAgentSessionDetailViewModel {
       userAvatarUrl: ""
     },
     session: normalizeAgentActivitySession({
+      ...{
+        activeTurnId: null,
+        latestTurnInteractions: [],
+        pendingInteractions: []
+      },
       workspaceId: "workspace-1",
       agentSessionId: "session-1",
       provider: "codex",

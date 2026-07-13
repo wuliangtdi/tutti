@@ -266,7 +266,7 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 	if optionID == "" {
 		return "", errors.New("permission option id is required")
 	}
-	pending := a.getPendingApproval(session.AgentSessionID, requestID)
+	pending := a.getPendingApproval(session.AgentSessionID, input.TurnID, requestID)
 	if pending == nil {
 		return "", fmt.Errorf("%w: permission request %q", ErrInteractiveRequestNotLive, requestID)
 	}
@@ -277,25 +277,30 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 	if !ok {
 		return "", fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
 	}
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case pending.response <- pendingInteractiveResponse{
+	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: resolvedOptionID,
 		result:   acpPermissionResponseResult(resolvedOptionID),
-	}:
-		return resolvedOptionID, nil
-	default:
-		return "", fmt.Errorf("%w: permission request %q", ErrInteractiveAlreadyAnswered, requestID)
+	}); err != nil {
+		return "", err
 	}
+	if state, err := pending.waitForDisposition(ctx); err != nil {
+		return "", err
+	} else if state != pendingInteractiveRequestStateAnswered {
+		return "", interactiveDispositionError(requestID, state)
+	}
+	return resolvedOptionID, nil
 }
 
 func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
 		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
 	}
-	pending := a.getPendingApproval(session.AgentSessionID, requestID)
+	pending := a.getPendingApproval(session.AgentSessionID, turnID, requestID)
 	if pending == nil {
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
@@ -310,6 +315,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 		resolvedOptionID, err := a.submitPermissionOption(ctx, session, PermissionOptionInput{
 			RoomID:         input.RoomID,
 			AgentSessionID: input.AgentSessionID,
+			TurnID:         turnID,
 			RequestID:      requestID,
 			OptionID:       optionID,
 		})
@@ -321,27 +327,37 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 			RequestID:      requestID,
 			Accepted:       true,
 			OptionID:       resolvedOptionID,
+			Disposition:    InteractiveDispositionAnswered,
 		}, nil
 	}
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
 	result := acpInteractiveResponseResult(action, optionID, payload)
-	select {
-	case <-ctx.Done():
-		return SubmitInteractiveResult{}, ctx.Err()
-	case pending.response <- pendingInteractiveResponse{
+	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: optionID,
 		action:   action,
 		payload:  payload,
 		result:   result,
-	}:
-	default:
-		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveAlreadyAnswered, requestID)
+	}); err != nil {
+		return SubmitInteractiveResult{}, err
+	}
+	if state, err := pending.waitForDisposition(ctx); err != nil {
+		return SubmitInteractiveResult{}, err
+	} else if state != pendingInteractiveRequestStateAnswered {
+		return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
 	}
 	return SubmitInteractiveResult{
 		AgentSessionID: session.AgentSessionID,
 		RequestID:      requestID,
 		Accepted:       true,
+		Disposition:    InteractiveDispositionAnswered,
 	}, nil
+}
+
+func (a *standardACPAdapter) InteractiveDisposition(session Session, turnID string, requestID string) InteractiveDisposition {
+	if pending := a.getPendingApproval(session.AgentSessionID, turnID, requestID); pending != nil {
+		return runtimeInteractiveDisposition(pending)
+	}
+	return a.terminalInteractiveDisposition(session.AgentSessionID, turnID, requestID)
 }

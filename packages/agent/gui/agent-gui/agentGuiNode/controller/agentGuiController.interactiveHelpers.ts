@@ -2,7 +2,6 @@ import type {
   AgentHostUserProject,
   AgentHostUserProjectsApi
 } from "../../../host/agentHostApi";
-import type { AgentConversationVM } from "../../../shared/agentConversation/contracts/agentConversationVM";
 import type { AgentActivityInteraction } from "@tutti-os/agent-activity-core";
 import type {
   AgentGUIApprovalRequest,
@@ -32,18 +31,6 @@ export function omitConversationLocalState<T>(
     }
   }
   return changed ? next : current;
-}
-
-export function approvalRequestFromConversation(
-  conversation: AgentConversationVM | null
-): AgentGUIApprovalRequest | null {
-  return conversation?.pendingApproval ?? null;
-}
-
-export function interactivePromptFromConversation(
-  conversation: AgentConversationVM | null
-): AgentGUIInteractivePrompt | null {
-  return conversation?.pendingInteractivePrompt ?? null;
 }
 
 export function interactiveApprovalFromInteraction(

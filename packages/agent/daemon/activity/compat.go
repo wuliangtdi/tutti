@@ -183,22 +183,22 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
-		AgentTargetID:      strings.TrimSpace(patch.AgentTargetID),
-		DeviceID:           strings.TrimSpace(patch.DeviceID),
-		Provider:           strings.TrimSpace(patch.Provider),
-		ProviderSessionID:  strings.TrimSpace(patch.ProviderSessionID),
-		Model:              strings.TrimSpace(patch.Model),
-		Settings:           clonePayloadMap(patch.Settings),
-		RuntimeContext:     clonePayloadMap(patch.RuntimeContext),
-		TurnLifecycle:      cloneTurnLifecycle(patch.TurnLifecycle),
-		SubmitAvailability: cloneSubmitAvailability(patch.SubmitAvailability),
-		PendingInteractive: cloneInteractivePrompt(patch.PendingInteractive),
-		CWD:                strings.TrimSpace(patch.CWD),
-		Title:              strings.TrimSpace(patch.Title),
-		LifecycleStatus:    strings.TrimSpace(patch.LifecycleStatus),
-		CurrentPhase:       currentPhase,
-		LastError:          strings.TrimSpace(patch.LastError),
-		OccurredAtUnixMS:   patch.OccurredAtUnixMS,
+		AgentTargetID:         strings.TrimSpace(patch.AgentTargetID),
+		DeviceID:              strings.TrimSpace(patch.DeviceID),
+		Provider:              strings.TrimSpace(patch.Provider),
+		ProviderSessionID:     strings.TrimSpace(patch.ProviderSessionID),
+		Model:                 strings.TrimSpace(patch.Model),
+		Settings:              clonePayloadMap(patch.Settings),
+		RuntimeContext:        clonePayloadMap(patch.RuntimeContext),
+		TurnLifecycle:         cloneTurnLifecycle(patch.TurnLifecycle),
+		SubmitAvailability:    cloneSubmitAvailability(patch.SubmitAvailability),
+		InteractionTransition: cloneInteractionTransition(patch.InteractionTransition),
+		CWD:                   strings.TrimSpace(patch.CWD),
+		Title:                 strings.TrimSpace(patch.Title),
+		LifecycleStatus:       strings.TrimSpace(patch.LifecycleStatus),
+		CurrentPhase:          currentPhase,
+		LastError:             strings.TrimSpace(patch.LastError),
+		OccurredAtUnixMS:      patch.OccurredAtUnixMS,
 	}
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
@@ -266,18 +266,17 @@ func cloneTurnLifecycle(value *WorkspaceAgentTurnLifecycle) *WorkspaceAgentTurnL
 	}
 }
 
-func cloneInteractivePrompt(value *WorkspaceAgentInteractivePrompt) *WorkspaceAgentInteractivePrompt {
+func cloneInteractionTransition(value *WorkspaceAgentInteractionTransition) *WorkspaceAgentInteractionTransition {
 	if value == nil {
 		return nil
 	}
-	return &WorkspaceAgentInteractivePrompt{
-		Kind:      strings.TrimSpace(value.Kind),
+	return &WorkspaceAgentInteractionTransition{
 		RequestID: strings.TrimSpace(value.RequestID),
-		ToolName:  strings.TrimSpace(value.ToolName),
+		TurnID:    strings.TrimSpace(value.TurnID),
+		Kind:      strings.TrimSpace(value.Kind),
 		Status:    strings.TrimSpace(value.Status),
+		ToolName:  strings.TrimSpace(value.ToolName),
 		Input:     clonePayloadMap(value.Input),
-		Output:    clonePayloadMap(value.Output),
-		Error:     clonePayloadMap(value.Error),
 		Metadata:  clonePayloadMap(value.Metadata),
 	}
 }

@@ -28,6 +28,7 @@ func TestMapAgentRuntimeErrorPreservesInteractiveRecoveryCodes(t *testing.T) {
 
 func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 	t.Setenv("TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER", "1")
+	t.Setenv("TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

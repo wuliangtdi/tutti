@@ -13,11 +13,11 @@ func TestClaudeSDKSidecarProtocolNormalizesCurrentVersion(t *testing.T) {
 }
 
 func TestClaudeSDKSidecarProtocolRejectsUnknownVersion(t *testing.T) {
-	request := claudeSDKSidecarRequest{Version: 2, Type: "exec"}
+	request := claudeSDKSidecarRequest{Version: 1, Type: "exec"}
 	if err := request.normalize(); err == nil {
 		t.Fatal("normalize accepted unknown protocol version")
 	}
-	if err := (claudeSDKSidecarEvent{Version: 2, Type: "ok"}).validate(); err == nil {
+	if err := (claudeSDKSidecarEvent{Version: 1, Type: "ok"}).validate(); err == nil {
 		t.Fatal("validate accepted unknown protocol version")
 	}
 }

@@ -18,7 +18,6 @@ import {
   type AgentGUITimelineRow
 } from "./agentGuiConversationTypes";
 import {
-  approvalRequestFromTimelineItem,
   dedupeTimelineRowsByID,
   latestTimelineItemByCallId,
   latestTimelineTime,
@@ -102,19 +101,18 @@ export function timelineRowsFromActivityTimelineItems(
             timelineItems,
             callID
           );
-          const approval = latestCallItem
-            ? approvalRequestFromTimelineItem(latestCallItem)
+          const approvalTitle = latestCallItem
+            ? historicalApprovalTitle(latestCallItem)
             : null;
           rows.push({
             id: `call:${turn.id}:${callID}`,
             turnId: turn.id,
             role: "tool",
-            content: toolRowContent(call, approval?.title || null),
+            content: toolRowContent(call, approvalTitle),
             eventType: "call",
             status:
               timelineRowStatusByCallId(timelineItems, callID) ?? call.status,
             callType: latestCallItem?.callType?.trim() || undefined,
-            approval,
             occurredAtUnixMs: timelineRowTimeByCallId(timelineItems, callID)
           });
         }
@@ -122,6 +120,27 @@ export function timelineRowsFromActivityTimelineItems(
     }
   }
   return dedupeTimelineRowsByID(rows);
+}
+
+function historicalApprovalTitle(
+  item: WorkspaceAgentActivityTimelineItem
+): string | null {
+  const payload = item.payload ?? {};
+  const callType =
+    item.callType?.trim().toLowerCase() ||
+    (typeof payload.callType === "string"
+      ? payload.callType.trim().toLowerCase()
+      : "");
+  if (callType !== "approval") {
+    return null;
+  }
+  return (
+    item.name?.trim() ||
+    (typeof payload.name === "string" ? payload.name.trim() : "") ||
+    item.content?.trim() ||
+    item.callId?.trim() ||
+    null
+  );
 }
 
 export function toolRowContent(
@@ -165,6 +184,8 @@ export function timelineSessionFromItems(
     cwd: conversation?.cwd?.trim() ?? "",
     activeTurn: conversation?.activeTurn ?? null,
     activeTurnId: conversation?.activeTurn?.turnId ?? null,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     title: conversation?.title ?? "",
     createdAtUnixMs: first?.createdAtUnixMs ?? first?.occurredAtUnixMs ?? 0,
     updatedAtUnixMs:

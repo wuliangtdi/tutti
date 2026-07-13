@@ -183,8 +183,10 @@ func (a *CodexAppServerAdapter) snapshotSessionState(agentSessionID string) (cod
 	}
 	var prompt *SessionInteractivePrompt
 	for _, pending := range appSession.pendingRequests {
-		prompt = pending.snapshotPrompt()
-		break
+		if candidate := pending.snapshotPrompt(); candidate != nil {
+			prompt = candidate
+			break
+		}
 	}
 	return codexAppServerSessionStateSnapshot{
 		serverInfo:             clonePayload(appSession.serverInfo),
@@ -217,11 +219,15 @@ func (a *CodexAppServerAdapter) SessionCommandSnapshot(session Session) (AgentSe
 }
 
 func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
+	turnID := strings.TrimSpace(input.TurnID)
+	if turnID == "" {
+		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
 		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
 	}
-	pending := a.getPendingRequest(session.AgentSessionID, requestID)
+	pending := a.getPendingRequest(session.AgentSessionID, turnID, requestID)
 	if pending == nil {
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
@@ -237,39 +243,44 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		if !ok {
 			return SubmitInteractiveResult{}, fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
 		}
-		select {
-		case <-ctx.Done():
-			return SubmitInteractiveResult{}, ctx.Err()
-		case pending.response <- pendingInteractiveResponse{optionID: resolvedOptionID}:
-			return SubmitInteractiveResult{
-				AgentSessionID: session.AgentSessionID,
-				RequestID:      requestID,
-				Accepted:       true,
-				OptionID:       resolvedOptionID,
-			}, nil
-		default:
-			return SubmitInteractiveResult{}, fmt.Errorf("%w: permission request %q", ErrInteractiveAlreadyAnswered, requestID)
+		if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{optionID: resolvedOptionID}); err != nil {
+			return SubmitInteractiveResult{}, err
 		}
+		if state, err := pending.waitForDisposition(ctx); err != nil {
+			return SubmitInteractiveResult{}, err
+		} else if state != pendingInteractiveRequestStateAnswered {
+			return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
+		}
+		return SubmitInteractiveResult{AgentSessionID: session.AgentSessionID, RequestID: requestID, Accepted: true, OptionID: resolvedOptionID, Disposition: InteractiveDispositionAnswered}, nil
 	}
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
-	select {
-	case <-ctx.Done():
-		return SubmitInteractiveResult{}, ctx.Err()
-	case pending.response <- pendingInteractiveResponse{
+	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: optionID,
 		action:   action,
 		payload:  payload,
-	}:
-	default:
-		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveAlreadyAnswered, requestID)
+	}); err != nil {
+		return SubmitInteractiveResult{}, err
+	}
+	if state, err := pending.waitForDisposition(ctx); err != nil {
+		return SubmitInteractiveResult{}, err
+	} else if state != pendingInteractiveRequestStateAnswered {
+		return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
 	}
 	return SubmitInteractiveResult{
 		AgentSessionID: session.AgentSessionID,
 		RequestID:      requestID,
 		Accepted:       true,
+		Disposition:    InteractiveDispositionAnswered,
 	}, nil
+}
+
+func (a *CodexAppServerAdapter) InteractiveDisposition(session Session, turnID string, requestID string) InteractiveDisposition {
+	if pending := a.getPendingRequest(session.AgentSessionID, turnID, requestID); pending != nil {
+		return runtimeInteractiveDisposition(pending)
+	}
+	return a.terminalInteractiveDisposition(session.AgentSessionID, turnID, requestID)
 }
 
 // lockSessionLifecycle serializes lifecycle operations (Start, Resume, Close,

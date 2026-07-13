@@ -149,6 +149,11 @@ test("archive groups use their source label and preserve selected session ids", 
     scannedSessions: 2,
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         id: "session-new",
         lastUpdatedAtUnixMs: 200,
         messageCount: 2,

@@ -201,31 +201,51 @@ func (s *Service) executeInteractiveRuntimeOperation(
 	owner string,
 	recovering bool,
 ) (agentactivitybiz.RuntimeOperation, error) {
-	disposition := agentactivitybiz.InteractionStatusAnswered
-	runtimeSession, runtimeSessionFound := s.controller().Session(operation.WorkspaceID, operation.AgentSessionID)
-	if recovering && !runtimeSessionFound {
-		disposition = agentactivitybiz.InteractionStatusSuperseded
-	} else {
-		err := s.controller().SubmitInteractive(ctx, RuntimeSubmitInteractiveInput{
+	var disposition string
+	_, runtimeSessionFound := s.controller().Session(operation.WorkspaceID, operation.AgentSessionID)
+	runtimeDisposition := RuntimeInteractiveDispositionUnknown
+	var submissionErr error
+	if recovering {
+		runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, operation.RequestID)
+		if runtimeDisposition == RuntimeInteractiveDispositionUnknown && !runtimeSessionFound {
+			return s.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after runtime session removal", operation.RequestID), true)
+		}
+	}
+	if runtimeDisposition != RuntimeInteractiveDispositionAnswered &&
+		runtimeDisposition != RuntimeInteractiveDispositionSuperseded &&
+		runtimeDisposition != RuntimeInteractiveDispositionInterrupted {
+		result, err := s.controller().SubmitInteractive(ctx, RuntimeSubmitInteractiveInput{
 			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
+			TurnID:    operation.TurnID,
 			RequestID: operation.RequestID,
 			Action:    payloadText(operation.Payload, "action"),
 			OptionID:  payloadText(operation.Payload, "optionId"),
 			Payload:   payloadMap(operation.Payload, "payload"),
 		})
-		if err != nil {
-			if !isInteractiveAlreadyAppliedError(err) {
-				return s.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
-			}
-			evidence, evidenceErr := s.interactiveAlreadyAppliedEvidence(ctx, operation, runtimeSession, runtimeSessionFound)
-			if evidenceErr != nil {
-				return operation, evidenceErr
-			}
-			if evidence == "" {
-				return s.releaseRuntimeOperation(ctx, operation, owner, err, false)
-			}
-			disposition = evidence
+		submissionErr = err
+		runtimeDisposition = result.Disposition
+		if runtimeDisposition == "" {
+			runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, operation.RequestID)
 		}
+	}
+	dispositionErr := submissionErr
+	if dispositionErr == nil {
+		dispositionErr = errors.New("runtime submission returned no terminal disposition")
+	}
+	switch runtimeDisposition {
+	case RuntimeInteractiveDispositionPending, RuntimeInteractiveDispositionResolving:
+		if submissionErr == nil {
+			submissionErr = ErrRuntimeOperationInProgress
+		}
+		return s.releaseRuntimeOperation(ctx, operation, owner, submissionErr, false)
+	case RuntimeInteractiveDispositionAnswered:
+		disposition = agentactivitybiz.InteractionStatusAnswered
+	case RuntimeInteractiveDispositionSuperseded, RuntimeInteractiveDispositionInterrupted:
+		disposition = agentactivitybiz.InteractionStatusSuperseded
+	case RuntimeInteractiveDispositionUnknown:
+		return s.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after submission: %w", operation.RequestID, dispositionErr), true)
+	default:
+		return s.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q returned unsupported runtime disposition %q: %w", operation.RequestID, runtimeDisposition, dispositionErr), true)
 	}
 	completion, _, err := s.RuntimeOperationStore.CompleteInteractiveRuntimeOperation(ctx, agentactivitybiz.CompleteInteractiveRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
@@ -240,32 +260,6 @@ func (s *Service) executeInteractiveRuntimeOperation(
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed interactive runtime operation: %w", err))
 	}
 	return completion.Operation, nil
-}
-
-func (s *Service) interactiveAlreadyAppliedEvidence(
-	ctx context.Context,
-	operation agentactivitybiz.RuntimeOperation,
-	runtimeSession ProviderRuntimeSession,
-	runtimeSessionFound bool,
-) (string, error) {
-	turn, ok, err := s.TurnStore.GetTurn(ctx, operation.WorkspaceID, operation.AgentSessionID, operation.TurnID)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", nil
-	}
-	if turn.Phase == agentactivitybiz.TurnPhaseSettled {
-		return agentactivitybiz.InteractionStatusSuperseded, nil
-	}
-	if !runtimeSessionFound {
-		return "", nil
-	}
-	if runtimeSession.PendingInteractive != nil &&
-		strings.TrimSpace(runtimeSession.PendingInteractive.RequestID) == operation.RequestID {
-		return "", nil
-	}
-	return agentactivitybiz.InteractionStatusAnswered, nil
 }
 
 func (s *Service) executeCancelRuntimeOperation(
@@ -420,10 +414,6 @@ func logRuntimeOperationFailure(operation agentactivitybiz.RuntimeOperation, err
 		"error":          err.Error(),
 	})
 	slog.Error(runtimeOperationLogPrefix + " " + string(payload))
-}
-
-func isInteractiveAlreadyAppliedError(err error) bool {
-	return errors.Is(err, ErrInteractiveRequestNotLive) || errors.Is(err, ErrInteractiveAlreadyAnswered)
 }
 
 func isRetryableRuntimeOperationError(err error) bool {

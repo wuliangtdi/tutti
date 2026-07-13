@@ -38,6 +38,7 @@ type Controller struct {
 	hub                         *EventHub
 	reporter                    ActivityReporter
 	reportCh                    chan reportRequest
+	terminalInteractions        terminalInteractiveDispositionStore
 }
 
 type sessionLifecycleLock struct {
@@ -126,6 +127,9 @@ func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
 		}
 		if sinkAdapter, ok := adapter.(ConfigOptionsUpdateSinkAdapter); ok {
 			sinkAdapter.SetConfigOptionsUpdateSink(controller.applyConfigOptionsUpdateByAgentSessionID)
+		}
+		if sinkAdapter, ok := adapter.(InteractiveDispositionSinkAdapter); ok {
+			sinkAdapter.SetInteractiveDispositionSink(controller.recordTerminalInteractiveDisposition)
 		}
 	}
 	return controller

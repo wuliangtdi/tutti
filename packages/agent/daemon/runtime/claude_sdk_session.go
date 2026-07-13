@@ -29,13 +29,64 @@ func (a *ClaudeCodeSDKAdapter) getSession(agentSessionID string) *claudeSDKAdapt
 	return a.sessions[agentSessionID]
 }
 
-func (a *ClaudeCodeSDKAdapter) removeSession(agentSessionID string) {
-	if a == nil {
+func (a *ClaudeCodeSDKAdapter) removeSession(agentSessionID string, expected *claudeSDKAdapterSession) bool {
+	if a == nil || expected == nil {
+		return false
+	}
+	a.mu.Lock()
+	expected.invalid = true
+	pending := make([]*pendingInteractiveRequest, 0, len(expected.pendingRequests))
+	for _, request := range expected.pendingRequests {
+		pending = append(pending, request)
+	}
+	if a.sessions[agentSessionID] != expected {
+		a.mu.Unlock()
+		for _, request := range pending {
+			request.finish(pendingInteractiveRequestStateSuperseded)
+		}
+		return false
+	}
+	delete(a.sessions, agentSessionID)
+	a.mu.Unlock()
+	for _, request := range pending {
+		request.finish(pendingInteractiveRequestStateSuperseded)
+	}
+	return true
+}
+
+func (a *ClaudeCodeSDKAdapter) markSessionInvalid(session *claudeSDKAdapterSession) {
+	if a == nil || session == nil {
 		return
 	}
 	a.mu.Lock()
+	session.invalid = true
+	a.mu.Unlock()
+}
+
+func (a *ClaudeCodeSDKAdapter) restorePreviousSession(agentSessionID string, previous *claudeSDKAdapterSession) bool {
+	if a == nil || previous == nil {
+		return false
+	}
+	a.mu.Lock()
 	defer a.mu.Unlock()
-	delete(a.sessions, agentSessionID)
+	current := a.sessions[agentSessionID]
+	if current != nil {
+		return current == previous && !previous.invalid
+	}
+	if previous.invalid {
+		return false
+	}
+	a.sessions[agentSessionID] = previous
+	return true
+}
+
+func (a *ClaudeCodeSDKAdapter) sessionIsUsable(agentSessionID string, session *claudeSDKAdapterSession) bool {
+	if a == nil || session == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sessions[agentSessionID] == session && !session.invalid
 }
 
 func (a *ClaudeCodeSDKAdapter) emitCommandSnapshot(snapshot AgentSessionCommandSnapshot) {
@@ -130,6 +181,7 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 		CapabilityRateLimits,
 		CapabilityPlanMode,
 		CapabilityInterrupt,
+		CapabilityActiveTurnGuidance,
 		CapabilityPermissionModeChangeDuringTurn,
 		CapabilitySkills,
 		"review",

@@ -108,6 +108,8 @@ function dispatchSession(
       activeTurnId,
       cwd: "/workspace",
       provider: "codex",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
       title: "Session",
       workspaceId: "workspace-1"
     }

@@ -344,12 +344,33 @@ export class SessionRuntime {
   }
 
   submitInteractive(
+    turnId: string,
     requestId: string,
     action: string,
     optionId: string,
     payload: Record<string, unknown>
-  ): void {
-    this.interactions.submit(requestId, action, optionId, payload);
+  ) {
+    return this.interactions.submit(
+      turnId,
+      requestId,
+      action,
+      optionId,
+      payload
+    );
+  }
+
+  interactiveDisposition(
+    turnId: string,
+    requestId: string,
+    action: string,
+    optionId: string,
+    payload: Record<string, unknown>
+  ) {
+    return this.interactions.disposition(turnId, requestId, {
+      action,
+      optionId,
+      payload
+    });
   }
 
   async applySettings(payload: Record<string, unknown>): Promise<void> {

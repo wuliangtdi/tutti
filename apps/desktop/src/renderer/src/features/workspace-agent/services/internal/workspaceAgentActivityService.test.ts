@@ -900,6 +900,11 @@ test("WorkspaceAgentActivityService.listSessionSections forwards agent target fi
             hasMore: false,
             sessions: [
               {
+                ...{
+                  activeTurnId: null,
+                  latestTurnInteractions: [],
+                  pendingInteractions: []
+                },
                 ...workspaceAgentSession({
                   status: "completed",
                   updatedAt: "2026-06-16T00:00:01.000Z"
@@ -988,6 +993,11 @@ test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tu
             hasMore: false,
             sessions: [
               {
+                ...{
+                  activeTurnId: null,
+                  latestTurnInteractions: [],
+                  pendingInteractions: []
+                },
                 ...workspaceAgentSession({
                   status: "completed",
                   updatedAt: "2026-06-16T00:00:01.000Z"

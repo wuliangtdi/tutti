@@ -81,15 +81,11 @@ func statePatchFromSessionStateSnapshot(snapshot SessionStateSnapshot) agentsess
 		SubmitAvailability: activitySubmitAvailabilityFromRuntime(
 			snapshot.SubmitAvailability,
 		),
-		CWD:             strings.TrimSpace(runtimeContextString(runtimeContext, "cwd")),
-		Title:           strings.TrimSpace(runtimeContextString(runtimeContext, "title")),
-		LifecycleStatus: string(activityshared.SessionLifecycleStatusActive),
-		CurrentPhase:    snapshotStatusPhase(snapshot.Status),
-		PendingInteractive: activityInteractivePromptFromRuntime(
-			snapshot.PendingInteractive,
-		),
-		PendingInteractivePresent: true,
-		OccurredAtUnixMS:          snapshot.UpdatedAtUnixMS,
+		CWD:              strings.TrimSpace(runtimeContextString(runtimeContext, "cwd")),
+		Title:            strings.TrimSpace(runtimeContextString(runtimeContext, "title")),
+		LifecycleStatus:  string(activityshared.SessionLifecycleStatusActive),
+		CurrentPhase:     snapshotStatusPhase(snapshot.Status),
+		OccurredAtUnixMS: snapshot.UpdatedAtUnixMS,
 	}
 }
 
@@ -133,22 +129,6 @@ func activitySubmitAvailabilityFromRuntime(value *SubmitAvailability) *agentsess
 	return &agentsessionstore.WorkspaceAgentSubmitAvailability{
 		State:  strings.TrimSpace(value.State),
 		Reason: strings.TrimSpace(value.Reason),
-	}
-}
-
-func activityInteractivePromptFromRuntime(prompt *SessionInteractivePrompt) *agentsessionstore.WorkspaceAgentInteractivePrompt {
-	if prompt == nil {
-		return nil
-	}
-	return &agentsessionstore.WorkspaceAgentInteractivePrompt{
-		Kind:      strings.TrimSpace(prompt.Kind),
-		RequestID: strings.TrimSpace(prompt.RequestID),
-		ToolName:  strings.TrimSpace(prompt.ToolName),
-		Status:    strings.TrimSpace(prompt.Status),
-		Input:     clonePayload(prompt.Input),
-		Output:    clonePayload(prompt.Output),
-		Error:     clonePayload(prompt.Error),
-		Metadata:  clonePayload(prompt.Metadata),
 	}
 }
 

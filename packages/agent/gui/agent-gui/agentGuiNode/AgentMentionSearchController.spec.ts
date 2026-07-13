@@ -1884,6 +1884,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",
@@ -2233,6 +2238,11 @@ describe("AgentMentionSearchController", () => {
       presences: [],
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           agentSessionId: "session-1",
           workspaceId: "room-1",
           userId: "user-1",
@@ -2336,6 +2346,11 @@ describe("AgentMentionSearchController", () => {
           presences: [],
           sessions: [
             {
+              ...{
+                activeTurnId: null,
+                latestTurnInteractions: [],
+                pendingInteractions: []
+              },
               agentSessionId: "runtime-session-1",
               workspaceId: "room-1",
               userId: "user-1",
@@ -2447,6 +2462,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "runtime-session-1",
             workspaceId: "room-1",
             userId: "user-1",
@@ -2643,6 +2663,11 @@ describe("AgentMentionSearchController", () => {
       presences: [],
       sessions: [
         {
+          ...{
+            activeTurnId: null,
+            latestTurnInteractions: [],
+            pendingInteractions: []
+          },
           agentSessionId: "session-1",
           workspaceId: "room-1",
           userId: "user-1",
@@ -3229,6 +3254,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",
@@ -3324,6 +3354,11 @@ describe("AgentMentionSearchController", () => {
         presences: [],
         sessions: [
           {
+            ...{
+              activeTurnId: null,
+              latestTurnInteractions: [],
+              pendingInteractions: []
+            },
             agentSessionId: "session-1",
             workspaceId: "room-1",
             userId: "user-1",

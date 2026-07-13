@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"sync"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -24,10 +25,13 @@ type ClaudeCodeSDKAdapter struct {
 	transport ProcessTransport
 	preparer  ProviderLaunchPreparer
 
-	mu          sync.Mutex
-	sessions    map[string]*claudeSDKAdapterSession
-	commandSink CommandSnapshotSink
-	eventSink   SessionEventSink
+	mu                         sync.Mutex
+	sessions                   map[string]*claudeSDKAdapterSession
+	terminalInteractions       terminalInteractiveDispositionStore
+	interactiveDispositionSink InteractiveDispositionSink
+	commandSink                CommandSnapshotSink
+	eventSink                  SessionEventSink
+	interactiveAckTimeout      time.Duration
 }
 
 type claudeSDKAdapterSession struct {
@@ -46,6 +50,9 @@ type claudeSDKAdapterSession struct {
 	liveState         claudeSDKLiveState
 	sendMu            sync.Mutex
 	readerStarted     bool
+	// invalid is guarded by the adapter mutex. Once set, a stale Resume
+	// attempt must never put this session back into the live registry.
+	invalid bool
 	// lifecycleSeq numbers the adapter's TurnLifecycle snapshots (ADR 0008):
 	// monotonically increasing per session so consumers receiving snapshots
 	// over different channels (the Exec emit closure and the session event
@@ -100,8 +107,9 @@ type claudeSDKLineReader struct {
 
 func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 	return &ClaudeCodeSDKAdapter{
-		transport: transport,
-		sessions:  make(map[string]*claudeSDKAdapterSession),
+		transport:             transport,
+		sessions:              make(map[string]*claudeSDKAdapterSession),
+		interactiveAckTimeout: claudeSDKInteractiveAckTimeout,
 	}
 }
 

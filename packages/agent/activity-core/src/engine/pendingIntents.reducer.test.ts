@@ -308,6 +308,11 @@ test("activation confirmation requires an exact workspace-scoped fresh snapshot"
   state = reduce(state, {
     sessions: [
       {
+        ...{
+          activeTurnId: null,
+          latestTurnInteractions: [],
+          pendingInteractions: []
+        },
         ...session("session-new"),
         createdAtUnixMs: 1,
         workspaceId: "workspace-other"
@@ -541,10 +546,13 @@ function activation() {
 
 function session(agentSessionId: string) {
   return {
+    activeTurnId: null,
     agentSessionId,
     cwd: "/workspace",
     createdAtUnixMs: 1,
     provider: "codex",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     status: "ready",
     title: "Session",
     workspaceId: "workspace-1"

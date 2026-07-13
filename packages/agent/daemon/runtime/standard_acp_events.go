@@ -343,6 +343,7 @@ func standardACPPermissionRequested(
 	}
 	pending := &pendingACPApproval{
 		agentSessionID: strings.TrimSpace(session.AgentSessionID),
+		turnID:         strings.TrimSpace(turnID),
 		requestID:      requestID,
 		eventID:        newID(),
 		callID:         callID,
@@ -371,5 +372,6 @@ func standardACPPermissionRequested(
 			title,
 			payload,
 		),
+		normalizedInteractionRequestedEvent(session, turnID, pending),
 	}, pending, nil
 }

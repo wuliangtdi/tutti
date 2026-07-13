@@ -417,6 +417,9 @@ func (a *CodexAppServerAdapter) pendingRequestFailureEvents(
 	a.mu.Unlock()
 	var events []activityshared.Event
 	for _, pending := range pendings {
+		if !pending.finish(pendingInteractiveRequestStateSuperseded) {
+			continue
+		}
 		events = append(events, normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, cause)...)
 	}
 	return events

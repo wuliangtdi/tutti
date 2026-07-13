@@ -597,6 +597,46 @@ func TestReportActivityInputProjectsRuntimeCallsToStableMessageUpdates(t *testin
 	}
 }
 
+func TestReportActivityInputProjectsOnlyExplicitInteractionTransitions(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	pending := &pendingInteractiveRequest{
+		requestID: "request-1",
+		turnID:    "turn-1",
+		callID:    "call-1",
+		callType:  "interactive",
+		kind:      "ask-user",
+		toolName:  "AskUserQuestion",
+		input: map[string]any{
+			"questions": []any{map[string]any{"id": "scope", "question": "Scope?"}},
+		},
+	}
+	callStarted := newTurnActivityEventWithID(session, "call-1", EventCallStarted, "turn-1", "waiting_input", "", "AskUserQuestion", map[string]any{
+		"callId": "call-1", "callType": "interactive", "toolName": "AskUserQuestion",
+		"input": pending.input,
+	})
+
+	withoutTransition := reportActivityInput(session, []activityshared.Event{callStarted})
+	for _, patch := range withoutTransition.StatePatches {
+		if patch.InteractionTransition != nil {
+			t.Fatalf("call.started derived interaction transition = %#v", patch.InteractionTransition)
+		}
+	}
+
+	requested := normalizedInteractionRequestedEvent(session, "turn-1", pending)
+	report := reportActivityInput(session, []activityshared.Event{callStarted, requested})
+	if len(report.StatePatches) != 1 || report.StatePatches[0].InteractionTransition == nil {
+		t.Fatalf("state patches = %#v, want one explicit interaction transition", report.StatePatches)
+	}
+	transition := report.StatePatches[0].InteractionTransition
+	if transition.RequestID != "request-1" || transition.TurnID != "turn-1" ||
+		transition.Kind != "question" || transition.Status != "pending" ||
+		transition.ToolName != "AskUserQuestion" {
+		t.Fatalf("interaction transition = %#v", transition)
+	}
+}
+
 func TestReportActivityInputPreservesToolInputFromTerminalMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -14,13 +14,13 @@ import (
 // supersedes an unrelated pending request.
 // Answered/superseded are terminal; a terminal row rejects regressions to
 // pending (accepted=false) so replays stay idempotent.
-func (s *Store) UpsertInteraction(ctx context.Context, upsert InteractionUpsert) (Interaction, bool, error) {
+func (s *Store) UpsertInteraction(ctx context.Context, upsert InteractionUpsert) (Interaction, InteractionTransitionResult, error) {
 	if s == nil || s.db == nil {
-		return Interaction{}, false, errors.New("workspace database is not initialized")
+		return Interaction{}, InteractionTransitionConflict, errors.New("workspace database is not initialized")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Interaction{}, false, fmt.Errorf("begin workspace agent interaction upsert: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("begin workspace agent interaction upsert: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -28,13 +28,13 @@ func (s *Store) UpsertInteraction(ctx context.Context, upsert InteractionUpsert)
 			_ = tx.Rollback()
 		}
 	}()
-	interaction, accepted, err := s.upsertInteractionTx(ctx, tx, upsert, unixMs(time.Now().UTC()))
+	interaction, result, err := s.upsertInteractionTx(ctx, tx, upsert, unixMs(time.Now().UTC()))
 	if err != nil {
-		return Interaction{}, false, err
+		return Interaction{}, InteractionTransitionConflict, err
 	}
 	if err := tx.Commit(); err != nil {
-		return Interaction{}, false, fmt.Errorf("commit workspace agent interaction upsert: %w", err)
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("commit workspace agent interaction upsert: %w", err)
 	}
 	committed = true
-	return interaction, accepted, nil
+	return interaction, result, nil
 }

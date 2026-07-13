@@ -421,21 +421,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       ]
     });
 
-    expect(conversation.pendingInteractivePrompt).toEqual({
-      kind: "ask-user",
-      requestId: "request-ask",
-      title: "Ask User Question",
-      questions: [
-        {
-          id: "favorite-color",
-          header: "Color",
-          question: "What's your favorite color?",
-          options: [{ label: "Green", description: "Pick green" }],
-          multiSelect: false,
-          answer: null
-        }
-      ]
-    });
+    expect("pendingInteractivePrompt" in conversation).toBe(false);
   });
 
   it("does not use opaque call ids as tool names", () => {
@@ -648,6 +634,11 @@ function session(
     phase === "waiting" ||
     phase === "settling";
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     userId: "user-1",

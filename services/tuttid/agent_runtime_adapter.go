@@ -193,18 +193,27 @@ func runtimePromptContentFromService(content []agentservice.PromptContentBlock) 
 	return result
 }
 
-func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agentservice.RuntimeSubmitInteractiveInput) error {
-	if _, err := a.controller.SubmitInteractive(ctx, agentruntime.SubmitInteractiveInput{
+func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agentservice.RuntimeSubmitInteractiveInput) (agentservice.RuntimeSubmitInteractiveResult, error) {
+	result, err := a.controller.SubmitInteractive(ctx, agentruntime.SubmitInteractiveInput{
 		RoomID:         input.WorkspaceID,
 		AgentSessionID: input.AgentSessionID,
+		TurnID:         input.TurnID,
 		RequestID:      input.RequestID,
 		Action:         input.Action,
 		OptionID:       input.OptionID,
 		Payload:        input.Payload,
-	}); err != nil {
-		return mapAgentRuntimeError(err)
+	})
+	mapped := agentservice.RuntimeSubmitInteractiveResult{
+		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
 	}
-	return nil
+	if err != nil {
+		return mapped, mapAgentRuntimeError(err)
+	}
+	return mapped, nil
+}
+
+func (a agentRuntimeAdapter) InteractiveDisposition(workspaceID string, agentSessionID string, turnID string, requestID string) agentservice.RuntimeInteractiveDisposition {
+	return agentservice.RuntimeInteractiveDisposition(a.controller.InteractiveDisposition(workspaceID, agentSessionID, turnID, requestID))
 }
 
 func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentservice.RuntimeUpdateSettingsInput) error {
@@ -372,9 +381,6 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.SubmitAvailability != nil {
 		result.SubmitAvailability = serviceSubmitAvailabilityPointerFromRuntime(state.SubmitAvailability)
 	}
-	if state.PendingInteractive != nil {
-		result.PendingInteractive = serviceInteractivePromptFromRuntime(state.PendingInteractive)
-	}
 	if state.Settings != nil {
 		result.Settings = agentRuntimeComposerSettings(state.Settings)
 	}
@@ -383,22 +389,6 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS
 	}
 	return result
-}
-
-func serviceInteractivePromptFromRuntime(value *agentruntime.SessionInteractivePrompt) *agentservice.RuntimeInteractivePrompt {
-	if value == nil {
-		return nil
-	}
-	return &agentservice.RuntimeInteractivePrompt{
-		Kind:      value.Kind,
-		RequestID: value.RequestID,
-		ToolName:  value.ToolName,
-		Status:    value.Status,
-		Input:     cloneRuntimeContext(value.Input),
-		Output:    cloneRuntimeContext(value.Output),
-		Error:     cloneRuntimeContext(value.Error),
-		Metadata:  cloneRuntimeContext(value.Metadata),
-	}
 }
 
 func serviceSubmitAvailabilityPointerFromRuntime(value *agentruntime.SubmitAvailability) *agentservice.SubmitAvailability {

@@ -60,6 +60,18 @@ func (a *CodexAppServerAdapter) removeSession(agentSessionID string) {
 		return
 	}
 	a.mu.Lock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	pending := make([]*pendingInteractiveRequest, 0)
+	if appSession != nil {
+		for _, request := range appSession.pendingRequests {
+			pending = append(pending, request)
+		}
+	}
+	a.mu.Unlock()
+	for _, request := range pending {
+		request.finish(pendingInteractiveRequestStateSuperseded)
+	}
+	a.mu.Lock()
 	delete(a.sessions, strings.TrimSpace(agentSessionID))
 	a.mu.Unlock()
 }
@@ -243,19 +255,19 @@ func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingInteractiveR
 	if a == nil || pending == nil {
 		return
 	}
+	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(pending.agentSessionID)]
 	if appSession != nil {
 		if appSession.pendingRequests == nil {
 			appSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 		}
-		pending.state = pendingInteractiveRequestStatePending
 		appSession.pendingRequests[strings.TrimSpace(pending.requestID)] = pending
 	}
 	a.mu.Unlock()
 }
 
-func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, requestID string) *pendingInteractiveRequest {
+func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, turnID string, requestID string) *pendingInteractiveRequest {
 	if a == nil {
 		return nil
 	}
@@ -265,7 +277,49 @@ func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, request
 	if appSession == nil || appSession.pendingRequests == nil {
 		return nil
 	}
-	return appSession.pendingRequests[strings.TrimSpace(requestID)]
+	pending := appSession.pendingRequests[strings.TrimSpace(requestID)]
+	if pending == nil || strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) {
+		return nil
+	}
+	return pending
+}
+
+func (a *CodexAppServerAdapter) recordTerminalInteractiveRequest(pending *pendingInteractiveRequest, state pendingInteractiveRequestState) {
+	if a == nil || pending == nil {
+		return
+	}
+	disposition := interactiveDispositionFromState(state)
+	key := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
+	a.mu.Lock()
+	if appSession := a.sessions[key.agentSessionID]; appSession != nil && appSession.pendingRequests != nil {
+		if appSession.pendingRequests[key.requestID] == pending {
+			delete(appSession.pendingRequests, key.requestID)
+		}
+	}
+	a.terminalInteractions.put(key, disposition)
+	sink := a.interactiveDispositionSink
+	a.mu.Unlock()
+	if sink != nil {
+		sink(key.agentSessionID, key.turnID, key.requestID, disposition)
+	}
+}
+
+func (a *CodexAppServerAdapter) SetInteractiveDispositionSink(sink InteractiveDispositionSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.interactiveDispositionSink = sink
+	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) terminalInteractiveDisposition(agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if a == nil {
+		return InteractiveDispositionUnknown
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.terminalInteractions.get(newInteractiveRequestKey(agentSessionID, turnID, requestID))
 }
 
 func (a *CodexAppServerAdapter) hasLiveSessionWork(agentSessionID string) bool {
@@ -275,21 +329,16 @@ func (a *CodexAppServerAdapter) hasLiveSessionWork(agentSessionID string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	return appSession != nil && (len(appSession.pendingRequests) > 0 ||
-		appSession.activeTurn != nil ||
-		strings.TrimSpace(appSession.activeTurnID) != "")
-}
-
-func (a *CodexAppServerAdapter) deletePendingRequest(agentSessionID string, requestID string) {
-	if a == nil {
-		return
+	if appSession == nil {
+		return false
 	}
-	a.mu.Lock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession != nil && appSession.pendingRequests != nil {
-		delete(appSession.pendingRequests, strings.TrimSpace(requestID))
+	for _, pending := range appSession.pendingRequests {
+		state := pending.disposition()
+		if state == pendingInteractiveRequestStatePending || state == pendingInteractiveRequestStateResolving {
+			return true
+		}
 	}
-	a.mu.Unlock()
+	return appSession.activeTurn != nil || strings.TrimSpace(appSession.activeTurnID) != ""
 }
 
 func (a *CodexAppServerAdapter) rejectPendingRequests(agentSessionID string, err error) {
@@ -300,10 +349,8 @@ func (a *CodexAppServerAdapter) rejectPendingRequests(agentSessionID string, err
 	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
 	pending := make([]*pendingInteractiveRequest, 0)
 	if appSession != nil && appSession.pendingRequests != nil {
-		for requestID, request := range appSession.pendingRequests {
-			request.state = pendingInteractiveRequestStateInterrupted
+		for _, request := range appSession.pendingRequests {
 			pending = append(pending, request)
-			delete(appSession.pendingRequests, requestID)
 		}
 	}
 	a.mu.Unlock()

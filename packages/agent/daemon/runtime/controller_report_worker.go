@@ -115,8 +115,6 @@ func enrichReportStatePatches(
 		report.StatePatches[index].RuntimeContext = clonePayload(patch.RuntimeContext)
 		report.StatePatches[index].TurnLifecycle = cloneTurnLifecycle(patch.TurnLifecycle)
 		report.StatePatches[index].SubmitAvailability = cloneSubmitAvailability(patch.SubmitAvailability)
-		report.StatePatches[index].PendingInteractive = cloneInteractivePrompt(patch.PendingInteractive)
-		report.StatePatches[index].PendingInteractivePresent = patch.PendingInteractivePresent
 		if report.StatePatches[index].Provider == "" {
 			report.StatePatches[index].Provider = patch.Provider
 		}

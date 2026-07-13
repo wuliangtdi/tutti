@@ -424,6 +424,39 @@ test("authoritative snapshots remove pending interactions that are no longer pre
   );
 });
 
+test("authoritative snapshots remove an old-turn pending interaction when the request id is reused", () => {
+  const turn1 = activeTurn(2);
+  const withTurn1Pending = session(turn1, 2);
+  withTurn1Pending.pendingInteractions = [interaction("pending", 2)];
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [withTurn1Pending]
+  }).state;
+
+  const turn2 = { ...activeTurn(3), turnId: "turn-2" };
+  const withTurn2Pending = session(turn2, 3);
+  withTurn2Pending.pendingInteractions = [
+    { ...interaction("pending", 3), turnId: "turn-2" }
+  ];
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [withTurn2Pending]
+  }).state;
+
+  assert.equal(
+    state.interactionsById[
+      canonicalInteractionKey("session-1", "turn-1", "request-1")
+    ],
+    undefined
+  );
+  assert.equal(
+    state.interactionsById[
+      canonicalInteractionKey("session-1", "turn-2", "request-1")
+    ]?.status,
+    "pending"
+  );
+});
+
 for (const intentType of [
   "session/snapshotReceived",
   "session/upserted"
@@ -903,7 +936,7 @@ function reduce(
   intent: Parameters<typeof sessionLifecycleReducer>[1]
 ) {
   return sessionLifecycleReducer(state, intent, {
-    queuePromotionAccepted: false,
+    queueSendNowRequiresCancel: false,
     sendResultValidation:
       intent.type === "engine/commandResult" &&
       intent.commandType === "queue/sendPrompt" &&
@@ -916,7 +949,6 @@ function reduce(
             errorCode: null,
             errorMessage: null,
             expiresAtUnixMs: 1,
-            guidance: false,
             requestedAtUnixMs: 1,
             status: "requested",
             turnId: null,
@@ -931,6 +963,11 @@ function session(
   updatedAtUnixMs: number
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
+    ...{
+      activeTurnId: null,
+      latestTurnInteractions: [],
+      pendingInteractions: []
+    },
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     provider: "codex",
@@ -938,6 +975,7 @@ function session(
     title: "Session",
     activeTurnId: turn?.turnId ?? null,
     activeTurn: turn,
+    latestTurnInteractions: [],
     pendingInteractions: [],
     updatedAtUnixMs
   });

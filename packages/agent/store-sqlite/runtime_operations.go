@@ -39,10 +39,11 @@ func (s *Store) PrepareRuntimeOperation(ctx context.Context, input RuntimeOperat
 	}
 	subjectID := input.TurnID
 	requestID := any(nil)
-	if input.Kind == RuntimeOperationKindInteractiveResponse {
+	switch input.Kind {
+	case RuntimeOperationKindInteractiveResponse:
 		subjectID = input.RequestID
 		requestID = input.RequestID
-	} else if input.Kind == RuntimeOperationKindPlanDecision {
+	case RuntimeOperationKindPlanDecision:
 		subjectID = input.TurnID
 		requestID = input.RequestID
 	}

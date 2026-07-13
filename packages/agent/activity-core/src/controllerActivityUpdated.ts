@@ -10,6 +10,10 @@ import {
   mergeSnapshotMessages,
   resolveCanonicalAgentSessionId
 } from "./controllerSnapshot.ts";
+import {
+  isSameInteractionIdentity,
+  shouldUseIncomingInteraction
+} from "./interactionMonotonicity.ts";
 import type {
   AgentActivityInteraction,
   AgentActivityMessage,
@@ -97,7 +101,7 @@ function applyActivityUpdatedTurn(
     activeTurnId,
     activeTurn: turn,
     pendingInteractions:
-      activeTurnId === null ? [] : (current.pendingInteractions ?? []),
+      activeTurnId === null ? [] : current.pendingInteractions,
     updatedAtUnixMs: numberValue(data.occurredAtUnixMs) ?? turn.updatedAtUnixMs,
     lastEventUnixMs: numberValue(data.occurredAtUnixMs) ?? turn.updatedAtUnixMs
   };
@@ -131,16 +135,30 @@ function applyActivityUpdatedInteraction(
     return emptyActivityUpdatedApplyResult(snapshot);
   }
   const current = snapshot.sessions[sessionIndex]!;
-  const pendingInteractions = (current.pendingInteractions ?? []).filter(
-    (candidate) => candidate.requestId !== interaction.requestId
+  const existing = preferredInteraction(
+    [...current.latestTurnInteractions, ...current.pendingInteractions].filter(
+      (candidate) => isSameInteractionIdentity(candidate, interaction)
+    )
+  );
+  if (existing && !shouldUseIncomingInteraction(existing, interaction)) {
+    return emptyActivityUpdatedApplyResult(snapshot);
+  }
+  const pendingInteractions = current.pendingInteractions.filter(
+    (candidate) => !isSameInteractionIdentity(candidate, interaction)
   );
   if (interaction.status === "pending") {
     pendingInteractions.push(interaction);
   }
-  const latestTurnInteractions = mergeLatestTurnInteraction(
-    current.latestTurnInteractions ?? [],
-    interaction
-  );
+  const canonicalLatestTurnId =
+    current.activeTurnId ??
+    current.latestTurn?.turnId ??
+    current.activeTurn?.turnId ??
+    current.latestTurnInteractions[0]?.turnId ??
+    interaction.turnId;
+  const latestTurnInteractions =
+    interaction.turnId === canonicalLatestTurnId
+      ? mergeLatestTurnInteraction(current.latestTurnInteractions, interaction)
+      : current.latestTurnInteractions;
   const session: AgentActivitySession = {
     ...current,
     latestTurnInteractions,
@@ -167,12 +185,6 @@ function mergeLatestTurnInteraction(
   const sameTurn = current.filter(
     (candidate) => candidate.turnId === incoming.turnId
   );
-  const existing = sameTurn.find(
-    (candidate) => candidate.requestId === incoming.requestId
-  );
-  if (existing && !shouldUseIncomingInteraction(existing, incoming)) {
-    return [...sameTurn];
-  }
   return [
     ...sameTurn.filter(
       (candidate) => candidate.requestId !== incoming.requestId
@@ -185,21 +197,16 @@ function mergeLatestTurnInteraction(
   );
 }
 
-function shouldUseIncomingInteraction(
-  current: AgentActivityInteraction,
-  incoming: AgentActivityInteraction
-): boolean {
-  if (incoming.updatedAtUnixMs < current.updatedAtUnixMs) return false;
-  const currentTerminal = current.status !== "pending";
-  const incomingTerminal = incoming.status !== "pending";
-  if (currentTerminal && incoming.status !== current.status) return false;
-  if (
-    incoming.updatedAtUnixMs === current.updatedAtUnixMs &&
-    currentTerminal !== incomingTerminal
-  ) {
-    return incomingTerminal;
+function preferredInteraction(
+  interactions: readonly AgentActivityInteraction[]
+): AgentActivityInteraction | undefined {
+  let preferred: AgentActivityInteraction | undefined;
+  for (const interaction of interactions) {
+    if (shouldUseIncomingInteraction(preferred, interaction)) {
+      preferred = interaction;
+    }
   }
-  return true;
+  return preferred;
 }
 
 function applyActivityUpdatedMessages(

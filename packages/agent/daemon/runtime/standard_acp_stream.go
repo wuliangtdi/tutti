@@ -105,9 +105,9 @@ func (a *standardACPAdapter) handleACPMessage(
 		if len(events) > 0 && emit != nil {
 			emit(events)
 		}
-		defer a.deletePendingApproval(session.AgentSessionID, pending.requestID)
 		selection, err := pending.wait(ctx)
 		if err != nil {
+			pending.finish(pendingInteractiveRequestStateInterrupted)
 			events := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
 			if sessionLevelEmit {
 				emit(events)
@@ -120,13 +120,18 @@ func (a *standardACPAdapter) handleACPMessage(
 			result = acpPermissionResponseResult(selection.optionID)
 		}
 		if err := client.Respond(ctx, message.ID, result, nil); err != nil {
-			events := normalizedPermissionResolvedEvents(session, turnID, pending, selection, err)
+			events := []activityshared.Event(nil)
+			if pending.finish(pendingInteractiveRequestStateSuperseded) {
+				events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, err)
+			}
 			if sessionLevelEmit {
 				emit(events)
 			}
 			return events, err
 		}
-		events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
+		if pending.finish(pendingInteractiveRequestStateAnswered) {
+			events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
+		}
 		if sessionLevelEmit {
 			emit(events)
 		}
@@ -387,6 +392,18 @@ func (a *standardACPAdapter) removeSession(agentSessionID string) {
 		return
 	}
 	a.mu.Lock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	pending := make([]*pendingACPApproval, 0)
+	if session != nil {
+		for _, approval := range session.pendingApprovals {
+			pending = append(pending, approval)
+		}
+	}
+	a.mu.Unlock()
+	for _, approval := range pending {
+		approval.finish(pendingInteractiveRequestStateSuperseded)
+	}
+	a.mu.Lock()
 	delete(a.sessions, strings.TrimSpace(agentSessionID))
 	a.mu.Unlock()
 }
@@ -432,6 +449,7 @@ func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {
 	if a == nil || pending == nil {
 		return
 	}
+	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
 	session := a.sessions[pending.agentSessionID]
 	if session != nil {
@@ -443,6 +461,44 @@ func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {
 	a.mu.Unlock()
 }
 
+func (a *standardACPAdapter) recordTerminalInteractiveRequest(pending *pendingInteractiveRequest, state pendingInteractiveRequestState) {
+	if a == nil || pending == nil {
+		return
+	}
+	disposition := interactiveDispositionFromState(state)
+	key := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
+	a.mu.Lock()
+	if session := a.sessions[key.agentSessionID]; session != nil && session.pendingApprovals != nil {
+		if session.pendingApprovals[key.requestID] == pending {
+			delete(session.pendingApprovals, key.requestID)
+		}
+	}
+	a.terminalInteractions.put(key, disposition)
+	sink := a.interactiveDispositionSink
+	a.mu.Unlock()
+	if sink != nil {
+		sink(key.agentSessionID, key.turnID, key.requestID, disposition)
+	}
+}
+
+func (a *standardACPAdapter) SetInteractiveDispositionSink(sink InteractiveDispositionSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.interactiveDispositionSink = sink
+	a.mu.Unlock()
+}
+
+func (a *standardACPAdapter) terminalInteractiveDisposition(agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if a == nil {
+		return InteractiveDispositionUnknown
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.terminalInteractions.get(newInteractiveRequestKey(agentSessionID, turnID, requestID))
+}
+
 func (a *standardACPAdapter) rejectPendingApprovals(agentSessionID string, err error) {
 	if a == nil {
 		return
@@ -451,9 +507,11 @@ func (a *standardACPAdapter) rejectPendingApprovals(agentSessionID string, err e
 	session := a.sessions[strings.TrimSpace(agentSessionID)]
 	pending := make([]*pendingACPApproval, 0)
 	if session != nil && session.pendingApprovals != nil {
-		for requestID, approval := range session.pendingApprovals {
-			pending = append(pending, approval)
-			delete(session.pendingApprovals, requestID)
+		for _, approval := range session.pendingApprovals {
+			state := approval.disposition()
+			if state == pendingInteractiveRequestStatePending || state == pendingInteractiveRequestStateResolving {
+				pending = append(pending, approval)
+			}
 		}
 	}
 	a.mu.Unlock()
@@ -462,7 +520,7 @@ func (a *standardACPAdapter) rejectPendingApprovals(agentSessionID string, err e
 	}
 }
 
-func (a *standardACPAdapter) getPendingApproval(agentSessionID string, requestID string) *pendingACPApproval {
+func (a *standardACPAdapter) getPendingApproval(agentSessionID string, turnID string, requestID string) *pendingACPApproval {
 	if a == nil {
 		return nil
 	}
@@ -472,17 +530,9 @@ func (a *standardACPAdapter) getPendingApproval(agentSessionID string, requestID
 	if session == nil || session.pendingApprovals == nil {
 		return nil
 	}
-	return session.pendingApprovals[strings.TrimSpace(requestID)]
-}
-
-func (a *standardACPAdapter) deletePendingApproval(agentSessionID string, requestID string) {
-	if a == nil {
-		return
+	pending := session.pendingApprovals[strings.TrimSpace(requestID)]
+	if pending == nil || strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) {
+		return nil
 	}
-	a.mu.Lock()
-	session := a.sessions[strings.TrimSpace(agentSessionID)]
-	if session != nil && session.pendingApprovals != nil {
-		delete(session.pendingApprovals, strings.TrimSpace(requestID))
-	}
-	a.mu.Unlock()
+	return pending
 }
