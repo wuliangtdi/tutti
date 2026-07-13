@@ -936,7 +936,7 @@ function reduce(
   intent: Parameters<typeof sessionLifecycleReducer>[1]
 ) {
   return sessionLifecycleReducer(state, intent, {
-    queuePromotionAccepted: false,
+    queueSendNowRequiresCancel: false,
     sendResultValidation:
       intent.type === "engine/commandResult" &&
       intent.commandType === "queue/sendPrompt" &&
@@ -949,7 +949,6 @@ function reduce(
             errorCode: null,
             errorMessage: null,
             expiresAtUnixMs: 1,
-            guidance: false,
             requestedAtUnixMs: 1,
             status: "requested",
             turnId: null,

@@ -125,7 +125,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         pendingActions: [],
         statuses: []
       },
-      agents: [
+      agentDirectorySnapshot: createAgentDirectorySnapshot([
         {
           agentTargetId: "target-1",
           availability: { status: "ready" },
@@ -133,13 +133,13 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
           name: "Codex",
           provider: "codex"
         }
-      ],
+      ]),
       workspaceID: "workspace-1"
     })
   );
 
   const params = new URLSearchParams(search);
-  assert.ok(params.get("agents"));
+  assert.ok(params.get("agentDirectorySnapshot"));
   assert.ok(params.get("agentProviderStatusSnapshot"));
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: "session-1",
@@ -154,7 +154,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
       pendingActions: [],
       statuses: []
     },
-    agents: [
+    agentDirectorySnapshot: createAgentDirectorySnapshot([
       {
         agentTargetId: "target-1",
         availability: { status: "ready" },
@@ -162,7 +162,7 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
         name: "Codex",
         provider: "codex"
       }
-    ],
+    ]),
     workspaceID: "workspace-1"
   });
 });
@@ -170,22 +170,34 @@ test("encodeDesktopWindowIntent carries agent provider target bootstrap", () => 
 test("encodeDesktopWindowIntent preserves an explicitly loaded empty agent directory", () => {
   const search = encodeDesktopWindowIntent(
     createAgentWindowIntent({
-      agents: [],
+      agentDirectorySnapshot: createAgentDirectorySnapshot([]),
       provider: "codex",
       workspaceID: "workspace-1"
     })
   );
 
-  assert.equal(new URLSearchParams(search).get("agents"), "[]");
+  assert.ok(new URLSearchParams(search).get("agentDirectorySnapshot"));
   assert.deepEqual(resolveDesktopWindowIntent(search), {
     agentSessionID: null,
     agentTargetID: null,
-    agents: [],
+    agentDirectorySnapshot: createAgentDirectorySnapshot([]),
     kind: "agent",
     provider: "codex",
     workspaceID: "workspace-1"
   });
 });
+
+function createAgentDirectorySnapshot(
+  agents: readonly import("@tutti-os/agent-gui").AgentGUIAgent[]
+) {
+  return {
+    agents,
+    agentTargets: [],
+    capturedAtUnixMs: 1780272000000,
+    error: null,
+    status: "ready" as const
+  };
+}
 
 test("readInitialDockPlacementFromLocation resolves dock placement from search params", async () => {
   const { readInitialDockPlacementFromLocation } =

@@ -7,6 +7,95 @@ import {
 } from "./agentConversationProjection";
 
 describe("projectAgentConversationVM", () => {
+  it("interleaves guidance with earlier and later assistant output in the same turn", () => {
+    const sourceItem = (
+      seq: number,
+      role: "user" | "assistant",
+      content: string
+    ) => ({
+      id: seq,
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      seq,
+      turnId: "turn-1",
+      eventId: `event-${seq}`,
+      actorType: role === "user" ? "user" : "agent",
+      actorId: role === "user" ? "user" : "session-1",
+      itemType: role === "user" ? "message.user" : "message.assistant",
+      role,
+      content,
+      occurredAtUnixMs: seq * 100
+    });
+    const initialUser = {
+      id: "user-1",
+      body: "Build the game",
+      turnId: "turn-1",
+      occurredAtUnixMs: 100,
+      sourceTimelineItems: [sourceItem(1, "user", "Build the game")]
+    };
+    const earlierAssistant = {
+      id: "assistant-1",
+      body: "I will inspect the workspace first.",
+      turnId: "turn-1",
+      occurredAtUnixMs: 200,
+      sourceTimelineItems: [
+        sourceItem(2, "assistant", "I will inspect the workspace first.")
+      ]
+    };
+    const guidance = {
+      id: "user-2",
+      body: "Make it colorful",
+      turnId: "turn-1",
+      occurredAtUnixMs: 300,
+      sourceTimelineItems: [sourceItem(3, "user", "Make it colorful")]
+    };
+    const laterAssistant = {
+      id: "assistant-2",
+      body: "I will update the palette.",
+      turnId: "turn-1",
+      occurredAtUnixMs: 400,
+      sourceTimelineItems: [
+        sourceItem(4, "assistant", "I will update the palette.")
+      ]
+    };
+    const agentItems = [
+      { kind: "message" as const, message: earlierAssistant },
+      { kind: "message" as const, message: laterAssistant }
+    ];
+
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: initialUser,
+            userMessages: [initialUser, guidance],
+            agentMessages: [earlierAssistant, laterAssistant],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            rawAgentItems: agentItems,
+            agentItems
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "message"
+          ? row.messages.map((message) => message.body)
+          : []
+      )
+    ).toEqual([
+      "Build the game",
+      "I will inspect the workspace first.",
+      "Make it colorful",
+      "I will update the palette."
+    ]);
+  });
+
   it("keeps trailing tools split while the session is still processing without appending summary rows", () => {
     const detail = detailViewModel();
     const conversation = projectAgentConversationVM(detail);

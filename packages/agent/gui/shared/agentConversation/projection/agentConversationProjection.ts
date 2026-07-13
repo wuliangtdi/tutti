@@ -8,17 +8,14 @@ import type {
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
-import {
-  buildAgentTurnSequenceItems,
-  computeAgentToolGroups
-} from "./agentToolGroupingProjection";
+import { computeAgentToolGroups } from "./agentToolGroupingProjection";
+import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
 import { projectTurnRows } from "./agentTurnRowProjection";
 import { projectAgentProcessingRow } from "./agentProcessingProjection";
 import {
   projectAgentTurnSummaryRowForTurn,
   projectAgentTurnSummaryRows
 } from "./agentTurnSummaryProjection";
-import { projectConversationUserRows } from "./agentConversationUserProjection";
 
 export interface AgentConversationProjectionOptions {
   avoidGroupingEdits?: boolean;
@@ -39,9 +36,8 @@ export function projectAgentConversationVM(
   const allowTrailingToolGrouping = !isSessionWorking(detail);
 
   turns.forEach((turn, index) => {
-    rows.push(...projectConversationUserRows(turn, detail.session.workspaceId));
     rows.push(
-      ...projectTurnAgentRows(turn, {
+      ...projectTurnConversationRows(turn, detail.session.workspaceId, {
         agentSessionId: detail.session.agentSessionId,
         turnIndex: index,
         allowTrailingFinalization:
@@ -553,8 +549,9 @@ function isSessionWorking(
   return detail.showProcessingIndicator === true;
 }
 
-function projectTurnAgentRows(
+function projectTurnConversationRows(
   turn: WorkspaceAgentSessionDetailTurn,
+  workspaceId: string | null | undefined,
   options: {
     agentSessionId: string;
     turnIndex: number;
@@ -562,7 +559,7 @@ function projectTurnAgentRows(
     avoidGroupingEdits?: boolean;
   }
 ): AgentTranscriptRowVM[] {
-  const sequence = buildAgentTurnSequenceItems(turn);
+  const sequence = buildAgentTurnSequenceItems(turn, workspaceId);
   const { groups, groupedIndices, suppressedIndices } = computeAgentToolGroups(
     sequence,
     options

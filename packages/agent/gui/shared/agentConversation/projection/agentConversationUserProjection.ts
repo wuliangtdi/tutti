@@ -5,22 +5,21 @@ import type {
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
 
-export function projectConversationUserRows(
-  turn: WorkspaceAgentSessionDetailTurn,
+export function projectConversationUserRow(
+  message: WorkspaceAgentSessionDetailTurn["userMessages"][number],
+  fallbackTurnId: string,
   workspaceId: string | null | undefined
-): AgentMessageRowVM[] {
-  return turn.userMessages.map((message) => {
-    const turnId = message.turnId ?? turn.id;
-    return {
-      kind: "message",
-      id: `message:user:${message.id}`,
-      turnId,
-      speaker: "user",
-      messages: projectUserMessageContentParts(message, turnId, workspaceId),
-      thinking: [],
-      occurredAtUnixMs: message.occurredAtUnixMs ?? null
-    };
-  });
+): AgentMessageRowVM {
+  const turnId = message.turnId ?? fallbackTurnId;
+  return {
+    kind: "message",
+    id: `message:user:${message.id}`,
+    turnId,
+    speaker: "user",
+    messages: projectUserMessageContentParts(message, turnId, workspaceId),
+    thinking: [],
+    occurredAtUnixMs: message.occurredAtUnixMs ?? null
+  };
 }
 
 function projectUserMessageContentParts(

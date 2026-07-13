@@ -70,6 +70,8 @@ type AsyncExecAdapter interface {
 }
 
 type ActiveTurnGuidanceAdapter interface {
+	// GuideActiveTurn appends guidance to the exact controller turn identified
+	// by turnID. The guidance submit does not own a separate turn lifecycle.
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 

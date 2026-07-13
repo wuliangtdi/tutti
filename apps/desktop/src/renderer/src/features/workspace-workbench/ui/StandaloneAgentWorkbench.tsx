@@ -16,6 +16,7 @@ import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostSer
 import { useWorkspaceWorkbenchShellRuntime } from "./useWorkspaceWorkbenchShellRuntime.tsx";
 import { WorkspaceCloseGuardDialog } from "./WorkspaceCloseGuardDialog.tsx";
 import { WorkspaceFallbackState } from "./WorkspaceFallbackState.tsx";
+import { StandaloneAgentStartupShell } from "./StandaloneAgentStartupShell.tsx";
 
 export interface StandaloneAgentWorkbenchProps extends Omit<
   StandaloneAgentWindowProps,
@@ -54,7 +55,7 @@ export function StandaloneAgentWorkbench({
   }
 
   if (state.status === "loading" || !state.workspace) {
-    return <main className="h-screen min-h-0 bg-background" />;
+    return <StandaloneAgentStartupShell />;
   }
 
   return (
@@ -90,7 +91,7 @@ function StandaloneAgentWindowWithSession(
     !hostSession.isActive ||
     hostSession.workspaceId !== props.workspace.id
   ) {
-    return <main className="h-screen min-h-0 bg-background" />;
+    return <StandaloneAgentStartupShell />;
   }
 
   return (

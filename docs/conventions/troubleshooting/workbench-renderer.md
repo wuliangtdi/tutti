@@ -2,6 +2,62 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Standalone Agent dev window stays black during cold startup
+
+- Symptom:
+  A local development launch creates the standalone Agent native window, but
+  only the window chrome is visible for several seconds before the Agent header,
+  rail, conversation, and composer appear.
+- Quick checks:
+  Compare desktop-ready, first renderer diagnostic, standalone route mount,
+  AgentGUI body mount, and composer-ready timestamps. Time the daemon workspace,
+  session-list, rail, target, and provider-status endpoints independently. If
+  normal workspace/session calls finish in milliseconds while the first
+  renderer diagnostics arrive seconds later, the delay is in renderer module
+  transformation/evaluation rather than SQLite or workspace hydration. Also
+  time provider statuses per provider; one slow CLI probe can dominate a serial
+  all-provider scan.
+- Root cause:
+  Development Vite transforms source modules on demand. An Agent-only route can
+  therefore remain on a black Suspense fallback while nested lazy boundaries
+  discover large dependency graphs. Static imports for Browser, Terminal, File
+  Manager, App Center, Message Center, settings/import panels, or account UI
+  enlarge the shell graph even when those surfaces are closed. Starting
+  Workspace App polling at mount can also prepare every app runtime during the
+  same cold compile. Separately, a single global in-flight provider-status
+  promise makes the active provider wait behind a slow all-provider scan.
+- Fix:
+  Keep workspace and standalone Agent routes separate. Dynamically preload the
+  full AgentGUI body without blocking the lightweight standalone shell. Render
+  the same structured shell at the route Suspense, workspace hydration,
+  host-session binding, and AgentGUI-body boundaries; a plain background at any
+  one of those boundaries brings the apparent black screen back. Keep the
+  right side shaped like the empty-home/new-conversation hero, not a selected
+  conversation timeline with a bottom dock. Keep the fallback hero composer
+  non-interactive until the real controller owns its draft.
+  Load tool bodies on first open, show a panel-local busy state while they load,
+  defer non-critical panel hosts until after the first frame, and start
+  Workspace App polling only for an explicit Apps/app open. Key provider-status
+  requests by request scope, prioritize the selected provider, merge responses
+  per provider, and ignore stale results for a provider already refreshed by a
+  newer request.
+- Validation:
+  Run focused provider concurrency and standalone tool-lifecycle tests, desktop
+  typecheck, renderer boundary checks, and a production desktop build. Inspect
+  the generated chunks to confirm the standalone shell does not statically
+  import the full AgentGUI body and that heavy optional App Center, Message
+  Center, settings, import, and account presentation modules stay in separate
+  async chunks. Keep a source-level regression test that verifies every
+  pre-controller return path renders the structured startup shell and every
+  deferred tool body has a non-empty loading fallback.
+  Finally cold-start local dev and compare the same timestamp landmarks; this
+  manual renderer verification requires explicit user approval.
+- References:
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+  [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
+  [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+  [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+
 ### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
 
 - Symptom:

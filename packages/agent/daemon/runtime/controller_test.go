@@ -1170,7 +1170,8 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	t.Parallel()
 
 	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
-	controller := NewController([]Adapter{adapter}, nil)
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
 	ctx := context.Background()
 
 	started, err := controller.Start(ctx, StartInput{
@@ -1183,11 +1184,12 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(ctx, ExecInput{
+	first, err := controller.Exec(ctx, ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("first prompt"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("first Exec: %v", err)
 	}
 	adapter.waitForPrompt(t, "first prompt")
@@ -1197,18 +1199,47 @@ func TestControllerExecGuidanceDuringActiveTurn(t *testing.T) {
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide current turn"),
 		Guidance:       true,
+		Metadata: map[string]any{
+			"clientSubmitId": "guidance-submit-1",
+		},
 	})
 	if err != nil {
 		t.Fatalf("guidance Exec: %v", err)
 	}
-	if !result.Accepted || result.TurnID == "" {
-		t.Fatalf("guidance result = %#v, want accepted turn id", result)
+	if !result.Accepted || result.TurnID != first.TurnID {
+		t.Fatalf("guidance result = %#v, want active turn id %q", result, first.TurnID)
 	}
 	if got := adapter.guidanceCalls.Load(); got != 1 {
 		t.Fatalf("guidance calls = %d, want 1", got)
 	}
 	if prompts := adapter.prompts(); len(prompts) != 1 || prompts[0] != "first prompt" {
 		t.Fatalf("adapter prompts after guidance = %#v, want only first prompt running", prompts)
+	}
+	reports := reporter.waitForReports(t, "guidance user message report", func(calls []reportCall) bool {
+		for _, call := range calls {
+			for _, update := range call.report.MessageUpdates {
+				if update.Payload["clientSubmitId"] == "guidance-submit-1" {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	var guidanceUpdate *agentsessionstore.WorkspaceAgentMessageUpdate
+	for _, report := range reportInputs(reports) {
+		for index := range report.MessageUpdates {
+			update := &report.MessageUpdates[index]
+			if update.Payload["clientSubmitId"] == "guidance-submit-1" {
+				guidanceUpdate = update
+				break
+			}
+		}
+		if guidanceUpdate != nil {
+			break
+		}
+	}
+	if guidanceUpdate == nil || guidanceUpdate.TurnID != first.TurnID {
+		t.Fatalf("guidance message update = %#v, want active turn id %q", guidanceUpdate, first.TurnID)
 	}
 
 	adapter.releaseNext()
@@ -3030,13 +3061,13 @@ type guidanceBlockingAdapter struct {
 	guidanceCalls atomic.Int64
 }
 
-func (a *guidanceBlockingAdapter) GuideActiveTurn(_ context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+func (a *guidanceBlockingAdapter) GuideActiveTurn(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
 	a.guidanceCalls.Add(1)
 	events := []activityshared.Event{
-		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", map[string]any{
+		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"guidance": true,
 			"steered":  true,
-		})),
+		}))),
 	}
 	if emit != nil {
 		emit(events)

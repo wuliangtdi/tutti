@@ -241,6 +241,12 @@ func promptContentForACP(content []PromptContentBlock) []map[string]any {
 	return out
 }
 
+// materializeProviderPromptImagesWithClient converts remote HTTPS image references at
+// the provider boundary, immediately before Codex app-server or ACP receives
+// the prompt. Current Codex and Claude transports reject remote image URLs and
+// require inline image data. AgentGUI and durable activity state intentionally
+// keep the uploaded URL; when a provider gains native URL support, only its
+// final adapter needs to stop calling this compatibility conversion.
 func materializeProviderPromptImagesWithClient(ctx context.Context, content []PromptContentBlock, client *http.Client) ([]PromptContentBlock, error) {
 	requestClient := *client
 	existingRedirectCheck := client.CheckRedirect

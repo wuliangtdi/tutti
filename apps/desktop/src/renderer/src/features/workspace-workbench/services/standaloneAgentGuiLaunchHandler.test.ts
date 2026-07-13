@@ -63,7 +63,13 @@ test("standalone Agent draft launches open a new window with the complete bootst
       workspaceId: "workspace-1"
     },
     createContext({
-      agents: [],
+      agentDirectorySnapshot: {
+        agents: [],
+        agentTargets: [],
+        capturedAtUnixMs: 1,
+        error: null,
+        status: "ready"
+      },
       async openAgentWindow(input) {
         opened.push(input);
       },
@@ -92,7 +98,13 @@ test("standalone Agent draft launches open a new window with the complete bootst
         pendingActions: [],
         statuses: []
       },
-      agents: [],
+      agentDirectorySnapshot: {
+        agents: [],
+        agentTargets: [],
+        capturedAtUnixMs: 1,
+        error: null,
+        status: "ready"
+      },
       minimizeSourceWindow: false,
       provider: "claude-code",
       userProjectPath: "/workspace/app",

@@ -282,14 +282,21 @@ function compareMessagesByDisplayOrder(
 ): number {
   // This comparator decides the rendered message position. startedAt is the
   // start time for long-running items, occurredAt is the append time for plain
-  // messages, and completedAt is only a last fallback; version/messageId are stable
-  // tie-breakers when two messages share the same display time.
-  return (
-    messageDisplayOrderTime(left) - messageDisplayOrderTime(right) ||
-    normalizedPositiveNumber(left.version) -
-      normalizedPositiveNumber(right.version) ||
-    left.messageId.localeCompare(right.messageId)
-  );
+  // messages, and completedAt is only a last fallback. Version orders messages
+  // that share or lack a display time. Exact ties preserve source stream order.
+  const leftTime = messageDisplayOrderTime(left);
+  const rightTime = messageDisplayOrderTime(right);
+  if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  const leftVersion = normalizedPositiveNumber(left.version);
+  const rightVersion = normalizedPositiveNumber(right.version);
+  if (leftVersion > 0 && rightVersion > 0 && leftVersion !== rightVersion) {
+    return leftVersion - rightVersion;
+  }
+  // Sorting opaque message ids would manufacture chronology and can move a
+  // user prompt behind the assistant output it initiated.
+  return 0;
 }
 
 function normalizedMessageId(id: number | undefined, index: number): number {

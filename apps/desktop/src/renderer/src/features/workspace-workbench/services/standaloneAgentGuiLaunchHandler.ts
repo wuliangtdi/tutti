@@ -1,4 +1,3 @@
-import type { AgentGUIAgent } from "@tutti-os/agent-gui";
 import type { DesktopHostOpenAgentWindowInput } from "@shared/contracts/ipc";
 import type { DesktopAgentGUIProvider } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import type { WorkspaceAgentGuiLaunchRequest } from "@renderer/features/workspace-agent/services/workspaceAgentGuiLaunchCoordinator.ts";
@@ -9,7 +8,7 @@ export interface StandaloneAgentGuiLaunchHandlerContext {
     agentTargetId: string | null;
     provider: DesktopAgentGUIProvider;
   }): void;
-  agents?: readonly AgentGUIAgent[];
+  agentDirectorySnapshot?: DesktopHostOpenAgentWindowInput["agentDirectorySnapshot"];
   headerProvider: DesktopAgentGUIProvider;
   openAgentWindow(input: DesktopHostOpenAgentWindowInput): Promise<void>;
   providerStatusSnapshot?: DesktopHostOpenAgentWindowInput["providerStatusSnapshot"];
@@ -46,7 +45,7 @@ export async function handleStandaloneAgentGuiLaunch(
         }
       : {}),
     providerStatusSnapshot: context.providerStatusSnapshot,
-    agents: context.agents,
+    agentDirectorySnapshot: context.agentDirectorySnapshot,
     minimizeSourceWindow: false,
     provider,
     workspaceId: context.workspaceId

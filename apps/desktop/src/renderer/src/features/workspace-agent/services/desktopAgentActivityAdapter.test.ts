@@ -83,6 +83,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
     createSession({
       backgroundAgents: { count: 1, items: [] },
       capabilities: {
+        activeTurnGuidance: false,
         browserUse: false,
         compact: true,
         computerUse: false,
@@ -630,6 +631,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
             planModeExclusiveWithPermissionMode: false
           },
           capabilities: {
+            activeTurnGuidance: true,
             browserUse: true,
             compact: false,
             computerUse: false,
@@ -706,6 +708,7 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
   ]);
   assert.equal(options.capabilities?.planMode, true);
   assert.equal(options.capabilities?.browserUse, true);
+  assert.equal(options.capabilities?.activeTurnGuidance, true);
 });
 
 test("desktop agent activity adapter cancels composer options when caller aborts", async () => {

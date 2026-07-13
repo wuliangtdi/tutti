@@ -1,34 +1,11 @@
-import type {
-  WorkspaceAgentSessionDetailMessage,
-  WorkspaceAgentSessionDetailThinking,
-  WorkspaceAgentSessionDetailTurn
-} from "../../workspaceAgentSessionDetailViewModel";
-import type {
-  AgentMessageContentVM,
-  AgentThinkingContentVM
-} from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type {
   AgentToolGroupEntryVM,
   AgentToolGroupRowVM
 } from "../contracts/agentToolGroupRowVM";
-import { projectAgentToolCall } from "./agentToolProjection";
+import type { AgentTurnSequenceItemVM } from "./agentTurnSequenceProjection";
 
 const AVOID_GROUPING_EDITS = false;
-
-export type AgentTurnSequenceItemVM =
-  | {
-      kind: "assistant-message";
-      message: AgentMessageContentVM;
-    }
-  | {
-      kind: "thinking";
-      thinking: AgentThinkingContentVM;
-    }
-  | {
-      kind: "tool-call";
-      call: AgentToolCallVM;
-    };
 
 export interface AgentComputedToolGroupVM {
   startIndex: number;
@@ -41,46 +18,6 @@ export interface AgentComputedToolGroupInfoVM {
   groups: Map<number, AgentComputedToolGroupVM>;
   groupedIndices: Set<number>;
   suppressedIndices: Set<number>;
-}
-
-export function buildAgentTurnSequenceItems(
-  turn: WorkspaceAgentSessionDetailTurn
-): AgentTurnSequenceItemVM[] {
-  const items = turn.rawAgentItems ?? turn.agentItems;
-  const out: AgentTurnSequenceItemVM[] = [];
-  items.forEach((item) => {
-    if (item.kind === "message") {
-      out.push({
-        kind: "assistant-message",
-        message: projectMessage(item.message, turn.id)
-      });
-      return;
-    }
-    if (item.kind === "thinking") {
-      out.push({
-        kind: "thinking",
-        thinking: projectThinking(item.thinking, turn.id)
-      });
-      return;
-    }
-    const sourceEntries =
-      item.groupEntries ??
-      item.toolCalls.map((call) => ({ kind: "tool-call", call }) as const);
-    sourceEntries.forEach((entry) => {
-      if (entry.kind === "thinking") {
-        out.push({
-          kind: "thinking",
-          thinking: projectThinking(entry.thinking, turn.id)
-        });
-        return;
-      }
-      out.push({
-        kind: "tool-call",
-        call: projectAgentToolCall(entry.call)
-      });
-    });
-  });
-  return out;
 }
 
 export function computeAgentToolGroups(
@@ -235,53 +172,6 @@ export function projectAgentSingleToolRow(
   };
 }
 
-function projectMessage(
-  message: WorkspaceAgentSessionDetailMessage,
-  turnId: string
-): AgentMessageContentVM {
-  const projected: AgentMessageContentVM = {
-    kind: "message-content",
-    id: message.id,
-    turnId: message.turnId ?? turnId,
-    body: message.body,
-    statusKind: message.statusKind ?? null,
-    occurredAtUnixMs: message.occurredAtUnixMs ?? null,
-    visibleError: message.visibleError ?? null,
-    systemNotice: message.systemNotice ?? null
-  };
-  if (message.sourceTimelineItems) {
-    projected.sourceTimelineItems = message.sourceTimelineItems;
-    // Codex plan-mode proposals arrive tagged by the daemon and render as a
-    // dedicated plan card instead of a regular assistant bubble.
-    if (
-      message.sourceTimelineItems.some(
-        (item) => item.payload?.messageKind === "plan"
-      )
-    ) {
-      projected.contentKind = "plan";
-    }
-  }
-  return projected;
-}
-
-function projectThinking(
-  thinking: WorkspaceAgentSessionDetailThinking,
-  turnId: string
-): AgentThinkingContentVM {
-  const projected: AgentThinkingContentVM = {
-    kind: "thinking-content",
-    id: thinking.id,
-    turnId: thinking.turnId ?? turnId,
-    body: thinking.body,
-    statusKind: thinking.statusKind ?? null,
-    occurredAtUnixMs: thinking.occurredAtUnixMs ?? null
-  };
-  if (thinking.sourceTimelineItems) {
-    projected.sourceTimelineItems = thinking.sourceTimelineItems;
-  }
-  return projected;
-}
-
 function isGroupableToolCall(call: AgentToolCallVM): boolean {
   if (call.statusKind === "working" || call.statusKind === "waiting") {
     return false;
@@ -313,7 +203,9 @@ function findUnfinalizedTailRunStartIndex(
   for (let index = sequence.length - 1; index >= 0; index -= 1) {
     const item = sequence[index];
     if (!item) continue;
-    if (item.kind === "assistant-message") break;
+    if (item.kind === "assistant-message" || item.kind === "user-message") {
+      break;
+    }
     if (item.kind === "tool-call") hasToolCall = true;
     startIndex = index;
   }
