@@ -12311,8 +12311,8 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.canSubmit).toBe(false);
     expect(result.current.viewModel.sessionChrome.recovery).toEqual(
       expect.objectContaining({
-        kind: "failed",
-        canRetry: false
+        kind: "resume-unavailable",
+        followupAction: "continue-in-new-conversation"
       })
     );
   });
@@ -12356,8 +12356,7 @@ describe("useAgentGUINodeController", () => {
     expect(result.current.viewModel.canSubmit).toBe(false);
     expect(result.current.viewModel.sessionChrome.recovery).toEqual(
       expect.objectContaining({
-        kind: "failed",
-        canRetry: false,
+        kind: "resume-unavailable",
         followupAction: "continue-in-new-conversation"
       })
     );
@@ -12406,8 +12405,7 @@ describe("useAgentGUINodeController", () => {
     });
     expect(result.current.viewModel.sessionChrome.recovery).toEqual(
       expect.objectContaining({
-        kind: "failed",
-        canRetry: false,
+        kind: "resume-unavailable",
         followupAction: "continue-in-new-conversation"
       })
     );
