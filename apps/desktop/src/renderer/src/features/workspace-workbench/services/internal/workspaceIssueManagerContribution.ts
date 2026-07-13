@@ -49,6 +49,7 @@ import { createWorkspaceIssueManagerRichTextTriggerProviderRequestFromIdentity }
 import { resolveWorkspaceAgentGuiLabel } from "./workspaceAgentProviderCatalog.ts";
 import { renderIssueManagerLatestRunMessageCenterCard } from "../../ui/IssueManagerLatestRunMessageCenterCard.tsx";
 import { workspaceTaskDockSectionId } from "./workspaceDockSections.ts";
+import { registerWorkspaceIssueManagerSurfaceRuntime } from "../workspaceIssueManagerSurfaceRuntime.ts";
 
 export function createWorkspaceIssueManagerContribution(input: {
   agentProviderStatusService: AgentProviderStatusService;
@@ -236,6 +237,8 @@ export function createWorkspaceIssueManagerContribution(input: {
     },
     typeId: defaultIssueManagerWorkbenchTypeId
   });
+
+  registerWorkspaceIssueManagerSurfaceRuntime(contribution, { feature });
 
   return contribution;
 }

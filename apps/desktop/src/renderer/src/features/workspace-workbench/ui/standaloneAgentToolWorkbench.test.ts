@@ -40,6 +40,10 @@ const standaloneAgentMessageCenterToolPanelSource = readFileSync(
   new URL("./StandaloneAgentMessageCenterToolPanel.tsx", import.meta.url),
   "utf8"
 );
+const standaloneAgentIssueManagerToolPanelSource = readFileSync(
+  new URL("./StandaloneAgentIssueManagerToolPanel.tsx", import.meta.url),
+  "utf8"
+);
 const workspaceAgentStatusPetIconSource = readFileSync(
   new URL("./WorkspaceAgentStatusPetIcon.tsx", import.meta.url),
   "utf8"
@@ -143,6 +147,25 @@ test("standalone Agent unified panel button uses chrome and active variants", ()
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
     /data-standalone-agent-tool-sidebar-toggle="true"[\s\S]*?variant=\{activePanel \? "secondary" : "chrome"\}/
+  );
+});
+
+test("standalone Agent quick actions open the apps and messages panel tabs", () => {
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /activePanel === null \? \([\s\S]*?data-standalone-agent-tool-sidebar-quick-action="apps"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("apps"\)\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /data-standalone-agent-tool-sidebar-quick-action="messages"[\s\S]*?variant="chrome"[\s\S]*?onClick=\{\(\) => onOpenPanel\("messages"\)\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /quick-action="messages"[\s\S]*?ReminderBadge count=\{reminders\.messages\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /\{activePanel === null \? \([\s\S]*?\) : null\}/
   );
 });
 
@@ -261,6 +284,17 @@ test("standalone Agent constrains the session title to the conversation flow", (
   );
 });
 
+test("standalone Agent panel header stays within the available header width", () => {
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /max-w-full shrink-0 items-center pr-\[var\(--agent-gui-workbench-header-padding-x\)\]/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /width: `\$\{activePanelWidth\}px`,\s*maxWidth: "100%"/
+  );
+});
+
 test("standalone Agent right sidebar reserves layout space and reveals requested files", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -304,6 +338,14 @@ test("standalone Agent right sidebar transitions renderer-first before mounting 
 });
 
 test("standalone Agent exposes one unified right-panel trigger", () => {
+  const toggleStart = standaloneAgentToolSidebarToolbarSource.indexOf(
+    'data-standalone-agent-tool-sidebar-toggle="true"'
+  );
+  const toggleEnd = standaloneAgentToolSidebarToolbarSource.indexOf(
+    "</Button>",
+    toggleStart
+  );
+
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
     /data-standalone-agent-tool-sidebar-toggle="true"[\s\S]*?<PanelIcon[\s\S]*?aria-hidden[\s\S]*?className="size-\[18px\] -scale-x-100"/
@@ -311,6 +353,48 @@ test("standalone Agent exposes one unified right-panel trigger", () => {
   assert.doesNotMatch(
     standaloneAgentToolSidebarToolbarSource,
     /data-standalone-agent-tool-menu-trigger|ToolsIcon/
+  );
+  assert.ok(toggleStart >= 0);
+  assert.ok(toggleEnd > toggleStart);
+  assert.doesNotMatch(
+    standaloneAgentToolSidebarToolbarSource.slice(toggleStart, toggleEnd),
+    /ReminderBadge/
+  );
+});
+
+test("standalone Agent toolbar exposes task management in the unified panel", () => {
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /data-standalone-agent-tool-sidebar-quick-action="tasks"[\s\S]*?onClick=\{\(\) => onOpenPanel\("tasks"\)\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /onSelect=\{\(\) => onOpenPanel\("tasks"\)\}[\s\S]*?panel="tasks"/
+  );
+  assert.match(standaloneAgentToolSidebarToolbarSource, /tasks: TaskIcon/);
+  assert.match(
+    standaloneAgentToolSidebarPanelSource,
+    /<LazyStandaloneAgentIssueManagerToolPanel/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /candidate\.id === "workspace-issue-manager"/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /<IssueManagerEmbeddedToolbar[\s\S]*?resolved\.definition\.renderBody\(context\)/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /const context: WorkbenchHostNodeBodyContext = \{\s*activation,/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /dispatch\(\{ panel: "tasks", type: "open-panel" \}\)/
+  );
+  assert.match(
+    standaloneAgentIssueManagerToolPanelSource,
+    /source\.subscribe\?\.\(updateState\)/
   );
 });
 
@@ -336,6 +420,10 @@ test("standalone Agent message reminders remain activity-driven", () => {
     /messages:\s*\w+\.waitingCount/
   );
   assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /ReminderBadge count=\{reminders\.messages\}/
+  );
+  assert.doesNotMatch(
     standaloneAgentToolSidebarToolbarSource,
     /Object\.values\(reminders\)/
   );

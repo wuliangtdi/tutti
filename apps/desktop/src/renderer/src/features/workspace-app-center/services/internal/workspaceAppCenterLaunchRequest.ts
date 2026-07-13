@@ -19,6 +19,8 @@ import type { WorkspaceAppOpenRouteIntent } from "./workspaceAppCenterWebviewUrl
 
 export { workspaceAppCenterNodeID, workspaceAppWebviewTypeID };
 
+const workspaceAppInlineBrowserNodeIdPrefix = "workspace-app:inline:";
+
 export async function resolveWorkspaceAppCenterLaunchRequest(input: {
   appCenterService: IWorkspaceAppCenterService;
   reporterService?: Pick<IReporterService, "trackEvents">;
@@ -125,6 +127,10 @@ export function workspaceAppDockEntryId(appId: string): string {
   return `workspace-app:${encodeURIComponent(appId)}`;
 }
 
+export function workspaceAppInlineBrowserNodeId(appId: string): string {
+  return `${workspaceAppInlineBrowserNodeIdPrefix}${encodeURIComponent(appId)}`;
+}
+
 export function workspaceAppWebviewInstanceId(appId: string): string {
   return `app:${encodeURIComponent(appId)}`;
 }
@@ -152,6 +158,11 @@ export function readWorkspaceAppIdFromNodeId(
 ): string | null {
   const webviewPrefix = `${workspaceAppWebviewTypeID}:`;
   return (
+    (value?.startsWith(workspaceAppInlineBrowserNodeIdPrefix)
+      ? decodeURIComponent(
+          value.slice(workspaceAppInlineBrowserNodeIdPrefix.length)
+        )
+      : null) ??
     readWorkspaceAppIdFromDockEntryId(value) ??
     (value?.startsWith(webviewPrefix)
       ? readWorkspaceAppIdFromInstanceId(value.slice(webviewPrefix.length))

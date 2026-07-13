@@ -18,6 +18,7 @@ import { CloseIcon, cn } from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
 import { useTranslation } from "@renderer/i18n";
+import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
   createStandaloneAgentToolSidebarState,
   reduceStandaloneAgentToolSidebarState,
@@ -49,6 +50,7 @@ interface StandaloneAgentToolSidebarProps {
   children: ReactNode;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest?: StandaloneAgentFileOpenRequest | null;
+  issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
   renderHeader: (toolActions: ReactNode) => ReactNode;
   onOpenMessageCenterChat: (input: {
@@ -69,6 +71,7 @@ export function StandaloneAgentToolSidebar({
   children,
   contributions,
   fileOpenRequest = null,
+  issueManagerOpenRequest = null,
   mainContentMinWidthPx,
   renderHeader,
   onOpenMessageCenterChat,
@@ -103,6 +106,7 @@ export function StandaloneAgentToolSidebar({
       expand: i18n.t("workspace.agentGui.toolSidebar.expandPanel"),
       files: i18n.t("workspace.agentGui.toolSidebar.files"),
       messages: i18n.t("workspace.agentGui.toolSidebar.messages"),
+      tasks: i18n.t("workspace.agentGui.toolSidebar.tasks"),
       newTab: i18n.t("workspace.agentGui.toolSidebar.newTab"),
       openRightPanel: i18n.t("workspace.agentGui.toolSidebar.openRightPanel"),
       shrink: i18n.t("workspace.agentGui.toolSidebar.shrinkPanel"),
@@ -184,6 +188,7 @@ export function StandaloneAgentToolSidebar({
   }, [activePanel, contentReadyPanels]);
   const lastHandledAppOpenIdRef = useRef<string | null>(null);
   const lastHandledFileOpenRequestRef = useRef<string | null>(null);
+  const lastHandledIssueManagerOpenRequestRef = useRef<string | null>(null);
   useEffect(() => {
     const normalizedAppOpenId = appOpenId?.trim() || null;
     if (!normalizedAppOpenId) {
@@ -209,6 +214,19 @@ export function StandaloneAgentToolSidebar({
     dispatch({ panel: "files", type: "open-panel" });
     scheduleResizeForPanel("files");
   }, [fileOpenRequest, scheduleResizeForPanel]);
+  useEffect(() => {
+    if (
+      !issueManagerOpenRequest ||
+      lastHandledIssueManagerOpenRequestRef.current ===
+        issueManagerOpenRequest.requestID
+    ) {
+      return;
+    }
+    lastHandledIssueManagerOpenRequestRef.current =
+      issueManagerOpenRequest.requestID;
+    dispatch({ panel: "tasks", type: "open-panel" });
+    scheduleResizeForPanel("tasks");
+  }, [issueManagerOpenRequest, scheduleResizeForPanel]);
   const closePanel = useCallback(() => {
     dispatch(
       activePanel === "terminal"
@@ -266,12 +284,17 @@ export function StandaloneAgentToolSidebar({
         {renderHeader(
           <div
             className={cn(
-              "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
+              "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 max-w-full shrink-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
               activePanel && "border-b border-[var(--border-1)]"
             )}
             data-standalone-agent-tool-sidebar-header="true"
             style={
-              activePanel ? { width: `${activePanelLayoutWidth}px` } : undefined
+              activePanel
+                ? {
+                    width: `${activePanelWidth}px`,
+                    maxWidth: "100%"
+                  }
+                : undefined
             }
           >
             {activePanel ? (
@@ -382,6 +405,7 @@ export function StandaloneAgentToolSidebar({
                           browserApi={browserApi}
                           contributions={contributions}
                           fileOpenRequest={fileOpenRequest}
+                          issueManagerOpenRequest={issueManagerOpenRequest}
                           i18n={i18n}
                           locale={locale}
                           messageCenterOpen={activePanel === "messages"}

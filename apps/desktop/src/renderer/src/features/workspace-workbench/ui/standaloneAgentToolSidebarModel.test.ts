@@ -35,7 +35,7 @@ test("standalone agent tool sidebar opens, swaps, and closes one top-level panel
 });
 
 test("standalone agent right-sidebar panels are mutually exclusive for every switch", () => {
-  const panels = ["files", "browser", "apps", "messages"] as const;
+  const panels = ["files", "browser", "apps", "tasks", "messages"] as const;
 
   for (const previousPanel of panels) {
     for (const nextPanel of panels) {
@@ -149,7 +149,7 @@ test("standalone agent tool sidebar opens terminal in the right panel", () => {
 });
 
 test("standalone agent terminal remains mounted while right-sidebar panels switch", () => {
-  const panels = ["files", "browser", "apps", "messages"] as const;
+  const panels = ["files", "browser", "apps", "tasks", "messages"] as const;
   let state = reduceStandaloneAgentToolSidebarState(
     createStandaloneAgentToolSidebarState(),
     { panel: "terminal", type: "select-tool" }
@@ -243,6 +243,19 @@ test("standalone agent messages open wide enough for message cards", () => {
       width: standaloneAgentToolPanelDefaultWidthById.messages
     }),
     440
+  );
+});
+
+test("standalone agent tasks open at the issue-manager workbench width", () => {
+  assert.equal(standaloneAgentToolPanelDefaultWidthById.tasks, 860);
+  assert.equal(
+    clampStandaloneAgentToolPanelWidth({
+      mainContentMinWidth: 332,
+      panel: "tasks",
+      viewportWidth: 1440,
+      width: standaloneAgentToolPanelDefaultWidthById.tasks
+    }),
+    860
   );
 });
 

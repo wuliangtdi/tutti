@@ -42,9 +42,8 @@
     ],
     "publish": [
       {
-        "provider": "github",
-        "owner": "tutti-os",
-        "repo": "tutti"
+        "provider": "generic",
+        "url": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets"
       }
     ],
     "mac": {

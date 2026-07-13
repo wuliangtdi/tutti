@@ -78,6 +78,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   onCapabilitySettingsRequest,
   onOpenAgentConversationWindow,
   onStateChange,
+  prefillPromptBootstrapRequest = null,
   previewMode = false,
   providerStatusBootstrapSnapshot = null,
   agentDirectory,
@@ -233,7 +234,9 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     AgentGUIProps["runtimeRequests"]["openSession"]
   > | null>(null);
   const [prefillPromptRequest, setPrefillPromptRequest] =
-    useState<DesktopAgentGUIPrefillPromptRequest | null>(null);
+    useState<DesktopAgentGUIPrefillPromptRequest | null>(
+      () => prefillPromptBootstrapRequest
+    );
   const [newConversationRequestSequence, setNewConversationRequestSequence] =
     useState(0);
   const handledOpenSessionActivationSequenceRef = useRef<number | null>(null);

@@ -28,6 +28,7 @@ import type {
   DesktopAgentGUINodeState,
   DesktopAgentGUIWorkbenchState
 } from "../desktopAgentGUINodeState";
+import type { DesktopAgentGUIPrefillPromptRequest } from "../services/desktopAgentGUIPrefillPromptActivation.ts";
 
 export const DESKTOP_AGENT_GUI_CONVERSATION_RAIL_TOGGLE_EVENT =
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT;
@@ -51,6 +52,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
     workspaceId: string;
   }) => Promise<void> | void;
   onStateChange: (state: DesktopAgentGUIWorkbenchState) => void;
+  prefillPromptBootstrapRequest?: DesktopAgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
   providerStatusBootstrapSnapshot?: AgentProviderStatusSnapshot | null;
   agentDirectory: AgentGUIAgentDirectorySnapshot;
@@ -134,6 +136,8 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.onCapabilitySettingsRequest === next.onCapabilitySettingsRequest &&
     previous.onOpenAgentConversationWindow ===
       next.onOpenAgentConversationWindow &&
+    previous.prefillPromptBootstrapRequest ===
+      next.prefillPromptBootstrapRequest &&
     previous.previewMode === next.previewMode &&
     previous.providerStatusBootstrapSnapshot ===
       next.providerStatusBootstrapSnapshot &&

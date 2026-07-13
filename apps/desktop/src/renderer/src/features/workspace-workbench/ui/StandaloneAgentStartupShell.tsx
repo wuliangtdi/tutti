@@ -170,7 +170,7 @@ function StandaloneAgentStartupBody({
                       <div className="agent-gui-node__empty-hero-body">
                         <div
                           className="agent-gui-node__empty-hero-icon-slot"
-                          data-carousel-placeholder="true"
+                          data-carousel-placeholder={true}
                         >
                           <div
                             aria-hidden="true"

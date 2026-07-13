@@ -271,9 +271,12 @@ export interface DesktopHostOpenAgentWindowInput {
   agentDirectorySnapshot?: DesktopAgentDirectorySnapshot | null;
   agentSessionId?: string | null;
   agentTargetId?: string | null;
+  autoSubmit?: boolean;
+  draftPrompt?: string | null;
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   minimizeSourceWindow?: boolean;
   provider?: string | null;
+  userProjectPath?: string | null;
   workspaceId: string;
 }
 

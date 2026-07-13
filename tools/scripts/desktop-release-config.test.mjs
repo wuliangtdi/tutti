@@ -288,6 +288,50 @@ test("desktop release workflow only publishes root latest metadata for stable re
   assert.match(workflow, /channels\/beta\/latest\.json/);
 });
 
+test("desktop release workflow publishes immutable updater files before channel pointers", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJobMatch = workflow.match(
+    /publish:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+
+  assert.ok(publishJobMatch, "publish job should exist");
+  const publishJob = publishJobMatch[0];
+  const assetsIndex = publishJob.indexOf(
+    "name: Upload release assets to AWS S3"
+  );
+  const stableBuildIndex = publishJob.indexOf(
+    "name: Build desktop release latest metadata"
+  );
+  const stablePointerIndex = publishJob.indexOf(
+    "name: Upload desktop release latest metadata to AWS S3"
+  );
+  const rcBuildIndex = publishJob.indexOf(
+    "name: Build desktop prerelease channel latest metadata"
+  );
+  const rcPointerIndex = publishJob.indexOf(
+    "name: Upload desktop prerelease channel latest metadata to AWS S3"
+  );
+
+  assert.ok(assetsIndex >= 0, "immutable release assets should upload");
+  assert.ok(stableBuildIndex > assetsIndex);
+  assert.ok(stablePointerIndex > stableBuildIndex);
+  assert.ok(rcBuildIndex > assetsIndex);
+  assert.ok(rcPointerIndex > rcBuildIndex);
+  assert.match(publishJob, /channels\/rc\/latest\.json/);
+  assert.match(publishJob, /--cache-control "public, max-age=60"/);
+});
+
+test("desktop package uses the CloudFront generic updater provider", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+
+  assert.deepEqual(packageJson.build.publish, [
+    {
+      provider: "generic",
+      url: "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets"
+    }
+  ]);
+});
+
 test("desktop release workflow generates summaries and stable changelog metadata", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 

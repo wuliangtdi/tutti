@@ -107,11 +107,13 @@ export function StandaloneAgentWindowPanelHosts({
       settingsPanelRequest.requestSequence;
     workspaceSettingsService.openPanel(
       { id: workspace.id },
-      settingsPanelRequest.section
-        ? {
-            section: settingsPanelRequest.section as WorkspaceSettingsSectionID
-          }
-        : undefined
+      {
+        section:
+          settingsPanelRequest.section === "agent"
+            ? "general"
+            : ((settingsPanelRequest.section ??
+                "general") as WorkspaceSettingsSectionID)
+      }
     );
   }, [settingsPanelRequest, workspace.id, workspaceSettingsService]);
 

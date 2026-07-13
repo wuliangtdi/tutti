@@ -14,6 +14,7 @@ export function StandaloneAgentWorkspaceWindow() {
         tuttidClient,
         workspaceAgentActivityService,
         workspaceAppCenterService,
+        workspaceAppExternalApi,
         workspaceID,
         workspaceUserProjectService
       }) => (
@@ -27,6 +28,7 @@ export function StandaloneAgentWorkspaceWindow() {
           tuttidClient={tuttidClient}
           workspaceAgentActivityService={workspaceAgentActivityService}
           workspaceAppCenterService={workspaceAppCenterService}
+          workspaceAppExternalApi={workspaceAppExternalApi}
           workspaceID={workspaceID}
           workspaceUserProjectService={workspaceUserProjectService}
         />

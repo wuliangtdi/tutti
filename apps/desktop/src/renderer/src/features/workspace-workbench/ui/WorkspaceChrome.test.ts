@@ -8,6 +8,13 @@ const chromeSource = readFileSync(
   resolve(dirname(fileURLToPath(import.meta.url)), "WorkspaceChrome.tsx"),
   "utf8"
 );
+const chromeActionsSource = readFileSync(
+  resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "WorkspaceChromeActions.tsx"
+  ),
+  "utf8"
+);
 const messageCenterSource = readFileSync(
   resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -114,5 +121,16 @@ test("workspace chrome derives message-center decisions and pet mood from the ca
   assert.doesNotMatch(
     messageCenterSource,
     /resolveWorkspaceAgentStatusPetMood\(snapshot/
+  );
+});
+
+test("workspace chrome settings opens General while Agent deep links keep their section", () => {
+  assert.match(
+    chromeActionsSource,
+    /settingsPanelRequest\.section as WorkspaceSettingsSectionID/
+  );
+  assert.match(
+    chromeActionsSource,
+    /settingsService\.openPanel\(\s*\{ id: workspace\.id \},\s*\{ section: "general" \}\s*\)/
   );
 });

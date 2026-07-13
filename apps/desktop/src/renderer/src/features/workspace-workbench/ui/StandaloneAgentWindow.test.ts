@@ -9,6 +9,14 @@ const standaloneWindowSource = readFileSync(
   resolve(currentDirectory, "StandaloneAgentWindow.tsx"),
   "utf8"
 );
+const standaloneWindowPanelHostsSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentWindowPanelHosts.tsx"),
+  "utf8"
+);
+const standaloneLaunchRoutingSource = readFileSync(
+  resolve(currentDirectory, "useStandaloneAgentLaunchRouting.ts"),
+  "utf8"
+);
 const workbenchBodySource = readFileSync(
   resolve(
     currentDirectory,
@@ -69,8 +77,8 @@ test("standalone Agent routes files and apps into the right sidebar", () => {
   );
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(
-    standaloneWindowSource,
-    /action\.type !== "open-local-asset-preview"[\s\S]*?action\.type !== "open-workspace-file"[\s\S]*?openFileInSidebar\(action\.path\)/
+    standaloneLaunchRoutingSource,
+    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path \}\) => openFileInSidebar\(path\)/
   );
   assert.match(
     standaloneWindowSource,
@@ -79,6 +87,48 @@ test("standalone Agent routes files and apps into the right sidebar", () => {
   assert.match(
     standaloneWindowSource,
     /<StandaloneAgentToolSidebar[\s\S]*?appOpenId=\{openAppId\}[\s\S]*?fileOpenRequest=\{fileOpenRequest\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /<WorkspaceAppExternalBridge[\s\S]*?api=\{workspaceAppExternalApi\}[\s\S]*?openFile=\{openWorkspaceAppExternalFile\}[\s\S]*?workspaceId=\{workspaceId\}/
+  );
+});
+
+test("standalone Agent handles task and app Agent launch requests", () => {
+  assert.match(
+    standaloneLaunchRoutingSource,
+    /registerWorkspaceAgentGuiLaunchHandler\(workspaceId, \(request\) =>[\s\S]*?handleStandaloneAgentGuiLaunch\(request, \{/
+  );
+  assert.match(
+    standaloneLaunchRoutingSource,
+    /registerWorkspaceIssueManagerLaunchHandler\(workspaceId, \(request\) => \{[\s\S]*?createStandaloneAgentIssueManagerOpenRequest/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /useStandaloneAgentLaunchRouting\(\{[\s\S]*?agentDirectorySnapshot,[\s\S]*?headerProvider,[\s\S]*?openFileInSidebar/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /<StandaloneAgentToolSidebar[\s\S]*?issueManagerOpenRequest=\{issueManagerOpenRequest\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /prefillPromptBootstrapRequest =\s*useMemo<[\s\S]*?draftPrompt: launchDraftPrompt[\s\S]*?sequence: 1/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /<LazyDesktopAgentGUIWorkbenchBody[\s\S]*?prefillPromptBootstrapRequest=\{prefillPromptBootstrapRequest\}/
+  );
+  assert.match(
+    workbenchBodySource,
+    /useState<DesktopAgentGUIPrefillPromptRequest \| null>\(\s*\(\) => prefillPromptBootstrapRequest\s*\)/
+  );
+});
+
+test("standalone Agent recalculates the right sidebar layout when the conversation rail collapses", () => {
+  assert.match(
+    standaloneWindowSource,
+    /mainContentMinWidthPx=\{\s*nodeState\.conversationRailCollapsed\s*\? AGENT_GUI_DETAIL_MIN_WIDTH_PX\s*:\s*headerConversationRailWidthPx\s*\+\s*agentGuiWorkbenchProviderRailWidthPx\s*\}/
   );
 });
 
@@ -131,5 +181,12 @@ test("standalone Agent duplicates the active window without minimizing its sourc
   assert.match(
     standaloneWindowSource,
     /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentDirectorySnapshot[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
+  );
+});
+
+test("standalone Agent opens Agent settings on the General section", () => {
+  assert.match(
+    standaloneWindowPanelHostsSource,
+    /workspaceSettingsService\.openPanel\([\s\S]*?settingsPanelRequest\.section === "agent"[\s\S]*?\? "general"/
   );
 });

@@ -151,6 +151,23 @@ Manager task execution and task breakdown, must request a new AgentGUI window
 and must not reuse an existing dock-entry node. Reusing the dock entry can focus
 or restore the previous active conversation before the new draft composer is
 visible.
+Every renderer shell that exposes one of those launchers must register the
+workspace-scoped AgentGUI launch coordinator locally. The OS workspace handler
+launches a workbench node. The standalone Agent handler opens draft-prefill and
+explicit new-window requests in another native Agent window, carrying the
+target, provider, draft, auto-submit flag, and user-project path through the
+typed window intent. The standalone route injects that immutable launch draft
+as the AgentGUI body's first-render prefill bootstrap request; it must not depend
+on a mount effect to copy and clear a synthetic workbench activation. An
+existing-session request without a new-window flag activates that session in the
+current standalone window. That activation clears the previous
+`agentTargetId` when the request omits a target, so session-authoritative
+navigation cannot inherit an unrelated managed-agent rail constraint.
+Workspace App external bridges and App Center actions use the same coordinator
+instead of maintaining a second Agent launch path. When the standalone shell
+also embeds Issue Manager, it registers the workspace-scoped Issue Manager
+launch coordinator locally and translates issue links into the standard
+`open-workspace-issue` activation for its Tasks sidebar.
 The handoff menu is a launch surface, so its options must come from ready entries
 in the host-provided `agents` array. It must not synthesize a provider catalog
 or infer runnable agents from provider metadata.
@@ -216,8 +233,11 @@ prop and give it only existing neutral context such as `currentUserId` and
 availability, quota, or authorization live entirely inside the React node
 supplied by the host.
 Standalone Agent windows keep right-side tools as UI-local panel tabs. The
-window chrome exposes one right-panel toggle; the panel header owns the active
-tab strip and its add menu for files, terminal, browser, apps, and messages.
+window chrome exposes one right-panel toggle plus quick actions for apps and
+messages while the panel is closed; those quick actions open the right panel
+and mount/select the corresponding tab. Once open, the panel header owns the
+active tab strip and its add menu for files, terminal, browser, apps, and
+messages.
 Opening a tool mounts it as a tab and selecting another tab only changes the
 visible projection; this state is not durable AgentGUI session data.
 Unified empty-home readiness is a host-projected, agent-scoped gate,
@@ -478,6 +498,10 @@ by swapping renderer content. Desktop persists the selection through the
 generic preference flag `workspace.standaloneAgentMode`; absence of that flag
 means OS mode, while explicit `true` and `false` values retain the user's Agent
 or OS selection respectively.
+Settings destinations remain host-local presentation behavior. The standalone
+Agent settings control opens the global panel on General, the Agent settings
+control embedded in OS mode opens the Agent section, and the OS workspace's
+top-right global settings control opens General.
 Opening an existing session is session-authoritative. If the launch payload has
 no `agentTargetId`, workbench node state must clear any previous target
 constraint instead of inheriting it from the reused node. When a

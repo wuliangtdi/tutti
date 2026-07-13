@@ -6,23 +6,6 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func mergeACPStandardRawToolBody(normalized map[string]any, raw map[string]any) map[string]any {
-	body := clonePayload(normalized)
-	if body == nil {
-		body = map[string]any{}
-	}
-	for key, value := range raw {
-		if _, exists := body[key]; exists {
-			continue
-		}
-		body[key] = clonePayloadValue(value)
-	}
-	if len(body) == 0 {
-		return nil
-	}
-	return body
-}
-
 func fileChangesFromActivityEvent(event activityshared.Event) map[string]any {
 	if fileChanges := payloadMap(event.Payload.Metadata, "fileChanges"); len(fileChanges) > 0 {
 		return clonePayload(fileChanges)

@@ -32,6 +32,7 @@ import type { IssueManagerLatestRunStatusRenderer } from "./latestRunStatusRende
 import { IssueManagerShell } from "./internal/shell/IssueManagerShell.tsx";
 import { IssueManagerTopicSelector } from "./internal/shell/IssueManagerTopicSelector.tsx";
 import {
+  dispatchIssueManagerTaskListCollapsed,
   dispatchIssueManagerTopicCreate,
   dispatchIssueManagerTopicDelete,
   dispatchIssueManagerTopicHeaderState,
@@ -206,6 +207,117 @@ export function IssueManagerNode({
         />
       )}
     </section>
+  );
+}
+
+export interface IssueManagerEmbeddedToolbarProps {
+  activeTopicId?: string | null;
+  copy: IssueManagerI18nRuntime;
+  isSidebarAutoCollapsed: boolean;
+  isSidebarCollapsed: boolean;
+  nodeId: string;
+  workspaceId: string;
+}
+
+export function IssueManagerEmbeddedToolbar({
+  activeTopicId = null,
+  copy,
+  isSidebarAutoCollapsed,
+  isSidebarCollapsed,
+  nodeId,
+  workspaceId
+}: IssueManagerEmbeddedToolbarProps): JSX.Element {
+  const { effectiveCollapsed, toggleLabel, toggleSidebar } =
+    useIssueManagerNodeHeaderView({
+      copy,
+      isSidebarAutoCollapsed,
+      isSidebarCollapsed,
+      nodeId,
+      onToggleSidebar: (collapsed) => {
+        dispatchIssueManagerTaskListCollapsed({
+          collapsed,
+          nodeId,
+          workspaceId
+        });
+      },
+      workspaceId
+    });
+  const topicState = useIssueManagerTopicHeaderStateSync({
+    activeTopicId,
+    nodeId,
+    workspaceId
+  });
+
+  return (
+    <header
+      className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border-1)] bg-[var(--background-panel)] px-2"
+      data-issue-manager-embedded-toolbar="true"
+    >
+      <TooltipProvider delayDuration={250} skipDelayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={toggleLabel}
+              aria-pressed={!effectiveCollapsed}
+              className={issueManagerHeaderChromeIconButtonClassName}
+              size="icon-sm"
+              title={toggleLabel}
+              type="button"
+              variant="ghost"
+              onClick={toggleSidebar}
+            >
+              <PanelIcon className={issueManagerHeaderChromeIconClassName} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{toggleLabel}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <div className="flex min-w-0 flex-1 items-center justify-center">
+        <IssueManagerTopicSelector
+          activeTopicId={topicState.activeTopicId}
+          className="max-w-full text-[var(--text-primary)]"
+          copy={copy}
+          topics={topicState.topics}
+          onCreateTopic={(input) => {
+            dispatchIssueManagerTopicCreate({ input, nodeId, workspaceId });
+          }}
+          onDeleteTopic={(topicId) => {
+            dispatchIssueManagerTopicDelete({ nodeId, topicId, workspaceId });
+          }}
+          onSelectTopic={(topicId) => {
+            dispatchIssueManagerTopicSelection({
+              nodeId,
+              topicId,
+              workspaceId
+            });
+          }}
+          onUpdateTopic={(input) => {
+            dispatchIssueManagerTopicUpdate({ input, nodeId, workspaceId });
+          }}
+        />
+      </div>
+      <TooltipProvider delayDuration={250} skipDelayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={copy.t("actions.createIssue")}
+              className={issueManagerHeaderChromeIconButtonClassName}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                dispatchIssueManagerIssueCreateRequest({ nodeId, workspaceId });
+              }}
+            >
+              <FileCreateIcon aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {copy.t("actions.createIssue")}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </header>
   );
 }
 

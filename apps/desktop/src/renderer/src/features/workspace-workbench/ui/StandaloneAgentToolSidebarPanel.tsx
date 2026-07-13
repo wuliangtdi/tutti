@@ -7,6 +7,7 @@ import type {
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
+import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import type {
   StandaloneAgentSharedToolPanelId,
   StandaloneAgentToolPanelId
@@ -35,6 +36,13 @@ const LazyStandaloneAgentMessageCenterToolPanel = lazy(() =>
     })
   )
 );
+const LazyStandaloneAgentIssueManagerToolPanel = lazy(() =>
+  import("./StandaloneAgentIssueManagerToolPanel.tsx").then(
+    ({ StandaloneAgentIssueManagerToolPanel }) => ({
+      default: StandaloneAgentIssueManagerToolPanel
+    })
+  )
+);
 const LazyStandaloneAgentTerminalPanel = lazy(() =>
   import("./StandaloneAgentTerminalPanel.tsx").then(
     ({ StandaloneAgentTerminalPanel }) => ({
@@ -55,6 +63,7 @@ export function StandaloneAgentToolSidebarPanel({
   browserApi,
   contributions,
   fileOpenRequest,
+  issueManagerOpenRequest,
   i18n,
   locale,
   messageCenterOpen,
@@ -70,6 +79,7 @@ export function StandaloneAgentToolSidebarPanel({
   browserApi?: DesktopBrowserApi;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest: StandaloneAgentFileOpenRequest | null;
+  issueManagerOpenRequest: StandaloneAgentIssueManagerOpenRequest | null;
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
   messageCenterOpen: boolean;
@@ -112,7 +122,28 @@ export function StandaloneAgentToolSidebarPanel({
           backLabel={i18n.t("workspace.appCenter.backToApps")}
           contributions={contributions}
           unavailableLabel={i18n.t(
-            "workspace.agentGui.toolSidebar.unavailable"
+            "workspace.agentGui.toolSidebar.unavailable",
+            { tool: i18n.t("workspace.agentGui.toolSidebar.apps") }
+          )}
+          workspaceId={workspaceId}
+        />
+      </Suspense>
+    );
+  }
+  if (panel === "tasks") {
+    return (
+      <Suspense
+        fallback={
+          <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
+        }
+      >
+        <LazyStandaloneAgentIssueManagerToolPanel
+          active={active}
+          activation={issueManagerOpenRequest?.activation ?? null}
+          contributions={contributions}
+          unavailableLabel={i18n.t(
+            "workspace.agentGui.toolSidebar.unavailable",
+            { tool: i18n.t("workspace.agentGui.toolSidebar.tasks") }
           )}
           workspaceId={workspaceId}
         />

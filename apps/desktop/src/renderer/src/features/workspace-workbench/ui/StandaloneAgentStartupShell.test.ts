@@ -81,7 +81,7 @@ test("standalone Agent startup shell keeps the rail and new-conversation hero vi
   );
   assert.match(
     startupShellSource,
-    /agent-gui-node__empty-hero-icon-slot[\s\S]*?data-carousel-placeholder="true"[\s\S]*?h-28/
+    /agent-gui-node__empty-hero-icon-slot[\s\S]*?data-carousel-placeholder=\{true\}[\s\S]*?h-28/
   );
   assert.match(
     startupShellSource,

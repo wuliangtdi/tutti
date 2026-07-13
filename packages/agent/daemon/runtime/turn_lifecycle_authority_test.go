@@ -113,8 +113,9 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 	})
 
 	sawSettled := false
-	drained := false
-	for !drained {
+	settledDeadline := time.NewTimer(5 * time.Second)
+	defer settledDeadline.Stop()
+	for !sawSettled {
 		select {
 		case event := <-stream:
 			patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
@@ -135,12 +136,9 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 			if patch.SubmitAvailability != nil && patch.SubmitAvailability.State == "available" {
 				t.Fatalf("state patch published available submit mid-turn (phase %q)", phase)
 			}
-		default:
-			drained = true
+		case <-settledDeadline.C:
+			t.Fatal("stream never published a settled lifecycle patch")
 		}
-	}
-	if !sawSettled {
-		t.Fatal("stream never published a settled lifecycle patch")
 	}
 }
 

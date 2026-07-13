@@ -214,6 +214,22 @@ https://<asset-base-url>/channels/beta/latest.json
 
 `preview` is the user-facing name for the RC channel. RC releases write both `channels/preview/latest.json` and `channels/rc/latest.json`. Beta releases write only `channels/beta/latest.json`.
 
+The packaged desktop updater consumes the stable and RC pointer contracts. Before
+each update check it reads `latest.json` for the stable channel or
+`channels/rc/latest.json` for the RC channel, validates the schema, expected
+channel, tag/version relationship, and configured CloudFront prefix, then sets
+the `electron-updater` generic feed to the immutable `<tag>/` directory. The
+updater reads `latest-mac.yml` for stable or `rc-mac.yml` for RC from that
+directory and verifies the signed ZIP normally. It does not discover desktop
+updates through GitHub Releases.
+
+This makes a Draft RC intentionally updateable without exposing it on the
+public GitHub Releases page. Publish the immutable assets and updater YAML
+first, then mutate the relevant pointer; the current pointer cache is 60
+seconds. Before announcing a release, verify HTTP 200 for the channel pointer,
+its `<tag>/latest-mac.yml` or `<tag>/rc-mac.yml`, and the ZIP referenced by that
+YAML.
+
 The `latest.json` metadata must include stable-identifying fields:
 
 - `channel: "stable"`

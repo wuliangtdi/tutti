@@ -221,7 +221,12 @@ export function WorkspaceSettingsTrigger({
               title={t("workspace.settings.trigger")}
               type="button"
               variant="ghost"
-              onClick={() => settingsService.openPanel({ id: workspace.id })}
+              onClick={() =>
+                settingsService.openPanel(
+                  { id: workspace.id },
+                  { section: "general" }
+                )
+              }
             >
               <SettingsIcon className="size-4" />
             </Button>
