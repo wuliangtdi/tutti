@@ -66,7 +66,7 @@ test("standalone Agent routes files and apps into the right sidebar", () => {
 test("standalone Agent recalculates the right sidebar layout when the conversation rail collapses", () => {
   assert.match(
     standaloneWindowSource,
-    /mainContentMinWidthPx=\{\s*nodeState\.conversationRailCollapsed\s*\? AGENT_GUI_DETAIL_MIN_WIDTH_PX\s*:\s*headerConversationRailWidthPx \+ agentGuiWorkbenchProviderRailWidthPx\s*\}/
+    /mainContentMinWidthPx=\{\s*nodeState\.conversationRailCollapsed\s*\? AGENT_GUI_DETAIL_MIN_WIDTH_PX\s*:\s*headerConversationRailWidthPx\s*\+\s*agentGuiWorkbenchProviderRailWidthPx\s*\}/
   );
 });
 
