@@ -1,11 +1,11 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   type BrowserNodeFeature,
   type BrowserNodeNavigationPolicy
 } from "@tutti-os/browser-node";
 import { BrowserNode } from "@tutti-os/browser-node/react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import { Spinner } from "@tutti-os/ui-system";
+import { cn, Spinner } from "@tutti-os/ui-system";
 import { useSnapshot } from "valtio";
 import type {
   WorkspaceAppCenterApp,
@@ -16,7 +16,11 @@ import { createAppCenterI18nRuntime } from "@tutti-os/workspace-app-center/i18n"
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import { WorkspaceAppCenterPane } from "../../ui/WorkspaceAppCenterPane.tsx";
 import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.interface";
-import { findWorkspaceApp } from "./workspaceAppCenterLaunchRequest.ts";
+import {
+  findWorkspaceApp,
+  workspaceAppInlineBrowserNodeId
+} from "./workspaceAppCenterLaunchRequest.ts";
+import { retainWorkspaceAppInlineAppIds } from "./workspaceAppCenterInlineAppRetention.ts";
 import {
   shouldPreserveWorkspaceAppWebviewDuringHandoff,
   shouldRenderWorkspaceAppBrowserNode,
@@ -48,34 +52,71 @@ export function WorkspaceAppCenterInlineAppBody({
     state.viewStateByWorkspaceId[workspaceId] ??
     appCenterService.getViewState(workspaceId, context.externalNodeState);
   const appId = viewState.openAppId?.trim() ?? "";
+  const [persistedAppIds, setPersistedAppIds] = useState<readonly string[]>([]);
+  const retainedAppIds = retainWorkspaceAppInlineAppIds({
+    activeAppId: appId,
+    ...(state.loadStatus === "ready" && state.workspaceId === workspaceId
+      ? { availableAppIds: state.apps.map((app) => app.appId) }
+      : {}),
+    retainedAppIds: persistedAppIds
+  });
+  const catalogActive = !appId || !retainedAppIds.includes(appId);
 
-  if (!appId) {
-    return (
-      <WorkspaceAppCenterPane
-        restoredViewState={context.externalNodeState}
-        workspaceId={workspaceId}
-      />
-    );
-  }
+  useEffect(() => {
+    if (retainedAppIds !== persistedAppIds) {
+      setPersistedAppIds(retainedAppIds);
+    }
+  }, [persistedAppIds, retainedAppIds]);
 
-  const app = findWorkspaceApp(appCenterService, appId);
   return (
-    <WorkspaceAppCenterInlineBrowser
-      key={appId}
-      app={app}
-      appCenterCopy={createAppCenterI18nRuntime(i18n)}
-      appId={appId}
-      browserFeature={browserFeature}
-      fallbackLabel={fallbackLabel}
-      hidden={context.node.isMinimized}
-      navigationPolicy={resolveWorkspaceAppNavigationPolicy(app)}
-      nodeId={context.node.id}
-      onFocusRequest={context.isFocused ? undefined : () => context.focus()}
-      sessionPartition={workspaceAppBrowserSessionPartition({
-        appId,
-        workspaceId
+    <div className="relative h-full min-h-0 overflow-hidden">
+      <div
+        aria-hidden={!catalogActive}
+        className={cn(
+          "absolute inset-0",
+          !catalogActive && "invisible pointer-events-none"
+        )}
+      >
+        <WorkspaceAppCenterPane
+          restoredViewState={context.externalNodeState}
+          workspaceId={workspaceId}
+        />
+      </div>
+      {retainedAppIds.map((retainedAppId) => {
+        const app = findWorkspaceApp(appCenterService, retainedAppId);
+        const isActive = !catalogActive && retainedAppId === appId;
+        return (
+          <div
+            aria-hidden={!isActive}
+            className={cn(
+              "absolute inset-0",
+              !isActive && "invisible pointer-events-none"
+            )}
+            key={retainedAppId}
+          >
+            <WorkspaceAppCenterInlineBrowser
+              app={app}
+              appCenterCopy={createAppCenterI18nRuntime(i18n)}
+              appId={retainedAppId}
+              browserFeature={browserFeature}
+              fallbackLabel={fallbackLabel}
+              hidden={context.node.isMinimized || !isActive}
+              navigationPolicy={resolveWorkspaceAppNavigationPolicy(app)}
+              nodeId={workspaceAppInlineBrowserNodeId(retainedAppId)}
+              onFocusRequest={
+                !isActive || context.isFocused
+                  ? undefined
+                  : () => context.focus()
+              }
+              sessionPartition={workspaceAppBrowserSessionPartition({
+                appId: retainedAppId,
+                workspaceId
+              })}
+            />
+          </div>
+        );
       })}
-    />
+    </div>
   );
 }
 

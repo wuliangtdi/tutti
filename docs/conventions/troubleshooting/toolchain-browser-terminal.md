@@ -213,6 +213,21 @@ delimited by ---`, and the composer skill picker may show partial or
   Keep one active panel id for tools that share the same region. Pass that
   active state into every mounted Browser Node through its `hidden` prop, while
   retaining the mounted component when session preservation is required. Keep
+  the App Center catalog and every previously opened inline workspace app as
+  mounted sibling layers: clearing `openAppId` reveals the catalog but must not
+  remove an app's Browser Node, and selecting another app must not replace the
+  previous app's keyed Browser Node. Give each inline app a stable app-specific
+  node id so Browser Node controllers and Electron guests cannot be rebound to
+  a different app. Prune those retained app layers only after a ready catalog
+  snapshot confirms removal; loading or reconnecting snapshots are not proof
+  that an app disappeared. Inactive app layers need both non-interactive DOM
+  visibility and `hidden={true}` on `BrowserNode`, because ancestor visibility
+  alone is insufficient for Electron guest compositing. Do not add an explicit
+  `visibility: visible` utility to the active child layer: CSS descendants can
+  override an inactive parent panel's inherited `visibility: hidden` and leak
+  the retained app or catalog over a newly selected sibling panel. Let active
+  layers inherit visibility from their parent, and apply `invisible` only to
+  inactive layers. Keep
   tools in separate layout regions, such as a bottom terminal tray, on an
   independent visibility state. For Browser Node-owned dialogs, track open
   overlays by node id and mark the registered webview invisible until all modal
@@ -227,11 +242,13 @@ delimited by ---`, and the composer skill picker may show partial or
 - Validation:
   Cover every switch among panels in the shared region, verify the inactive
   Browser Node receives `hidden={true}`, and verify an independently placed
-  terminal remains open throughout the same switches. Also open the Browser
-  Node overflow menu, its submenus, settings dialog, and clear-data confirmation
-  above a loaded guest page; verify the webview returns after each overlay
-  closes. Renderer-only visibility changes can use HMR; preload or Electron-main
-  changes still require a process restart.
+  terminal remains open throughout the same switches. For App Center, open two
+  apps, return to the catalog after each, and reopen both; page state and any
+  running in-page Agent must continue while both inactive Browser Nodes stay
+  hidden. Also open the Browser Node overflow menu, its submenus, settings
+  dialog, and clear-data confirmation above a loaded guest page; verify the
+  webview returns after each overlay closes. Renderer-only visibility changes
+  can use HMR; preload or Electron-main changes still require a process restart.
 - References:
   [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
   [browserNodeHostOverlayStore.ts](../../../packages/browser/workbench-node/src/react/browserNodeHostOverlayStore.ts)
