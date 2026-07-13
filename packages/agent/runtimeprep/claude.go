@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -137,6 +138,14 @@ func (p ClaudeCodePreparer) managedClaudeCodeExecutable() string {
 	if err != nil {
 		return ""
 	}
+	// The pointer version is intentionally NOT validated against the app's
+	// vendored SDK here. Right after an app update, the pointer briefly
+	// references the previous release's binary until tuttid's background
+	// provisioning repoints it — and a binary one release behind is a strictly
+	// better fallback than the PATH claude of arbitrary age this would
+	// otherwise degrade to. The SDK↔CLI protocol tolerates that skew by
+	// design (pathToClaudeCodeExecutable exists for externally-installed,
+	// unpinned CLIs).
 	var pointer struct {
 		Executable string `json:"executable"`
 	}
@@ -148,7 +157,12 @@ func (p ClaudeCodePreparer) managedClaudeCodeExecutable() string {
 		return ""
 	}
 	info, err := os.Stat(executable)
-	if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+	if err != nil || info.IsDir() {
+		return ""
+	}
+	// Windows file modes never expose Unix execute bits; only gate on them
+	// where they exist.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		return ""
 	}
 	return executable

@@ -20,6 +20,8 @@ package agentstatus
 // sync with claudeCodeManagedPointerRelPath there).
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -137,7 +139,7 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 		return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: "installed"}, nil
 	}
 
-	releaseLock, err := newInstallCommandLock("claude-code-runtime-binary").Acquire(ctx)
+	releaseLock, err := newInstallCommandLock(claudeCodeBinaryLockCommand).Acquire(ctx)
 	if err != nil {
 		return ClaudeCodeBinaryStatus{}, err
 	}
@@ -205,10 +207,11 @@ func (s Service) installClaudeCodeBinaryFromCDN(
 	if err := s.downloadFile(ctx, sourceURL, archivePath); err != nil {
 		return err
 	}
-	if err := decompressZstdFile(archivePath, finalPath, descriptor.SizeBytes); err != nil {
+	stagingPath := claudeBinaryStagingPath(finalPath)
+	if err := decompressZstdFile(archivePath, stagingPath, descriptor.SizeBytes); err != nil {
 		return err
 	}
-	return verifyInstalledClaudeBinary(finalPath, descriptor)
+	return promoteClaudeBinary(stagingPath, finalPath, descriptor)
 }
 
 func (s Service) installClaudeCodeBinaryFromNPM(
@@ -235,11 +238,12 @@ func (s Service) installClaudeCodeBinaryFromNPM(
 			lastErr = err
 			continue
 		}
-		if err := extractReleaseBinaryFromTarGz(archivePath, descriptor.BinaryName, finalPath); err != nil {
+		stagingPath := claudeBinaryStagingPath(finalPath)
+		if err := extractClaudeBinaryFromTarball(archivePath, descriptor.BinaryName, stagingPath, descriptor.SizeBytes); err != nil {
 			lastErr = err
 			continue
 		}
-		if err := verifyInstalledClaudeBinary(finalPath, descriptor); err != nil {
+		if err := promoteClaudeBinary(stagingPath, finalPath, descriptor); err != nil {
 			lastErr = err
 			continue
 		}
@@ -268,6 +272,12 @@ func npmPackageTarballURL(registry string, packageName string, version string) s
 	return registry + "/" + packageName + "/-/" + bareName + "-" + version + ".tgz"
 }
 
+func claudeBinaryStagingPath(finalPath string) string {
+	// Same directory as the final path so the post-verification rename is
+	// atomic on the same filesystem.
+	return filepath.Join(filepath.Dir(finalPath), "."+filepath.Base(finalPath)+".staging")
+}
+
 func decompressZstdFile(archivePath string, destinationPath string, expectedSize int64) error {
 	archive, err := os.Open(archivePath)
 	if err != nil {
@@ -287,29 +297,82 @@ func decompressZstdFile(archivePath string, destinationPath string, expectedSize
 	if err := writeReleaseBinary(destinationPath, limited, 0o755); err != nil {
 		return err
 	}
-	info, err := os.Stat(destinationPath)
+	return verifyFileSize(destinationPath, expectedSize)
+}
+
+// extractClaudeBinaryFromTarball extracts the claude binary member from an
+// npm tarball, bounded by the manifest size so a forged archive cannot fill
+// the state volume before integrity verification.
+func extractClaudeBinaryFromTarball(archivePath string, binaryName string, destinationPath string, expectedSize int64) error {
+	file, err := os.Open(archivePath)
 	if err != nil {
-		return fmt.Errorf("stat decompressed claude binary: %w", err)
+		return fmt.Errorf("open claude npm tarball: %w", err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("open gzip claude npm tarball: %w", err)
+	}
+	defer func() {
+		_ = gzipReader.Close()
+	}()
+	reader := tar.NewReader(gzipReader)
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read claude npm tarball: %w", err)
+		}
+		if header == nil || header.FileInfo().IsDir() || filepath.Base(header.Name) != binaryName {
+			continue
+		}
+		limited := io.LimitReader(reader, expectedSize+1)
+		if err := writeReleaseBinary(destinationPath, limited, 0o755); err != nil {
+			return err
+		}
+		return verifyFileSize(destinationPath, expectedSize)
+	}
+	return fmt.Errorf("claude npm tarball does not contain %s", binaryName)
+}
+
+func verifyFileSize(path string, expectedSize int64) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat claude binary: %w", err)
 	}
 	if info.Size() != expectedSize {
-		_ = os.Remove(destinationPath)
-		return fmt.Errorf("decompressed claude binary size mismatch: got %d, want %d", info.Size(), expectedSize)
+		_ = os.Remove(path)
+		return fmt.Errorf("claude binary size mismatch: got %d, want %d", info.Size(), expectedSize)
 	}
 	return nil
 }
 
-func verifyInstalledClaudeBinary(path string, descriptor claudeSDKRuntimeDescriptor) error {
-	sum, err := fileSHA256(path)
+// promoteClaudeBinary verifies the staged binary and only then moves it to the
+// final path. The final path therefore never holds unverified bytes: an
+// interruption at any point leaves either no file or a fully verified one, and
+// the fast size-based readiness gate stays trustworthy.
+func promoteClaudeBinary(stagingPath string, finalPath string, descriptor claudeSDKRuntimeDescriptor) error {
+	sum, err := fileSHA256(stagingPath)
 	if err != nil {
+		_ = os.Remove(stagingPath)
 		return err
 	}
 	if !strings.EqualFold(sum, normalizeSHA256(descriptor.SHA256)) {
-		_ = os.Remove(path)
+		_ = os.Remove(stagingPath)
 		return fmt.Errorf("claude binary sha256 mismatch for %s: got %s, want %s",
 			descriptor.PlatformKey, sum, descriptor.SHA256)
 	}
-	if err := os.Chmod(path, 0o755); err != nil {
+	if err := os.Chmod(stagingPath, 0o755); err != nil {
+		_ = os.Remove(stagingPath)
 		return fmt.Errorf("chmod claude binary: %w", err)
+	}
+	if err := os.Rename(stagingPath, finalPath); err != nil {
+		_ = os.Remove(stagingPath)
+		return fmt.Errorf("install claude binary: %w", err)
 	}
 	return nil
 }
@@ -320,8 +383,14 @@ func claudeBinaryReady(path string, descriptor claudeSDKRuntimeDescriptor) bool 
 		return false
 	}
 	// Full sha256 of a ~230MB file is too slow for every resolve; the checksum
-	// was verified at install time and the exact size gates torn writes.
-	return info.Size() == descriptor.SizeBytes && info.Mode().Perm()&0o111 != 0
+	// was verified before the file was promoted to this path (see
+	// promoteClaudeBinary) and the exact size gates torn writes.
+	if info.Size() != descriptor.SizeBytes {
+		return false
+	}
+	// Windows file modes never expose Unix execute bits, so the bit check
+	// only applies where it is meaningful.
+	return runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0
 }
 
 func (s Service) claudeCodeStateRoot() string {

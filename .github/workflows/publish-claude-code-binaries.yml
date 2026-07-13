@@ -80,6 +80,12 @@ jobs:
           node tools/scripts/stage-claude-code-binaries.mjs \
             --out "${GITHUB_WORKSPACE}/dist/claude-code" | tee stage-summary.json
           claude_version="$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('stage-summary.json','utf8')).claudeVersion)")"
+          # The version becomes an S3 key segment; reject anything that is not
+          # a plain semver so a malformed manifest cannot steer paths.
+          if ! [[ "${claude_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "staged claude version is not a plain semver: ${claude_version}" >&2
+            exit 1
+          fi
           echo "claude_version=${claude_version}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
@@ -100,10 +106,26 @@ jobs:
           while IFS= read -r artifact; do
             relative_path="${artifact#dist/claude-code/}"
             key="${prefix}/${relative_path}"
-            if aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${key}" >/dev/null 2>&1; then
-              echo "exists, skipping: s3://${S3_BUCKET_VALUE}/${key}"
+            local_size="$(wc -c < "${artifact}" | tr -d ' ')"
+            # Keys are immutable: skip only when the object exists AND matches
+            # the staged size; a mismatched object means a corrupted or foreign
+            # publish and must stop the job. Any head-object failure other than
+            # a plain 404 (auth, throttling, outage) must also stop the job
+            # instead of being treated as "missing".
+            if remote_size="$(aws s3api head-object --bucket "${S3_BUCKET_VALUE}" --key "${key}" \
+                --query ContentLength --output text 2>head-error.txt)"; then
+              if [ "${remote_size}" != "${local_size}" ]; then
+                echo "immutable key already exists with different content: s3://${S3_BUCKET_VALUE}/${key} (remote ${remote_size} bytes, staged ${local_size} bytes)" >&2
+                exit 1
+              fi
+              echo "exists with matching size, skipping: s3://${S3_BUCKET_VALUE}/${key}"
               skipped=$((skipped + 1))
               continue
+            fi
+            if ! grep -qiE 'Not Found|NoSuchKey|404' head-error.txt; then
+              echo "head-object failed for s3://${S3_BUCKET_VALUE}/${key}:" >&2
+              cat head-error.txt >&2
+              exit 1
             fi
             content_type="application/zstd"
             case "${artifact}" in

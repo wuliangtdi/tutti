@@ -9,10 +9,13 @@
 //
 //   1. Resolve the pinned @anthropic-ai/claude-agent-sdk version from
 //      packages/agent/claude-sdk-sidecar/package.json.
-//   2. npm-pack the SDK, read manifest.json (claude version + per-platform
-//      sha256/size of the raw binaries).
-//   3. For each platform package: npm-pack, extract the binary, verify its
-//      sha256 against the SDK manifest, compress with zstd.
+//   2. npm-pack the SDK, verify the tarball against the sha512 integrity
+//      recorded in pnpm-lock.yaml (so a registry cannot substitute bytes the
+//      repository did not pin), then read manifest.json (claude version +
+//      per-platform sha256/size of the raw binaries).
+//   3. For each platform package: npm-pack, verify against pnpm-lock.yaml,
+//      extract the binary, verify its sha256 and size against the SDK
+//      manifest, compress with zstd.
 //   4. Emit <out>/<claudeVersion>/claude-<platform>.zst plus a copy of the
 //      SDK manifest for observability.
 //
@@ -25,7 +28,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync
+  rmSync,
+  statSync
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -49,14 +53,50 @@ function log(message) {
 
 function argValue(flag) {
   const index = process.argv.indexOf(flag);
-  if (index < 0 || index + 1 >= process.argv.length) {
+  if (index < 0) {
     return undefined;
   }
-  return process.argv[index + 1];
+  const value = process.argv[index + 1];
+  if (value === undefined || value === "" || value.startsWith("--")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  return value;
 }
 
 function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+// Verifies a packed tarball against the sha512 integrity pinned in
+// pnpm-lock.yaml, closing the loop where the SDK manifest and the binaries
+// would otherwise both come from the same unpinned registry source.
+function verifyTarballAgainstLockfile(tarballPath, packageName, version) {
+  const lockfile = readFileSync(join(repoRoot, "pnpm-lock.yaml"), "utf8");
+  const escaped = `${packageName}@${version}`.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+  const match = lockfile.match(
+    new RegExp(
+      `"${escaped}":\\s*\\n\\s*resolution:[\\s\\S]{0,200}?integrity: (sha512-[A-Za-z0-9+/=]+)`
+    )
+  );
+  if (!match) {
+    throw new Error(
+      `pnpm-lock.yaml has no integrity entry for ${packageName}@${version}; ` +
+        `refusing to publish unpinned bytes`
+    );
+  }
+  const expected = match[1];
+  const actual =
+    "sha512-" +
+    createHash("sha512").update(readFileSync(tarballPath)).digest("base64");
+  if (actual !== expected) {
+    throw new Error(
+      `tarball integrity mismatch for ${packageName}@${version}: ` +
+        `got ${actual}, pnpm-lock.yaml pins ${expected}`
+    );
+  }
 }
 
 function npmPack(packageSpec, destination) {
@@ -109,14 +149,26 @@ try {
     `@anthropic-ai/claude-agent-sdk@${sdkVersion}`,
     stagingDir
   );
+  verifyTarballAgainstLockfile(
+    sdkTarball,
+    "@anthropic-ai/claude-agent-sdk",
+    sdkVersion
+  );
   const sdkDir = join(stagingDir, "sdk");
   mkdirSync(sdkDir, { recursive: true });
   extractFromTarball(sdkTarball, "package/manifest.json", sdkDir);
   const manifestPath = join(sdkDir, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const claudeVersion = manifest.version;
-  if (typeof claudeVersion !== "string" || claudeVersion.length === 0) {
-    throw new Error("SDK manifest.json does not declare a claude version");
+  // The version becomes a CDN path segment (and an S3 key in the publish
+  // workflow); only a plain semver is acceptable.
+  if (
+    typeof claudeVersion !== "string" ||
+    !/^\d+\.\d+\.\d+$/.test(claudeVersion)
+  ) {
+    throw new Error(
+      `SDK manifest.json does not declare a plain semver claude version: ${claudeVersion}`
+    );
   }
 
   const versionDir = join(outRoot, claudeVersion);
@@ -126,12 +178,21 @@ try {
   const staged = [];
   for (const platform of platforms) {
     const platformManifest = manifest.platforms?.[platform];
-    if (!platformManifest?.binary || !platformManifest?.checksum) {
-      throw new Error(`SDK manifest has no platform entry for ${platform}`);
+    if (
+      !platformManifest?.binary ||
+      !platformManifest?.checksum ||
+      !Number.isInteger(platformManifest?.size) ||
+      platformManifest.size <= 0
+    ) {
+      throw new Error(
+        `SDK manifest has no complete platform entry for ${platform}`
+      );
     }
-    const packageSpec = `@anthropic-ai/claude-agent-sdk-${platform}@${sdkVersion}`;
+    const packageName = `@anthropic-ai/claude-agent-sdk-${platform}`;
+    const packageSpec = `${packageName}@${sdkVersion}`;
     log(`packing ${packageSpec}`);
     const tarball = npmPack(packageSpec, stagingDir);
+    verifyTarballAgainstLockfile(tarball, packageName, sdkVersion);
     const extractDir = join(stagingDir, platform);
     mkdirSync(extractDir, { recursive: true });
     extractFromTarball(
@@ -140,6 +201,15 @@ try {
       extractDir
     );
     const binaryPath = join(extractDir, platformManifest.binary);
+    // tuttid enforces the manifest size exactly at download time
+    // (decompressZstdFile); reject a drifting manifest here rather than
+    // shipping an artifact every client would refuse.
+    const binarySize = statSync(binaryPath).size;
+    if (binarySize !== platformManifest.size) {
+      throw new Error(
+        `size mismatch for ${platform}: binary is ${binarySize} bytes, manifest says ${platformManifest.size}`
+      );
+    }
     const checksum = sha256File(binaryPath);
     if (checksum.toLowerCase() !== platformManifest.checksum.toLowerCase()) {
       throw new Error(

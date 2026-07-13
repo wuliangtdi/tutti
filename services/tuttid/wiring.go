@@ -374,9 +374,14 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		// binary; provision it up front so the first Claude session does not
 		// pay the download. Sessions started before this completes fall back
 		// to a PATH-installed claude (see runtimeprep.ClaudeCodePreparer).
+		// The deadline bounds a stalled CDN/npm connection (the shared HTTP
+		// client deliberately has no timeout) while leaving room for a large
+		// fallback download through a slow proxy.
+		preloadCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
 		startedAt := time.Now()
 		slog.Info("claude code binary preload started", "event", "tutti.claude_code_binary.preload_started")
-		status, err := agentStatusService.EnsureClaudeCodeBinary(context.Background())
+		status, err := agentStatusService.EnsureClaudeCodeBinary(preloadCtx)
 		if err != nil {
 			slog.Warn("claude code binary preload failed", "event", "tutti.claude_code_binary.preload_failed", "durationMs", time.Since(startedAt).Milliseconds(), "error", err)
 			return

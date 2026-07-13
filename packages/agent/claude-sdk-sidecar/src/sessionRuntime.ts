@@ -480,8 +480,12 @@ export class SessionRuntime {
     const querySettings = querySettingsFromSessionSettings(
       this.configuration.settings
     );
+    // Same merge (and precedence) as queryOptions.env below, so an override
+    // set in Claude settings files is honored exactly like one from the
+    // process or session environment.
     const claudeExecutablePath = resolveClaudeCodeExecutablePath({
       ...process.env,
+      ...claudeSettingsEnv(this.cwd || process.cwd()),
       ...this.env
     });
     const queryOptions: ClaudeQueryOptions = {

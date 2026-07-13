@@ -122,7 +122,8 @@ after production dependencies are vendored, and again from the final Electron
 Resources directory after symlinks have been replaced. Both checks must complete
 `start`, `exec`, and `close` without reading repository sources.
 
-The vendored bundle carries JS only. The native `claude` binary the SDK spawns
+The vendored bundle excludes the native `claude` executable (it still carries
+the SDK's JS, type metadata, and `manifest.json`). The binary the SDK spawns
 is provisioned at runtime by tuttid from the CDN (npm mirrors as fallback),
 pinned and verified against the vendored SDK's `manifest.json` (see
 `services/tuttid/service/agentstatus/claude_binary.go`). The sidecar picks the

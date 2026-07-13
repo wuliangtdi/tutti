@@ -16,7 +16,6 @@
 
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
 
 export type ClaudeExecutableEnv = Record<string, string | undefined>;
 
@@ -38,10 +37,10 @@ export function resolveClaudeCodeExecutablePath(
   return undefined;
 }
 
-// Mirrors the SDK's own optional-dependency resolution: the platform package
-// must be resolvable from the SDK package's location (pnpm places optional
-// dependencies in the SDK's virtual-store node_modules; the vendored bundle
-// uses one flat node_modules).
+// Mirrors the SDK's own optional-dependency resolution: it resolves the
+// binary subpath (`<package>/claude`) from the SDK package's location (pnpm
+// places optional dependencies in the SDK's virtual-store node_modules; the
+// vendored bundle uses one flat node_modules).
 export function nativeSdkBinaryAvailable(): boolean {
   let sdkEntry: string;
   try {
@@ -56,8 +55,8 @@ export function nativeSdkBinaryAvailable(): boolean {
   for (const platformKey of nativePlatformPackageKeys()) {
     const packageName = `@anthropic-ai/claude-agent-sdk-${platformKey}`;
     try {
-      const packageJsonPath = sdkRequire.resolve(`${packageName}/package.json`);
-      if (existsSync(join(dirname(packageJsonPath), binaryName))) {
+      const binaryPath = sdkRequire.resolve(`${packageName}/${binaryName}`);
+      if (existsSync(binaryPath)) {
         return true;
       }
     } catch {

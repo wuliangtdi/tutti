@@ -317,6 +317,58 @@ func TestClaudeCodePlatformKey(t *testing.T) {
 	}
 }
 
+func TestClaudeBinaryLockIsRecognized(t *testing.T) {
+	if !requiresInstallCommandLock(claudeCodeBinaryLockCommand) {
+		t.Fatal("claude binary provisioning must acquire an install lock")
+	}
+	lockPath := installCommandLockPath(claudeCodeBinaryLockCommand)
+	if filepath.Base(lockPath) != "claude-code-runtime-binary.lock" {
+		t.Fatalf("lock path = %q, want dedicated claude lock file", lockPath)
+	}
+	if lockPath == installCommandLockPath("npm install -g something") {
+		t.Fatal("claude lock must not share the npm global install lock")
+	}
+}
+
+func TestPromoteClaudeBinaryRejectsMismatchedStaging(t *testing.T) {
+	dir := t.TempDir()
+	staging := filepath.Join(dir, ".claude.staging")
+	final := filepath.Join(dir, "claude")
+	if err := os.WriteFile(staging, []byte("not the pinned bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	descriptor := claudeSDKRuntimeDescriptor{
+		PlatformKey: "darwin-arm64",
+		SHA256:      "0000000000000000000000000000000000000000000000000000000000000000",
+	}
+	if err := promoteClaudeBinary(staging, final, descriptor); err == nil {
+		t.Fatal("expected sha256 mismatch error")
+	}
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatalf("final path must never receive unverified bytes: %v", err)
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("rejected staging file must be removed: %v", err)
+	}
+}
+
+func TestExtractClaudeBinaryFromTarballBoundsSize(t *testing.T) {
+	dir := t.TempDir()
+	oversized := bytes.Repeat([]byte("A"), 4096)
+	archive := filepath.Join(dir, "package.tgz")
+	if err := os.WriteFile(archive, npmTarballWithBinary(t, "claude", oversized), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(dir, ".claude.staging")
+	err := extractClaudeBinaryFromTarball(archive, "claude", destination, 128)
+	if err == nil {
+		t.Fatal("expected size mismatch error for oversized member")
+	}
+	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
+		t.Fatalf("oversized extraction must not leave a file: %v", statErr)
+	}
+}
+
 func TestNPMPackageTarballURL(t *testing.T) {
 	got := npmPackageTarballURL("https://registry.npmjs.org/", "@anthropic-ai/claude-agent-sdk-darwin-arm64", "0.3.201")
 	want := "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-darwin-arm64/-/claude-agent-sdk-darwin-arm64-0.3.201.tgz"
