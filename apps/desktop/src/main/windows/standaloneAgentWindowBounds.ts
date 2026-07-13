@@ -13,9 +13,9 @@ export interface StandaloneAgentWindowWorkArea {
 }
 
 export function shouldAnimateStandaloneAgentWindowResize(
-  platform: NodeJS.Platform
+  _platform: NodeJS.Platform
 ): boolean {
-  return platform === "darwin";
+  return false;
 }
 
 export function resolveStandaloneAgentWindowContentWidth(input: {

@@ -271,11 +271,7 @@ test("standalone Agent right sidebar transitions without a rebound curve before 
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /motion-reduce:transition-none/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /dispatch\(\{ panel, type: "open-panel" \}\);\s*scheduleResizeForPanel\(panel\)/
+    /dispatch\(\{ panel, type: "open-panel" \}\);\s*void resizeForPanel\(panel\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,

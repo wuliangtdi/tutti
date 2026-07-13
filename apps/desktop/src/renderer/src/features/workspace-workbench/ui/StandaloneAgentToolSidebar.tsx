@@ -209,27 +209,6 @@ export function StandaloneAgentToolSidebar({
     mainContentMinWidthPx,
     resizeWindowContentWidth
   });
-  const resizeAnimationFrameRef = useRef<number | null>(null);
-  const scheduleResizeForPanel = useCallback(
-    (panel: StandaloneAgentToolPanelId | null) => {
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current);
-      }
-      resizeAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        resizeAnimationFrameRef.current = null;
-        void resizeForPanel(panel);
-      });
-    },
-    [resizeForPanel]
-  );
-  useEffect(
-    () => () => {
-      if (resizeAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeAnimationFrameRef.current);
-      }
-    },
-    []
-  );
   useEffect(() => {
     if (!activePanel || contentReadyPanels.includes(activePanel)) {
       return;
@@ -258,8 +237,8 @@ export function StandaloneAgentToolSidebar({
     }
     lastHandledAppOpenIdRef.current = normalizedAppOpenId;
     dispatch({ panel: "apps", type: "open-panel" });
-    scheduleResizeForPanel("apps");
-  }, [appOpenId, scheduleResizeForPanel]);
+    void resizeForPanel("apps");
+  }, [appOpenId, resizeForPanel]);
   useEffect(() => {
     if (
       !fileOpenRequest ||
@@ -269,22 +248,22 @@ export function StandaloneAgentToolSidebar({
     }
     lastHandledFileOpenRequestRef.current = fileOpenRequest.requestID;
     dispatch({ panel: "files", type: "open-panel" });
-    scheduleResizeForPanel("files");
-  }, [fileOpenRequest, scheduleResizeForPanel]);
+    void resizeForPanel("files");
+  }, [fileOpenRequest, resizeForPanel]);
   const closePanel = useCallback(() => {
     dispatch(
       activePanel === "terminal"
         ? { type: "toggle-terminal" }
         : { type: "close" }
     );
-    scheduleResizeForPanel(null);
-  }, [activePanel, scheduleResizeForPanel]);
+    void resizeForPanel(null);
+  }, [activePanel, resizeForPanel]);
   const openPanel = useCallback(
     (panel: StandaloneAgentToolPanelId) => {
       dispatch({ panel, type: "open-panel" });
-      scheduleResizeForPanel(panel);
+      void resizeForPanel(panel);
     },
-    [scheduleResizeForPanel]
+    [resizeForPanel]
   );
   const toggleSidebar = useCallback(() => {
     const nextPanel = activePanel ?? "files";
@@ -293,8 +272,8 @@ export function StandaloneAgentToolSidebar({
         ? { panel: nextPanel, type: "open-panel" }
         : { type: "close" }
     );
-    scheduleResizeForPanel(activePanel === null ? nextPanel : null);
-  }, [activePanel, scheduleResizeForPanel]);
+    void resizeForPanel(activePanel === null ? nextPanel : null);
+  }, [activePanel, resizeForPanel]);
   const closePanelTab = useCallback(
     (panel: StandaloneAgentToolPanelId) => {
       const nextMountedPanels = state.mountedPanels.filter(
@@ -305,9 +284,9 @@ export function StandaloneAgentToolSidebar({
           ? (nextMountedPanels[nextMountedPanels.length - 1] ?? null)
           : activePanel;
       dispatch({ panel, type: "close-panel" });
-      scheduleResizeForPanel(nextPanel);
+      void resizeForPanel(nextPanel);
     },
-    [activePanel, scheduleResizeForPanel, state.mountedPanels]
+    [activePanel, resizeForPanel, state.mountedPanels]
   );
 
   return (

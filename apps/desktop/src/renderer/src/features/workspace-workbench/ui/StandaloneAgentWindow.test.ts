@@ -99,3 +99,18 @@ test("standalone Agent hides panel toggles until its content mounts", () => {
     /<StandaloneAgentWindowContentReady onReady=\{handleContentReady\}>[\s\S]*?<LazyDesktopAgentGUIWorkbenchBody/
   );
 });
+
+test("standalone Agent duplicates the active window without minimizing its source", () => {
+  assert.match(
+    standaloneWindowSource,
+    /openDetachedWindow: i18n\.t\(\s*"workspace\.agentGui\.openDetachedWindow"\s*\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /onOpenDetachedWindow=\{handleDuplicateStandaloneWindow\}/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /handleDuplicateStandaloneWindow[\s\S]*?openAgentWindow\(\{[\s\S]*?agentSessionId: nodeState\.lastActiveAgentSessionId[\s\S]*?agentTargetId: activeAgentTargetId[\s\S]*?agents: agents \?\? undefined[\s\S]*?minimizeSourceWindow: false[\s\S]*?provider: headerProvider[\s\S]*?workspaceId/
+  );
+});

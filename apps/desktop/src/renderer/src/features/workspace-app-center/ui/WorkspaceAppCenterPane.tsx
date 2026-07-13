@@ -38,6 +38,7 @@ import {
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
 import { openWorkspaceAppInline } from "../services/internal/workspaceAppCenterInlineOpen.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
+import { shouldLoadWorkspaceAppFactoryDependencies } from "./workspaceAppCenterLoadPolicy.ts";
 
 const aiPptAppIconUrl = new URL(
   "../../../assets/workspace-canvas/dock/default/apps/PPT.png",
@@ -152,17 +153,25 @@ export function WorkspaceAppCenterPane({
     : undefined;
   const viewState =
     storedViewState ?? service.getViewState(workspaceId, restoredViewState);
+  const shouldLoadFactoryDependencies =
+    shouldLoadWorkspaceAppFactoryDependencies(viewState.activeAppTab);
   useEffect(() => {
     void service.refreshCatalog(workspaceId);
   }, [service, workspaceId]);
   useEffect(() => {
+    if (!shouldLoadFactoryDependencies) {
+      return;
+    }
     void agentsService.load();
-  }, [agentsService]);
+  }, [agentsService, shouldLoadFactoryDependencies]);
   useEffect(() => {
+    if (!shouldLoadFactoryDependencies) {
+      return;
+    }
     void agentProviderStatusService.ensureLoaded({
       providers: [...workspaceAgentGuiProviders]
     });
-  }, [agentProviderStatusService]);
+  }, [agentProviderStatusService, shouldLoadFactoryDependencies]);
   const factoryProviderOptions = useMemo(
     () =>
       resolveAppCenterReadyAgentProviderOptions(

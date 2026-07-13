@@ -5,6 +5,7 @@ import {
 } from "@renderer/features/analytics-debug";
 import {
   registerReporterServices,
+  shouldReportPredefinePageview,
   startPredefinePageviewAnalytics
 } from "@renderer/features/analytics";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
@@ -112,9 +113,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   const reporterService = registerReporterServices(registry, {
     tuttidClient
   });
-  const predefinePageviewAnalytics = startPredefinePageviewAnalytics({
-    reporterService
-  });
+  const predefinePageviewAnalytics = shouldReportPredefinePageview(
+    window.location.search
+  )
+    ? startPredefinePageviewAnalytics({ reporterService })
+    : null;
   installRendererDiagnostics(
     desktopApi.runtime,
     "workspace-renderer",
@@ -179,7 +182,7 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     disposeAgentOutcomeNotificationController = null;
     disposeAgentProviderVisibilityRefresh?.();
     disposeAgentProviderVisibilityRefresh = null;
-    predefinePageviewAnalytics.dispose();
+    predefinePageviewAnalytics?.dispose();
     daemonConnectionAnalytics.release();
   };
   window.addEventListener("beforeunload", releaseWindowAnalytics);

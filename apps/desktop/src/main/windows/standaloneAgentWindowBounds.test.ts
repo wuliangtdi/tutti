@@ -5,8 +5,8 @@ import {
   shouldAnimateStandaloneAgentWindowResize
 } from "./standaloneAgentWindowBounds.ts";
 
-test("standalone agent window uses native resize animation only on macOS", () => {
-  assert.equal(shouldAnimateStandaloneAgentWindowResize("darwin"), true);
+test("standalone agent window avoids native resize animation on every platform", () => {
+  assert.equal(shouldAnimateStandaloneAgentWindowResize("darwin"), false);
   assert.equal(shouldAnimateStandaloneAgentWindowResize("win32"), false);
   assert.equal(shouldAnimateStandaloneAgentWindowResize("linux"), false);
 });
