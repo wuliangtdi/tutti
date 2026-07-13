@@ -55,11 +55,14 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationIconUrl?: string | null;
   conversationIconFallbackUrl?: string | null;
   providerRailWidthPx?: number | null;
+  primaryAccessory?: ReactNode;
+  secondaryAccessory?: ReactNode;
   conversationTitle?: string | null;
   nodeId: string;
   onCreateConversation?: () => void;
   onOpenDetachedWindow?: () => void;
   onToggleConversationRail: (nextCollapsed: boolean) => void;
+  showAppTitle?: boolean;
   showWindowControls?: boolean;
   title?: string;
   windowActions?: Pick<
@@ -79,11 +82,14 @@ export function AgentGuiWorkbenchHeader({
   conversationIconUrl,
   conversationIconFallbackUrl,
   providerRailWidthPx,
+  primaryAccessory,
+  secondaryAccessory,
   conversationTitle,
   nodeId,
   onCreateConversation,
   onOpenDetachedWindow,
   onToggleConversationRail,
+  showAppTitle = true,
   showWindowControls = true,
   title: _title,
   windowActions,
@@ -174,7 +180,7 @@ export function AgentGuiWorkbenchHeader({
             })
           )
         : null,
-      !isConversationRailCollapsed
+      showAppTitle && !isConversationRailCollapsed
         ? createElement(
             "div",
             {
@@ -187,6 +193,15 @@ export function AgentGuiWorkbenchHeader({
               },
               appTitle
             )
+          )
+        : null,
+      primaryAccessory
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__primary-accessory"
+            },
+            primaryAccessory
           )
         : null,
       onOpenDetachedWindow && !hasBodyRenderError
@@ -260,27 +275,53 @@ export function AgentGuiWorkbenchHeader({
               sessionTitle
             )
           )
+        : null,
+      isConversationRailCollapsed && secondaryAccessory
+        ? createElement(
+            "div",
+            {
+              className: "agent-gui-workbench-header__secondary-accessory"
+            },
+            secondaryAccessory
+          )
         : null
     ),
-    !isConversationRailCollapsed && sessionTitle
+    !isConversationRailCollapsed && (sessionTitle || secondaryAccessory)
       ? createElement(
           "div",
           {
-            className: "agent-gui-workbench-header__detail-title",
-            "data-testid": "agent-gui-window-detail-title"
+            className: "agent-gui-workbench-header__detail"
           },
-          createSessionHeaderIconSlot({
-            fallbackSrc: sessionIconFallbackUrl,
-            src: sessionIconUrl,
-            testId: "agent-gui-window-detail-title-icon"
-          }),
-          createElement(
-            "span",
-            {
-              className: "agent-gui-workbench-header__title-text"
-            },
-            sessionTitle
-          )
+          sessionTitle
+            ? createElement(
+                "div",
+                {
+                  className: "agent-gui-workbench-header__detail-title",
+                  "data-testid": "agent-gui-window-detail-title"
+                },
+                createSessionHeaderIconSlot({
+                  fallbackSrc: sessionIconFallbackUrl,
+                  src: sessionIconUrl,
+                  testId: "agent-gui-window-detail-title-icon"
+                }),
+                createElement(
+                  "span",
+                  {
+                    className: "agent-gui-workbench-header__title-text"
+                  },
+                  sessionTitle
+                )
+              )
+            : null,
+          secondaryAccessory
+            ? createElement(
+                "div",
+                {
+                  className: "agent-gui-workbench-header__secondary-accessory"
+                },
+                secondaryAccessory
+              )
+            : null
         )
       : null
   );

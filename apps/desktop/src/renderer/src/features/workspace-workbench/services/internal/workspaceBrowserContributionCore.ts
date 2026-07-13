@@ -3,15 +3,8 @@ import type {
   WorkbenchHostExternalStateLookupInput,
   WorkbenchHostExternalStateSource
 } from "@tutti-os/workbench-surface";
+export { resolveWorkspaceBrowserSearchUrl } from "../workspaceBrowserSearch.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchComposition.ts";
-
-const browserNodeSearchBaseUrl = "https://www.google.com/search";
-
-export function resolveWorkspaceBrowserSearchUrl(query: string): string {
-  const searchUrl = new URL(browserNodeSearchBaseUrl);
-  searchUrl.searchParams.set("q", query);
-  return searchUrl.toString();
-}
 
 export interface WorkspaceBrowserNodeExternalState {
   title: string | null;

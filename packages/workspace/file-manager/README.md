@@ -24,6 +24,10 @@ needed to drive those flows so different hosts can integrate primarily by
 implementing `WorkspaceFileManagerHost` instead of rebuilding workflow around
 the shared UI.
 
+The optional React surface persists the adjustable locations-sidebar and
+details-panel widths on the current device. Restored widths are clamped to the
+available surface so the central file list keeps its minimum usable width.
+
 Hosts now provide one app-level i18n runtime and scope it into the file-manager
 namespace, rather than hand-assembling package-local message objects.
 

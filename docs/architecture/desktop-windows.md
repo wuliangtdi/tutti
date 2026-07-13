@@ -8,7 +8,7 @@ The desktop app currently has three user-facing shells:
 
 - a launcher-style dashboard window for no-context startup
 - a workspace window for an opened workspace
-- an Agent-only window for validating a lighter detached Agent experience
+- an Agent-only window used as the default focused Agent experience
 
 The window model is intentionally simple:
 
@@ -38,7 +38,8 @@ It is not responsible for:
 
 ### Workspace Window
 
-The workspace window is the primary product surface for a single workspace.
+The workspace window is the full Tutti OS product surface for a single
+workspace when the user selects OS mode.
 
 Current responsibilities:
 
@@ -50,7 +51,7 @@ The current renderer content is intentionally minimal. The shell exists so the s
 
 ### Agent-Only Window
 
-The Agent-only window is a validation shell for users who want the AgentGUI
+The Agent-only window is the default product shell for users who want AgentGUI
 without the full workspace desktop around it.
 
 It is responsible for:
@@ -77,8 +78,10 @@ Desktop startup currently follows this sequence:
 
 1. start or reconnect to `tuttid`
 2. ask `tuttid` for the daemon-selected startup workspace
-3. if a startup workspace exists, open the workspace window for it
-4. otherwise open the dashboard window
+3. if a startup workspace exists, read the desktop startup-interface preference
+4. create the Agent-only window by default, or the workspace window when the
+   user explicitly selected OS mode
+5. otherwise open the dashboard window
 
 On macOS activation with no open windows, the app follows the same startup resolution instead of always forcing the dashboard.
 
@@ -87,7 +90,8 @@ On macOS activation with no open windows, the app follows the same startup resol
 When a user opens a workspace from the dashboard:
 
 1. desktop asks `tuttid` to mark that workspace as opened
-2. desktop creates the workspace window for that workspace
+2. desktop creates the preferred Agent-only or OS workspace window for that
+   workspace
 3. desktop closes the dashboard window
 
 When a user creates a workspace from the dashboard:
@@ -108,18 +112,61 @@ When a user opens the Agent-only window from a workspace window:
 4. once the Agent-only window is ready and shown, desktop minimizes the source
    workspace window
 
+When a user changes the startup interface in Settings, desktop persists the
+preference and immediately replaces the current native window with the selected
+Agent-only or OS workspace window. The replacement request carries the selected
+window kind explicitly, so it does not depend on asynchronous preference-event
+delivery in the main process. Desktop waits until the replacement is ready
+before closing the source window.
+
 ## Current Renderer Shell Mapping
 
 Current renderer shell mapping:
 
 - dashboard window -> `view=dashboard`
-- workspace window -> `view=workspace&workspaceId=<id>`
+- OS workspace window -> `view=workspace&workspaceId=<id>`
 - Agent-only window -> `view=agent&workspaceId=<id>`
 
 The renderer still shares one preload entry and one renderer bundle today. Separate window shells are resolved inside renderer bootstrap code rather than through fully separate apps.
 Agent-only windows also share host-window preload capabilities; their
 AgentGUI header close, minimize, and maximize controls call typed host window
 IPC instead of relying on native traffic lights.
+The Agent-only shell places Browser and other desktop-owned auxiliary tools in
+a right sidebar, while Terminal opens in a bottom tray below the conversation.
+Opening a right-sidebar tool expands the native content width first so the
+sidebar is appended beside the existing message flow. Native right-edge growth
+continues to grow the sidebar; when the screen cannot provide enough outward
+room, the sidebar's full width stays reserved in the flex layout and the
+message flow narrows instead of being covered. Width added from the sidebar's
+left separator follows the same adjacent layout rule. Closing the sidebar
+restores the pre-panel native width. This sizing remains renderer/main window
+presentation state and never enters AgentGUI or workbench snapshots.
+The renderer activates and animates the clipped panel shell before issuing the
+native resize IPC on the next frame, so host latency cannot block visual
+feedback. Heavy first-use tool bodies mount after the shell transition and
+remain mounted for later opens. macOS requests Electron's native content-bounds
+animation in parallel, while reduced-motion preferences disable the renderer
+transition and mount delay.
+Its Apps panel renders the App Center contribution body instead of mounting a
+catalog-only copy. The shared `openAppId` view state therefore replaces the
+catalog with the selected app's Browser Node in both OS and Agent-only shells,
+and the panel exposes a back action that clears that selection. An app open
+request activates the Apps sidebar automatically. Both shells
+must start the shared App Center polling lifecycle, so app runtime events update
+the selected Browser Node from `starting` to `running` with its launch URL.
+The OS Files floating window opens wide by default so its location, list, and
+detail columns begin at approximately 26%, 55%, and 19% of the content width;
+each splitter remains user-resizable within its minimum-content constraints.
+The tray reuses the OS `workspace-terminal` contribution and therefore the same
+PTY adapter, terminal output recovery, and close guard as the OS workspace.
+Its ephemeral panel-local host does not read or overwrite the OS workbench
+snapshot, and its close effects remain part of the native window close flow.
+When Files is selected, the sidebar starts at a wide desktop-safe width and the
+reusable file manager exposes two local column boundaries: locations/list and
+list/details. Those widths are presentation state only and never enter the OS
+workbench snapshot. Conversation file links and reference preview requests
+activate this Files sidebar with a reveal intent, so the requested file opens
+beside the conversation instead of in a floating overlay or external app.
 
 ## Workspace Close And Reload Behavior
 
@@ -153,7 +200,6 @@ This window model follows the desktop layering rules:
 
 The following are still intentionally deferred:
 
-- in-workspace switching UX
 - a dedicated settings window
 - dashboard search
 - keeping dashboard open after launching a workspace

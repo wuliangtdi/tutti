@@ -1,7 +1,13 @@
-import type { DesktopFeatureFlags } from "../preferences/index.ts";
+import {
+  defaultDesktopWorkspaceUiMode,
+  type DesktopFeatureFlags,
+  type DesktopWorkspaceUiMode
+} from "../preferences/index.ts";
 
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
+export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
+  "workspace.standaloneAgentMode";
 
 export interface FeatureFlagDefinition {
   key: string;
@@ -38,4 +44,33 @@ export function isFeatureEnabled(
 
 export function labFeatureDefinitions(): readonly FeatureFlagDefinition[] {
   return FEATURE_FLAG_DEFINITIONS.filter((d) => d.group === "lab");
+}
+
+export function resolveDesktopWorkspaceUiMode(
+  flags: DesktopFeatureFlags
+): DesktopWorkspaceUiMode {
+  if (
+    Object.prototype.hasOwnProperty.call(
+      flags,
+      WORKSPACE_STANDALONE_AGENT_MODE_FLAG
+    )
+  ) {
+    return flags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG] === false
+      ? "os"
+      : "agent";
+  }
+  return defaultDesktopWorkspaceUiMode;
+}
+
+export function withDesktopWorkspaceUiMode(
+  flags: DesktopFeatureFlags,
+  mode: DesktopWorkspaceUiMode
+): DesktopFeatureFlags {
+  const nextFlags = { ...flags };
+  if (mode === "agent") {
+    delete nextFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG];
+  } else {
+    nextFlags[WORKSPACE_STANDALONE_AGENT_MODE_FLAG] = false;
+  }
+  return nextFlags;
 }

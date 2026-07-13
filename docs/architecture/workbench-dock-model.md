@@ -284,6 +284,11 @@ The shared package may provide default visuals through explicit asset subpaths
 and may provide tooltip treatment for these states, but it should not own the
 underlying workflow state machine.
 
+Dock placement may adapt those visuals without changing node state semantics.
+The bottom Dock may render the existing open/minimized status dot. The left
+Dock keeps one centered icon axis and does not render a leading open/minimized
+indicator or reserve horizontal gutter for one.
+
 ### Badge
 
 Dock entries should support:

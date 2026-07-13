@@ -272,6 +272,100 @@ test("WorkspaceAgentActivityService model catalog invalidation drops composer ca
   assert.equal(composerOptionCalls, 2);
 });
 
+test("WorkspaceAgentActivityService starts session-event streams and preserves uncached outcome patches", async () => {
+  const subscriptions: Array<{
+    scope: unknown;
+    topic: string;
+  }> = [];
+  const listenersByTopic = new Map<string, (event: unknown) => void>();
+  let connectCalls = 0;
+  const service = new WorkspaceAgentActivityService({
+    eventStreamClient: {
+      connect: async () => {
+        connectCalls += 1;
+      },
+      dispose: () => {},
+      publishIntent: async () => {},
+      subscribe: (
+        topic: string,
+        listener: (event: unknown) => void,
+        options?: unknown
+      ) => {
+        listenersByTopic.set(topic, listener);
+        subscriptions.push({
+          scope:
+            options && typeof options === "object" && "scope" in options
+              ? options.scope
+              : null,
+          topic
+        });
+        return () => {};
+      },
+      subscribeConnectionState: () => () => {}
+    } as never,
+    tuttidClient: {
+      getWorkspaceAgentSession: async () =>
+        workspaceAgentSession({
+          currentPhase: "idle",
+          status: "completed",
+          turnLifecycle: {
+            activeTurnId: null,
+            outcome: "completed",
+            phase: "settled"
+          }
+        })
+    } as unknown as TuttidClient,
+    runtimeApi: {
+      logTerminalDiagnostic: async () => {}
+    }
+  });
+
+  const receivedEvent = new Promise<unknown>((resolve) => {
+    service.onSessionEvent(" ws-1 ", resolve);
+  });
+
+  assert.deepEqual(subscriptions, [
+    {
+      scope: { workspaceId: "ws-1" },
+      topic: "agent.activity.updated"
+    },
+    {
+      scope: null,
+      topic: "agent.model.catalog.invalidated"
+    }
+  ]);
+  assert.equal(connectCalls, 1);
+  const activityUpdatedListener = listenersByTopic.get(
+    "agent.activity.updated"
+  );
+  assert.ok(activityUpdatedListener);
+
+  const sourceEvent = {
+    data: {
+      agentSessionId: "session-1",
+      provider: "codex",
+      title: "Finish the task",
+      turn: {
+        outcome: "completed",
+        phase: "settled",
+        turnId: "turn-1"
+      },
+      workspaceId: "ws-1"
+    },
+    eventType: "state_patch"
+  };
+  activityUpdatedListener({
+    payload: {
+      agentSessionId: "session-1",
+      data: sourceEvent.data,
+      eventType: sourceEvent.eventType,
+      workspaceId: "ws-1"
+    }
+  });
+
+  assert.deepEqual(await receivedEvent, sourceEvent);
+});
+
 test("WorkspaceAgentActivityService.importExternalSessions refreshes sessions and projects", async () => {
   const importCalls: unknown[] = [];
   let listCalls = 0;

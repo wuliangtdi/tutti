@@ -52,11 +52,11 @@ export const en = {
     availableTitle: "Update to New Version",
     badge: "update",
     checkingTitle: "Checking for updates",
-    downloadAction: "Update",
+    downloadAction: "Download update",
     downloadedTitle: "Ready to install",
     downloadingTitle: "Downloading {{percent}}",
     errorTitle: "Unable to check for updates",
-    restartAction: "Install",
+    restartAction: "Restart & install",
     retryAction: "Retry"
   },
   desktop: {
@@ -146,7 +146,20 @@ export const en = {
       openDetachedWindow: "Open in detached window",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
-      openSessionUnavailableTitle: "Session unavailable"
+      openSessionUnavailableTitle: "Session unavailable",
+      toolSidebar: {
+        apps: "Apps",
+        browser: "Browser",
+        close: "Close",
+        expandPanel: "Expand panel",
+        files: "Files",
+        messages: "Messages",
+        resizeSidebar: "Resize tool sidebar",
+        shrinkPanel: "Shrink panel",
+        terminal: "Terminal",
+        tool: "Tool",
+        unavailable: "{{tool}} is not available in the Agent window yet."
+      }
     },
     accountMenu: {
       title: "Tutti Agent",
@@ -377,7 +390,8 @@ export const en = {
       title: "Analytics events"
     },
     appCenter: {
-      dockLabel: "App Center"
+      backToApps: "Back to apps",
+      dockLabel: "Apps"
     },
     info: {
       idDescription: "Stable identifier for preload and daemon coordination.",
@@ -488,6 +502,19 @@ export const en = {
         wallpaperUploading: "Uploading..."
       },
       general: {
+        workspaceUiModeLabel: "Startup interface",
+        workspaceUiModeDescription:
+          "Choose which native window Tutti creates when it starts or opens a workspace.",
+        workspaceUiModeOptions: {
+          agentTitle: "Agent mode",
+          agentDescription:
+            "Start in a focused standalone Agent window with tools in the right sidebar.",
+          osTitle: "OS mode",
+          osDescription:
+            "The original workspace with windows, desktop, dock, and launchpad."
+        },
+        workspaceUiModeSaveFailed:
+          "We couldn't update the startup interface right now.",
         defaultAgentProviderDescription:
           "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
         defaultAgentProviderLabel: "Default provider",
@@ -878,7 +905,7 @@ export const en = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "App Center",
+        appCenter: "Apps",
         appWebview: "Workspace app",
         browser: "Browser",
         files: "Files",

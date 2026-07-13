@@ -12,6 +12,7 @@ import type {
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFeatureFlags,
+  DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
@@ -27,6 +28,7 @@ import {
   desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual
 } from "../../../../../../shared/preferences/index.ts";
+import { withDesktopWorkspaceUiMode } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopThemeSource, DesktopThemeState } from "@shared/theme";
 import {
   INotificationService,
@@ -85,6 +87,10 @@ const managedModelProviderIDs: WorkspaceManagedModelProviderID[] = [
 export interface WorkspaceSettingsServiceDependencies {
   client: DesktopWorkspaceSettingsClient;
   onAgentTargetsChanged?: () => void | Promise<void>;
+  replaceWorkspaceWindow?: (input: {
+    mode: "agent" | "os";
+    workspaceId: string;
+  }) => Promise<void>;
   tuttiAgentSwitchMigration?: {
     clearComplete(): void;
     hasMigrated(): boolean;
@@ -572,6 +578,32 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
       this.notifications.error({
         title: createActiveTranslator().t(
           "workspace.settings.lab.preferencesSaveFailed"
+        )
+      });
+    }
+  }
+
+  async changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void> {
+    const currentFlags =
+      this.desktopPreferences.store.changingFeatureFlags ??
+      this.desktopPreferences.store.featureFlags;
+    const nextFlags = withDesktopWorkspaceUiMode(currentFlags, mode);
+    if (desktopFeatureFlagsEqual(currentFlags, nextFlags)) {
+      return;
+    }
+
+    try {
+      await this.desktopPreferences.setFeatureFlags(nextFlags);
+      if (this.store.workspaceID) {
+        await this.dependencies.replaceWorkspaceWindow?.({
+          mode,
+          workspaceId: this.store.workspaceID
+        });
+      }
+    } catch {
+      this.notifications.error({
+        title: createActiveTranslator().t(
+          "workspace.settings.general.workspaceUiModeSaveFailed"
         )
       });
     }

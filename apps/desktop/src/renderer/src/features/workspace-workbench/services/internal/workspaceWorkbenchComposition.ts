@@ -24,16 +24,16 @@ export {
 export const workspaceFilesNodeID = workspaceFilesLaunchTypeId;
 export const workspaceBrowserNodeID = "browser";
 export const workspaceFilesNodeFrame: WorkbenchFrame = {
-  x: 160,
-  y: 110,
-  width: 1040,
-  height: defaultIssueManagerNodeFrame.height
+  x: 96,
+  y: 28,
+  width: 2520,
+  height: 1200
 };
 export const workspaceAgentGuiNodeFrame: WorkbenchFrame = {
   x: 140,
   y: 48,
-  width: workspaceFilesNodeFrame.width,
-  height: workspaceFilesNodeFrame.height
+  width: 1040,
+  height: defaultIssueManagerNodeFrame.height
 };
 export const workspaceFilePreviewNodeFrame: WorkbenchFrame = {
   height: defaultIssueManagerNodeFrame.height,

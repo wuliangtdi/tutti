@@ -1,3 +1,4 @@
+import { screen } from "electron";
 import {
   desktopIpcChannels,
   type DesktopHostOpenAgentWindowInput,
@@ -8,6 +9,10 @@ import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { getDesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
+import {
+  resolveStandaloneAgentWindowContentWidth,
+  shouldAnimateStandaloneAgentWindowResize
+} from "../windows/standaloneAgentWindowBounds";
 
 const maxCapturePreviewDimensionPx = 512;
 const capturePreviewTimeoutMs = 2_000;
@@ -159,6 +164,35 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
       }
 
       ownerWindow.minimize();
+    }
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.resizeContentWidth,
+    (event, input) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow || ownerWindow.isDestroyed()) {
+        return { width: 0 };
+      }
+
+      const currentBounds = ownerWindow.getContentBounds();
+      if (ownerWindow.isFullScreen() || ownerWindow.isMaximized()) {
+        return { width: currentBounds.width };
+      }
+
+      const workArea = screen.getDisplayMatching(
+        ownerWindow.getBounds()
+      ).workArea;
+      const nextBounds = resolveStandaloneAgentWindowContentWidth({
+        currentBounds,
+        requestedWidth: input.width,
+        workArea
+      });
+      ownerWindow.setContentBounds(
+        nextBounds,
+        shouldAnimateStandaloneAgentWindowResize(process.platform)
+      );
+      return { width: ownerWindow.getContentBounds().width };
     }
   );
 

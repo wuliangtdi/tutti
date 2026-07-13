@@ -23,6 +23,7 @@ const browserNodeEn = {
   actions: {
     back: "Back",
     forward: "Forward",
+    more: "More browser actions",
     openDevTools: "Open DevTools",
     openExternal: "Open in external browser",
     reload: "Reload"
@@ -49,6 +50,7 @@ const browserNodeZhCN = {
   actions: {
     back: "后退",
     forward: "前进",
+    more: "更多浏览器操作",
     openDevTools: "打开开发者工具",
     openExternal: "使用外部浏览器打开",
     reload: "重新加载"
@@ -73,6 +75,7 @@ const browserNodeZhCN = {
 export type BrowserNodeI18nKey =
   | "actions.back"
   | "actions.forward"
+  | "actions.more"
   | "actions.openDevTools"
   | "actions.openExternal"
   | "actions.reload"

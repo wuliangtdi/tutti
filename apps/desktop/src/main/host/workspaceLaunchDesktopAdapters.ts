@@ -6,19 +6,24 @@ import {
   formatErrorMessage
 } from "../../shared/errors/desktopErrors.ts";
 import { getDesktopLogger } from "../logging";
-import type { WorkspaceLaunchAdapters } from "./workspaceLaunch";
+import type {
+  WorkspaceLaunchAdapters,
+  WorkspaceLaunchAgentWindowInput
+} from "./workspaceLaunch";
 import {
   createWorkspaceWindow,
   loadAgentWindowContent,
   loadWorkspaceWindowContent
 } from "../windows/workspaceWindow";
 import { awaitWorkspaceWindowReady } from "./workspaceWindowReady.ts";
+import type { WorkspaceLaunchWindowKind } from "./workspaceLaunchMode.ts";
 
 export interface WorkspaceLaunchDesktopAdapterOptions {
   browserNodeGuestPreloadPath?: string;
   enableDevelopmentReloadShortcut?: boolean;
   getDockPlacement: () => DesktopDockPlacement;
   getLocale: () => DesktopLocale;
+  getPrimaryWorkspaceWindowKind: () => WorkspaceLaunchWindowKind;
   getTheme: () => DesktopThemeState;
   preloadPath: string;
   rendererUrl?: string;
@@ -30,39 +35,16 @@ export function createWorkspaceLaunchDesktopAdapters(
 ): WorkspaceLaunchAdapters {
   return {
     async showAgentWindow(input) {
-      const agentWindow = createWorkspaceWindow({
-        browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
-        enableDevelopmentReloadShortcut:
-          options.enableDevelopmentReloadShortcut === true,
-        locale: options.getLocale(),
-        preloadPath: options.preloadPath,
-        rendererUrl: options.rendererUrl,
-        theme: options.getTheme(),
-        windowKind: "agent",
-        workspaceAppPreloadPath: options.workspaceAppPreloadPath,
-        workspaceID: input.workspaceID
-      });
-      await awaitWorkspaceWindowReady(
-        agentWindow,
-        () => {
-          loadAgentWindowContent(agentWindow, {
-            agentSessionID: input.agentSessionID,
-            agentTargetID: input.agentTargetID,
-            dockPlacement: options.getDockPlacement(),
-            locale: options.getLocale(),
-            providerStatusSnapshot: input.providerStatusSnapshot,
-            agents: input.agents,
-            provider: input.provider,
-            rendererUrl: options.rendererUrl,
-            theme: options.getTheme(),
-            workspaceID: input.workspaceID
-          });
-        },
-        { maximizeOnShow: false }
-      );
+      await showStandaloneAgentWindow(options, input);
     },
 
-    async showWorkspaceWindow(workspaceID) {
+    async showWorkspaceWindow(workspaceID, input) {
+      const windowKind =
+        input?.windowKind ?? options.getPrimaryWorkspaceWindowKind();
+      if (windowKind === "agent") {
+        await showStandaloneAgentWindow(options, { workspaceID });
+        return;
+      }
       const workspaceWindow = createWorkspaceWindow({
         browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
         enableDevelopmentReloadShortcut:
@@ -92,4 +74,40 @@ export function createWorkspaceLaunchDesktopAdapters(
       });
     }
   };
+}
+
+async function showStandaloneAgentWindow(
+  options: WorkspaceLaunchDesktopAdapterOptions,
+  input: WorkspaceLaunchAgentWindowInput
+): Promise<void> {
+  const agentWindow = createWorkspaceWindow({
+    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
+    enableDevelopmentReloadShortcut:
+      options.enableDevelopmentReloadShortcut === true,
+    locale: options.getLocale(),
+    preloadPath: options.preloadPath,
+    rendererUrl: options.rendererUrl,
+    theme: options.getTheme(),
+    windowKind: "agent",
+    workspaceAppPreloadPath: options.workspaceAppPreloadPath,
+    workspaceID: input.workspaceID
+  });
+  await awaitWorkspaceWindowReady(
+    agentWindow,
+    () => {
+      loadAgentWindowContent(agentWindow, {
+        agentSessionID: input.agentSessionID,
+        agentTargetID: input.agentTargetID,
+        dockPlacement: options.getDockPlacement(),
+        locale: options.getLocale(),
+        providerStatusSnapshot: input.providerStatusSnapshot,
+        agents: input.agents,
+        provider: input.provider,
+        rendererUrl: options.rendererUrl,
+        theme: options.getTheme(),
+        workspaceID: input.workspaceID
+      });
+    },
+    { maximizeOnShow: false }
+  );
 }

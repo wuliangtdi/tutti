@@ -52,11 +52,11 @@ export const zhCN = {
     availableTitle: "发现可用新版本",
     badge: "更新",
     checkingTitle: "正在检查更新",
-    downloadAction: "更新",
+    downloadAction: "下载更新",
     downloadedTitle: "更新完成，立即安装",
     downloadingTitle: "正在下载 {{percent}}",
     errorTitle: "无法检查更新",
-    restartAction: "安装",
+    restartAction: "重启安装",
     retryAction: "重试"
   },
   desktop: {
@@ -143,7 +143,20 @@ export const zhCN = {
       newConversation: "新建会话",
       openDetachedWindow: "在独立窗口打开",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
-      openSessionUnavailableTitle: "会话不可用"
+      openSessionUnavailableTitle: "会话不可用",
+      toolSidebar: {
+        apps: "应用",
+        browser: "浏览器",
+        close: "关闭",
+        expandPanel: "扩大面板",
+        files: "文件",
+        messages: "消息",
+        resizeSidebar: "调整工具侧栏宽度",
+        shrinkPanel: "缩小面板",
+        terminal: "终端",
+        tool: "工具",
+        unavailable: "Agent 独立窗口暂未接入{{tool}}。"
+      }
     },
     accountMenu: {
       title: "Tutti Agent",
@@ -362,7 +375,8 @@ export const zhCN = {
       title: "埋点事件"
     },
     appCenter: {
-      dockLabel: "应用中心"
+      backToApps: "返回应用",
+      dockLabel: "应用"
     },
     info: {
       idDescription: "用于 preload 和 daemon 协调的稳定标识。",
@@ -463,6 +477,16 @@ export const zhCN = {
         wallpaperUploading: "上传中..."
       },
       general: {
+        workspaceUiModeLabel: "启动界面",
+        workspaceUiModeDescription:
+          "选择 Tutti 启动或打开工作区时创建哪一种原生窗口。",
+        workspaceUiModeOptions: {
+          agentTitle: "Agent 模式",
+          agentDescription: "直接启动独立 Agent 窗口，工具从右侧栏展开。",
+          osTitle: "OS 模式",
+          osDescription: "保留原来的窗口、桌面、Dock 和启动台。"
+        },
+        workspaceUiModeSaveFailed: "暂时无法更新启动界面。",
         defaultAgentProviderDescription:
           "用于新的 App Factory 任务、Issue 任务，以及读取宿主默认值的工作区应用",
         defaultAgentProviderLabel: "默认 Provider",
@@ -829,7 +853,7 @@ export const zhCN = {
       },
       nodes: {
         agent: "Agent",
-        appCenter: "应用中心",
+        appCenter: "应用",
         appWebview: "工作区应用",
         browser: "浏览器",
         files: "文件",

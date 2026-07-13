@@ -38,6 +38,7 @@ import {
   workspaceAgentGuiProviders
 } from "@renderer/features/workspace-workbench/services/workspaceAgentProviderCatalog";
 import { shouldShowWorkspaceApp } from "../services/workspaceAppVisibility.ts";
+import { openWorkspaceAppInline } from "../services/internal/workspaceAppCenterInlineOpen.ts";
 import { useWorkspaceAppCenterService } from "./useWorkspaceAppCenterService.ts";
 
 const aiPptAppIconUrl = new URL(
@@ -237,9 +238,8 @@ export function WorkspaceAppCenterPane({
       importApp: () => service.importApp({ workspaceId }),
       installApp: (appId) => service.installApp({ appId, workspaceId }),
       loadLocalApp: () => service.loadLocalApp({ workspaceId }),
-      openApp: async (appId) => {
-        await service.openApp({ appId, workspaceId });
-      },
+      openApp: (appId) =>
+        openWorkspaceAppInline({ appId, service, workspaceId }),
       openAppFolder: (appId) => service.openAppFolder({ appId, workspaceId }),
       openAppPackageFolder: (appId) =>
         service.openAppPackageFolder({ appId, workspaceId }),

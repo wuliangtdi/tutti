@@ -40,6 +40,8 @@ DCO sign-off, PR workflow, review gates, and multilingual documentation updates.
 ## Hard Rules
 
 - Published workspace packages use `@tutti-os/*`; keep manifests, imports, docs, and release config aligned.
+- Do not start subagents unless the user explicitly approves it first.
+- Do not invoke or use Superdesign.
 - All new requirements and features across Tutti projects must first reuse existing `@tutti-os/ui-system` components, semantic color tokens, typography, spacing, and other established UI conventions. Before introducing bespoke UI or raw color values, inspect the existing UI System exports and tokens; if the required capability is missing, prefer extending the shared UI System with a reusable primitive or token and document the rationale.
 - User-visible copy must go through the relevant i18n layer. Do not hardcode UI text, dialog text, status labels, empty states, or user-facing errors.
 - Change `services/tuttid/api/openapi/tuttid.v1.yaml` before daemon HTTP request/response contracts.
@@ -90,6 +92,10 @@ documentation impact was found.
 - Defaults source under `config/tutti.defaults.json`: `pnpm generate:defaults` and `pnpm check:defaults-generated`
 - Daemon changes: `pnpm lint:go` and `cd services/tuttid && go test ./... && go build ./...`
 - TypeScript + Go surface changes: `pnpm lint`
+
+Avoid full validation unless it is necessary for the risk or requested workflow.
+For small UI-only changes, prefer focused tests, lint for touched files, or
+`pnpm check:changed` over `pnpm check:full`.
 
 ## Hooks
 

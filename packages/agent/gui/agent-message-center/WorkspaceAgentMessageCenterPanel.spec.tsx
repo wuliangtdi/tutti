@@ -790,6 +790,31 @@ describe("WorkspaceAgentMessageCenterPanel", () => {
     window.localStorage.clear();
   });
 
+  it("renders inside host panel chrome without creating a fixed drawer", () => {
+    render(
+      <WorkspaceAgentMessageCenterPanel
+        open
+        model={createMessageCenterModel([
+          createMessageCenterItem({
+            agentSessionId: "embedded-session",
+            title: "Embedded task",
+            status: "completed"
+          })
+        ])}
+        presentation="embedded"
+        onClose={vi.fn()}
+        onOpenChat={vi.fn()}
+        onSubmitPrompt={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("workspace-agent-message-center")
+    ).toHaveAttribute("data-presentation", "embedded");
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull();
+    expect(screen.getByRole("button", { name: "View options" })).toBeTruthy();
+  });
+
   it("reopens the view options menu after the trigger closes it", async () => {
     render(
       <WorkspaceAgentMessageCenterPanel

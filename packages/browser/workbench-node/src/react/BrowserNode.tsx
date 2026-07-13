@@ -3,9 +3,14 @@ import {
   ArrowRightIcon,
   Badge,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   LaunchIcon,
   LoadingIcon,
+  MoreHorizontalIcon,
   RefreshIcon,
   WarningLinedIcon,
   ViewportMenuSurface,
@@ -174,6 +179,13 @@ export function BrowserNode({
                 }
               : undefined
           }
+          onOpenDevTools={
+            feature.hostApi.openDevTools
+              ? () => {
+                  void openBrowserNodeDevTools(feature, nodeId);
+                }
+              : undefined
+          }
           onGoBack={() => {
             void controller.goBack().catch(() => undefined);
           }}
@@ -331,6 +343,13 @@ export function BrowserNodeWorkbenchHeader({
             }
           : undefined
       }
+      onOpenDevTools={
+        feature.hostApi.openDevTools
+          ? () => {
+              void openBrowserNodeDevTools(feature, nodeId);
+            }
+          : undefined
+      }
       onGoBack={() => {
         void controller.goBack().catch(() => undefined);
       }}
@@ -361,6 +380,7 @@ export function BrowserNodeHeader({
   onFocusRequest,
   onGoBack,
   onGoForward,
+  onOpenDevTools,
   onOpenExternal,
   onReload,
   onSubmitUrl,
@@ -381,6 +401,7 @@ export function BrowserNodeHeader({
   onFocusRequest?: () => void;
   onGoBack: () => void;
   onGoForward: () => void;
+  onOpenDevTools?: () => void;
   onOpenExternal?: () => void;
   onReload: () => void;
   onSubmitUrl: () => void;
@@ -495,6 +516,27 @@ export function BrowserNodeHeader({
           <LaunchIcon className="size-[15px]" />
         </BrowserNodeHeaderButton>
       ) : null}
+      {onOpenDevTools ? (
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={feature.i18n.t("actions.more")}
+              className="rounded-md"
+              size="icon-sm"
+              title={feature.i18n.t("actions.more")}
+              type="button"
+              variant="chrome"
+            >
+              <MoreHorizontalIcon className="size-[15px] rotate-90" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-40">
+            <DropdownMenuItem onSelect={onOpenDevTools}>
+              {feature.i18n.t("actions.openDevTools")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       {isCold ? (
         <Badge
           className="nodrag h-[26px] min-w-7 shrink-0 rounded-md text-[10px] font-semibold lowercase tracking-[0.08em]"
@@ -536,6 +578,24 @@ async function openBrowserNodeExternal(
         url
       },
       event: "open-external-failed",
+      level: "warn"
+    });
+  }
+}
+
+async function openBrowserNodeDevTools(
+  feature: BrowserNodeFeature,
+  nodeId: string
+): Promise<void> {
+  try {
+    await feature.hostApi.openDevTools?.({ nodeId });
+  } catch (error) {
+    feature.reportDiagnostic?.({
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+        nodeId
+      },
+      event: "open-devtools-failed",
       level: "warn"
     });
   }

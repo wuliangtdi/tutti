@@ -134,7 +134,10 @@ const temporaryWorkspaceAppDockRetentionActionPrefix =
   "temporary-workspace-app-dock-retention:";
 
 interface WorkspaceWorkbenchProps {
-  agentWindowInput?: Omit<StandaloneAgentWindowProps, "workspace">;
+  agentWindowInput?: Omit<
+    StandaloneAgentWindowProps,
+    "toolWorkbench" | "workspace"
+  >;
   enableWindowCloseGuard: boolean;
   headerSlot?: React.ReactNode;
   routeView: string;
@@ -178,8 +181,10 @@ export function WorkspaceWorkbench({
 
   if (routeView === "agent" && agentWindowInput) {
     return (
-      <StandaloneAgentWindow
+      <StandaloneAgentWindowWithSession
         {...agentWindowInput}
+        enableWindowCloseGuard={enableWindowCloseGuard}
+        platform={state.platform}
         workspace={state.workspace}
       />
     );
@@ -195,6 +200,85 @@ export function WorkspaceWorkbench({
       }}
       workspaceAppExternalApi={workspaceAppExternalApi}
     />
+  );
+}
+
+function StandaloneAgentWindowWithSession(
+  props: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
+    enableWindowCloseGuard: boolean;
+    platform: NodeJS.Platform;
+  }
+) {
+  const workbenchHostService = useWorkspaceWorkbenchHostService();
+  const [hostSession, setHostSession] =
+    useState<WorkspaceWorkbenchHostSessionBinding | null>(null);
+
+  useLayoutEffect(() => {
+    const binding = workbenchHostService.openHostSession(props.workspace.id);
+    setHostSession(binding);
+    return () => {
+      binding.release();
+    };
+  }, [props.workspace.id, workbenchHostService]);
+
+  if (
+    !hostSession ||
+    !hostSession.isActive ||
+    hostSession.workspaceId !== props.workspace.id
+  ) {
+    return <main className="h-screen min-h-0 bg-background" />;
+  }
+
+  return (
+    <StandaloneAgentWindowWithToolRuntime
+      {...props}
+      hostSession={hostSession}
+    />
+  );
+}
+
+function StandaloneAgentWindowWithToolRuntime({
+  enableWindowCloseGuard,
+  hostSession,
+  platform,
+  ...props
+}: Omit<StandaloneAgentWindowProps, "toolWorkbench"> & {
+  enableWindowCloseGuard: boolean;
+  hostSession: WorkspaceWorkbenchHostSessionBinding;
+  platform: NodeJS.Platform;
+}) {
+  const runtime = useWorkspaceWorkbenchShellRuntime({
+    enableWindowCloseGuard,
+    hostSession,
+    state: {
+      platform,
+      workspace: props.workspace
+    }
+  });
+  const toolWorkbench = useMemo(
+    () => ({
+      appI18n: runtime.appI18n,
+      contributions: runtime.hostInput.contributions,
+      onHostReady: runtime.onWorkbenchCloseGuardHostReady,
+      requestWindowClose: runtime.requestWindowClose
+    }),
+    [
+      runtime.appI18n,
+      runtime.hostInput.contributions,
+      runtime.onWorkbenchCloseGuardHostReady,
+      runtime.requestWindowClose
+    ]
+  );
+
+  return (
+    <>
+      <StandaloneAgentWindow {...props} toolWorkbench={toolWorkbench} />
+      <WorkspaceCloseGuardDialog
+        request={runtime.closeDialog.request}
+        onCancel={runtime.closeDialog.onCancel}
+        onConfirm={runtime.closeDialog.onConfirm}
+      />
+    </>
   );
 }
 

@@ -331,7 +331,7 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(conversationMetaMock.calls).toEqual([]);
   });
 
-  it("renders an injected provider rail footer with neutral context", () => {
+  it("renders an injected provider rail footer below system settings", () => {
     const activeConversation = createConversationSummary("session-1", {
       title: "Active conversation"
     });
@@ -372,7 +372,7 @@ describe("AgentGUINodeView layout persistence", () => {
       container.querySelector(".agent-gui-node__rail")
     ).not.toContainElement(footer);
     expect(
-      footer.compareDocumentPosition(configFooter) &
+      configFooter.compareDocumentPosition(footer) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
     expect(renderSidebarFooter).toHaveBeenCalledWith({

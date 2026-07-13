@@ -83,6 +83,7 @@ import {
   desktopFileDefaultOpeners,
   desktopMinimizeAnimations,
   desktopSleepPreventionModes,
+  desktopWorkspaceUiModes,
   desktopUpdateChannels,
   desktopWorkbenchWindowSnappingShortcutPresets,
   formatDesktopShortcutBinding,
@@ -92,6 +93,7 @@ import {
   type DesktopBrowserUseConnectionMode,
   type DesktopDockPlacement,
   type DesktopFeatureFlags,
+  type DesktopWorkspaceUiMode,
   type DesktopFileDefaultOpener,
   type DesktopFileDefaultOpenersByExtension,
   type DesktopMinimizeAnimation,
@@ -104,7 +106,8 @@ import {
 import {
   isFeatureEnabled,
   LAB_ENABLED_FLAG,
-  LAB_WORKBENCH_SHORTCUTS_FLAG
+  LAB_WORKBENCH_SHORTCUTS_FLAG,
+  resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
 import {
@@ -349,16 +352,23 @@ export function WorkspaceSettingsPanel({
           <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto px-[22px] pb-[22px] pt-0 max-[760px]:px-5 max-[760px]:pb-6">
             {settingsState.activeSection === "general" ? (
               <WorkspaceGeneralSettingsSection
+                changingFeatureFlags={
+                  desktopPreferencesState.changingFeatureFlags
+                }
                 changingLocale={desktopPreferencesState.changingLocale}
                 changingSleepPreventionMode={
                   desktopPreferencesState.changingSleepPreventionMode
                 }
+                featureFlags={desktopPreferencesState.featureFlags}
                 locale={desktopPreferencesState.locale}
                 onLocaleChange={(nextLocale) => {
                   void settingsService.changeLocale(nextLocale);
                 }}
                 onSleepPreventionModeChange={(mode) => {
                   void settingsService.changeSleepPreventionMode(mode);
+                }}
+                onWorkspaceUiModeChange={(mode) => {
+                  void settingsService.changeWorkspaceUiMode(mode);
                 }}
                 sleepPreventionMode={
                   desktopPreferencesState.sleepPreventionMode
@@ -3884,18 +3894,24 @@ function WorkspaceAgentSettingsSection({
 }
 
 function WorkspaceGeneralSettingsSection({
+  changingFeatureFlags,
   changingLocale,
   changingSleepPreventionMode,
+  featureFlags,
   locale,
   onLocaleChange,
   onSleepPreventionModeChange,
+  onWorkspaceUiModeChange,
   sleepPreventionMode
 }: {
+  changingFeatureFlags: DesktopFeatureFlags | null;
   changingLocale: DesktopLocale | null;
   changingSleepPreventionMode: DesktopSleepPreventionMode | null;
+  featureFlags: DesktopFeatureFlags;
   locale: DesktopLocale;
   onLocaleChange: (locale: DesktopLocale) => void;
   onSleepPreventionModeChange: (mode: DesktopSleepPreventionMode) => void;
+  onWorkspaceUiModeChange: (mode: DesktopWorkspaceUiMode) => void;
   sleepPreventionMode: DesktopSleepPreventionMode;
 }) {
   const { t } = useTranslation();
@@ -3905,9 +3921,68 @@ function WorkspaceGeneralSettingsSection({
   const isUpdatingSleepPrevention = changingSleepPreventionMode !== null;
   const pendingSleepPreventionMode =
     changingSleepPreventionMode ?? sleepPreventionMode;
+  const isUpdatingWorkspaceUiMode = changingFeatureFlags !== null;
+  const pendingWorkspaceUiMode = resolveDesktopWorkspaceUiMode(
+    changingFeatureFlags ?? featureFlags
+  );
 
   return (
     <div className="flex flex-col gap-8 pb-[22px] pt-5">
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
+            {t("workspace.settings.general.workspaceUiModeLabel")}
+          </strong>
+          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
+            {t("workspace.settings.general.workspaceUiModeDescription")}
+          </p>
+        </div>
+        <div
+          aria-label={t("workspace.settings.general.workspaceUiModeLabel")}
+          className="grid w-full grid-cols-2 gap-2 max-[430px]:grid-cols-1"
+          role="radiogroup"
+        >
+          {desktopWorkspaceUiModes.map((mode) => {
+            const selected = pendingWorkspaceUiMode === mode;
+            return (
+              <button
+                key={mode}
+                aria-checked={selected}
+                className={cn(
+                  "flex min-h-[72px] min-w-0 flex-col items-start justify-center gap-1 rounded-[8px] border-solid px-3 py-2.5 text-left transition-colors duration-150 disabled:cursor-default disabled:opacity-70",
+                  selected
+                    ? "border border-[var(--tutti-purple)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                    : "border border-[var(--border-1)] bg-[var(--transparency-block)] text-[var(--text-primary)] hover:bg-[var(--transparency-hover)]"
+                )}
+                disabled={isUpdatingWorkspaceUiMode}
+                role="radio"
+                type="button"
+                onClick={() => onWorkspaceUiModeChange(mode)}
+              >
+                <span className="text-[13px] font-semibold leading-[1.25]">
+                  {mode === "agent"
+                    ? t(
+                        "workspace.settings.general.workspaceUiModeOptions.agentTitle"
+                      )
+                    : t(
+                        "workspace.settings.general.workspaceUiModeOptions.osTitle"
+                      )}
+                </span>
+                <span className="text-[12px] leading-[1.3] text-[var(--text-secondary)]">
+                  {mode === "agent"
+                    ? t(
+                        "workspace.settings.general.workspaceUiModeOptions.agentDescription"
+                      )
+                    : t(
+                        "workspace.settings.general.workspaceUiModeOptions.osDescription"
+                      )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
           <strong className="text-[13px] font-semibold text-[var(--text-primary)]">

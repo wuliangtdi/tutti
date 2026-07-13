@@ -17,6 +17,7 @@ import type {
   DesktopDockIconStyle,
   DesktopDockPlacement,
   DesktopFeatureFlags,
+  DesktopWorkspaceUiMode,
   DesktopMinimizeAnimation,
   DesktopSleepPreventionMode,
   DesktopUpdateChannel,
@@ -100,6 +101,7 @@ export interface IWorkspaceSettingsService {
   changeDockIconStyle(style: DesktopDockIconStyle): Promise<void>;
   changeDockPlacement(placement: DesktopDockPlacement): Promise<void>;
   changeFeatureFlags(flags: DesktopFeatureFlags): Promise<void>;
+  changeWorkspaceUiMode(mode: DesktopWorkspaceUiMode): Promise<void>;
   changeWorkbenchShortcuts(shortcuts: DesktopWorkbenchShortcuts): Promise<void>;
   changeMinimizeAnimation(animation: DesktopMinimizeAnimation): Promise<void>;
   changeWorkbenchWindowSnapping(

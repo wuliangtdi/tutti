@@ -40,7 +40,10 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   hostWindowApi: DesktopHostWindowApi;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
-    "broadcastAgentStatus" | "onOpenFeatureRequest" | "onOpenFileRequest"
+    | "broadcastAgentStatus"
+    | "onOpenFeatureRequest"
+    | "onOpenFileRequest"
+    | "replaceWorkspaceWindow"
   >;
   tuttidClient: TuttidClient;
   platformApi: Pick<
@@ -103,7 +106,8 @@ export function registerWorkspaceWorkbenchServices(
           runtimeApi: input.runtimeApi,
           tuttidClient: input.tuttidClient
         }),
-        onAgentTargetsChanged: input.onAgentTargetsChanged
+        onAgentTargetsChanged: input.onAgentTargetsChanged,
+        replaceWorkspaceWindow: input.hostWorkspaceApi.replaceWorkspaceWindow
       }
     ])
   );

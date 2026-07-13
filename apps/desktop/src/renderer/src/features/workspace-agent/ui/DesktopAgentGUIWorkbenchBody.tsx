@@ -136,6 +136,7 @@ interface DesktopAgentGUIWorkbenchBodyProps {
   >;
   onRequestGitBranches: NonNullable<AgentGUIProps["onRequestGitBranches"]>;
   referenceSourceAggregator?: AgentGUIProps["referenceSourceAggregator"];
+  renderSidebarFooter?: AgentGUIProps["renderSidebarFooter"];
   resolveWorkspaceReferenceEntryIconUrl?: AgentGUIProps["resolveWorkspaceReferenceEntryIconUrl"];
   resolveMentionReferenceTarget?: AgentGUIProps["resolveMentionReferenceTarget"];
   resolveWorkspaceReferenceInitialTarget?: AgentGUIProps["resolveWorkspaceReferenceInitialTarget"];
@@ -218,6 +219,7 @@ function areDesktopAgentGUIWorkbenchBodyPropsEqual(
       next.resolveDroppedFileReferences &&
     previous.onRequestGitBranches === next.onRequestGitBranches &&
     previous.referenceSourceAggregator === next.referenceSourceAggregator &&
+    previous.renderSidebarFooter === next.renderSidebarFooter &&
     previous.resolveWorkspaceReferenceEntryIconUrl ===
       next.resolveWorkspaceReferenceEntryIconUrl &&
     previous.resolveMentionReferenceTarget ===
@@ -281,6 +283,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   resolveDroppedFileReferences,
   onRequestGitBranches,
   referenceSourceAggregator,
+  renderSidebarFooter,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget,
   resolveWorkspaceReferenceInitialTarget,
@@ -1310,6 +1313,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         referenceSourceAggregator={
           previewMode ? null : referenceSourceAggregator
         }
+        renderSidebarFooter={previewMode ? undefined : renderSidebarFooter}
         resolveWorkspaceReferenceEntryIconUrl={
           previewMode ? undefined : resolveWorkspaceReferenceEntryIconUrl
         }

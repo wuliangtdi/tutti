@@ -1,10 +1,19 @@
 import type {
   CSSProperties,
   DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
   ReactElement
 } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import { cn } from "@tutti-os/ui-system";
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import type { WorkspaceFileManagerSession } from "../services/workspaceFileManagerService.interface.ts";
@@ -28,6 +37,15 @@ import {
 } from "./WorkspaceFileManagerPanels.tsx";
 import { WorkspaceFileManagerToolbar } from "./WorkspaceFileManagerToolbar.tsx";
 import { WorkspaceFileManagerSidebar } from "./WorkspaceFileManagerSidebar.tsx";
+import {
+  clampWorkspaceFileManagerSidebarWidth,
+  readWorkspaceFileManagerSidebarWidth,
+  resolveWorkspaceFileManagerSidebarMaxWidth,
+  workspaceFileManagerPaneResizeStep,
+  workspaceFileManagerSidebarDefaultWidth,
+  workspaceFileManagerSidebarMinWidth,
+  writeWorkspaceFileManagerSidebarWidth
+} from "./workspaceFileManagerPaneSizing.ts";
 import {
   sortWorkspaceFileEntriesForArrangeMode,
   type WorkspaceFileManagerArrangeMode
@@ -98,6 +116,16 @@ export function WorkspaceFileManager({
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
+  const sidebarResizeRef = useRef<{
+    currentWidth: number;
+    pointerId: number;
+    startWidth: number;
+    startX: number;
+  } | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(
+    readWorkspaceFileManagerSidebarWidth
+  );
+  const [containerWidth, setContainerWidth] = useState(0);
   const { arrangeMode, setArrangeMode } = useWorkspaceFileManagerArrangeMode();
   const { layoutMode, setLayoutMode } = useWorkspaceFileManagerLayoutMode();
   const rootView = useWorkspaceFileManagerRootView(session);
@@ -110,6 +138,124 @@ export function WorkspaceFileManager({
     );
     return location?.kind === "external" ? location : null;
   }, [rootView.locationSections, rootView.selectedLocationId]);
+  const hasLocationSidebar = rootView.locationSections.some(
+    (section) => section.locations.length > 0
+  );
+  const sidebarMaxWidth =
+    containerWidth > 0
+      ? resolveWorkspaceFileManagerSidebarMaxWidth(containerWidth)
+      : workspaceFileManagerSidebarDefaultWidth;
+
+  const updateSidebarWidth = useCallback((width: number): number => {
+    const nextWidth = clampWorkspaceFileManagerSidebarWidth({
+      containerWidth: rootRef.current?.getBoundingClientRect().width ?? 0,
+      width
+    });
+    setSidebarWidth(nextWidth);
+    return nextWidth;
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = rootRef.current;
+    if (!element || !hasLocationSidebar) {
+      return;
+    }
+
+    const publishLayout = () => {
+      const nextContainerWidth = Math.round(
+        element.getBoundingClientRect().width
+      );
+      setContainerWidth(nextContainerWidth);
+      setSidebarWidth((currentWidth) =>
+        clampWorkspaceFileManagerSidebarWidth({
+          containerWidth: nextContainerWidth,
+          width: currentWidth
+        })
+      );
+    };
+
+    publishLayout();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", publishLayout);
+      return () => {
+        window.removeEventListener("resize", publishLayout);
+      };
+    }
+
+    const observer = new ResizeObserver(publishLayout);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasLocationSidebar]);
+
+  const handleSidebarResizePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      sidebarResizeRef.current = {
+        currentWidth: sidebarWidth,
+        pointerId: event.pointerId,
+        startWidth: sidebarWidth,
+        startX: event.clientX
+      };
+    },
+    [sidebarWidth]
+  );
+
+  const handleSidebarResizePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const resize = sidebarResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) {
+        return;
+      }
+      resize.currentWidth = updateSidebarWidth(
+        resize.startWidth + event.clientX - resize.startX
+      );
+    },
+    [updateSidebarWidth]
+  );
+
+  const handleSidebarResizePointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const resize = sidebarResizeRef.current;
+      if (!resize || resize.pointerId !== event.pointerId) {
+        return;
+      }
+      sidebarResizeRef.current = null;
+      writeWorkspaceFileManagerSidebarWidth(resize.currentWidth);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    },
+    []
+  );
+
+  const handleSidebarResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+      let nextWidth: number | null = null;
+      if (event.key === "Home") {
+        event.preventDefault();
+        nextWidth = updateSidebarWidth(workspaceFileManagerSidebarMinWidth);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        nextWidth = updateSidebarWidth(sidebarMaxWidth);
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        nextWidth = updateSidebarWidth(
+          sidebarWidth +
+            (event.key === "ArrowLeft"
+              ? -workspaceFileManagerPaneResizeStep
+              : workspaceFileManagerPaneResizeStep)
+        );
+      }
+      if (nextWidth !== null) {
+        writeWorkspaceFileManagerSidebarWidth(nextWidth);
+      }
+    },
+    [sidebarMaxWidth, sidebarWidth, updateSidebarWidth]
+  );
 
   useEffect(() => {
     function handleCopyShortcut(event: KeyboardEvent): void {
@@ -350,6 +496,7 @@ export function WorkspaceFileManager({
         disabled={rootView.isBusy || panelsState.isLoading}
         locationSections={rootView.locationSections}
         selectedLocationId={rootView.selectedLocationId}
+        width={sidebarWidth}
         onSelectLocation={(location) => {
           if (location.kind === "directory") {
             onDirectoryExpanded?.(location.path);
@@ -357,6 +504,23 @@ export function WorkspaceFileManager({
           void session.selectLocation(location.id);
         }}
       />
+      {hasLocationSidebar ? (
+        <div
+          aria-label={i18n.t("resizeLocationsSidebar")}
+          aria-orientation="vertical"
+          aria-valuemax={sidebarMaxWidth}
+          aria-valuemin={workspaceFileManagerSidebarMinWidth}
+          aria-valuenow={sidebarWidth}
+          className="nodrag @max-[600px]/workspace-file-manager:hidden relative z-[1] -ml-1 -mr-1 h-full w-2 shrink-0 cursor-col-resize touch-none outline-none before:absolute before:left-1/2 before:h-full before:w-px before:-translate-x-1/2 before:bg-transparent hover:before:bg-[var(--border-focus)] focus-visible:before:bg-[var(--border-focus)]"
+          role="separator"
+          tabIndex={0}
+          onKeyDown={handleSidebarResizeKeyDown}
+          onPointerCancel={handleSidebarResizePointerEnd}
+          onPointerDown={handleSidebarResizePointerDown}
+          onPointerMove={handleSidebarResizePointerMove}
+          onPointerUp={handleSidebarResizePointerEnd}
+        />
+      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {selectedExternalLocation ? (
           (renderExternalLocationContent?.(selectedExternalLocation) ?? null)

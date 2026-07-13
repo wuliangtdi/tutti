@@ -935,6 +935,39 @@ test("WorkspaceSettingsService writes changed preferences", async () => {
   assert.deepEqual(writes, ["zh-CN", "left", "claude-code", "general", "dark"]);
 });
 
+test("WorkspaceSettingsService changes workspace UI mode without replacing other flags", async () => {
+  const writes: Array<Record<string, boolean>> = [];
+  const replacements: Array<{ mode: string; workspaceId: string }> = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({}),
+      replaceWorkspaceWindow: async (input) => {
+        replacements.push(input);
+      }
+    },
+    createDesktopPreferencesService({
+      onSetFeatureFlags: async (flags) => {
+        writes.push(flags);
+        return flags;
+      },
+      state: createPreferencesState({
+        featureFlags: { "lab.enabled": true }
+      })
+    })
+  );
+
+  service.openPanel({ id: "workspace-1" });
+  await service.changeWorkspaceUiMode("os");
+
+  assert.deepEqual(writes, [
+    {
+      "lab.enabled": true,
+      "workspace.standaloneAgentMode": false
+    }
+  ]);
+  assert.deepEqual(replacements, [{ mode: "os", workspaceId: "workspace-1" }]);
+});
+
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {
   const refreshedWorkspaceIDs: string[] = [];
   const service = new WorkspaceSettingsService(

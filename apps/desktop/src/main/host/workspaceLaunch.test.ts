@@ -722,6 +722,27 @@ test("workspace launch waits for replacement workspace window before closing own
   assert.equal(ownerWindowClosed, true);
 });
 
+test("workspace launch replacement uses the requested native window kind", async () => {
+  const events: string[] = [];
+  const ownerWindow: WorkspaceLaunchOwnerWindow = {
+    close() {
+      events.push("owner:closed");
+    }
+  };
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showWorkspaceWindow(workspaceID, options) {
+        events.push(`${workspaceID}:${options?.windowKind}`);
+      }
+    }),
+    tuttidClient: createTransportClient()
+  });
+
+  await launch.replaceWorkspaceWindow(ownerWindow, "ws-alpha", "agent");
+
+  assert.deepEqual(events, ["ws-alpha:agent", "owner:closed"]);
+});
+
 test("workspace launch prefers destroying owner windows after workspace handoff", async () => {
   const events: string[] = [];
 

@@ -70,8 +70,9 @@ test("workspace settings agent panel lists agent controls", () => {
 test("workspace settings general panel lists system controls", () => {
   assert.match(
     source,
-    /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
+    /function WorkspaceGeneralSettingsSection[\s\S]*workspace\.settings\.general\.workspaceUiModeLabel[\s\S]*desktopWorkspaceUiModes\.map[\s\S]*workspace\.settings\.general\.preventSleepLabel[\s\S]*workspace\.settings\.general\.languageLabel/
   );
+  assert.match(source, /settingsService\.changeWorkspaceUiMode\(mode\)/);
 });
 
 test("workspace settings default provider offers enabled local agent defaults", () => {

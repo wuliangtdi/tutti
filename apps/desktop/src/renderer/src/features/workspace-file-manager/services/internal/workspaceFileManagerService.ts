@@ -82,6 +82,8 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     string
   >();
   private readonly notifications: NotificationService;
+  private readonly previewUnsupportedFallbackNotificationEnabledByWorkspace =
+    new Map<string, boolean>();
   private readonly referenceSourceAggregators = new Map<
     string,
     ReferenceSourceAggregator
@@ -214,6 +216,13 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
         {
           ...this.dependencies,
           notifyPreviewUnsupportedFallback: () => {
+            if (
+              this.previewUnsupportedFallbackNotificationEnabledByWorkspace.get(
+                workspaceID
+              ) === false
+            ) {
+              return;
+            }
             this.notifications.info({
               title: translate(
                 "workspace.workbenchDesktop.filePreview.unsupportedFallback"
@@ -296,6 +305,16 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
       return;
     }
     this.canvasFilePreviewLaunchers.set(workspaceID, launcher);
+  }
+
+  setPreviewUnsupportedFallbackNotificationEnabled(
+    workspaceID: string,
+    enabled: boolean
+  ): void {
+    this.previewUnsupportedFallbackNotificationEnabledByWorkspace.set(
+      workspaceID,
+      enabled
+    );
   }
 
   subscribe(workspaceID: string, listener: () => void): () => void {

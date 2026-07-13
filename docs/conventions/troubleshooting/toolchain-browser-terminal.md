@@ -156,6 +156,73 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
   [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
 
+### Standalone Agent Browser Node is blank and never attaches a guest
+
+- Symptom:
+  The standalone Agent window opens its Browser sidebar with the expected
+  title and panel background, but no page, error card, or Browser Node guest
+  appears. Desktop logs contain no `Browser Node webview will attach` entry for
+  the standalone browser node.
+- Quick checks:
+  Inspect `window.tutti.browser` in the `view=agent` renderer before debugging
+  BrowserNode lifecycle or network access. Compare the preload route gate for
+  `view=agent` with `view=workspace`. An absent browser API explains a panel
+  that renders only host chrome and never reaches Electron guest attachment.
+- Root cause:
+  The desktop preload exposed browser and workspace-app bridges only when the
+  renderer query used `view=workspace`. Standalone Agent windows use
+  `view=agent`, so their renderer received no `DesktopBrowserApi`; the sidebar
+  correctly reserved panel space but had no host API with which to activate or
+  register a `<webview>` guest.
+- Fix:
+  Treat both `workspace` and `agent` as workspace surfaces in the preload route
+  gate. Keep dashboard and unrelated window routes excluded. Because preload
+  code is loaded when the Electron renderer is created, restart the Electron
+  process after changing this gate; renderer HMR is insufficient.
+- Validation:
+  Unit-test the route predicate for `workspace`, `agent`, `dashboard`, and an
+  absent view. Run the desktop typecheck, Electron runtime-boundary check, and
+  desktop build. Confirm the preload remains a self-contained `index.cjs`, then
+  open the Agent Browser panel and verify desktop logs record the shared
+  Browser Node partition attaching with the browser guest preload.
+- References:
+  [main.ts](../../../apps/desktop/src/preload/entries/main.ts)
+  [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
+  [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+
+### Hidden Browser Node webview covers another panel
+
+- Symptom:
+  After switching from Browser Node to another panel in the same layout region,
+  the new panel title or sidebar appears but the previous web page still covers
+  part of its content. The panel selection state correctly identifies only the
+  new panel as active.
+- Quick checks:
+  Inspect the mounted `BrowserNode` and its `<webview>` in DevTools. If the
+  parent panel has `visibility: hidden`, `display: none`, or an inactive class
+  but `BrowserNode` still receives `hidden={false}`, treat the guest surface as
+  the likely overlay before changing the panel reducer.
+- Root cause:
+  Electron webviews are guest surfaces with compositing behavior that cannot be
+  treated as ordinary descendant DOM for visibility coordination. Keeping a
+  Browser Node mounted preserves its local session, but hiding only an ancestor
+  panel can leave the guest surface visible above the newly active sibling.
+- Fix:
+  Keep one active panel id for tools that share the same region. Pass that
+  active state into every mounted Browser Node through its `hidden` prop, while
+  retaining the mounted component when session preservation is required. Keep
+  tools in separate layout regions, such as a bottom terminal tray, on an
+  independent visibility state.
+- Validation:
+  Cover every switch among panels in the shared region, verify the inactive
+  Browser Node receives `hidden={true}`, and verify an independently placed
+  terminal remains open throughout the same switches. Renderer-only visibility
+  changes can use HMR; preload or Electron-main changes still require a process
+  restart.
+- References:
+  [BrowserNode.tsx](../../../packages/browser/workbench-node/src/react/BrowserNode.tsx)
+  [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
+
 ### IME composition leaks native input into xterm terminals
 
 - Symptom:

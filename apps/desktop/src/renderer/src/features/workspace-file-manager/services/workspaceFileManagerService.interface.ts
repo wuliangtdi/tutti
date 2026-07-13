@@ -43,6 +43,10 @@ export interface IWorkspaceFileManagerService {
     workspaceID: string,
     launcher: WorkspaceFileManagerCanvasPreviewLauncher | null
   ): void;
+  setPreviewUnsupportedFallbackNotificationEnabled(
+    workspaceID: string,
+    enabled: boolean
+  ): void;
   subscribe(workspaceID: string, listener: () => void): () => void;
 }
 

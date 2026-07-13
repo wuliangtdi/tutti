@@ -250,6 +250,7 @@ function createFileManagerServiceStub(
       return null;
     },
     setCanvasFilePreviewLauncher() {},
+    setPreviewUnsupportedFallbackNotificationEnabled() {},
     subscribe(_workspaceID, listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

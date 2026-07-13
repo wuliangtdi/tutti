@@ -200,10 +200,12 @@ export const desktopIpcChannels = {
       minimizeState: "host:window:minimizeState",
       openAgentWindow: "host:window:openAgentWindow",
       quitShortcutToast: "host:window:quitShortcutToast",
+      resizeContentWidth: "host:window:resizeContentWidth",
       toggleMaximize: "host:window:toggleMaximize"
     },
     workspace: {
       openWorkspaceAppFolder: "host:workspace:openWorkspaceAppFolder",
+      replaceWorkspaceWindow: "host:workspace:replaceWorkspaceWindow",
       showWorkspace: "host:workspace:showWorkspace"
     },
     notifications: {
@@ -233,6 +235,14 @@ export interface DesktopHostWindowCapturePreviewInput {
   };
 }
 
+export interface DesktopHostWindowResizeContentWidthInput {
+  width: number;
+}
+
+export interface DesktopHostWindowResizeContentWidthResult {
+  width: number;
+}
+
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
   reason: "quit" | "window-close";
@@ -244,6 +254,11 @@ export interface DesktopHostOpenAgentWindowInput {
   providerStatusSnapshot?: DesktopAgentProviderStatusSnapshot | null;
   agents?: readonly AgentGUIAgent[];
   provider?: string | null;
+  workspaceId: string;
+}
+
+export interface DesktopHostReplaceWorkspaceWindowInput {
+  mode: "agent" | "os";
   workspaceId: string;
 }
 
@@ -902,9 +917,13 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.host.window.minimize]: undefined;
   [desktopIpcChannels.host.window
     .openAgentWindow]: DesktopHostOpenAgentWindowInput;
+  [desktopIpcChannels.host.window
+    .resizeContentWidth]: DesktopHostWindowResizeContentWidthInput;
   [desktopIpcChannels.host.window.toggleMaximize]: undefined;
   [desktopIpcChannels.host.workspace
     .openWorkspaceAppFolder]: DesktopWorkspaceAppPayload;
+  [desktopIpcChannels.host.workspace
+    .replaceWorkspaceWindow]: DesktopHostReplaceWorkspaceWindowInput;
   [desktopIpcChannels.host.workspace.showWorkspace]: string;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationPayload;
 }
@@ -1023,8 +1042,11 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.window.capturePreview]: string | null;
   [desktopIpcChannels.host.window.minimize]: void;
   [desktopIpcChannels.host.window.openAgentWindow]: void;
+  [desktopIpcChannels.host.window
+    .resizeContentWidth]: DesktopHostWindowResizeContentWidthResult;
   [desktopIpcChannels.host.window.toggleMaximize]: void;
   [desktopIpcChannels.host.workspace.openWorkspaceAppFolder]: void;
+  [desktopIpcChannels.host.workspace.replaceWorkspaceWindow]: void;
   [desktopIpcChannels.host.workspace.showWorkspace]: void;
   [desktopIpcChannels.host.notifications.show]: DesktopHostNotificationResult;
 }

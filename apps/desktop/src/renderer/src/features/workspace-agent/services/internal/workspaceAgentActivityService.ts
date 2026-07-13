@@ -64,10 +64,16 @@ interface WorkspaceAgentActivityControllerEntry {
 }
 
 interface ActiveReconcileEntry {
+  latestStateEvent: ReconciledSourceSessionEvent | null;
   needsMessages: boolean;
   needsState: boolean;
   pending: boolean;
   promise: Promise<void>;
+}
+
+interface ReconciledSourceSessionEvent {
+  data: unknown;
+  eventType: "state_patch";
 }
 
 interface PendingActivityUpdateBatch {
@@ -509,6 +515,11 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
       );
     }
     listeners.add(listener);
+    // Raw session-event consumers, including outcome notifications, may mount
+    // before any AgentGUI or Message Center snapshot consumer. Start the
+    // workspace controller only after registering the listener so a fast
+    // daemon connection cannot publish into a subscription gap.
+    this.controllerEntry(normalizedWorkspaceId);
     return () => {
       listeners?.delete(listener);
     };
@@ -1356,11 +1367,21 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
     if (existing) {
       existing.needsMessages = existing.needsMessages || needsMessages;
       existing.needsState = existing.needsState || needsState;
+      if (input.eventType === "state_patch") {
+        existing.latestStateEvent = {
+          data: input.data,
+          eventType: "state_patch"
+        };
+      }
       existing.pending = true;
       await existing.promise;
       return;
     }
     const entry: ActiveReconcileEntry = {
+      latestStateEvent:
+        input.eventType === "state_patch"
+          ? { data: input.data, eventType: "state_patch" }
+          : null,
       needsMessages,
       needsState,
       pending: false,
@@ -1373,6 +1394,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         }
         const shouldReconcileMessages = entry.needsMessages;
         const shouldReconcileState = entry.needsState;
+        const latestStateEvent = entry.latestStateEvent;
+        entry.latestStateEvent = null;
         entry.needsMessages = false;
         entry.needsState = false;
         entry.pending = false;
@@ -1381,7 +1404,11 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
           continue;
         }
         if (shouldReconcileState) {
-          await this.reconcileAgentSessionState(workspaceId, agentSessionId);
+          await this.reconcileAgentSessionState(
+            workspaceId,
+            agentSessionId,
+            latestStateEvent
+          );
         }
         if (shouldReconcileMessages) {
           await this.reconcileAgentSessionMessages(workspaceId, agentSessionId);
@@ -1621,7 +1648,8 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
 
   private async reconcileAgentSessionState(
     workspaceId: string,
-    agentSessionId: string
+    agentSessionId: string,
+    sourceEvent: ReconciledSourceSessionEvent | null = null
   ): Promise<void> {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
@@ -1648,7 +1676,7 @@ export class WorkspaceAgentActivityService implements IWorkspaceAgentActivitySer
         .sessionMessagesById[agentSessionId] ?? [];
     this.emitSessionEvent(
       workspaceId,
-      hostStatePatchEventFromSession(session, messages)
+      sourceEvent ?? hostStatePatchEventFromSession(session, messages)
     );
   }
 

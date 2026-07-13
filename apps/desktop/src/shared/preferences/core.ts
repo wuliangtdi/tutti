@@ -66,6 +66,12 @@ export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};
 
+export const desktopWorkspaceUiModes = ["agent", "os"] as const;
+
+export type DesktopWorkspaceUiMode = (typeof desktopWorkspaceUiModes)[number];
+
+export const defaultDesktopWorkspaceUiMode: DesktopWorkspaceUiMode = "agent";
+
 export interface DesktopWorkbenchShortcuts {
   newAgentConversation: string | null;
   newSameTypeWindow: string | null;

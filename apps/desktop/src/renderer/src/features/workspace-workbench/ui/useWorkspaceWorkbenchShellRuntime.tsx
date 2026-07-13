@@ -100,6 +100,8 @@ export interface WorkspaceWorkbenchShellRuntime {
     adapter: WorkbenchMissionControlAdapter<WorkbenchHostNodeData> | null
   ) => void;
   onWorkbenchHostHandleReady: (host: WorkbenchHostHandle | null) => void;
+  onWorkbenchCloseGuardHostReady: (host: WorkbenchHostHandle | null) => void;
+  requestWindowClose: () => Promise<"approved" | "blocked">;
   selectWallpaper: (wallpaperId: WorkspaceWallpaperId) => void;
   selectWallpaperDisplayMode: (
     displayMode: WorkspaceWallpaperDisplayMode
@@ -487,6 +489,13 @@ export function useWorkspaceWorkbenchShellRuntime({
       workspaceFileManagerService
     ]
   );
+  const handleWorkbenchCloseGuardHostReady = useCallback(
+    (host: WorkbenchHostHandle | null) => {
+      hostSession.attachSurface(host);
+      shellRuntimeController.setWorkbenchHost(host);
+    },
+    [hostSession, shellRuntimeController]
+  );
 
   return {
     appI18n,
@@ -514,6 +523,8 @@ export function useWorkspaceWorkbenchShellRuntime({
     onMissionControlAdapterReady:
       shellRuntimeController.missionControl.setAdapter,
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,
+    onWorkbenchCloseGuardHostReady: handleWorkbenchCloseGuardHostReady,
+    requestWindowClose: () => shellRuntimeController.requestWindowClose(),
     selectWallpaper: shellRuntimeController.wallpaperSelection.selectWallpaper,
     selectWallpaperDisplayMode:
       shellRuntimeController.wallpaperSelection.selectDisplayMode,

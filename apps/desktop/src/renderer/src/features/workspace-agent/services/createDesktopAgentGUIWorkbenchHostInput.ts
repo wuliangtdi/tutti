@@ -92,6 +92,7 @@ export interface CreateDesktopAgentGUIWorkbenchHostInputInput {
     IWorkspaceFileManagerService,
     "openCanvasFilePreview" | "resolveEntryIconUrl"
   >;
+  workspaceFilePreviewMode?: "canvas" | "system-default";
   workspaceUserProjectService?: IWorkspaceUserProjectService;
   workspaceId: string;
 }
@@ -107,6 +108,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   runtimeApi,
   workspaceAgentActivityService,
   workspaceFileManagerService,
+  workspaceFilePreviewMode = "canvas",
   workspaceUserProjectService,
   workspaceId
 }: CreateDesktopAgentGUIWorkbenchHostInputInput): DesktopAgentGUIWorkbenchHostInput {
@@ -157,13 +159,14 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const workspaceFileReferenceAdapter =
     createDesktopWorkspaceFileReferenceAdapter({
       hostFilesApi,
-      openCanvasFilePreview: workspaceFileManagerService
-        ? (target, workspaceId) =>
-            workspaceFileManagerService.openCanvasFilePreview(
-              workspaceId,
-              target
-            )
-        : undefined,
+      openCanvasFilePreview:
+        workspaceFilePreviewMode === "canvas" && workspaceFileManagerService
+          ? (target, workspaceId) =>
+              workspaceFileManagerService.openCanvasFilePreview(
+                workspaceId,
+                target
+              )
+          : undefined,
       tuttidClient,
       workspaceId
     });

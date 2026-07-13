@@ -719,7 +719,6 @@
   --desktop-dock-gap: 16px;
   --desktop-dock-items-padding: 6.3px;
   --desktop-dock-left-items-padding-block: 8px;
-  --desktop-dock-left-indicator-gutter: 8px;
   --desktop-dock-items-padding-block-end: 8px;
   --desktop-dock-icon-center-block-end: calc(
     var(--desktop-dock-items-padding-block-end) +
@@ -920,14 +919,14 @@
   );
 }
 
+/* Keep the left Dock on one icon axis; there is no leading state-indicator
+   gutter in this placement. */
 .desktop-dock[data-dock-placement="left"] .desktop-dock__items {
   width: var(--desktop-dock-left-viewport-size);
   height: 100%;
-  align-items: flex-start;
+  align-items: center;
   flex-direction: column;
-  padding: var(--desktop-dock-left-items-padding-block) 0
-    var(--desktop-dock-left-items-padding-block)
-    var(--desktop-dock-left-indicator-gutter);
+  padding: var(--desktop-dock-left-items-padding-block) 0;
 }
 
 .desktop-dock[data-dock-placement="left"][data-scroll-overflow="true"]
@@ -1058,10 +1057,7 @@
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__scroll-button {
-  left: calc(
-    var(--desktop-dock-left-indicator-gutter) +
-      var(--desktop-dock-icon-half-size)
-  );
+  left: 50%;
   transform: translateX(-50%) scale(0.94);
 }
 
@@ -1144,7 +1140,7 @@
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__slot {
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .desktop-dock__slot[data-presence="entering"],
@@ -1325,8 +1321,8 @@
 .desktop-dock[data-dock-placement="left"] .desktop-dock__separator {
   width: var(--desktop-dock-separator-length);
   height: 1px;
-  align-self: flex-start;
-  margin: 4px 0 4px var(--desktop-dock-separator-center-offset);
+  align-self: center;
+  margin: 4px 0;
 }
 
 .desktop-dock__slot[data-node-state="open"]::before,
@@ -1356,15 +1352,9 @@
   box-shadow: 0 0 0 0.5px rgb(255 255 255 / 58%);
 }
 
-.desktop-dock[data-dock-placement="left"]
-  .desktop-dock__slot[data-node-state="open"]::before,
-.desktop-dock[data-dock-placement="left"]
-  .desktop-dock__slot[data-node-state="minimized"]::before {
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  left: calc(var(--desktop-dock-indicator-offset) - 2px);
-  transform: translateY(-50%);
+.desktop-dock[data-dock-placement="left"] .desktop-dock__slot::before {
+  content: none !important;
+  display: none !important;
 }
 
 .desktop-dock__btn {

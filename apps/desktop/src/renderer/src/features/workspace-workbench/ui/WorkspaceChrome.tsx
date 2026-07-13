@@ -82,10 +82,8 @@ import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunc
 import { requestWorkspaceFilesLaunch } from "../services/workspaceFilesLaunchCoordinator";
 import { requestWorkspaceIssueManagerLaunch } from "../services/workspaceIssueManagerLaunchCoordinator";
 import { requestGroupChatLaunch } from "../services/groupChatLaunchCoordinator";
-import {
-  resolveWorkspaceAgentStatusPetMood,
-  type WorkspaceAgentStatusPetMood
-} from "../services/workspaceAgentStatusPetMood";
+import { resolveWorkspaceAgentStatusPetMood } from "../services/workspaceAgentStatusPetMood";
+import { WorkspaceAgentStatusPetIcon } from "./WorkspaceAgentStatusPetIcon";
 import type {
   WorkspaceWallpaperDisplayMode,
   WorkspaceWallpaperId
@@ -102,34 +100,6 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
 const WORKSPACE_AGENT_ACTIVITY_LISTENER_MAX_DELAY_MS = 50;
 const workspaceAgentDecisionToastClassName = "workspace-agent-decision-toast";
-const AGENT_STATUS_PET_SOURCES = {
-  failed: new URL(
-    "../../../assets/agent-status-pet/failed.gif",
-    import.meta.url
-  ).href,
-  idle: new URL("../../../assets/agent-status-pet/idle.gif", import.meta.url)
-    .href,
-  review: new URL(
-    "../../../assets/agent-status-pet/review.gif",
-    import.meta.url
-  ).href,
-  running: new URL(
-    "../../../assets/agent-status-pet/running.gif",
-    import.meta.url
-  ).href,
-  waiting: new URL(
-    "../../../assets/agent-status-pet/waiting.gif",
-    import.meta.url
-  ).href,
-  waving: new URL(
-    "../../../assets/agent-status-pet/waving.gif",
-    import.meta.url
-  ).href
-} as const;
-
-type AgentStatusPetMood = WorkspaceAgentStatusPetMood &
-  keyof typeof AGENT_STATUS_PET_SOURCES;
-
 function createCoalescedWorkspaceAgentActivityListener(listener: () => void): {
   cancel(): void;
   schedule(): void;
@@ -838,7 +808,7 @@ function WorkspaceAgentMessageCenterAction({
                 })
               }
             >
-              <AgentStatusPetIcon mood={triggerPetMood} />
+              <WorkspaceAgentStatusPetIcon mood={triggerPetMood} />
               <span className="text-[13px] font-semibold">{triggerLabel}</span>
             </Button>
           </span>
@@ -968,23 +938,6 @@ function waitingNotificationKey(item: WorkspaceAgentMessageCenterItem): string {
     item.needsAttentionKind ?? "waiting",
     item.sortTimeUnixMs
   ].join(":");
-}
-
-function AgentStatusPetIcon({ mood }: { mood: AgentStatusPetMood }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="relative -my-1 grid size-7 shrink-0 place-items-center overflow-visible"
-      data-agent-status-pet-mood={mood}
-    >
-      <img
-        alt=""
-        className="size-7 object-contain"
-        draggable={false}
-        src={AGENT_STATUS_PET_SOURCES[mood]}
-      />
-    </span>
-  );
 }
 
 function hasCachedWorkspaceAgentSessionMessages(

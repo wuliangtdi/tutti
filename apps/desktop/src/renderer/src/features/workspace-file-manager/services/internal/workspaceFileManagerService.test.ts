@@ -470,6 +470,41 @@ test("workspace file manager service reports opened after successful file activa
   ]);
 });
 
+test("workspace file manager service can suppress the local app preview fallback notification", async () => {
+  applyLocale("en");
+  const dependencies = createDependenciesStub();
+  dependencies.hostFilesApi.openFile = async () => {};
+  const notifications = createNotificationRecorder();
+  const service = new WorkspaceFileManagerService(
+    dependencies,
+    notifications.service
+  );
+  const copy = createWorkspaceFileManagerI18nRuntime(
+    createI18nRuntime({
+      dictionaries: [workspaceFileManagerI18nResources.en]
+    })
+  );
+  service.setPreviewUnsupportedFallbackNotificationEnabled(
+    "workspace-1",
+    false
+  );
+  const session = service.getSession("workspace-1", copy);
+
+  await session.activateFile({
+    entry: {
+      hasChildren: false,
+      kind: "file",
+      mtimeMs: null,
+      name: "notes.txt",
+      path: "/Users/demo/project/notes.txt",
+      sizeBytes: 5
+    },
+    target: null
+  });
+
+  assert.deepEqual(notifications.items, []);
+});
+
 test("workspace file manager service does not report opened after failed file activation", async () => {
   const reporterCalls: ReporterEventInput[][] = [];
   const dependencies = createDependenciesStub();

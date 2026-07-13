@@ -66,6 +66,8 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [Browser CLI cold start timeout looks like an unreachable daemon](./toolchain-browser-terminal.md#browser-cli-cold-start-timeout-looks-like-an-unreachable-daemon)
 - [Malformed user skill frontmatter breaks skill discovery](./toolchain-browser-terminal.md#malformed-user-skill-frontmatter-breaks-skill-discovery)
 - [Browser Node failed navigation renders a blank panel](./toolchain-browser-terminal.md#browser-node-failed-navigation-renders-a-blank-panel)
+- [Standalone Agent Browser Node is blank and never attaches a guest](./toolchain-browser-terminal.md#standalone-agent-browser-node-is-blank-and-never-attaches-a-guest)
+- [Hidden Browser Node webview covers another panel](./toolchain-browser-terminal.md#hidden-browser-node-webview-covers-another-panel)
 - [IME composition leaks native input into xterm terminals](./toolchain-browser-terminal.md#ime-composition-leaks-native-input-into-xterm-terminals)
 - [Post-composition suppression window swallows real terminal input](./toolchain-browser-terminal.md#post-composition-suppression-window-swallows-real-terminal-input)
 - [Published package runtime asset 404 because the consumer bundler never saw the file](./toolchain-browser-terminal.md#published-package-runtime-asset-404-because-the-consumer-bundler-never-saw-the-file)

@@ -111,11 +111,13 @@ test("workspace agent GUI creates multi-open panel instance ids", () => {
   );
 });
 
-test("workspace files open at the task center default height", () => {
-  assert.equal(
-    workspaceFilesNodeFrame.height,
-    defaultIssueManagerNodeFrame.height
-  );
+test("workspace files open in the wide three-column frame", () => {
+  assert.deepEqual(workspaceFilesNodeFrame, {
+    height: 1200,
+    width: 2520,
+    x: 96,
+    y: 28
+  });
 });
 
 test("workspace file previews open at the task center default height", () => {
@@ -125,12 +127,13 @@ test("workspace file previews open at the task center default height", () => {
   );
 });
 
-test("workspace agent GUI opens at the files window default size", () => {
-  assert.equal(workspaceAgentGuiNodeFrame.width, workspaceFilesNodeFrame.width);
-  assert.equal(
-    workspaceAgentGuiNodeFrame.height,
-    workspaceFilesNodeFrame.height
-  );
+test("workspace Agent GUI keeps its focused default size", () => {
+  assert.deepEqual(workspaceAgentGuiNodeFrame, {
+    height: defaultIssueManagerNodeFrame.height,
+    width: 1040,
+    x: 140,
+    y: 48
+  });
 });
 
 test("workspaceAgentGuiProviderFromLaunchRequest prefers launch payloads before dock identifiers", () => {

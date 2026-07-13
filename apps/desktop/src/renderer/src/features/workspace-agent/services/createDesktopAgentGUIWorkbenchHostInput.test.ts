@@ -790,6 +790,38 @@ test("desktop agent GUI workbench host input opens workspace references through 
   assert.deepEqual(calls, ["preview:workspace-1:/workspace/image.png:image"]);
 });
 
+test("desktop agent GUI workbench host input opens references in the system default application when configured", async () => {
+  const calls: string[] = [];
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: {
+      ...createHostFilesApi(),
+      async openFile(workspaceId, path) {
+        calls.push(`open-file:${workspaceId}:${path}`);
+      }
+    },
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService: createWorkspaceAgentActivityService([]),
+    workspaceFileManagerService: createWorkspaceFileManagerService({
+      async openCanvasFilePreview() {
+        calls.push("preview");
+        return true;
+      }
+    }),
+    workspaceFilePreviewMode: "system-default",
+    workspaceId
+  });
+
+  await hostInput.workspaceFileReferenceAdapter.openReference?.({
+    kind: "file",
+    path: "/workspace/image.png"
+  });
+
+  assert.deepEqual(calls, ["open-file:workspace-1:/workspace/image.png"]);
+});
+
 test("desktop agent GUI workbench host input wires project references first", async () => {
   const projects = [
     userProject("project-1", "/Users/local/repo", "Repo"),

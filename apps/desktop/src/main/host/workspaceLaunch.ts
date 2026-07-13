@@ -9,8 +9,15 @@ export interface WorkspaceLaunchOwnerWindow {
 
 export interface WorkspaceLaunchAdapters {
   showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
-  showWorkspaceWindow(workspaceID: string): Promise<void>;
+  showWorkspaceWindow(
+    workspaceID: string,
+    options?: WorkspaceLaunchWorkspaceWindowOptions
+  ): Promise<void>;
   warnStartupWindowResolutionFailure(error: unknown): void;
+}
+
+export interface WorkspaceLaunchWorkspaceWindowOptions {
+  windowKind?: "agent" | "workspace";
 }
 
 export interface WorkspaceLaunchAgentWindowInput {
@@ -28,6 +35,11 @@ export interface WorkspaceLaunch {
   showWorkspace(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
+  ): Promise<void>;
+  replaceWorkspaceWindow(
+    ownerWindow: WorkspaceLaunchOwnerWindow | null,
+    workspaceID: string,
+    windowKind: "agent" | "workspace"
   ): Promise<void>;
 }
 
@@ -53,7 +65,8 @@ export function createWorkspaceLaunch(
     showAgentWindow(input) {
       return deps.adapters.showAgentWindow(input);
     },
-    showWorkspace
+    showWorkspace,
+    replaceWorkspaceWindow
   };
 
   async function resolveStartupWorkspaceID(): Promise<string> {
@@ -69,6 +82,15 @@ export function createWorkspaceLaunch(
     workspaceID: string
   ): Promise<void> {
     await deps.adapters.showWorkspaceWindow(workspaceID);
+    forceCloseWindow(ownerWindow);
+  }
+
+  async function replaceWorkspaceWindow(
+    ownerWindow: WorkspaceLaunchOwnerWindow | null,
+    workspaceID: string,
+    windowKind: "agent" | "workspace"
+  ): Promise<void> {
+    await deps.adapters.showWorkspaceWindow(workspaceID, { windowKind });
     forceCloseWindow(ownerWindow);
   }
 }
