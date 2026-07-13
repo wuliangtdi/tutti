@@ -2,7 +2,8 @@ export type StandaloneAgentToolPanelId =
   | "files"
   | "browser"
   | "apps"
-  | "messages";
+  | "messages"
+  | "terminal";
 
 export type StandaloneAgentSharedToolPanelId = "terminal";
 export type StandaloneAgentToolLauncherPanelId =
@@ -18,7 +19,8 @@ export const standaloneAgentToolPanelDefaultWidthById: Record<
   apps: standaloneAgentBrowserAndAppsDefaultWidth,
   browser: standaloneAgentBrowserAndAppsDefaultWidth,
   files: standaloneAgentBrowserAndAppsDefaultWidth,
-  messages: 440
+  messages: 440,
+  terminal: standaloneAgentBrowserAndAppsDefaultWidth
 };
 
 export const standaloneAgentToolPanelMinWidthById: Record<
@@ -28,7 +30,8 @@ export const standaloneAgentToolPanelMinWidthById: Record<
   apps: 420,
   browser: 420,
   files: 480,
-  messages: 320
+  messages: 320,
+  terminal: 420
 };
 
 export const standaloneAgentToolPanelMaxWidthById: Record<
@@ -38,7 +41,8 @@ export const standaloneAgentToolPanelMaxWidthById: Record<
   apps: 1_200,
   browser: 1_200,
   files: Number.MAX_SAFE_INTEGER,
-  messages: 1_200
+  messages: 1_200,
+  terminal: 1_200
 };
 export const standaloneAgentMainMinWidth = 280;
 
@@ -78,6 +82,10 @@ export type StandaloneAgentToolSidebarAction =
       type: "toggle-panel";
     }
   | {
+      panel: StandaloneAgentToolPanelId;
+      type: "close-panel";
+    }
+  | {
       panel: StandaloneAgentToolLauncherPanelId;
       type: "select-tool";
     }
@@ -115,10 +123,29 @@ export function reduceStandaloneAgentToolSidebarState(
       return state.activePanel === null
         ? state
         : { ...state, activePanel: null };
+    case "close-panel": {
+      const mountedPanels = state.mountedPanels.filter(
+        (panel) => panel !== action.panel
+      );
+      const nextActivePanel =
+        state.activePanel === action.panel
+          ? (mountedPanels[mountedPanels.length - 1] ?? null)
+          : state.activePanel;
+      return {
+        ...state,
+        activePanel: nextActivePanel,
+        mountedPanels,
+        ...(action.panel === "terminal"
+          ? { terminalMounted: false, terminalOpen: false }
+          : {})
+      };
+    }
     case "select-tool":
       if (action.panel === "terminal") {
         return {
           ...state,
+          activePanel: "terminal",
+          mountedPanels: mountPanel(state.mountedPanels, "terminal"),
           terminalMounted: true,
           terminalOpen: true
         };
@@ -133,7 +160,10 @@ export function reduceStandaloneAgentToolSidebarState(
       return {
         ...state,
         activePanel: action.panel,
-        mountedPanels: mountPanel(state.mountedPanels, action.panel)
+        mountedPanels: mountPanel(state.mountedPanels, action.panel),
+        ...(action.panel === "terminal"
+          ? { terminalMounted: true, terminalOpen: true }
+          : {})
       };
     case "toggle-panel":
       if (state.activePanel === action.panel) {
@@ -147,6 +177,8 @@ export function reduceStandaloneAgentToolSidebarState(
     case "toggle-terminal":
       return {
         ...state,
+        activePanel: state.activePanel === "terminal" ? null : "terminal",
+        mountedPanels: mountPanel(state.mountedPanels, "terminal"),
         terminalMounted: true,
         terminalOpen: !state.terminalOpen
       };
@@ -156,7 +188,7 @@ export function reduceStandaloneAgentToolSidebarState(
 export function isStandaloneAgentToolGroupActive(
   state: StandaloneAgentToolSidebarState
 ): boolean {
-  return state.activePanel === "browser" || state.terminalOpen;
+  return state.activePanel === "browser" || state.activePanel === "terminal";
 }
 
 export function formatStandaloneAgentToolReminderCount(

@@ -1656,7 +1656,41 @@ describe("agent GUI workbench contribution copy", () => {
       /\.agent-gui-workbench-header__detached-window\s*{\s*margin-left:\s*auto;/s
     );
     expect(css).toMatch(
-      /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{\s*margin-left:\s*0;/s
+      /\.agent-gui-workbench-header__detached-window\s*\+\s*\.agent-gui-workbench-header__rail-toggle\s*{[^}]*margin-left:\s*-4px;/s
     );
+  });
+
+  it("keeps standalone tool actions pinned to the window edge when the conversation rail collapses", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\[data-agent-gui-workbench-header-collapsed="true"\]\s*\.agent-gui-workbench-header__primary\s*\{[^}]*width:\s*100%;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\.agent-gui-workbench-header__secondary-accessory\s*\{[^}]*padding-right:\s*0;/s
+    );
+  });
+
+  it("keeps a lone provider settings footer clear of the window edge", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__provider-rail-config-footer:last-child\s*\{[^}]*padding-bottom:\s*12px;/s
+    );
+  });
+
+  it("anchors ready and gated empty homes to the same fixed frame", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+    const providerGateRule =
+      css.match(/\.agent-gui-node__empty-provider-gate\s*\{[^}]*\}/s)?.[0] ??
+      "";
+
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero\s*\{[^}]*--agent-gui-empty-hero-anchor-block-size:\s*398px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-node__empty-hero-body\s*\{[^}]*block-size:\s*var\(--agent-gui-empty-hero-anchor-block-size\);[^}]*align-content:\s*start;/s
+    );
+    expect(providerGateRule).not.toMatch(/(?:min-)?(?:block-size|height):/);
   });
 });

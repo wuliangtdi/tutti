@@ -597,7 +597,7 @@ export function AgentGUINodeView({
             />
             {shouldShowProviderRailConfigButton ? (
               <div
-                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                className={`${styles.providerRailFooter} ${styles.providerRailConfigFooter} nodrag tsh-desktop-no-drag`}
                 data-testid="agent-gui-config-footer"
               >
                 {shouldShowProviderRailConfigMenu ? (
@@ -637,7 +637,7 @@ export function AgentGUINodeView({
             ) : null}
             {renderSidebarFooter ? (
               <div
-                className={`${styles.providerRailFooter} nodrag tsh-desktop-no-drag`}
+                className={`${styles.providerRailFooter} ${styles.providerRailSidebarFooter} nodrag tsh-desktop-no-drag`}
                 data-testid="agent-gui-sidebar-footer-slot"
               >
                 {renderSidebarFooter({

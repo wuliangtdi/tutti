@@ -60,15 +60,10 @@ export class AgentGUIEmptyHeroCarouselStage extends Component<AgentGUIEmptyHeroC
     );
   }
 
-  // The floating layer must sit exactly on the body's placeholder slot. A
-  // fixed offset from the stage center only matches the slot for one body
-  // height; narrow panes wrap the title and grow the composer, which
-  // re-centers the body and slides the slot upward, so measure the slot's
-  // real offset instead and let the CSS fallback cover the pre-measure
-  // paint. The body resize observer catches height-only changes (wrapping
-  // text, growing composer) that never resize the stage itself, and the
-  // mutation observer re-attaches it when the ready/gated branch swaps the
-  // body subtree.
+  // The floating layer must sit exactly on the body's placeholder slot. The
+  // shared anchor frame keeps ready and gated content on one top baseline,
+  // while measuring the slot preserves alignment across host padding and
+  // ready/gated subtree changes. The CSS fallback covers the pre-measure paint.
   private startAlignment(): void {
     if (this.props.items.length <= 1 || !this.stage || !this.layer) {
       this.stopAlignment();

@@ -152,9 +152,12 @@ export const AgentGUIEmptyHomePane = memo(function AgentGUIEmptyHomePane({
           provider={provider}
           gate={providerReadinessGate}
           showAllProviders={showAllProviders}
+          emptyLabel={emptyLabel}
+          agentTargets={agentTargets}
           avatarPresentations={avatarPresentations}
           carouselMountedExternally={carouselMountedExternally}
           onProviderSelect={onProviderSelect}
+          providerLabel={providerLabel}
           providerSelectLabel={labels.providerSwitchLabel}
           selectedAgentTarget={selectedAgentTarget}
           labels={labels}
@@ -305,9 +308,12 @@ interface AgentGUIProviderReadinessGatePaneProps {
   provider: AgentGUINodeViewModel["shell"]["data"]["provider"];
   gate: AgentGUIProviderReadinessGate;
   showAllProviders?: boolean;
+  emptyLabel: string;
+  agentTargets: readonly AgentGUIAgentTarget[];
   avatarPresentations: readonly AgentGUIAgentAvatarPresentation[];
   carouselMountedExternally?: boolean;
   onProviderSelect?: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
+  providerLabel: string;
   providerSelectLabel: string;
   selectedAgentTarget: AgentGUIAgentTarget | null;
   labels: Pick<
@@ -338,9 +344,12 @@ export const AgentGUIProviderReadinessGatePane = memo(
     provider,
     gate,
     showAllProviders = false,
+    emptyLabel,
+    agentTargets,
     avatarPresentations,
     carouselMountedExternally = false,
     onProviderSelect,
+    providerLabel,
     providerSelectLabel,
     selectedAgentTarget,
     labels
@@ -365,6 +374,10 @@ export const AgentGUIProviderReadinessGatePane = memo(
     const content = providerGateContent(gate.status, labels, {
       showAllProviders: showAllProvidersChecking
     });
+    const titleLabel =
+      gate.status === "not_installed" || gate.status === "auth_required"
+        ? emptyLabel
+        : content.title;
     const action = providerGateAction(gate.status);
     const pendingLabel =
       pendingAction === "install"
@@ -403,7 +416,16 @@ export const AgentGUIProviderReadinessGatePane = memo(
               presentation={heroAvatarPresentations[0]!}
             />
           )}
-          <h2 className={styles.emptyHeroTitle}>{content.title}</h2>
+          <h2 className={styles.emptyHeroTitle}>
+            <EmptyHeroTitle
+              label={titleLabel}
+              providerLabel={providerLabel}
+              providerSelectLabel={providerSelectLabel}
+              agentTargets={agentTargets}
+              selectedAgentTarget={selectedAgentTarget}
+              onProviderSelect={onProviderSelect}
+            />
+          </h2>
           <p className={styles.emptyProviderGateDescription}>
             {content.description}
           </p>

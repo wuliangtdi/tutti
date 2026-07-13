@@ -480,6 +480,7 @@ describe("AgentGUINodeView layout persistence", () => {
       name: "Switch provider"
     });
     expect(footer).toHaveTextContent("Footer user-1 session-1");
+    expect(footer).toHaveClass("agent-gui-node__provider-rail-sidebar-footer");
     expect(
       container.querySelector(".agent-gui-node__provider-rail-panel")
     ).toContainElement(footer);
@@ -4753,6 +4754,11 @@ describe("AgentGUINodeView provider readiness gate", () => {
   it("renders an empty-state gate instead of the composer when the provider is not installed", () => {
     const onAction = vi.fn();
     renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex"
+      },
       viewModel: createViewModel({
         providerReadinessGate: {
           status: "not_installed",
@@ -4763,7 +4769,10 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
     expect(
       screen.getByTestId("agent-gui-provider-readiness-gate")
-    ).toHaveTextContent("providerGateInstallTitle");
+    ).toHaveTextContent("What can Codex help you with?");
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateInstallDescription");
     expect(screen.queryByTestId("agent-gui-provider-setup-notice")).toBeNull();
     expect(screen.queryByTestId("agent-composer")).toBeNull();
 
@@ -4777,6 +4786,11 @@ describe("AgentGUINodeView provider readiness gate", () => {
   it("renders a login gate for auth-required providers", () => {
     const onAction = vi.fn();
     renderAgentGUINodeView({
+      labels: {
+        ...createLabels(),
+        empty: "What can Codex help you with?",
+        emptyProvider: "Codex"
+      },
       viewModel: createViewModel({
         providerReadinessGate: {
           status: "auth_required",
@@ -4787,7 +4801,10 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
     expect(
       screen.getByTestId("agent-gui-provider-readiness-gate")
-    ).toHaveTextContent("providerGateLoginTitle");
+    ).toHaveTextContent("What can Codex help you with?");
+    expect(
+      screen.getByTestId("agent-gui-provider-readiness-gate")
+    ).toHaveTextContent("providerGateLoginDescription");
 
     const action = screen.getByTestId(
       "agent-gui-provider-readiness-gate-action"
@@ -4799,6 +4816,54 @@ describe("AgentGUINodeView provider readiness gate", () => {
 
     expect(onAction).toHaveBeenCalledWith("codex", "login");
   });
+
+  it.each(["not_installed", "auth_required"] as const)(
+    "keeps the normal copy and agent switcher in the %s readiness gate title",
+    async (status) => {
+      const actions = createActions();
+      const codexTarget = createLocalAgentGUIAgentTarget("codex");
+      const claudeTarget = createLocalAgentGUIAgentTarget("claude-code");
+      renderAgentGUINodeView({
+        actions,
+        labels: {
+          ...createLabels(),
+          empty: "What can Codex help you with?",
+          emptyProvider: "Codex",
+          providerGateInstallTitle: "Connect Codex first",
+          providerGateLoginTitle: "Log in to Codex",
+          providerSwitchLabel: "Switch provider"
+        },
+        viewModel: createViewModel({
+          providerReadinessGate: { status },
+          selectedAgentTarget: codexTarget,
+          agentTargets: [codexTarget, claudeTarget]
+        })
+      });
+
+      ensurePointerCaptureApi();
+
+      const gate = screen.getByTestId("agent-gui-provider-readiness-gate");
+      const providerSelect = within(gate).getByRole("combobox", {
+        name: "Switch provider"
+      });
+      expect(gate).toHaveTextContent("What can Codex help you with?");
+      expect(gate).not.toHaveTextContent("Connect Codex first");
+      expect(gate).not.toHaveTextContent("Log in to Codex");
+      expect(providerSelect).toHaveClass(
+        "agent-gui-node__empty-hero-provider-select"
+      );
+
+      fireEvent.keyDown(providerSelect, { key: "ArrowDown" });
+      fireEvent.click(
+        await screen.findByRole("option", { name: "Claude Code" })
+      );
+
+      expect(actions.selectHomeComposerAgentTarget).toHaveBeenCalledWith({
+        provider: "claude-code",
+        agentTargetId: claudeTarget.targetId
+      });
+    }
+  );
 
   it("renders a disabled action for placeholder provider targets", () => {
     const tuttiTarget = {

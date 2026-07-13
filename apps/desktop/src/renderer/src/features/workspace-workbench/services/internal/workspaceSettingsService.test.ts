@@ -957,15 +957,17 @@ test("WorkspaceSettingsService changes workspace UI mode without replacing other
   );
 
   service.openPanel({ id: "workspace-1" });
-  await service.changeWorkspaceUiMode("os");
+  await service.changeWorkspaceUiMode("agent");
 
   assert.deepEqual(writes, [
     {
       "lab.enabled": true,
-      "workspace.standaloneAgentMode": false
+      "workspace.standaloneAgentMode": true
     }
   ]);
-  assert.deepEqual(replacements, [{ mode: "os", workspaceId: "workspace-1" }]);
+  assert.deepEqual(replacements, [
+    { mode: "agent", workspaceId: "workspace-1" }
+  ]);
 });
 
 test("WorkspaceSettingsService refreshes App Center after changing catalog channel", async () => {

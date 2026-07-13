@@ -102,6 +102,28 @@ describe("AgentGuiWorkbenchHeader", () => {
     ).toBeInTheDocument();
   });
 
+  it("can hide the conversation rail toggle while its content is loading", () => {
+    render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Collapse conversations",
+          expandConversationRail: "Expand conversations",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation"
+        }}
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed={false}
+        nodeId="agent-gui-node-1"
+        showConversationRailToggle={false}
+        onToggleConversationRail={() => {}}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("agent-gui-toggle-conversation-rail")
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps secondary actions in layout beside the expanded session title", () => {
     render(
       <AgentGuiWorkbenchHeader
@@ -148,5 +170,30 @@ describe("AgentGuiWorkbenchHeader", () => {
     );
     const actions = screen.getByRole("button", { name: "File tool" });
     expect(primary).toContainElement(actions);
+  });
+
+  it("uses the open-link-lined asset for the detached window action", () => {
+    render(
+      <AgentGuiWorkbenchHeader
+        copy={{
+          collapseConversationRail: "Collapse conversations",
+          expandConversationRail: "Expand conversations",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation",
+          openDetachedWindow: "Open detached window"
+        }}
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed={false}
+        nodeId="agent-gui-node-1"
+        onOpenDetachedWindow={() => {}}
+        onToggleConversationRail={() => {}}
+      />
+    );
+
+    expect(
+      screen
+        .getByTestId("agent-gui-open-detached-window")
+        .querySelector('[data-agent-gui-icon="open-link-lined"]')
+    ).toBeInTheDocument();
   });
 });

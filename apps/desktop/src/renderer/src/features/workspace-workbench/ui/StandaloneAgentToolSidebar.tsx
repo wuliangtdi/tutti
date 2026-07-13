@@ -24,18 +24,13 @@ import { selectEnginePendingInteractions } from "@tutti-os/agent-activity-core";
 import { BrowserNode } from "@tutti-os/browser-node/react";
 import type { BrowserNodeI18nKey } from "@tutti-os/browser-node/i18n";
 import { TerminalNode } from "@tutti-os/workspace-terminal/react";
+import type { TerminalTheme } from "@tutti-os/workspace-terminal/contracts";
 import type { TerminalNodeI18nKey } from "@tutti-os/workspace-terminal/i18n";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
-import {
-  Button,
-  CloseIcon,
-  MaximizeIcon,
-  RestoreIcon,
-  cn
-} from "@tutti-os/ui-system";
+import { CloseIcon, cn } from "@tutti-os/ui-system";
 import { WorkspaceFileManagerPane } from "@renderer/features/workspace-file-manager";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
@@ -45,12 +40,12 @@ import {
   createStandaloneAgentToolSidebarState,
   reduceStandaloneAgentToolSidebarState,
   type StandaloneAgentSharedToolPanelId,
-  type StandaloneAgentToolLauncherPanelId,
   type StandaloneAgentToolPanelId
 } from "./standaloneAgentToolSidebarModel.ts";
 import { useStandaloneAgentToolSidebarLayout } from "./useStandaloneAgentToolSidebarLayout.ts";
 import {
   StandaloneAgentToolSidebarToolbar,
+  ToolSidebarPanelIcon,
   type ToolSidebarCopy,
   type ToolSidebarReminderCounts
 } from "./StandaloneAgentToolSidebarToolbar.tsx";
@@ -66,7 +61,7 @@ import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 const browserNodeLoadFailedI18nKey: BrowserNodeI18nKey = "loadFailed";
 const terminalCloseGuardDescriptionI18nKey: TerminalNodeI18nKey =
   "closeGuard.description";
-const standaloneAgentToolPanelContentMountDelayMs = 160;
+const standaloneAgentToolPanelContentMountDelayMs = 260;
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
@@ -167,9 +162,12 @@ export function StandaloneAgentToolSidebar({
       apps: i18n.t("workspace.agentGui.toolSidebar.apps"),
       browser: i18n.t("workspace.agentGui.toolSidebar.browser"),
       close: i18n.t("workspace.agentGui.toolSidebar.close"),
+      closeRightPanel: i18n.t("workspace.agentGui.toolSidebar.closeRightPanel"),
       expand: i18n.t("workspace.agentGui.toolSidebar.expandPanel"),
       files: i18n.t("workspace.agentGui.toolSidebar.files"),
       messages: i18n.t("workspace.agentGui.toolSidebar.messages"),
+      newTab: i18n.t("workspace.agentGui.toolSidebar.newTab"),
+      openRightPanel: i18n.t("workspace.agentGui.toolSidebar.openRightPanel"),
       shrink: i18n.t("workspace.agentGui.toolSidebar.shrinkPanel"),
       terminal: i18n.t("workspace.agentGui.toolSidebar.terminal"),
       tool: i18n.t("workspace.agentGui.toolSidebar.tool"),
@@ -253,41 +251,88 @@ export function StandaloneAgentToolSidebar({
     void resizeForPanel("files");
   }, [fileOpenRequest, resizeForPanel]);
   const closePanel = useCallback(() => {
-    dispatch({ type: "close" });
+    dispatch(
+      activePanel === "terminal"
+        ? { type: "toggle-terminal" }
+        : { type: "close" }
+    );
     void resizeForPanel(null);
-  }, [resizeForPanel]);
-  const selectTool = useCallback(
-    (panel: StandaloneAgentToolLauncherPanelId) => {
-      if (panel === "terminal") {
-        dispatch({ panel, type: "select-tool" });
-        return;
-      }
-      dispatch({ panel, type: "select-tool" });
+  }, [activePanel, resizeForPanel]);
+  const openPanel = useCallback(
+    (panel: StandaloneAgentToolPanelId) => {
+      dispatch({ panel, type: "open-panel" });
       void resizeForPanel(panel);
     },
     [resizeForPanel]
   );
-  const togglePanel = useCallback(
-    (panel: Exclude<StandaloneAgentToolPanelId, "browser">) => {
-      const nextPanel = activePanel === panel ? null : panel;
-      dispatch({ panel, type: "toggle-panel" });
+  const toggleSidebar = useCallback(() => {
+    const nextPanel = activePanel ?? "files";
+    dispatch(
+      activePanel === null
+        ? { panel: nextPanel, type: "open-panel" }
+        : { type: "close" }
+    );
+    void resizeForPanel(activePanel === null ? nextPanel : null);
+  }, [activePanel, resizeForPanel]);
+  const closePanelTab = useCallback(
+    (panel: StandaloneAgentToolPanelId) => {
+      const nextMountedPanels = state.mountedPanels.filter(
+        (candidate) => candidate !== panel
+      );
+      const nextPanel =
+        activePanel === panel
+          ? (nextMountedPanels[nextMountedPanels.length - 1] ?? null)
+          : activePanel;
+      dispatch({ panel, type: "close-panel" });
       void resizeForPanel(nextPanel);
     },
-    [activePanel, resizeForPanel]
+    [activePanel, resizeForPanel, state.mountedPanels]
   );
 
   return (
     <>
-      <div className="workbench-window__header workbench-window__header--custom">
+      <div
+        className="workbench-window__header workbench-window__header--custom"
+        style={
+          {
+            "--agent-gui-tool-sidebar-layout-width": activePanel
+              ? `${activePanelLayoutWidth}px`
+              : "0px"
+          } as CSSProperties
+        }
+      >
         {renderHeader(
-          <StandaloneAgentToolSidebarToolbar
-            activePanel={activePanel}
-            copy={copy}
-            reminders={reminders}
-            terminalOpen={state.terminalOpen}
-            onSelectTool={selectTool}
-            onTogglePanel={togglePanel}
-          />
+          <div
+            className={cn(
+              "nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 items-center pr-[var(--agent-gui-workbench-header-padding-x)] [-webkit-app-region:no-drag]",
+              activePanel && "border-b border-[var(--border-1)]"
+            )}
+            data-standalone-agent-tool-sidebar-header="true"
+            style={
+              activePanel ? { width: `${activePanelLayoutWidth}px` } : undefined
+            }
+          >
+            {activePanel ? (
+              <ToolSidebarTabBar
+                activePanel={activePanel}
+                copy={copy}
+                mountedPanels={state.mountedPanels}
+                onClosePanel={closePanelTab}
+                onOpenPanel={openPanel}
+              />
+            ) : null}
+            <StandaloneAgentToolSidebarToolbar
+              activePanel={activePanel}
+              copy={copy}
+              isExpanded={isActivePanelExpanded}
+              reminders={reminders}
+              onOpenPanel={openPanel}
+              onToggleExpansion={() => {
+                if (activePanel) togglePanelExpansion(activePanel);
+              }}
+              onToggleSidebar={toggleSidebar}
+            />
+          </div>
         )}
       </div>
       <div className="workbench-window__body flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -298,8 +343,8 @@ export function StandaloneAgentToolSidebar({
           <aside
             aria-hidden={activePanel === null}
             className={cn(
-              "relative h-full min-h-0 shrink-0 overflow-hidden [contain:layout_paint]",
-              activePanel !== null && "border-l border-[var(--border-1)]",
+              "relative h-full min-h-0 shrink-0 overflow-hidden transition-[width] duration-[260ms] ease-in-out will-change-[width] motion-reduce:transition-none",
+              isActivePanelExpanded && "border-l border-[var(--line-1)]",
               activePanel === null && "pointer-events-none"
             )}
             data-standalone-agent-tool-sidebar="true"
@@ -310,12 +355,15 @@ export function StandaloneAgentToolSidebar({
           >
             <div
               className={cn(
-                "absolute inset-y-0 right-0 flex flex-col bg-[var(--background-fronted)]",
-                activePanel !== null &&
-                  "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-full motion-safe:duration-150 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:animate-none",
+                "absolute inset-y-0 right-0 flex flex-col bg-[var(--background-session-sidepanel)]",
                 activePanel === null && "invisible"
               )}
-              style={{ width: `${activePanelWidth}px` } as CSSProperties}
+              style={
+                {
+                  "--background-panel": "var(--background-session-sidepanel)",
+                  width: `${activePanelWidth}px`
+                } as CSSProperties
+              }
             >
               {activePanel ? (
                 <div
@@ -338,38 +386,14 @@ export function StandaloneAgentToolSidebar({
                 />
               ) : null}
               {activePanel ? (
-                <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border-1)] px-3">
-                  <h2 className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
-                    {copy[activePanel]}
-                  </h2>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      aria-label={`${isActivePanelExpanded ? copy.shrink : copy.expand} ${copy[activePanel]}`}
-                      aria-pressed={isActivePanelExpanded}
-                      size="icon-sm"
-                      title={`${isActivePanelExpanded ? copy.shrink : copy.expand} ${copy[activePanel]}`}
-                      type="button"
-                      variant="chrome"
-                      onClick={() => togglePanelExpansion(activePanel)}
-                    >
-                      {isActivePanelExpanded ? (
-                        <RestoreIcon aria-hidden className="size-3.5" />
-                      ) : (
-                        <MaximizeIcon aria-hidden className="size-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      aria-label={`${copy.close} ${copy[activePanel]}`}
-                      size="icon-sm"
-                      title={`${copy.close} ${copy[activePanel]}`}
-                      type="button"
-                      variant="chrome"
-                      onClick={closePanel}
-                    >
-                      <CloseIcon aria-hidden className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
+                <div
+                  aria-hidden
+                  className="shrink-0"
+                  data-standalone-agent-tool-sidebar-header-spacer="true"
+                  style={{
+                    height: "var(--agent-gui-workbench-header-height, 44px)"
+                  }}
+                />
               ) : null}
               <div className="relative min-h-0 flex-1 overflow-hidden">
                 {state.mountedPanels.map((panel) => (
@@ -382,7 +406,13 @@ export function StandaloneAgentToolSidebar({
                     key={panel}
                   >
                     {contentReadyPanels.includes(panel) ? (
-                      <div className="h-full min-h-0 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-reduce:animate-none">
+                      <div
+                        className={cn(
+                          "h-full min-h-0",
+                          panel !== "terminal" &&
+                            "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-reduce:animate-none"
+                        )}
+                      >
                         <ToolSidebarPanel
                           active={activePanel === panel}
                           appI18n={appI18n}
@@ -399,6 +429,7 @@ export function StandaloneAgentToolSidebar({
                           onCloseMessageCenter={closePanel}
                           onOpenMessageCenterChat={onOpenMessageCenterChat}
                           panel={panel}
+                          setToolHost={toolHostGroup.setHost}
                           workspaceId={workspaceId}
                         />
                       </div>
@@ -409,18 +440,70 @@ export function StandaloneAgentToolSidebar({
             </div>
           </aside>
         </div>
-        {state.terminalMounted ? (
-          <StandaloneAgentTerminalPanel
-            closeLabel={`${copy.close} ${copy.terminal}`}
-            contributions={contributions}
-            onClose={() => dispatch({ type: "toggle-terminal" })}
-            open={state.terminalOpen}
-            setToolHost={toolHostGroup.setHost}
-            unavailableLabel={copy.unavailable}
-          />
-        ) : null}
       </div>
     </>
+  );
+}
+
+function ToolSidebarTabBar({
+  activePanel,
+  copy,
+  mountedPanels,
+  onClosePanel,
+  onOpenPanel
+}: {
+  activePanel: StandaloneAgentToolPanelId;
+  copy: ToolSidebarCopy;
+  mountedPanels: StandaloneAgentToolPanelId[];
+  onClosePanel: (panel: StandaloneAgentToolPanelId) => void;
+  onOpenPanel: (panel: StandaloneAgentToolPanelId) => void;
+}): ReactNode {
+  return (
+    <div
+      aria-label={copy.tool}
+      className="nodrag flex h-[var(--agent-gui-workbench-header-height,44px)] min-w-0 flex-1 items-center gap-1 overflow-hidden px-2 [-webkit-app-region:no-drag]"
+      data-standalone-agent-tool-tab-list="true"
+      role="tablist"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        {mountedPanels.map((panel) => (
+          <div
+            className={cn(
+              "group flex h-7 max-w-44 shrink-0 items-center rounded-sm overflow-hidden border text-xs text-[var(--text-tertiary)]",
+              activePanel === panel
+                ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
+                : "border-transparent"
+            )}
+            key={panel}
+          >
+            <button
+              aria-selected={activePanel === panel}
+              className="nodrag flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-2 text-left outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
+              data-standalone-agent-tool-tab={panel}
+              role="tab"
+              type="button"
+              onClick={() => onOpenPanel(panel)}
+            >
+              <ToolSidebarPanelIcon
+                aria-hidden
+                className="size-3.5 shrink-0"
+                panel={panel}
+              />
+              <span className="truncate">{copy[panel]}</span>
+            </button>
+            <button
+              aria-label={`${copy.close} ${copy[panel]}`}
+              className="nodrag mr-1 rounded p-0.5 opacity-100 hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
+              type="button"
+              onClick={() => onClosePanel(panel)}
+            >
+              <CloseIcon aria-hidden className="size-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -440,6 +523,7 @@ function ToolSidebarPanel({
   onCloseMessageCenter,
   onOpenMessageCenterChat,
   panel,
+  setToolHost,
   workspaceId
 }: {
   active: boolean;
@@ -460,6 +544,10 @@ function ToolSidebarPanel({
     provider: string;
   }) => void;
   panel: StandaloneAgentToolPanelId;
+  setToolHost: (
+    typeId: StandaloneAgentSharedToolPanelId,
+    host: WorkbenchHostHandle | null
+  ) => void;
   workspaceId: string;
 }): ReactNode {
   if (panel === "files") {
@@ -506,6 +594,16 @@ function ToolSidebarPanel({
         hidden={!active}
       />
     ) : null;
+  }
+  if (panel === "terminal") {
+    return (
+      <StandaloneAgentTerminalPanel
+        contributions={contributions}
+        open={active}
+        setToolHost={setToolHost}
+        unavailableLabel={i18n.t("workspace.agentGui.toolSidebar.unavailable")}
+      />
+    );
   }
   return null;
 }
@@ -732,16 +830,12 @@ function createStandaloneAgentBrowserNodeId(): string {
 }
 
 function StandaloneAgentTerminalPanel({
-  closeLabel,
   contributions,
-  onClose,
   open,
   setToolHost,
   unavailableLabel
 }: {
-  closeLabel: string;
   contributions: readonly WorkbenchContribution[] | undefined;
-  onClose: () => void;
   open: boolean;
   setToolHost: (
     panel: StandaloneAgentSharedToolPanelId,
@@ -757,6 +851,23 @@ function StandaloneAgentTerminalPanel({
       ? getWorkspaceTerminalSurfaceRuntime(contribution)
       : null;
   }, [contributions]);
+  const terminalFeature = useMemo(() => {
+    if (!runtime) {
+      return null;
+    }
+    return {
+      ...runtime.feature,
+      resolveTheme(input: Parameters<typeof runtime.feature.resolveTheme>[0]) {
+        const panelTheme = resolveStandaloneAgentTerminalTheme();
+        const terminalTheme = runtime.feature.resolveTheme(input);
+        return {
+          ...panelTheme,
+          ...terminalTheme,
+          background: panelTheme.background ?? terminalTheme.background
+        };
+      }
+    };
+  }, [runtime]);
   const [nodeId] = useState(createStandaloneAgentTerminalNodeId);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState(false);
@@ -843,35 +954,24 @@ function StandaloneAgentTerminalPanel({
     <section
       aria-hidden={!open}
       className={cn(
-        "relative shrink-0 overflow-hidden border-t border-[var(--border-1)] bg-[var(--background-fronted)] transition-[height] duration-200 ease-out",
-        !open && "pointer-events-none border-t-0"
+        "relative h-full min-h-0 overflow-hidden bg-[var(--background-session-sidepanel)]",
+        !open && "pointer-events-none"
       )}
       data-standalone-agent-terminal-panel="true"
-      style={{ height: open ? "clamp(220px, 42vh, 440px)" : "0px" }}
+      style={
+        {
+          "--tutti-surface": "var(--background-session-sidepanel)"
+        } as CSSProperties
+      }
     >
-      {open ? (
-        <Button
-          aria-label={closeLabel}
-          className="absolute top-2 right-2 z-20 bg-[var(--background-panel)] shadow-sm"
-          data-standalone-agent-terminal-close="true"
-          size="icon-sm"
-          title={closeLabel}
-          type="button"
-          variant="chrome"
-          onClick={onClose}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <CloseIcon aria-hidden className="size-3.5" />
-        </Button>
-      ) : null}
       <div
         className="h-full min-h-0 overflow-hidden"
         data-standalone-agent-terminal-surface="true"
       >
-        {runtime && sessionId ? (
+        {terminalFeature && sessionId ? (
           <TerminalNode
             externalState={externalState}
-            feature={runtime.feature}
+            feature={terminalFeature}
             nodeId={nodeId}
             sessionId={sessionId}
             showHeader={false}
@@ -895,6 +995,21 @@ function createStandaloneAgentTerminalNodeId(): string {
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `workspace-terminal:standalone-agent-tool:${instanceId}`;
+}
+
+function resolveStandaloneAgentTerminalTheme(): TerminalTheme {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return {};
+  }
+  const styles = window.getComputedStyle(document.documentElement);
+  const background = styles
+    .getPropertyValue("--background-session-sidepanel")
+    .trim();
+  const foreground = styles.getPropertyValue("--text-primary").trim();
+  return {
+    ...(background ? { background } : {}),
+    ...(foreground ? { cursor: foreground, foreground } : {})
+  };
 }
 
 function emptySubscribe(): () => void {

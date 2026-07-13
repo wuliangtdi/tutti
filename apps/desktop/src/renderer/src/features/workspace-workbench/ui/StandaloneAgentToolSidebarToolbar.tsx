@@ -1,205 +1,195 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import {
+  AddLinedIcon,
   Button,
   ChatIcon,
-  ChevronDownIcon,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  FileCodeIcon,
   FolderIcon,
+  MaximizeIcon,
   NavApplicationsLinedIcon,
-  ToolsIcon,
+  PanelIcon,
+  RestoreIcon,
+  TerminalLinedIcon,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
   WebIcon,
-  cn
+  type IconProps
 } from "@tutti-os/ui-system";
-import {
-  formatStandaloneAgentToolReminderCount,
-  isStandaloneAgentToolGroupActive,
-  type StandaloneAgentToolLauncherPanelId,
-  type StandaloneAgentToolPanelId
-} from "./standaloneAgentToolSidebarModel.ts";
-import { WorkspaceAgentStatusPetIcon } from "./WorkspaceAgentStatusPetIcon";
+import { type StandaloneAgentToolPanelId } from "./standaloneAgentToolSidebarModel.ts";
 
-export type ToolSidebarCopy = Record<
-  | StandaloneAgentToolPanelId
-  | "terminal"
-  | "close"
-  | "expand"
-  | "shrink"
-  | "tool",
-  string
-> & {
-  unavailable: string;
+export type ToolSidebarCopy = Record<StandaloneAgentToolPanelId, string> & {
+  closeRightPanel: string;
+  close: string;
+  expand: string;
+  newTab: string;
+  openRightPanel: string;
+  shrink: string;
+  tool: string;
 };
 
 export type ToolSidebarReminderCounts = Partial<
-  Record<StandaloneAgentToolPanelId | "terminal", number>
+  Record<StandaloneAgentToolPanelId, number>
 >;
+
+const toolSidebarPanelIconById = {
+  apps: NavApplicationsLinedIcon,
+  browser: WebIcon,
+  files: FolderIcon,
+  messages: ChatIcon,
+  terminal: TerminalLinedIcon
+} satisfies Record<StandaloneAgentToolPanelId, ComponentType<IconProps>>;
+
+export function ToolSidebarPanelIcon({
+  panel,
+  ...iconProps
+}: IconProps & { panel: StandaloneAgentToolPanelId }): ReactNode {
+  const Icon = toolSidebarPanelIconById[panel];
+  return <Icon {...iconProps} />;
+}
 
 export function StandaloneAgentToolSidebarToolbar({
   activePanel,
   copy,
+  isExpanded,
   reminders,
-  terminalOpen,
-  onSelectTool,
-  onTogglePanel
+  onOpenPanel,
+  onToggleExpansion,
+  onToggleSidebar
 }: {
   activePanel: StandaloneAgentToolPanelId | null;
   copy: ToolSidebarCopy;
+  isExpanded: boolean;
   reminders: ToolSidebarReminderCounts;
-  terminalOpen: boolean;
-  onSelectTool: (panel: StandaloneAgentToolLauncherPanelId) => void;
-  onTogglePanel: (
-    panel: Exclude<StandaloneAgentToolPanelId, "browser">
-  ) => void;
+  onOpenPanel: (panel: StandaloneAgentToolPanelId) => void;
+  onToggleExpansion: () => void;
+  onToggleSidebar: () => void;
 }): ReactNode {
-  const toolReminderCount =
-    (reminders.browser ?? 0) + (reminders.terminal ?? 0);
-  const toolActive = isStandaloneAgentToolGroupActive({
-    activePanel,
-    mountedPanels: [],
-    terminalMounted: terminalOpen,
-    terminalOpen
-  });
+  const reminderCount = Object.values(reminders).reduce(
+    (total, value) => total + (value ?? 0),
+    0
+  );
+  const label = activePanel ? copy.closeRightPanel : copy.openRightPanel;
 
   return (
     <TooltipProvider>
       <nav
         aria-label={copy.tool}
-        className="nodrag pointer-events-auto flex items-center gap-0.5 [-webkit-app-region:no-drag]"
+        className="nodrag pointer-events-auto flex h-[var(--agent-gui-workbench-header-height,44px)] items-center gap-1 [-webkit-app-region:no-drag]"
         data-standalone-agent-tool-sidebar-toolbar="true"
         onDoubleClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <ToolSidebarButton
-          active={activePanel === "files"}
-          icon={<FolderIcon aria-hidden className="size-4" />}
-          label={copy.files}
-          reminderCount={reminders.files}
-          onClick={() => onTogglePanel("files")}
-        />
-        <DropdownMenu modal={false}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  aria-label={copy.tool}
-                  className="relative h-7 gap-1 px-1.5 text-[var(--text-secondary)]"
-                  data-standalone-agent-tool-menu-trigger="true"
-                  size="sm"
-                  type="button"
-                  variant={toolActive ? "secondary" : "chrome"}
-                >
-                  <ToolsIcon aria-hidden className="size-4" />
-                  <ChevronDownIcon aria-hidden className="size-3" />
-                  <ReminderBadge count={toolReminderCount} floating />
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{copy.tool}</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end" className="min-w-36">
-            <DropdownMenuItem onSelect={() => onSelectTool("browser")}>
-              <WebIcon aria-hidden className="size-4" />
-              <span>{copy.browser}</span>
-              <ReminderBadge count={reminders.browser} />
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onSelectTool("terminal")}>
-              <FileCodeIcon aria-hidden className="size-4" />
-              <span>{copy.terminal}</span>
-              <ReminderBadge count={reminders.terminal} />
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <span aria-hidden className="mx-1 h-4 w-px bg-[var(--border-1)]" />
-        <ToolSidebarButton
-          active={activePanel === "apps"}
-          icon={<NavApplicationsLinedIcon aria-hidden className="size-4" />}
-          label={copy.apps}
-          reminderCount={reminders.apps}
-          onClick={() => onTogglePanel("apps")}
-        />
-        <ToolSidebarButton
-          active={activePanel === "messages"}
-          icon={
-            (reminders.messages ?? 0) > 0 ? (
-              <WorkspaceAgentStatusPetIcon
-                className="my-0 size-5"
-                imageClassName="size-5"
-                mood="running"
-              />
+        {activePanel ? (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={copy.newTab}
+                className="text-[var(--text-secondary)]"
+                size="icon-sm"
+                type="button"
+                variant="chrome"
+              >
+                <AddLinedIcon aria-hidden className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-36"
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              <DropdownMenuItem onSelect={() => onOpenPanel("files")}>
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="files"
+                />
+                <span>{copy.files}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenPanel("terminal")}>
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="terminal"
+                />
+                <span>{copy.terminal}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenPanel("browser")}>
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="browser"
+                />
+                <span>{copy.browser}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenPanel("apps")}>
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="apps"
+                />
+                <span>{copy.apps}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onOpenPanel("messages")}>
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="messages"
+                />
+                <span>{copy.messages}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        {activePanel ? (
+          <Button
+            aria-label={`${isExpanded ? copy.shrink : copy.expand} ${copy[activePanel]}`}
+            aria-pressed={isExpanded}
+            className="text-[var(--text-secondary)]"
+            size="icon-sm"
+            type="button"
+            variant="chrome"
+            onClick={onToggleExpansion}
+          >
+            {isExpanded ? (
+              <RestoreIcon aria-hidden className="size-3.5" />
             ) : (
-              <ChatIcon aria-hidden className="size-4" />
-            )
-          }
-          label={copy.messages}
-          reminderCount={reminders.messages}
-          onClick={() => onTogglePanel("messages")}
-        />
+              <MaximizeIcon aria-hidden className="size-3.5" />
+            )}
+          </Button>
+        ) : null}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-label={label}
+              aria-pressed={activePanel !== null}
+              className="relative"
+              data-standalone-agent-tool-sidebar-toggle="true"
+              size="icon-sm"
+              type="button"
+              variant={activePanel ? "secondary" : "chrome"}
+              onClick={onToggleSidebar}
+            >
+              <PanelIcon aria-hidden className="size-[18px] -scale-x-100" />
+              <ReminderBadge count={reminderCount} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{label}</TooltipContent>
+        </Tooltip>
       </nav>
     </TooltipProvider>
   );
 }
 
-function ToolSidebarButton({
-  active,
-  icon,
-  label,
-  reminderCount,
-  onClick
-}: {
-  active: boolean;
-  icon: ReactNode;
-  label: string;
-  reminderCount?: number;
-  onClick: () => void;
-}): ReactNode {
+function ReminderBadge({ count }: { count?: number }): ReactNode {
+  if (!count || count < 1) return null;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          aria-label={label}
-          aria-pressed={active}
-          className="relative"
-          size="icon-sm"
-          type="button"
-          variant={active ? "secondary" : "chrome"}
-          onClick={onClick}
-        >
-          {icon}
-          <ReminderBadge count={reminderCount} floating />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ReminderBadge({
-  count,
-  floating = false
-}: {
-  count?: number;
-  floating?: boolean;
-}): ReactNode {
-  const formattedCount = formatStandaloneAgentToolReminderCount(count);
-  if (!formattedCount) {
-    return null;
-  }
-  return (
-    <span
-      className={cn(
-        "ml-auto inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--state-danger)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]",
-        floating && "absolute -top-1 -right-1 ml-0"
-      )}
-    >
-      {formattedCount}
+    <span className="absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-[var(--state-danger)] px-1 text-[9px] leading-4 font-semibold text-[var(--white-stationary)]">
+      {count > 99 ? "99+" : Math.floor(count)}
     </span>
   );
 }

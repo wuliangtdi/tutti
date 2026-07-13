@@ -95,6 +95,7 @@ export interface WorkspaceFileManagerProps {
   hostOs?: NodeJS.Platform;
   i18n: WorkspaceFileManagerI18nRuntime;
   session: WorkspaceFileManagerSession;
+  showPreviewPanel?: boolean;
   surface?: "card" | "embedded";
 }
 
@@ -113,6 +114,7 @@ export function WorkspaceFileManager({
   renderExternalLocationContent,
   hostOs = "linux",
   session,
+  showPreviewPanel = true,
   surface = "card"
 }: WorkspaceFileManagerProps): ReactElement {
   const rootRef = useRef<HTMLElement | null>(null);
@@ -554,6 +556,7 @@ export function WorkspaceFileManager({
                 onOpenContextMenu={openContextMenu}
                 resolveEntryIconUrl={resolveEntryIconUrl}
                 session={session}
+                showPreviewPanel={showPreviewPanel}
               />
             </div>
           </>
@@ -683,7 +686,8 @@ function WorkspaceFileManagerPanelsContainer({
   onEntryDragStart,
   onOpenContextMenu,
   resolveEntryIconUrl,
-  session
+  session,
+  showPreviewPanel
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
   dateLocale?: TuttiDateLocale;
@@ -703,6 +707,7 @@ function WorkspaceFileManagerPanelsContainer({
     entry: WorkspaceFileEntry
   ) => Promise<string | null | undefined>;
   session: WorkspaceFileManagerSession;
+  showPreviewPanel: boolean;
 }): ReactElement {
   const { state, view } = useWorkspaceFileManagerPanelsView(session);
   const arrangedEntries = useMemo(
@@ -784,6 +789,7 @@ function WorkspaceFileManagerPanelsContainer({
       onEntryIconViewportLeave={reportEntryIconViewportLeave}
       selectedEntry={view.selectedEntry}
       selectedPath={view.selectedPath}
+      showPreviewPanel={showPreviewPanel}
       showDropOverlay={view.showDropOverlay}
       state={{
         entries: displayedEntries,

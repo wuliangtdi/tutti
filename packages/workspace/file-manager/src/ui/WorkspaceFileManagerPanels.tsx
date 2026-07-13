@@ -102,6 +102,7 @@ export function WorkspaceFileManagerPanels({
   onEntryIconViewportEnter,
   selectedEntry,
   selectedPath,
+  showPreviewPanel: showPreviewPanelEnabled = true,
   state,
   showDropOverlay,
   treeRows,
@@ -135,6 +136,7 @@ export function WorkspaceFileManagerPanels({
   onEntryIconViewportEnter?: (entry: WorkspaceFileEntry) => void;
   selectedEntry: WorkspaceFileEntry | null;
   selectedPath: string | null;
+  showPreviewPanel?: boolean;
   state: {
     entries: readonly WorkspaceFileEntry[];
     error: string | null;
@@ -425,7 +427,7 @@ export function WorkspaceFileManagerPanels({
     stopMoveDragAutoScroll,
     updateMoveDragAutoScroll
   ]);
-  const showPreviewPanel = layoutMode === "list";
+  const showPreviewPanel = showPreviewPanelEnabled && layoutMode === "list";
   const useStackedPreview = false;
   const previewPaneClassName = useStackedPreview
     ? "min-w-0 border-t border-[var(--border-1)]"
