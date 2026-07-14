@@ -104,60 +104,81 @@ func (api DaemonAPI) ListWorkspaceAgentSessionSectionPage(ctx context.Context, r
 	}, nil
 }
 
-func (api DaemonAPI) CountWorkspaceAgentSessionSection(ctx context.Context, request tuttigenerated.CountWorkspaceAgentSessionSectionRequestObject) (tuttigenerated.CountWorkspaceAgentSessionSectionResponseObject, error) {
+func (api DaemonAPI) ListWorkspaceAgentSessionSectionDeletionCandidates(ctx context.Context, request tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidatesRequestObject) (tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidatesResponseObject, error) {
 	if api.AgentSessionService == nil {
-		return tuttigenerated.CountWorkspaceAgentSessionSection503JSONResponse{
+		return tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidates503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	input := agentservice.CountSessionSectionInput{
+	input := agentservice.ListSessionSectionDeletionCandidatesInput{
 		SectionKey: strings.TrimSpace(request.Params.SectionKey),
 	}
 	if request.Params.AgentTargetId != nil {
 		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
 	}
-	count, err := api.AgentSessionService.CountSessionSection(ctx, string(request.WorkspaceID), input)
+	if request.Params.ExcludePinned != nil {
+		input.ExcludePinned = *request.Params.ExcludePinned
+	}
+	candidates, err := api.AgentSessionService.ListSessionSectionDeletionCandidates(ctx, string(request.WorkspaceID), input)
 	if err != nil {
-		return writeCountWorkspaceAgentSessionSectionError(err), nil
+		return writeListWorkspaceAgentSessionSectionDeletionCandidatesError(err), nil
 	}
-	response := tuttigenerated.CountWorkspaceAgentSessionSection200JSONResponse{
-		Count:       count.Count,
-		SectionKey:  count.SectionKey,
-		WorkspaceId: count.WorkspaceID,
+	response := tuttigenerated.ListWorkspaceAgentSessionSectionDeletionCandidates200JSONResponse{
+		ExcludePinned: candidates.ExcludePinned,
+		SectionKey:    candidates.SectionKey,
+		SessionIds:    candidates.SessionIDs,
+		WorkspaceId:   candidates.WorkspaceID,
 	}
-	if strings.TrimSpace(count.AgentTargetID) != "" {
-		response.AgentTargetId = &count.AgentTargetID
+	if strings.TrimSpace(candidates.AgentTargetID) != "" {
+		response.AgentTargetId = &candidates.AgentTargetID
 	}
 	return response, nil
 }
 
-func (api DaemonAPI) DeleteWorkspaceAgentSessionSection(ctx context.Context, request tuttigenerated.DeleteWorkspaceAgentSessionSectionRequestObject) (tuttigenerated.DeleteWorkspaceAgentSessionSectionResponseObject, error) {
+func (api DaemonAPI) DeleteWorkspaceAgentSessionsBatch(ctx context.Context, request tuttigenerated.DeleteWorkspaceAgentSessionsBatchRequestObject) (tuttigenerated.DeleteWorkspaceAgentSessionsBatchResponseObject, error) {
 	if api.AgentSessionService == nil {
-		return tuttigenerated.DeleteWorkspaceAgentSessionSection503JSONResponse{
+		return tuttigenerated.DeleteWorkspaceAgentSessionsBatch503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	input := agentservice.DeleteSessionSectionInput{
-		SectionKey: strings.TrimSpace(request.Params.SectionKey),
+	if request.Body == nil {
+		return writeDeleteWorkspaceAgentSessionsBatchError(agentservice.ErrInvalidArgument), nil
 	}
-	if request.Params.AgentTargetId != nil {
-		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
+	sessionIDs, ok := normalizeBatchDeleteSessionIDs(request.Body.SessionIds)
+	if !ok {
+		return writeDeleteWorkspaceAgentSessionsBatchError(agentservice.ErrInvalidArgument), nil
 	}
-	result, err := api.AgentSessionService.DeleteSessionSection(ctx, string(request.WorkspaceID), input)
+	result, err := api.AgentSessionService.DeleteSessionsBatch(ctx, string(request.WorkspaceID), agentservice.DeleteSessionsBatchInput{
+		SessionIDs: sessionIDs,
+	})
 	if err != nil {
-		return writeDeleteWorkspaceAgentSessionSectionError(err), nil
+		return writeDeleteWorkspaceAgentSessionsBatchError(err), nil
 	}
-	response := tuttigenerated.DeleteWorkspaceAgentSessionSection200JSONResponse{
+	return tuttigenerated.DeleteWorkspaceAgentSessionsBatch200JSONResponse{
 		RemovedMessages:   result.RemovedMessages,
 		RemovedSessionIds: result.RemovedSessionIDs,
 		RemovedSessions:   result.RemovedSessions,
-		SectionKey:        result.SectionKey,
-		WorkspaceId:       result.WorkspaceID,
+	}, nil
+}
+
+func normalizeBatchDeleteSessionIDs(input []string) ([]string, bool) {
+	if len(input) == 0 {
+		return nil, false
 	}
-	if strings.TrimSpace(result.AgentTargetID) != "" {
-		response.AgentTargetId = &result.AgentTargetID
+	result := make([]string, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, value := range input {
+		sessionID := strings.TrimSpace(value)
+		if sessionID == "" {
+			return nil, false
+		}
+		if _, exists := seen[sessionID]; exists {
+			return nil, false
+		}
+		seen[sessionID] = struct{}{}
+		result = append(result, sessionID)
 	}
-	return response, nil
+	return result, true
 }
 
 func (api DaemonAPI) ListWorkspaceAgentPinnedSessionPage(ctx context.Context, request tuttigenerated.ListWorkspaceAgentPinnedSessionPageRequestObject) (tuttigenerated.ListWorkspaceAgentPinnedSessionPageResponseObject, error) {

@@ -13,7 +13,6 @@ const (
 	sessionSectionKindConversations = "conversations"
 	sessionSectionKindProject       = "project"
 	sessionSectionKeyConversations  = "conversations"
-	sessionSectionDeletePageLimit   = 100
 )
 
 func (s *Service) ListSessionSections(
@@ -82,136 +81,112 @@ func (s *Service) ListSessionSectionPage(
 	return SessionSection{}, ErrInvalidArgument
 }
 
-func (s *Service) CountSessionSection(
+func (s *Service) ListSessionSectionDeletionCandidates(
 	ctx context.Context,
 	workspaceID string,
-	input CountSessionSectionInput,
-) (SessionSectionCount, error) {
+	input ListSessionSectionDeletionCandidatesInput,
+) (SessionSectionDeletionCandidates, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	sectionKey := strings.TrimSpace(input.SectionKey)
 	if workspaceID == "" || sectionKey == "" {
-		return SessionSectionCount{}, ErrInvalidArgument
+		return SessionSectionDeletionCandidates{}, ErrInvalidArgument
 	}
 	if _, _, err := s.resolveSessionSectionScope(ctx, sectionKey); err != nil {
-		return SessionSectionCount{}, err
+		return SessionSectionDeletionCandidates{}, err
 	}
-	counter, ok := s.SessionReader.(SessionSectionCounter)
+	reader, ok := s.SessionReader.(SessionSectionDeletionCandidateReader)
 	if !ok {
-		return SessionSectionCount{}, fmt.Errorf("%w: session section counter is unavailable", ErrInvalidArgument)
+		return SessionSectionDeletionCandidates{}, fmt.Errorf("%w: session section deletion candidate reader is unavailable", ErrInvalidArgument)
 	}
-	count, ok := counter.CountSessionSection(ctx, agentactivitybiz.CountSessionSectionInput{
+	candidates, ok := reader.ListSessionSectionDeletionCandidates(ctx, agentactivitybiz.ListSessionSectionDeletionCandidatesInput{
 		WorkspaceID:   workspaceID,
 		SectionKey:    sectionKey,
 		AgentTargetID: strings.TrimSpace(input.AgentTargetID),
+		ExcludePinned: input.ExcludePinned,
 	})
 	if !ok {
-		return SessionSectionCount{}, ErrInvalidArgument
+		return SessionSectionDeletionCandidates{}, ErrInvalidArgument
 	}
-	return SessionSectionCount{
+	return SessionSectionDeletionCandidates{
 		WorkspaceID:   workspaceID,
 		SectionKey:    sectionKey,
-		AgentTargetID: count.AgentTargetID,
-		Count:         count.Count,
+		AgentTargetID: candidates.AgentTargetID,
+		ExcludePinned: candidates.ExcludePinned,
+		SessionIDs:    candidates.SessionIDs,
 	}, nil
 }
 
-func (s *Service) DeleteSessionSection(
+func (s *Service) DeleteSessionsBatch(
 	ctx context.Context,
 	workspaceID string,
-	input DeleteSessionSectionInput,
-) (DeleteSessionSectionResult, error) {
+	input DeleteSessionsBatchInput,
+) (DeleteSessionsBatchResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	sectionKey := strings.TrimSpace(input.SectionKey)
-	if workspaceID == "" || sectionKey == "" {
-		return DeleteSessionSectionResult{}, ErrInvalidArgument
+	sessionIDs, err := normalizeSessionIDsForBatchDelete(input.SessionIDs)
+	if workspaceID == "" || err != nil {
+		return DeleteSessionsBatchResult{}, ErrInvalidArgument
 	}
-	kind, project, err := s.resolveSessionSectionScope(ctx, sectionKey)
-	if err != nil {
-		return DeleteSessionSectionResult{}, err
+	deleter, ok := s.SessionReader.(SessionBatchDeleter)
+	if !ok {
+		return DeleteSessionsBatchResult{}, fmt.Errorf("%w: session batch deleter is unavailable", ErrInvalidArgument)
 	}
-	agentTargetID := strings.TrimSpace(input.AgentTargetID)
-	targetSessionIDs, err := s.sessionSectionIDsForDelete(ctx, workspaceID, kind, sectionKey, project, agentTargetID)
-	if err != nil {
-		return DeleteSessionSectionResult{}, err
-	}
-	for _, agentSessionID := range targetSessionIDs {
+	runtimeClosed := make(map[string]struct{})
+	for _, agentSessionID := range sessionIDs {
 		if _, ok := s.controller().Session(workspaceID, agentSessionID); ok {
 			if err := s.controller().Close(ctx, RuntimeCloseInput{
 				WorkspaceID:    workspaceID,
 				AgentSessionID: agentSessionID,
 			}); err != nil {
-				return DeleteSessionSectionResult{}, normalizeRuntimeError(err)
+				return DeleteSessionsBatchResult{}, normalizeRuntimeError(err)
+			}
+			runtimeClosed[agentSessionID] = struct{}{}
+		}
+	}
+	result, err := deleter.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: workspaceID,
+		SessionIDs:  sessionIDs,
+	})
+	if err != nil {
+		return DeleteSessionsBatchResult{}, err
+	}
+	removed := make(map[string]struct{}, len(result.RemovedSessionIDs))
+	for _, sessionID := range result.RemovedSessionIDs {
+		removed[sessionID] = struct{}{}
+	}
+	for _, sessionID := range sessionIDs {
+		_, wasRemoved := removed[sessionID]
+		_, wasClosed := runtimeClosed[sessionID]
+		if wasRemoved || wasClosed {
+			if err := s.cleanupRuntime(ctx, workspaceID, sessionID); err != nil {
+				return DeleteSessionsBatchResult{}, err
 			}
 		}
 	}
-	deleter, ok := s.SessionReader.(SessionSectionDeleter)
-	if !ok {
-		return DeleteSessionSectionResult{}, fmt.Errorf("%w: session section deleter is unavailable", ErrInvalidArgument)
-	}
-	result, ok := deleter.DeleteSessionSection(ctx, agentactivitybiz.DeleteSessionSectionInput{
-		WorkspaceID:   workspaceID,
-		SectionKey:    sectionKey,
-		AgentTargetID: agentTargetID,
-	})
-	if !ok {
-		return DeleteSessionSectionResult{}, ErrInvalidArgument
-	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		agentSessionID = strings.TrimSpace(agentSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		if err := s.cleanupRuntime(ctx, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionSectionResult{}, err
-		}
-	}
-	return DeleteSessionSectionResult{
-		WorkspaceID:       workspaceID,
-		SectionKey:        sectionKey,
-		AgentTargetID:     result.AgentTargetID,
+	return DeleteSessionsBatchResult{
 		RemovedMessages:   result.RemovedMessages,
 		RemovedSessions:   result.RemovedSessions,
 		RemovedSessionIDs: result.RemovedSessionIDs,
 	}, nil
 }
 
-func (s *Service) sessionSectionIDsForDelete(
-	ctx context.Context,
-	workspaceID string,
-	kind string,
-	sectionKey string,
-	project *userprojectbiz.Project,
-	agentTargetID string,
-) ([]string, error) {
-	ids := make([]string, 0)
-	cursor := ""
-	for {
-		page, err := s.sessionSectionPage(
-			ctx,
-			workspaceID,
-			kind,
-			sectionKey,
-			project,
-			cursor,
-			sessionSectionDeletePageLimit,
-			agentTargetID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		for _, session := range page.Sessions {
-			sessionID := strings.TrimSpace(session.ID)
-			if sessionID != "" {
-				ids = append(ids, sessionID)
-			}
-		}
-		nextCursor := strings.TrimSpace(page.NextCursor)
-		if !page.HasMore || nextCursor == "" || nextCursor == cursor {
-			break
-		}
-		cursor = nextCursor
+func normalizeSessionIDsForBatchDelete(input []string) ([]string, error) {
+	if len(input) == 0 {
+		return nil, ErrInvalidArgument
 	}
-	return ids, nil
+	result := make([]string, 0, len(input))
+	seen := make(map[string]struct{}, len(input))
+	for _, value := range input {
+		sessionID := strings.TrimSpace(value)
+		if sessionID == "" {
+			return nil, ErrInvalidArgument
+		}
+		if _, exists := seen[sessionID]; exists {
+			return nil, ErrInvalidArgument
+		}
+		seen[sessionID] = struct{}{}
+		result = append(result, sessionID)
+	}
+	return result, nil
 }
 
 func (s *Service) ListPinnedSessionPage(

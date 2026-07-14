@@ -26,10 +26,7 @@ import {
   groupConversations,
   type ConversationSection
 } from "../agentGuiNodeViewConversation";
-import {
-  normalizeConversationRailProjectPath,
-  stabilizeConversationSections
-} from "./agentGUIConversationRailData";
+import { stabilizeConversationSections } from "./agentGUIConversationRailData";
 import { useAgentGUIConversationRail } from "./useAgentGUIConversationRail";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
@@ -95,7 +92,10 @@ export interface AgentGUIConversationRailPaneProps {
   onOpenConversationWindow?: (agentSessionId: string) => void;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRemoveProject: (path: string) => void;
-  onConfirmDeleteProjectConversations: (path?: string) => void;
+  onConfirmDeleteProjectConversations: (
+    sectionKey?: string,
+    agentTargetId?: string | null
+  ) => Promise<string[]>;
   onConfirmDeleteConversations: (agentSessionIds: string[]) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
   onRequestRenameConversation: (agentSessionId: string) => void;
@@ -108,7 +108,7 @@ export type AgentGUIProjectActionDialog =
       kind: "batch-delete";
       conversationCount: number;
       label: string;
-      path: string;
+      sessionIds: string[];
     }
   | {
       kind: "batch-delete-conversations";
@@ -173,6 +173,8 @@ export const AgentGUIConversationRailPane = memo(
     const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now());
     const [pendingProjectAction, setPendingProjectAction] =
       useState<AgentGUIProjectActionDialog | null>(null);
+    const [isRequestingBatchDeletion, setIsRequestingBatchDeletion] =
+      useState(false);
     const railElementRef = useRef<HTMLElement | null>(null);
     const conversationListRef = useRef<HTMLDivElement | null>(null);
     const conversationItemElementsRef = useRef(
@@ -298,19 +300,43 @@ export const AgentGUIConversationRailPane = memo(
           .join("|"),
       [groupedConversations]
     );
-    const projectConversationCountsByPath = useMemo(() => {
-      const counts = new Map<string, number>();
-      for (const conversation of displayConversations) {
-        const normalizedPath = normalizeConversationRailProjectPath(
-          conversation.project?.path
-        );
-        if (!normalizedPath) {
-          continue;
+    const sectionAgentTargetId =
+      conversationFilter.kind === "agentTarget"
+        ? conversationFilter.agentTargetId.trim()
+        : (sectionAgentTargetFallbackId?.trim() ?? "");
+    const requestSectionBatchDeletion = useCallback(
+      (section: ConversationSection) => {
+        if (isDeletingProjectConversations || isRequestingBatchDeletion) {
+          return;
         }
-        counts.set(normalizedPath, (counts.get(normalizedPath) ?? 0) + 1);
-      }
-      return counts;
-    }, [displayConversations]);
+        setIsRequestingBatchDeletion(true);
+        void onConfirmDeleteProjectConversations(
+          section.id,
+          sectionAgentTargetId || undefined
+        )
+          .then((sessionIds) => {
+            if (sessionIds.length === 0) {
+              return;
+            }
+            setPendingProjectAction({
+              kind:
+                section.kind === "project"
+                  ? "batch-delete"
+                  : "batch-delete-conversations",
+              conversationCount: sessionIds.length,
+              label: section.label,
+              sessionIds: [...sessionIds]
+            });
+          })
+          .finally(() => setIsRequestingBatchDeletion(false));
+      },
+      [
+        isDeletingProjectConversations,
+        isRequestingBatchDeletion,
+        onConfirmDeleteProjectConversations,
+        sectionAgentTargetId
+      ]
+    );
     const isRuntimeRailLoading =
       runtimeSectionsEnabled &&
       (runtimeRailSections === null || runtimeRailSectionsPending);
@@ -405,8 +431,6 @@ export const AgentGUIConversationRailPane = memo(
             groupedConversations.map((section, sectionIndex) => {
               const projectPath =
                 section.kind === "project" ? (section.project?.path ?? "") : "";
-              const normalizedProjectPath =
-                normalizeConversationRailProjectPath(projectPath);
               const projectLabel =
                 section.kind === "project" ? section.label : "";
               const isProjectSection = section.kind === "project";
@@ -417,10 +441,6 @@ export const AgentGUIConversationRailPane = memo(
                   groupedConversations[sectionIndex - 1]?.kind === "pinned");
               const isSectionCollapsed =
                 isProjectSection && collapsedProjectSectionIds.has(section.id);
-              const projectConversationCount = normalizedProjectPath
-                ? (projectConversationCountsByPath.get(normalizedProjectPath) ??
-                  0)
-                : 0;
               const sectionPageState = sectionPageStates.get(section.id);
               const sectionHasMore =
                 !conversationQuery.trim() && sectionPageState?.hasMore === true;
@@ -438,6 +458,13 @@ export const AgentGUIConversationRailPane = memo(
                     createConversationDisabled={createConversationDisabled}
                     currentTimeMs={currentTimeMs}
                     isDeletingConversation={isDeletingConversation}
+                    isDeletingProjectConversations={
+                      isDeletingProjectConversations
+                    }
+                    isRequestingBatchDeletion={isRequestingBatchDeletion}
+                    isConversationSearchActive={Boolean(
+                      conversationQuery.trim()
+                    )}
                     isLoadingMoreConversations={
                       sectionPageState?.isLoading ?? false
                     }
@@ -445,7 +472,6 @@ export const AgentGUIConversationRailPane = memo(
                     labels={labels}
                     pendingDeleteConversationId={pendingDeleteConversationId}
                     previewMode={previewMode}
-                    projectConversationCount={projectConversationCount}
                     projectLabel={projectLabel}
                     projectPath={projectPath}
                     registerItemElement={registerConversationItemElement}
@@ -460,6 +486,7 @@ export const AgentGUIConversationRailPane = memo(
                     onRequestDeleteConversation={onRequestDeleteConversation}
                     onRequestRenameConversation={onRequestRenameConversation}
                     onSelectConversation={onSelectConversation}
+                    onRequestSectionBatchDeletion={requestSectionBatchDeletion}
                     setPendingProjectAction={setPendingProjectAction}
                     onToggleConversationPinned={onToggleConversationPinned}
                     onMarkConversationUnread={onMarkConversationUnread}
@@ -514,7 +541,7 @@ export const AgentGUIConversationRailPane = memo(
               return;
             }
             if (action.kind === "batch-delete") {
-              onConfirmDeleteProjectConversations(action.path);
+              onConfirmDeleteConversations(action.sessionIds);
               return;
             }
             if (action.kind === "batch-delete-conversations") {

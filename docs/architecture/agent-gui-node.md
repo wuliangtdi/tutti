@@ -1099,15 +1099,25 @@ key.
 Section-level actions must use the same backend section contract when their
 scope is "everything in this section." For example, project batch delete cannot
 derive its target set solely from the currently rendered `section.items`, because
-those rows may only be the first page; it must use daemon section-scope
-operations such as `count` and `delete` by `sectionKey` before reporting the
-final target count or deleting the target set.
+those rows may only be the first page. Batch deletion uses a two-step snapshot
+flow: AgentGUI requests deletion candidate IDs by `sectionKey`, optional exact
+`agentTargetId`, and `excludePinned=true`; the confirmation count is the
+returned `sessionIds.length`; confirmation then sends that immutable ID list to
+the exact batch-delete endpoint. The delete command must not re-resolve section,
+target, or pinned membership. Sessions added after candidate selection are not
+deleted, while a selected session that is pinned or moved before confirmation
+is still deleted under the chosen snapshot semantics.
 Pinned conversations are returned beside those sections as a separate pinned
 page on the `listSessionSections` bootstrap response. AgentGUI may render that
 page as a local `pinned` group, but pinned is not a daemon section kind and
 must continue to be derived from session `pinnedAtUnixMs`. Pinned Show more
 uses the dedicated pinned page runtime method instead of the section page
-endpoint, because pinned has no daemon `sectionKey`.
+endpoint, because pinned has no daemon `sectionKey`. Ordinary project and Chats
+section pages must exclude pinned sessions before pagination and `hasMore`
+calculation, so the pinned page and ordinary section pages are mutually
+exclusive. Section action disabled state therefore uses only the ordinary
+section's `items` and `hasMore`; pinned rows never make an otherwise empty
+ordinary section deletable.
 Rail row actions that need row details must use the row from the displayed
 section model, not re-resolve it from the activity snapshot. Section pages can
 include historical sessions that are visible in the rail before they appear in

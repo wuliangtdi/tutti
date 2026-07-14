@@ -1914,6 +1914,129 @@ func TestSQLiteStoreListSessionSectionFiltersAgentTargetBeforePagination(t *test
 	}
 }
 
+func TestSQLiteStoreSessionSectionSeparatesPinnedAndDeletionCandidates(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	const workspaceID = "ws-agent-section-pinned"
+	if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: "Pinned Sections"}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := store.PutUserProject(ctx, userprojectbiz.Project{ID: "project-app", Path: "/workspace/app", Label: "App"}); err != nil {
+		t.Fatalf("PutUserProject() error = %v", err)
+	}
+	for index, sessionID := range []string{"ordinary", "pinned"} {
+		if err := reportSessionStateWithStableUpdatedAt(ctx, store, agentactivitybiz.SessionStateReport{
+			WorkspaceID: workspaceID, AgentSessionID: sessionID,
+			AgentTargetID: "codex-target", Origin: agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+			Provider: "codex", Cwd: "/workspace/app", Status: "completed", OccurredAtUnixMS: int64(100 + index),
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", sessionID, err)
+		}
+	}
+	if _, ok, err := store.UpdateSessionPinned(ctx, workspaceID, "pinned", true); err != nil || !ok {
+		t.Fatalf("UpdateSessionPinned() ok=%v error=%v, want true nil", ok, err)
+	}
+
+	ordinaryPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: workspaceID, SectionKey: "project:/workspace/app", Limit: 1,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection() ok=%v error=%v", ok, err)
+	}
+	if got, want := activitySessionIDs(ordinaryPage.Sessions), []string{"ordinary"}; !slices.Equal(got, want) || ordinaryPage.HasMore {
+		t.Fatalf("ordinary page = %#v hasMore=%v, want %#v false", got, ordinaryPage.HasMore, want)
+	}
+	pinnedPage, ok, err := store.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+		WorkspaceID: workspaceID, SectionKey: agentactivitybiz.PinnedSessionPageKey, Limit: 5,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSection(pinned) ok=%v error=%v", ok, err)
+	}
+	if got, want := activitySessionIDs(pinnedPage.Sessions), []string{"pinned"}; !slices.Equal(got, want) {
+		t.Fatalf("pinned page = %#v, want %#v", got, want)
+	}
+
+	excluded, ok, err := store.ListSessionSectionDeletionCandidates(ctx, agentactivitybiz.ListSessionSectionDeletionCandidatesInput{
+		WorkspaceID: workspaceID, SectionKey: "project:/workspace/app", AgentTargetID: "codex-target", ExcludePinned: true,
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSectionDeletionCandidates(excluded) ok=%v error=%v", ok, err)
+	}
+	if got, want := excluded.SessionIDs, []string{"ordinary"}; !slices.Equal(got, want) {
+		t.Fatalf("excluded candidates = %#v, want %#v", got, want)
+	}
+	included, ok, err := store.ListSessionSectionDeletionCandidates(ctx, agentactivitybiz.ListSessionSectionDeletionCandidatesInput{
+		WorkspaceID: workspaceID, SectionKey: "project:/workspace/app",
+	})
+	if err != nil || !ok {
+		t.Fatalf("ListSessionSectionDeletionCandidates(included) ok=%v error=%v", ok, err)
+	}
+	if got, want := included.SessionIDs, []string{"pinned", "ordinary"}; !slices.Equal(got, want) {
+		t.Fatalf("included candidates = %#v, want %#v", got, want)
+	}
+}
+
+func TestSQLiteStoreDeleteSessionsBatchUsesExactIdempotentSnapshot(t *testing.T) {
+	t.Parallel()
+
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	for _, workspaceID := range []string{"ws-agent-batch-delete", "ws-agent-batch-other"} {
+		if err := store.Create(ctx, workspacebiz.Summary{ID: workspaceID, Name: workspaceID}); err != nil {
+			t.Fatalf("Create(%s) error = %v", workspaceID, err)
+		}
+	}
+	for _, sessionID := range []string{"snapshot", "new-session"} {
+		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+			WorkspaceID: "ws-agent-batch-delete", AgentSessionID: sessionID,
+			Origin: agentsessionstore.WorkspaceAgentSessionOriginRuntime, Provider: "codex",
+			Cwd: "/workspace/app", Status: "completed", OccurredAtUnixMS: 100,
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", sessionID, err)
+		}
+	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID: "ws-agent-batch-other", AgentSessionID: "snapshot",
+		Origin: agentsessionstore.WorkspaceAgentSessionOriginRuntime, Provider: "codex", Status: "completed", OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(other) error = %v", err)
+	}
+	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
+		WorkspaceID: "ws-agent-batch-delete", AgentSessionID: "snapshot",
+		Origin:   agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Messages: []agentactivitybiz.MessageUpdate{{MessageID: "message-snapshot", TurnID: "turn-snapshot", Role: "assistant", Kind: "text", Status: "completed", Payload: map[string]any{"text": "done"}}},
+	}); err != nil {
+		t.Fatalf("ReportSessionMessages() error = %v", err)
+	}
+	if _, ok, err := store.UpdateSessionPinned(ctx, "ws-agent-batch-delete", "snapshot", true); err != nil || !ok {
+		t.Fatalf("UpdateSessionPinned() ok=%v error=%v", ok, err)
+	}
+
+	result, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: "ws-agent-batch-delete", SessionIDs: []string{"snapshot", "missing"},
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessionsBatch() error = %v", err)
+	}
+	if result.RemovedSessions != 1 || result.RemovedMessages != 1 || !slices.Equal(result.RemovedSessionIDs, []string{"snapshot"}) {
+		t.Fatalf("DeleteSessionsBatch() = %#v", result)
+	}
+	if _, ok, _ := store.GetSession(ctx, "ws-agent-batch-delete", "new-session"); !ok {
+		t.Fatal("new-session was deleted, want retained")
+	}
+	if _, ok, _ := store.GetSession(ctx, "ws-agent-batch-other", "snapshot"); !ok {
+		t.Fatal("other workspace session was deleted, want retained")
+	}
+	retry, err := store.DeleteSessionsBatch(ctx, agentactivitybiz.DeleteSessionsBatchInput{
+		WorkspaceID: "ws-agent-batch-delete", SessionIDs: []string{"snapshot"},
+	})
+	if err != nil || retry.RemovedSessions != 0 || len(retry.RemovedSessionIDs) != 0 {
+		t.Fatalf("DeleteSessionsBatch(retry) = %#v error=%v, want no-op", retry, err)
+	}
+}
+
 func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) {
 	t.Parallel()
 

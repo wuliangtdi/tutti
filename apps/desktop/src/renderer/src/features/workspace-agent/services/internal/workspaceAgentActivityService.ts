@@ -275,23 +275,24 @@ export class WorkspaceAgentActivityService
     return this.queryOperations.listSessionSectionPage(input);
   }
 
-  async countSessionSection(
-    input: Parameters<IWorkspaceAgentActivityService["countSessionSection"]>[0]
-  ): ReturnType<IWorkspaceAgentActivityService["countSessionSection"]> {
-    return this.queryOperations.countSessionSection(input);
+  async listSessionSectionDeletionCandidates(
+    input: Parameters<
+      IWorkspaceAgentActivityService["listSessionSectionDeletionCandidates"]
+    >[0]
+  ): ReturnType<
+    IWorkspaceAgentActivityService["listSessionSectionDeletionCandidates"]
+  > {
+    return this.queryOperations.listSessionSectionDeletionCandidates(input);
   }
 
-  async deleteSessionSection(
-    input: Parameters<IWorkspaceAgentActivityService["deleteSessionSection"]>[0]
-  ): ReturnType<IWorkspaceAgentActivityService["deleteSessionSection"]> {
+  async deleteSessionsBatch(
+    input: Parameters<IWorkspaceAgentActivityService["deleteSessionsBatch"]>[0]
+  ): ReturnType<IWorkspaceAgentActivityService["deleteSessionsBatch"]> {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const response =
-      await this.dependencies.tuttidClient.deleteWorkspaceAgentSessionSection(
+      await this.dependencies.tuttidClient.deleteWorkspaceAgentSessionsBatch(
         workspaceId,
-        {
-          agentTargetId: input.agentTargetId?.trim() || undefined,
-          sectionKey: input.sectionKey
-        },
+        { sessionIds: input.sessionIds },
         { signal: input.signal }
       );
     const removedSessionIds = response.removedSessionIds
@@ -308,12 +309,9 @@ export class WorkspaceAgentActivityService
       await this.load(workspaceId, input.signal);
     }
     return {
-      agentTargetId: response.agentTargetId,
       removedMessages: response.removedMessages,
       removedSessionIds,
-      removedSessions: response.removedSessions,
-      sectionKey: response.sectionKey,
-      workspaceId: response.workspaceId
+      removedSessions: response.removedSessions
     };
   }
 

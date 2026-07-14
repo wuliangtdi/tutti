@@ -38,6 +38,7 @@ SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provid
 FROM workspace_agent_sessions
 WHERE workspace_id = ?
   AND rail_section_key = ?
+  AND pinned_at_unix_ms = 0
   AND (? = '' OR agent_target_id = ?)
   AND deleted_at_unix_ms = 0
   AND json_extract(session_metadata_json, '$.visible') IS NOT 0
@@ -91,6 +92,57 @@ ORDER BY updated_at_unix_ms DESC, agent_session_id ASC`
 		Sessions:    sessions,
 		HasMore:     hasMore,
 		NextCursor:  nextCursor,
+	}, true, nil
+}
+
+func (s *Store) ListSessionSectionDeletionCandidates(
+	ctx context.Context,
+	input ListSessionSectionDeletionCandidatesInput,
+) (SessionSectionDeletionCandidates, bool, error) {
+	if s == nil || s.db == nil {
+		return SessionSectionDeletionCandidates{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	sectionKey := strings.TrimSpace(input.SectionKey)
+	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	if workspaceID == "" || sectionKey == "" || sectionKey == PinnedSessionPageKey {
+		return SessionSectionDeletionCandidates{}, false, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT agent_session_id
+FROM workspace_agent_sessions
+WHERE workspace_id = ?
+  AND rail_section_key = ?
+  AND (? = '' OR agent_target_id = ?)
+  AND (? = 0 OR pinned_at_unix_ms = 0)
+  AND deleted_at_unix_ms = 0
+  AND json_extract(session_metadata_json, '$.visible') IS NOT 0
+ORDER BY updated_at_unix_ms DESC, agent_session_id ASC
+`, workspaceID, sectionKey, agentTargetID, agentTargetID, input.ExcludePinned)
+	if err != nil {
+		return SessionSectionDeletionCandidates{}, false, fmt.Errorf("list workspace agent session section deletion candidates: %w", err)
+	}
+	defer rows.Close()
+
+	sessionIDs := make([]string, 0)
+	for rows.Next() {
+		var sessionID string
+		if err := rows.Scan(&sessionID); err != nil {
+			return SessionSectionDeletionCandidates{}, false, fmt.Errorf("scan workspace agent session section deletion candidate: %w", err)
+		}
+		if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return SessionSectionDeletionCandidates{}, false, fmt.Errorf("iterate workspace agent session section deletion candidates: %w", err)
+	}
+	return SessionSectionDeletionCandidates{
+		WorkspaceID:   workspaceID,
+		SectionKey:    sectionKey,
+		AgentTargetID: agentTargetID,
+		ExcludePinned: input.ExcludePinned,
+		SessionIDs:    sessionIDs,
 	}, true, nil
 }
 

@@ -8776,6 +8776,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   line-height: 1.2;
 }
 
+.agent-gui-node__composer-menu-item[data-disabled] {
+  cursor: not-allowed;
+  color: var(--text-disabled);
+  opacity: 0.5;
+}
+
 .agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-primary"]
   .agent-gui-node__composer-menu-item,
 .agent-gui-node__composer-menu-content[data-agent-composer-settings-layout="model-submenu"]

@@ -4193,6 +4193,88 @@ func TestServiceListPinnedSessionPageForwardsStableCursor(t *testing.T) {
 	}
 }
 
+func TestServiceListSessionSectionDeletionCandidatesForwardsFilters(t *testing.T) {
+	reader := &fakeSectionReader{
+		deletionCandidates: agentactivitybiz.SessionSectionDeletionCandidates{
+			WorkspaceID: "ws-1", SectionKey: "project:/workspace/project",
+			AgentTargetID: "claude-target", ExcludePinned: true,
+			SessionIDs: []string{"session-1", "session-2"},
+		},
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = reader
+	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
+		ID: "project-1", Path: "/workspace/project", Label: "Project",
+	}}}
+
+	result, err := service.ListSessionSectionDeletionCandidates(context.Background(), "ws-1", ListSessionSectionDeletionCandidatesInput{
+		SectionKey: "project:/workspace/project", AgentTargetID: "claude-target", ExcludePinned: true,
+	})
+	if err != nil {
+		t.Fatalf("ListSessionSectionDeletionCandidates() error = %v", err)
+	}
+	if !slices.Equal(result.SessionIDs, []string{"session-1", "session-2"}) || !result.ExcludePinned {
+		t.Fatalf("candidates = %#v", result)
+	}
+	if reader.lastDeletionCandidatesInput.AgentTargetID != "claude-target" || !reader.lastDeletionCandidatesInput.ExcludePinned {
+		t.Fatalf("candidate input = %#v", reader.lastDeletionCandidatesInput)
+	}
+}
+
+func TestServiceDeleteSessionsBatchClosesAllRuntimesBeforePersistence(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1"}
+	runtime.sessions["ws-1:session-2"] = ProviderRuntimeSession{ID: "session-2", WorkspaceID: "ws-1"}
+	reader := &fakeSectionReader{batchDeleteResult: agentactivitybiz.DeleteSessionsBatchResult{
+		RemovedSessions: 2, RemovedSessionIDs: []string{"session-1", "session-2"},
+	}}
+	service := newIsolatedAgentService(runtime)
+	service.SessionReader = reader
+
+	result, err := service.DeleteSessionsBatch(context.Background(), "ws-1", DeleteSessionsBatchInput{
+		SessionIDs: []string{" session-1 ", "session-2"},
+	})
+	if err != nil {
+		t.Fatalf("DeleteSessionsBatch() error = %v", err)
+	}
+	if len(runtime.closeCalls) != 2 || reader.batchDeleteCalls != 1 || !slices.Equal(reader.lastBatchDeleteInput.SessionIDs, []string{"session-1", "session-2"}) {
+		t.Fatalf("close calls=%#v batch input=%#v calls=%d", runtime.closeCalls, reader.lastBatchDeleteInput, reader.batchDeleteCalls)
+	}
+	if result.RemovedSessions != 2 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestServiceDeleteSessionsBatchDoesNotPersistAfterRuntimeCloseFailure(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1"}
+	runtime.closeErr = errors.New("close failed")
+	reader := &fakeSectionReader{}
+	service := newIsolatedAgentService(runtime)
+	service.SessionReader = reader
+
+	if _, err := service.DeleteSessionsBatch(context.Background(), "ws-1", DeleteSessionsBatchInput{SessionIDs: []string{"session-1"}}); err == nil {
+		t.Fatal("DeleteSessionsBatch() error = nil, want close failure")
+	}
+	if reader.batchDeleteCalls != 0 {
+		t.Fatalf("batch delete calls = %d, want 0", reader.batchDeleteCalls)
+	}
+}
+
+func TestServiceDeleteSessionsBatchRejectsBlankAndDuplicateIDs(t *testing.T) {
+	service := newIsolatedAgentService(newFakeRuntime())
+	reader := &fakeSectionReader{}
+	service.SessionReader = reader
+	for _, sessionIDs := range [][]string{nil, {" "}, {"session-1", " session-1 "}} {
+		if _, err := service.DeleteSessionsBatch(context.Background(), "ws-1", DeleteSessionsBatchInput{SessionIDs: sessionIDs}); !errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("DeleteSessionsBatch(%#v) error = %v, want invalid argument", sessionIDs, err)
+		}
+	}
+	if reader.batchDeleteCalls != 0 {
+		t.Fatalf("batch delete calls = %d, want 0", reader.batchDeleteCalls)
+	}
+}
+
 func sessionIDs(sessions []Session) []string {
 	ids := make([]string, 0, len(sessions))
 	for _, session := range sessions {
@@ -5076,8 +5158,14 @@ type fakeSessionReader struct {
 
 type fakeSectionReader struct {
 	fakeSessionReader
-	lastInput agentactivitybiz.ListSessionSectionInput
-	pages     map[string]agentactivitybiz.SessionSectionPage
+	lastInput                   agentactivitybiz.ListSessionSectionInput
+	lastDeletionCandidatesInput agentactivitybiz.ListSessionSectionDeletionCandidatesInput
+	deletionCandidates          agentactivitybiz.SessionSectionDeletionCandidates
+	lastBatchDeleteInput        agentactivitybiz.DeleteSessionsBatchInput
+	batchDeleteResult           agentactivitybiz.DeleteSessionsBatchResult
+	batchDeleteErr              error
+	batchDeleteCalls            int
+	pages                       map[string]agentactivitybiz.SessionSectionPage
 }
 
 func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
@@ -5098,6 +5186,22 @@ func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentact
 	page.WorkspaceID = input.WorkspaceID
 	page.SectionKey = input.SectionKey
 	return page, true
+}
+
+func (f *fakeSectionReader) ListSessionSectionDeletionCandidates(_ context.Context, input agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool) {
+	f.lastDeletionCandidatesInput = input
+	result := f.deletionCandidates
+	result.WorkspaceID = input.WorkspaceID
+	result.SectionKey = input.SectionKey
+	result.AgentTargetID = input.AgentTargetID
+	result.ExcludePinned = input.ExcludePinned
+	return result, true
+}
+
+func (f *fakeSectionReader) DeleteSessionsBatch(_ context.Context, input agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
+	f.batchDeleteCalls++
+	f.lastBatchDeleteInput = input
+	return f.batchDeleteResult, f.batchDeleteErr
 }
 
 type fakeUserProjectReader struct {
@@ -5433,12 +5537,12 @@ func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentacti
 	return agentactivitybiz.SessionSectionPage{}, false, nil
 }
 
-func (*activityProjectionRepoStub) CountSessionSection(context.Context, agentactivitybiz.CountSessionSectionInput) (agentactivitybiz.SessionSectionCount, bool, error) {
-	return agentactivitybiz.SessionSectionCount{}, false, nil
+func (*activityProjectionRepoStub) ListSessionSectionDeletionCandidates(context.Context, agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool, error) {
+	return agentactivitybiz.SessionSectionDeletionCandidates{}, false, nil
 }
 
-func (*activityProjectionRepoStub) DeleteSessionSection(context.Context, agentactivitybiz.DeleteSessionSectionInput) (agentactivitybiz.DeleteSessionSectionResult, bool, error) {
-	return agentactivitybiz.DeleteSessionSectionResult{}, false, nil
+func (*activityProjectionRepoStub) DeleteSessionsBatch(context.Context, agentactivitybiz.DeleteSessionsBatchInput) (agentactivitybiz.DeleteSessionsBatchResult, error) {
+	return agentactivitybiz.DeleteSessionsBatchResult{}, nil
 }
 
 func (r *activityProjectionRepoStub) ListSessionMessages(context.Context, agentactivitybiz.ListSessionMessagesInput) (agentactivitybiz.MessagePage, bool, error) {

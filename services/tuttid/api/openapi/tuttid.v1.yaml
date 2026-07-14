@@ -1943,6 +1943,39 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/batch:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    delete:
+      operationId: deleteWorkspaceAgentSessionsBatch
+      tags:
+        - agent-session
+      summary: Delete an exact snapshot of agent sessions for one workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteWorkspaceAgentSessionsBatchRequest"
+      responses:
+        "200":
+          description: Workspace agent sessions deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionsBatchResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -1973,44 +2006,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceAgentSessionSectionsResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "400":
-          $ref: "#/components/responses/InvalidRequestError"
-        "404":
-          $ref: "#/components/responses/WorkspaceNotFoundError"
-        "405":
-          $ref: "#/components/responses/MethodNotAllowedError"
-        "502":
-          $ref: "#/components/responses/WorkspaceOperationError"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailableError"
-    delete:
-      operationId: deleteWorkspaceAgentSessionSection
-      tags:
-        - agent-session
-      summary: Delete all agent sessions in one rail section for one workspace
-      parameters:
-        - name: sectionKey
-          in: query
-          required: true
-          schema:
-            type: string
-            minLength: 1
-        - name: agentTargetId
-          in: query
-          required: false
-          description: Optional agent target filter applied before deletion.
-          schema:
-            type: string
-            minLength: 1
-      responses:
-        "200":
-          description: Workspace agent session section deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteWorkspaceAgentSessionSectionResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -2078,14 +2073,14 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
-  /v1/workspaces/{workspaceID}/agent-session-sections/count:
+  /v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
     get:
-      operationId: countWorkspaceAgentSessionSection
+      operationId: listWorkspaceAgentSessionSectionDeletionCandidates
       tags:
         - agent-session
-      summary: Count agent sessions in one rail section for one workspace
+      summary: List the exact agent session deletion candidates in one rail section
       parameters:
         - name: sectionKey
           in: query
@@ -2096,17 +2091,24 @@ paths:
         - name: agentTargetId
           in: query
           required: false
-          description: Optional agent target filter applied before counting.
+          description: Optional agent target filter applied before selecting candidates.
           schema:
             type: string
             minLength: 1
+        - name: excludePinned
+          in: query
+          required: false
+          description: Exclude pinned sessions from the deletion candidate snapshot.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: Workspace agent session section count
+          description: Workspace agent session section deletion candidates
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionSectionCountResponse"
+                $ref: "#/components/schemas/WorkspaceAgentSessionSectionDeletionCandidatesResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -7980,13 +7982,14 @@ components:
       properties:
         removed:
           type: boolean
-    WorkspaceAgentSessionSectionCountResponse:
+    WorkspaceAgentSessionSectionDeletionCandidatesResponse:
       type: object
       additionalProperties: false
       required:
         - workspaceId
         - sectionKey
-        - count
+        - excludePinned
+        - sessionIds
       properties:
         workspaceId:
           type: string
@@ -7997,28 +8000,35 @@ components:
         agentTargetId:
           type: string
           minLength: 1
-        count:
-          type: integer
-          minimum: 0
-    DeleteWorkspaceAgentSessionSectionResponse:
+        excludePinned:
+          type: boolean
+        sessionIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    DeleteWorkspaceAgentSessionsBatchRequest:
       type: object
       additionalProperties: false
       required:
-        - workspaceId
-        - sectionKey
+        - sessionIds
+      properties:
+        sessionIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+    DeleteWorkspaceAgentSessionsBatchResponse:
+      type: object
+      additionalProperties: false
+      required:
         - removedMessages
         - removedSessions
         - removedSessionIds
       properties:
-        workspaceId:
-          type: string
-          minLength: 1
-        sectionKey:
-          type: string
-          minLength: 1
-        agentTargetId:
-          type: string
-          minLength: 1
         removedMessages:
           type: integer
           minimum: 0

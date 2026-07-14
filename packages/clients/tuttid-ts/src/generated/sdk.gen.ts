@@ -49,9 +49,6 @@ import type {
   CopyWorkspaceFileEntryData,
   CopyWorkspaceFileEntryErrors,
   CopyWorkspaceFileEntryResponses,
-  CountWorkspaceAgentSessionSectionData,
-  CountWorkspaceAgentSessionSectionErrors,
-  CountWorkspaceAgentSessionSectionResponses,
   CreateWorkspaceAgentSessionData,
   CreateWorkspaceAgentSessionErrors,
   CreateWorkspaceAgentSessionResponses,
@@ -94,9 +91,9 @@ import type {
   DeleteWorkspaceAgentSessionData,
   DeleteWorkspaceAgentSessionErrors,
   DeleteWorkspaceAgentSessionResponses,
-  DeleteWorkspaceAgentSessionSectionData,
-  DeleteWorkspaceAgentSessionSectionErrors,
-  DeleteWorkspaceAgentSessionSectionResponses,
+  DeleteWorkspaceAgentSessionsBatchData,
+  DeleteWorkspaceAgentSessionsBatchErrors,
+  DeleteWorkspaceAgentSessionsBatchResponses,
   DeleteWorkspaceAppData,
   DeleteWorkspaceAppErrors,
   DeleteWorkspaceAppFactoryJobData,
@@ -236,6 +233,9 @@ import type {
   ListWorkspaceAgentSessionMessagesErrors,
   ListWorkspaceAgentSessionMessagesResponses,
   ListWorkspaceAgentSessionsData,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesData,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesErrors,
+  ListWorkspaceAgentSessionSectionDeletionCandidatesResponses,
   ListWorkspaceAgentSessionSectionPageData,
   ListWorkspaceAgentSessionSectionPageErrors,
   ListWorkspaceAgentSessionSectionPageResponses,
@@ -1706,21 +1706,25 @@ export const createWorkspaceAgentSession = <
   });
 
 /**
- * Delete all agent sessions in one rail section for one workspace
+ * Delete an exact snapshot of agent sessions for one workspace
  */
-export const deleteWorkspaceAgentSessionSection = <
+export const deleteWorkspaceAgentSessionsBatch = <
   ThrowOnError extends boolean = false
 >(
-  options: Options<DeleteWorkspaceAgentSessionSectionData, ThrowOnError>
+  options: Options<DeleteWorkspaceAgentSessionsBatchData, ThrowOnError>
 ) =>
   (options.client ?? client).delete<
-    DeleteWorkspaceAgentSessionSectionResponses,
-    DeleteWorkspaceAgentSessionSectionErrors,
+    DeleteWorkspaceAgentSessionsBatchResponses,
+    DeleteWorkspaceAgentSessionsBatchErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/agent-session-sections",
-    ...options
+    url: "/v1/workspaces/{workspaceID}/agent-sessions/batch",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
@@ -1760,20 +1764,23 @@ export const listWorkspaceAgentSessionSectionPage = <
   });
 
 /**
- * Count agent sessions in one rail section for one workspace
+ * List the exact agent session deletion candidates in one rail section
  */
-export const countWorkspaceAgentSessionSection = <
+export const listWorkspaceAgentSessionSectionDeletionCandidates = <
   ThrowOnError extends boolean = false
 >(
-  options: Options<CountWorkspaceAgentSessionSectionData, ThrowOnError>
+  options: Options<
+    ListWorkspaceAgentSessionSectionDeletionCandidatesData,
+    ThrowOnError
+  >
 ) =>
   (options.client ?? client).get<
-    CountWorkspaceAgentSessionSectionResponses,
-    CountWorkspaceAgentSessionSectionErrors,
+    ListWorkspaceAgentSessionSectionDeletionCandidatesResponses,
+    ListWorkspaceAgentSessionSectionDeletionCandidatesErrors,
     ThrowOnError
   >({
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/v1/workspaces/{workspaceID}/agent-session-sections/count",
+    url: "/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates",
     ...options
   });
 

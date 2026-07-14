@@ -136,21 +136,28 @@ export class WorkspaceAgentActivityQueryOperations {
     };
   }
 
-  async countSessionSection(
-    input: Parameters<IWorkspaceAgentActivityService["countSessionSection"]>[0]
-  ): ReturnType<IWorkspaceAgentActivityService["countSessionSection"]> {
-    const response = await this.tuttidClient.countWorkspaceAgentSessionSection(
-      normalizeWorkspaceId(input.workspaceId),
-      {
-        agentTargetId: input.agentTargetId?.trim() || undefined,
-        sectionKey: input.sectionKey
-      },
-      { signal: input.signal }
-    );
+  async listSessionSectionDeletionCandidates(
+    input: Parameters<
+      IWorkspaceAgentActivityService["listSessionSectionDeletionCandidates"]
+    >[0]
+  ): ReturnType<
+    IWorkspaceAgentActivityService["listSessionSectionDeletionCandidates"]
+  > {
+    const response =
+      await this.tuttidClient.listWorkspaceAgentSessionSectionDeletionCandidates(
+        normalizeWorkspaceId(input.workspaceId),
+        {
+          agentTargetId: input.agentTargetId?.trim() || undefined,
+          excludePinned: input.excludePinned,
+          sectionKey: input.sectionKey
+        },
+        { signal: input.signal }
+      );
     return {
       agentTargetId: response.agentTargetId,
-      count: response.count,
+      excludePinned: response.excludePinned,
       sectionKey: response.sectionKey,
+      sessionIds: response.sessionIds,
       workspaceId: response.workspaceId
     };
   }

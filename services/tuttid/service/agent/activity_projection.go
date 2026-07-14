@@ -404,45 +404,41 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 	return removed, nil
 }
 
-func (p *ActivityProjection) CountSessionSection(
+func (p *ActivityProjection) ListSessionSectionDeletionCandidates(
 	ctx context.Context,
-	input agentactivitybiz.CountSessionSectionInput,
-) (agentactivitybiz.SessionSectionCount, bool) {
+	input agentactivitybiz.ListSessionSectionDeletionCandidatesInput,
+) (agentactivitybiz.SessionSectionDeletionCandidates, bool) {
 	if p == nil || p.repo == nil {
-		return agentactivitybiz.SessionSectionCount{}, false
+		return agentactivitybiz.SessionSectionDeletionCandidates{}, false
 	}
-	count, ok, err := p.repo.CountSessionSection(ctx, input)
+	candidates, ok, err := p.repo.ListSessionSectionDeletionCandidates(ctx, input)
 	if err != nil {
-		slog.Warn("count workspace agent session section failed",
-			"event", "workspace.agent_session.section.count_failed",
+		slog.Warn("list workspace agent session section deletion candidates failed",
+			"event", "workspace.agent_session.section.deletion_candidates_failed",
 			"workspace_id", input.WorkspaceID,
 			"section_key", input.SectionKey,
 			"error", err,
 		)
-		return agentactivitybiz.SessionSectionCount{}, false
+		return agentactivitybiz.SessionSectionDeletionCandidates{}, false
 	}
-	return count, ok
+	return candidates, ok
 }
 
-func (p *ActivityProjection) DeleteSessionSection(
+func (p *ActivityProjection) DeleteSessionsBatch(
 	ctx context.Context,
-	input agentactivitybiz.DeleteSessionSectionInput,
-) (agentactivitybiz.DeleteSessionSectionResult, bool) {
+	input agentactivitybiz.DeleteSessionsBatchInput,
+) (agentactivitybiz.DeleteSessionsBatchResult, error) {
 	if p == nil || p.repo == nil {
-		return agentactivitybiz.DeleteSessionSectionResult{}, false
+		return agentactivitybiz.DeleteSessionsBatchResult{}, nil
 	}
-	result, ok, err := p.repo.DeleteSessionSection(ctx, input)
+	result, err := p.repo.DeleteSessionsBatch(ctx, input)
 	if err != nil {
-		slog.Warn("delete workspace agent session section failed",
-			"event", "workspace.agent_session.section.delete_failed",
+		slog.Warn("delete workspace agent sessions batch failed",
+			"event", "workspace.agent_session.batch_delete_failed",
 			"workspace_id", input.WorkspaceID,
-			"section_key", input.SectionKey,
 			"error", err,
 		)
-		return agentactivitybiz.DeleteSessionSectionResult{}, false
-	}
-	if !ok {
-		return agentactivitybiz.DeleteSessionSectionResult{}, false
+		return agentactivitybiz.DeleteSessionsBatchResult{}, err
 	}
 	for _, agentSessionID := range result.RemovedSessionIDs {
 		agentSessionID = strings.TrimSpace(agentSessionID)
@@ -451,7 +447,7 @@ func (p *ActivityProjection) DeleteSessionSection(
 		}
 		p.publishActivityUpdated(ctx, input.WorkspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(input.WorkspaceID, agentSessionID))
 	}
-	return result, true
+	return result, nil
 }
 
 func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID string) (ClearSessionsResult, error) {
