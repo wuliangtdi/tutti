@@ -463,6 +463,23 @@ func normalizeComposerSettingsForProvider(provider string, settings ComposerSett
 	return settings
 }
 
+// normalizeObservedComposerSettingsForProvider normalizes settings attached to
+// an already-established runtime or persisted session. Open provider identities
+// have already been authorized through their Agent Target at session creation,
+// so their provider-owned settings must not be clamped by the closed built-in
+// composer registry.
+func normalizeObservedComposerSettingsForProvider(provider string, settings ComposerSettings) ComposerSettings {
+	if agentprovider.Normalize(provider) != "" || agentprovider.NormalizeOpen(provider) == "" {
+		return normalizeComposerSettingsForProvider(provider, settings)
+	}
+	settings.Model = strings.TrimSpace(settings.Model)
+	settings.PermissionModeID = strings.TrimSpace(settings.PermissionModeID)
+	settings.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
+	settings.Speed = strings.TrimSpace(settings.Speed)
+	settings.ConversationDetailMode = normalizeComposerConversationDetailMode(settings.ConversationDetailMode)
+	return settings
+}
+
 func normalizeComposerConversationDetailMode(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return ""
@@ -565,7 +582,7 @@ func normalizeComposerSettingsPointerForProvider(provider string, settings *Comp
 	if settings == nil {
 		return nil
 	}
-	normalized := normalizeComposerSettingsForProvider(provider, *settings)
+	normalized := normalizeObservedComposerSettingsForProvider(provider, *settings)
 	if composerProviderUsesModelReasoningCatalog(provider) {
 		normalized.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
 	}
