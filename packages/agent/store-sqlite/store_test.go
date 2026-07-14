@@ -221,7 +221,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		Provider:          "codex",
 		ProviderSessionID: "provider-1",
 		Cwd:               "/workspace",
-		Title:             "hello",
+		Title:             "@renderer.js",
 		Status:            "running",
 		OccurredAtUnixMS:  100,
 	})
@@ -233,6 +233,9 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 	}
 	if state.Session.UserID != "user-1" {
 		t.Fatalf("state session user id = %q", state.Session.UserID)
+	}
+	if state.Session.Title != "@renderer.js" {
+		t.Fatalf("state session title = %q, want canonical title", state.Session.Title)
 	}
 	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
@@ -300,8 +303,8 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionPinned() = %#v ok=%v error=%v", pinned, ok, err)
 	}
 
-	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", "  Renamed session  ")
-	if err != nil || !ok || renamed.Title != "Renamed session" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
+	renamed, ok, err := store.UpdateSessionTitle(ctx, "ws-1", "session-1", " final ")
+	if err != nil || !ok || renamed.Title != "final" || renamed.UpdatedAtUnixMS < pinned.UpdatedAtUnixMS {
 		t.Fatalf("UpdateSessionTitle() = %#v ok=%v error=%v", renamed, ok, err)
 	}
 
@@ -310,7 +313,7 @@ func TestStoreReportAndListSessionLifecycle(t *testing.T) {
 		t.Fatalf("UpdateSessionTitle(blank) = %#v ok=%v error=%v, want no update", blankRenamed, ok, err)
 	}
 	sessionAfterBlankTitle, ok, err := store.GetSession(ctx, "ws-1", "session-1")
-	if err != nil || !ok || sessionAfterBlankTitle.Title != "Renamed session" {
+	if err != nil || !ok || sessionAfterBlankTitle.Title != "final" {
 		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
 	}
 

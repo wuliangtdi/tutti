@@ -47,6 +47,12 @@ turn and may contain many settled turns. Running, waiting, completed, failed,
 and canceled are turn lifecycle states; they must not be copied onto the
 session as a competing lifecycle field.
 
+Conversation lists order a session by the latest user turn: each turn's time is
+the earliest user message in that turn, and the session time is the maximum of
+those turn times. The renderer uses the projected latest turn directly rather
+than loading message history just to calculate this key. A session with no user
+message uses its creation time.
+
 Commands that cross process or persistence boundaries use a saga/outbox flow:
 
 ```text
@@ -240,15 +246,48 @@ launch preparation.
 UI affordances that aggregate across providers, such as rail provider filters
 and composer provider switching, are always part of the unified AgentGUI
 surface and do not belong to durable AgentGUI node data.
-Provider rail containers and tiles are interactive workbench chrome: they must
-explicitly release host/window drag regions with `nodrag` and
+Provider rail containers, tiles, and management dialogs are interactive
+workbench chrome: they must explicitly release host/window drag regions with `nodrag` and
 `-webkit-app-region: no-drag`, otherwise clicks near the window edge can be
 captured as drag gestures before AgentGUI sees the provider filter action.
-Agent rail ordering is also UI-local chrome state. Drag sorting may
-persist a workspace-scoped order in browser-local storage, but must not write
-that preference into controller state, session state, or durable AgentGUI node
-data. The aggregate `All` entry exists only for multiple agents and stays fixed
-above them.
+Agent rail ordering and visibility are also UI-local chrome state. Drag sorting
+and the rail management dialog persist one device-local order and hidden-target
+set in browser-local storage; they must not write those preferences into
+controller state, session state, or durable AgentGUI node data. The management
+dialog changes only presentation and never installs, removes, enables, or
+disables a real agent target. The provider rail and empty-home new-conversation
+carousel and agent selector consume the same ordered visible-target projection,
+so manager changes update all new-conversation affordances immediately. If the
+selected empty-home target becomes hidden, the home composer moves to the first
+remaining visible target; active sessions keep their recorded target identity.
+Targets with a canonical `working` or `waiting` conversation cannot be hidden;
+the manager blocks the remove action and immediately shows a deduplicated,
+localized explanation when the target enters the hidden drop zone, without
+writing the local preference. Hiding the selected rail target otherwise returns
+the rail filter to `All`. The manager
+presents available and hidden targets as separate icon grids. A long press
+enters a local edit mode for removal. Both grids are drop zones: same-grid drops
+reorder, and cross-grid drops atomically change local visibility and order. The
+pending drop position mirrors the provider rail by shifting the target tile
+aside and showing the same brand-color insertion line; the previewed
+before/after position is also the position committed on drop. At least one
+target must remain available, so both the remove action and an
+available-to-hidden drop enforce that invariant. These gestures still update
+only the same local chrome preference. The manager keeps each target tile's
+outer hit box layout-stable, shifts only its inner visual content, and renders a
+separate insertion-line element. Cross-grid midpoint decisions use hysteresis
+so a stationary pointer cannot make the target and insertion line oscillate.
+Starting a drag must not exit edit mode: the manager pauses the edit wiggle only
+while a drag is active, then resumes it after same-grid reorder or cross-grid
+visibility changes. Blank-space clicks, Escape, and closing the dialog remain
+the explicit edit-mode exit paths.
+While edit mode is active, the first Escape leaves edit mode without dismissing
+the manager; a second Escape closes the dialog. Both grids use the same compact
+five-column icon layout.
+Visibility controls stay hidden in the default state; entering edit mode shows
+red remove controls for available targets and green restore controls for hidden
+targets together. The aggregate `All` entry stays fixed above agents and cannot
+be hidden or reordered.
 Provider-scoped rail footer affordances, such as usage limits and environment
 setup, follow the rail's active provider filter target in multi-provider scope;
 when the rail filter is `All`, they should stay hidden because there is no
@@ -438,13 +477,20 @@ Agent window are separate dynamic entries; neither route may statically import
 the other route's body through a feature barrel. Workbench Agent contribution
 registration keeps only its lightweight node and dock descriptor on the OS
 cold path. The full `DesktopAgentGUIWorkbenchBody`, rich-text editor, mention
-search controller, and AgentGUI presentation graph load when an Agent surface
-is required. Entering standalone Agent mode starts a dynamic preload of that
-body while allowing the lightweight standalone shell to render independently;
-the body fetch must not block the shell, and OS mode must not trigger it.
+search controller, and AgentGUI presentation graph remain outside the common
+desktop shell entry. Both the OS workspace route and standalone Agent route
+statically own the body inside their already-lazy route chunks. This avoids a
+second body-level import waterfall after either route begins rendering while
+keeping non-workspace desktop routes outside the AgentGUI graph.
 Every blocking boundary before the real AgentGUI controller mounts uses that
 same startup-shell geometry: the route-level Suspense fallback, workspace
-catalog hydration, workbench host-session binding, and the lazy AgentGUI body.
+catalog hydration, and workbench host-session binding.
+The reusable body geometry is owned by the narrow
+`@tutti-os/agent-gui/startup-shell` entry. The primitive is runtime-source
+agnostic: local/shared ownership, directory loading, and launch routing remain
+host concerns. Desktop owns the optional standalone-window chrome around that
+body; another host may compose the same primitive at its own loading boundary
+without adding host identity to the AgentGUI presentation package.
 The full-window variant keeps the header, provider rail, conversation-rail
 skeleton, and empty-home hero composer visible; after the real header mounts,
 the body-only variant preserves that new-conversation geometry without
@@ -471,6 +517,9 @@ conversation-rail and right-panel toggles hidden; reveal them only after the
 body commits so loading chrome cannot target unavailable content.
 Startup optimizations such as mention browse warming must begin from the
 mounted AgentGUI lifecycle, never from workspace contribution registration.
+Local AgentGUI startup before the body module evaluates is module loading, not
+workspace or session hydration. Reserve hydration terminology for injecting or
+reconciling runtime state after the relevant controller exists.
 File activation in the standalone Agent window must use the host-owned right
 Files sidebar. Conversation links and workspace-reference preview requests open
 that panel and pass a reveal intent so the reusable file manager selects and
@@ -498,11 +547,13 @@ not start a second initial load; concurrent explicit loads share one in-flight
 result. Outcome notification subscriptions must also start that workspace's
 activity event stream. They remain in baseline mode until the first
 authoritative workspace reconcile reaches `ready`, seed all historical settled
-turn ids without notifying, and only then emit notifications for new settled
-turns. When an event arrives before the session is cached and requires HTTP
-reconciliation, preserve the original `state_patch` for session-event
-consumers; rebuilding it from session state can discard `turn.outcome` or
-`turnId` and suppress the completed/failed foreground toast.
+turn ids without notifying, and only then emit notifications for settled turns
+backed by a live `turn_update`. A session-level reconcile can hydrate historical
+settled turns after that bounded baseline; first appearance in the engine is not
+notification causality. When an event arrives before the session is cached and
+requires HTTP reconciliation, preserve the original `state_patch` for
+session-event consumers; rebuilding it from session state can discard
+`turn.outcome` or `turnId` and suppress the completed/failed foreground toast.
 Browser and Terminal tool bodies must mount the existing OS node UI directly:
 `BrowserNode` in the right panel and `TerminalNode` in the bottom tray. Do not
 nest another `WorkbenchHost` inside the standalone shell; the nested canvas can
@@ -549,6 +600,19 @@ run the normal cwd/user-project grouping so the selected row remains visible in
 the matching project group. This overlay must stay out of canonical pagination
 state and be de-duplicated by conversation id when the real paginated row later
 arrives; session detail/state load owns true not-found handling.
+Once a user selection becomes the active intent, rail pagination or bounded-list
+absence must not demote it into requested/resolving fallback. Only an explicit
+replacement, home transition, deletion, or authoritative not-found result may
+clear that selection.
+Selecting any rail row whose detail is not cached must enter the engine-owned
+session reconcile lifecycle and request state plus messages as one semantic
+load. Detail availability is explicit: `loading`, `ready`, `not_found`, or
+`error`. The skeleton follows the reconcile record, `ready` with zero rows is a
+valid empty detail, and only an authoritative tombstone/not-found result may
+show the unavailable state. Once authoritative not-found wins, presentation
+must suppress any previously projected transcript rows instead of mixing stale
+content with unavailable-state layout. An empty message projection is not
+evidence that loading finished or that the session is gone.
 
 Agent GUI is organized by vertical behavior rather than one controller with
 horizontal helper piles. A vertical module owns its projection, commands,
@@ -1517,15 +1581,21 @@ User-visible rules:
 
 ```text
 runtime snapshot session + cached messages
-  -> Agent GUI title projection
+  -> canonical session.title from the daemon
   -> rail row / detail header / workbench header / dock popup / toast title
 ```
 
 User-visible rules:
 
-- AgentGUI conversation titles must use the shared title projection before they
-  reach desktop-owned chrome, dock previews, message center cards, or toast
-  notifications. Do not display raw `session.title.trim()` in those surfaces.
+- `session.title` is a shared, user-visible canonical plain-text field. The
+  daemon converts rich title input once before session state is persisted, and
+  the SQLite store backfills existing rows during migration without changing
+  session creation/update timestamps. CLI, Agent, and desktop surfaces consume
+  this same field and must not independently parse title Markdown or add
+  mention prefixes.
+- AgentGUI projection may still handle UI-local concerns such as provider-only
+  placeholders and localized fallback labels, but it must not be the source of
+  title syntax normalization.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
@@ -1534,9 +1604,10 @@ User-visible rules:
   authoritative session into the runtime snapshot. Do not update only the rail
   list, otherwise the rail row, active detail header, workbench title, and dock
   surfaces can diverge.
-- Title projection must normalize rich mention markdown, strip provider-only and
-  untitled placeholders from workbench chrome, and use cached first-user-message
-  content only when the session title is not displayable.
+- Title projection strips provider-only and untitled placeholders from workbench
+  chrome. First-user-message fallback is compatibility behavior for snapshots
+  that predate the canonical title write boundary; new session writes should
+  establish the title before persistence.
 
 ### Detail Pane And Transcript
 
@@ -1551,6 +1622,13 @@ activeConversationId
 
 User-visible rules:
 
+- Transcript message bodies and copy payloads retain their rich-text
+  serialization. Compact presentation derived from those messages, including
+  the user-message locator, activity summaries, and tooltips, converts rich
+  links to human-readable labels in the frontend projection without mutating
+  the source message. This display formatter is separate from session-title
+  canonicalization: new and migrated `session.title` values remain daemon-owned
+  plain text and must not depend on renderer parsing.
 - A row can be selected while its transcript is still loading. Treat rail
   selection and detail message loading as separate states.
 - Transcript rows are projected data. Rendering components should not parse
@@ -1609,6 +1687,10 @@ User-visible rules:
   change must reload options with the active session settings. ACP owns option
   values and ordering; the relevant locale catalog owns user-visible labels and
   descriptions, including when live runtime options are the fresher source.
+  When a provider does not advertise configurable reasoning (for example
+  Cursor, which embeds effort inside parameterized model ids), the composer
+  must clear draft/default `reasoningEffort` for that target and must not
+  render a stale effort label next to the model trigger.
 - Shift+Tab plan mode is a provider capability, not a frontend allowlist. The
   daemon's typed pre-session composer capabilities and typed live session
   capabilities must both advertise `planMode` before AgentGUI enables the
@@ -1771,17 +1853,17 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                                    | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                       | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                            | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | controller local create state    | home `startConversation` begins                                | new-session activation succeeds, fails, or is abandoned as stale               |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                   | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                             | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                      | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing        | options/settings resolve or fallback state is applied                          |
-| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready | captured status says provider is ready or user fixes setup                     |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                           | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                    | Starts when                                                                            | Clears when                                                                    |
+| ------------------------------ | -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                                               | list load resolves or errors                                                   |
+| Selected detail skeleton       | session view store/controller    | active session messages load starts                                                    | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | controller local create state    | home `startConversation` begins                                                        | new-session activation succeeds, fails, or is abandoned as stale               |
+| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`                                           | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                                                     | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins                                              | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing                                | options/settings resolve or fallback state is applied                          |
+| Provider setup notice          | desktop provider status adapter  | captured provider status says the active provider is not ready after a settled recheck | captured status says provider is ready or user fixes setup                     |
+| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                                                   | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
@@ -1790,6 +1872,11 @@ Desktop restore must not project "not ready" from an uncaptured provider-status
 snapshot. Until the first captured provider status exists, pass unknown provider
 readiness into AgentGUI so startup does not flash a false "configure provider"
 notice before local Codex or other provider detection returns.
+When the active Agent GUI provider already has a cached not-ready status (for
+example a background catalog probe that raced ahead of Cursor auth), desktop
+must refresh that provider once and keep readiness unknown while the recheck is
+pending. Otherwise switching into the provider flashes the setup notice even
+though the composer can already send after auto-connect settles.
 
 ### Error, Retry, And Recovery
 

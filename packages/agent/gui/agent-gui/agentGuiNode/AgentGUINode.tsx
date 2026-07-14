@@ -44,7 +44,8 @@ import {
 } from "./AgentGUINode.labels";
 import {
   resolveAgentGUIRailStatusProvider,
-  slashStatusLimitsFromQuotas
+  slashStatusLimitsFromQuotas,
+  slashStatusQuotasFromCanonicalUsage
 } from "./AgentGUINode.usage";
 
 export type { AgentGUINodeProps } from "./AgentGUINode.types";
@@ -83,8 +84,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     isMaximized = false,
     isActive,
     embedded = false,
-    previewMode = false
+    previewMode = false,
+    conversationRailAutoCollapseWidthPx = null
   } = frame;
+  const railAutoCollapseWidthPx =
+    conversationRailAutoCollapseWidthPx ?? undefined;
   const {
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
@@ -207,7 +211,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const isConversationRailManuallyCollapsed =
     state.conversationRailCollapsed === true;
   const isConversationRailAutoCollapsed =
-    shouldAutoCollapseAgentGUIConversationRail(width);
+    shouldAutoCollapseAgentGUIConversationRail(width, railAutoCollapseWidthPx);
   const isConversationRailCollapsed =
     isConversationRailManuallyCollapsed || isConversationRailAutoCollapsed;
   const minSize = useMemo(
@@ -375,10 +379,16 @@ export const AgentGUINode = memo(function AgentGUINode({
       ) === "installed"
     );
   }, [activeReadinessProvider, managedAgentsState]);
+  const canonicalSlashStatusQuotas = slashStatusQuotasFromCanonicalUsage(
+    viewModel.detail.usage
+  );
   const slashStatusQuotaSource =
-    activeAgentProbe?.usage?.quotas && activeAgentProbe.usage.quotas.length > 0
-      ? activeAgentProbe.usage.quotas
-      : [];
+    canonicalSlashStatusQuotas.length > 0
+      ? canonicalSlashStatusQuotas
+      : activeAgentProbe?.usage?.quotas &&
+          activeAgentProbe.usage.quotas.length > 0
+        ? activeAgentProbe.usage.quotas
+        : [];
   const slashStatusLimits = useMemo(
     () =>
       slashStatusLimitsFromQuotas(
@@ -394,6 +404,11 @@ export const AgentGUINode = memo(function AgentGUINode({
       viewModel.composer.composerSettings.selectedModelValue
     ]
   );
+  const slashStatusLimitsUnavailable =
+    slashStatusLimits.length === 0 &&
+    canonicalSlashStatusQuotas.length === 0 &&
+    !(workspaceAgentProbes?.isLoadingUsage ?? false) &&
+    (Boolean(activeAgentProbe?.usage) || Boolean(activeAgentProbe?.lastError));
   const railSlashStatusQuotaSource =
     railStatusProvider &&
     railAgentProbe?.usage?.quotas &&
@@ -586,7 +601,10 @@ export const AgentGUINode = memo(function AgentGUINode({
         const renderedWidth = renderFrame.size.width;
         const isRenderedConversationRailCollapsed =
           isConversationRailCollapsed ||
-          shouldAutoCollapseAgentGUIConversationRail(renderedWidth);
+          shouldAutoCollapseAgentGUIConversationRail(
+            renderedWidth,
+            railAutoCollapseWidthPx
+          );
 
         return (
           <AgentGUINodeView
@@ -604,6 +622,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             slashStatusLimitsLoading={
               workspaceAgentProbes?.isLoadingUsage ?? false
             }
+            slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
             railConfigProvider={railStatusProvider}
             railSlashStatusLimits={railSlashStatusLimits}
             slashStatusUsageCapturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
@@ -612,6 +631,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             providerAuthAccountLabels={providerAuthAccountLabels}
             onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
             onAgentUsageRefresh={handleAgentUsageRefresh}
+            onSlashStatusOpen={handleAgentProbeInfoOpen}
             previewMode={previewMode}
             onLinkAction={handleLinkAction}
             onHandoffConversation={onHandoffConversation}

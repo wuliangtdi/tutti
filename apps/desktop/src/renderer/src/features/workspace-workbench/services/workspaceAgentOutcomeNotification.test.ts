@@ -62,6 +62,7 @@ test("controller notifies a new turn that first appears settled in one engine ba
   markWorkspaceReconcileReady(engine);
   const harness = createOutcomeNotificationHarness(engine);
 
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
   dispatchSession(engine);
   dispatchTurn(engine, "settled", "completed");
 
@@ -83,6 +84,7 @@ test("controller baselines settled turns received during initial hydration", () 
 
   dispatchTurn(engine, "running", undefined, "new-turn");
   dispatchTurn(engine, "settled", "completed", "new-turn");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed", "new-turn"));
   assert.equal(harness.notifications.length, 1);
   harness.controller.dispose();
 });
@@ -94,14 +96,8 @@ test("controller notifies once for a canonical running to settled transition", (
   const harness = createOutcomeNotificationHarness(engine);
 
   dispatchTurn(engine, "running");
-  harness.events[0]?.(
-    messageUpdateEvent({
-      content: "Fix the installer bug",
-      role: "user",
-      turnId: "turn-1"
-    })
-  );
   dispatchTurn(engine, "settled", "completed");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
   dispatchTurn(engine, "settled", "completed");
 
   assert.deepEqual(harness.foregroundNotifications, [
@@ -110,7 +106,7 @@ test("controller notifies once for a canonical running to settled transition", (
       agentSessionId: "session-1",
       body: "The agent finished this run.",
       closeLabel: "Close",
-      conversationTitle: "Fix the installer bug",
+      conversationTitle: "Build feature",
       level: "success",
       provider: "codex",
       statusLabel: "Completed",
@@ -118,28 +114,16 @@ test("controller notifies once for a canonical running to settled transition", (
     }
   ]);
   assert.equal(harness.notifications.length, 1);
-  assert.equal(
-    harness.notifications[0]?.title,
-    "Fix the installer bug completed"
-  );
+  assert.equal(harness.notifications[0]?.title, "Build feature completed");
 
   harness.controller.dispose();
-  assert.equal(harness.events.length, 0);
 });
 
-test("message updates only cache titles and never synthesize outcomes", () => {
+test("session messages never synthesize outcomes", () => {
   const engine = createTestEngine();
   dispatchSession(engine);
   markWorkspaceReconcileReady(engine);
   const harness = createOutcomeNotificationHarness(engine);
-
-  harness.events[0]?.(
-    messageUpdateEvent({
-      content: "Title only",
-      role: "user",
-      turnId: "turn-1"
-    })
-  );
 
   assert.deepEqual(harness.notifications, []);
   harness.controller.dispose();
@@ -153,8 +137,22 @@ test("controller uses the canonical engine session title", () => {
 
   dispatchTurn(engine, "running");
   dispatchTurn(engine, "settled", "completed");
+  harness.events[0]?.(turnUpdateEvent("settled", "completed"));
 
   assert.equal(harness.notifications[0]?.title, "Build feature completed");
+  harness.controller.dispose();
+});
+
+test("controller does not notify a historical settled turn hydrated after baseline", () => {
+  const engine = createTestEngine();
+  markWorkspaceReconcileReady(engine);
+  const harness = createOutcomeNotificationHarness(engine);
+
+  dispatchSession(engine);
+  dispatchTurn(engine, "settled", "completed", "historical-turn");
+
+  assert.deepEqual(harness.foregroundNotifications, []);
+  assert.deepEqual(harness.notifications, []);
   harness.controller.dispose();
 });
 
@@ -252,29 +250,21 @@ function activitySession(): AgentActivitySession {
   });
 }
 
-function messageUpdateEvent(input: {
-  content: string;
-  role: "assistant" | "user";
-  turnId: string;
-}): unknown {
+function turnUpdateEvent(
+  phase: AgentActivityTurn["phase"],
+  outcome?: AgentActivityTurn["outcome"],
+  turnId = "turn-1"
+): unknown {
   return {
     data: {
+      activeTurnId: phase === "settled" ? null : turnId,
       agentSessionId: "session-1",
-      kind: "text",
-      messageId: `message-${input.turnId}`,
-      payload: {
-        content: [{ text: input.content, type: "text" }],
-        text: input.content
-      },
-      role: input.role,
-      status: "completed",
-      turnId: input.turnId,
+      turn: canonicalTurn(phase, outcome, turnId),
       workspaceId: "ws-1"
     },
-    eventType: "message_update"
+    eventType: "turn_update"
   };
 }
-
 function createOutcomeNotificationHarness(engine: AgentSessionEngine): {
   controller: ReturnType<
     typeof createWorkspaceAgentOutcomeNotificationController

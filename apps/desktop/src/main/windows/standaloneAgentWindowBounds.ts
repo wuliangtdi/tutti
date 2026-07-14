@@ -12,10 +12,75 @@ export interface StandaloneAgentWindowWorkArea {
   y: number;
 }
 
+export interface ResolveStandaloneAgentWindowBoundsInput {
+  minHeight: number;
+  minWidth: number;
+  scale: number;
+  workArea: StandaloneAgentWindowWorkArea;
+}
+
+export interface ResolveStandaloneAgentWindowWorkAreaInput {
+  bottomInset: number;
+  fallbackWorkArea: StandaloneAgentWindowWorkArea;
+  openerBounds?: StandaloneAgentWindowWorkArea | null;
+  topInset: number;
+}
+
+export function resolveStandaloneAgentWindowWorkArea({
+  bottomInset,
+  fallbackWorkArea,
+  openerBounds,
+  topInset
+}: ResolveStandaloneAgentWindowWorkAreaInput): StandaloneAgentWindowWorkArea {
+  if (!openerBounds) {
+    return fallbackWorkArea;
+  }
+
+  const normalizedTopInset = Math.max(0, Math.round(topInset));
+  const normalizedBottomInset = Math.max(0, Math.round(bottomInset));
+
+  return {
+    height: Math.max(
+      1,
+      Math.round(openerBounds.height) -
+        normalizedTopInset -
+        normalizedBottomInset
+    ),
+    width: Math.max(1, Math.round(openerBounds.width)),
+    x: Math.round(openerBounds.x),
+    y: Math.round(openerBounds.y) + normalizedTopInset
+  };
+}
+
 export function shouldAnimateStandaloneAgentWindowResize(
   _platform: NodeJS.Platform
 ): boolean {
   return false;
+}
+
+export function resolveStandaloneAgentWindowBounds({
+  minHeight,
+  minWidth,
+  scale,
+  workArea
+}: ResolveStandaloneAgentWindowBoundsInput): StandaloneAgentWindowContentBounds {
+  const normalizedScale =
+    Number.isFinite(scale) && scale > 0 ? Math.min(scale, 1) : 1;
+  const width = Math.max(
+    minWidth,
+    Math.round(workArea.width * normalizedScale)
+  );
+  const height = Math.max(
+    minHeight,
+    Math.round(workArea.height * normalizedScale)
+  );
+
+  return {
+    height,
+    width,
+    x: centerAxis(workArea.x, workArea.width, width),
+    y: centerAxis(workArea.y, workArea.height, height)
+  };
 }
 
 export function resolveStandaloneAgentWindowContentWidth(input: {
@@ -39,4 +104,14 @@ export function resolveStandaloneAgentWindowContentWidth(input: {
     x: Math.max(minimumX, Math.min(input.currentBounds.x, maximumX)),
     y: input.currentBounds.y
   };
+}
+
+function centerAxis(
+  workAreaStart: number,
+  workAreaSize: number,
+  windowSize: number
+): number {
+  return Math.round(
+    workAreaStart + Math.max(0, (workAreaSize - windowSize) / 2)
+  );
 }

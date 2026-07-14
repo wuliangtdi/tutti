@@ -903,7 +903,7 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
-  it("opens at 80 percent width and 90 percent height of the visible workbench area", () => {
+  it("opens at 90 percent width and height of the visible workbench area", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -927,13 +927,13 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 692,
-      width: 1152,
-      x: 144,
+      width: 1296,
+      x: 72,
       y: 91
     });
   });
 
-  it("keeps the 80 percent width on compact visible workbench areas", () => {
+  it("keeps the 90 percent width on compact visible workbench areas", () => {
     const frame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
       frame: { height: 560, width: 1040, x: 140, y: 48 },
       request: {
@@ -957,8 +957,8 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 512,
-      width: 784,
-      x: 98,
+      width: 882,
+      x: 49,
       y: 81
     });
   });
@@ -987,8 +987,8 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(frame).toEqual({
       height: 554,
-      width: 1152,
-      x: 144,
+      width: 1296,
+      x: 72,
       y: 83
     });
   });
@@ -1025,8 +1025,8 @@ describe("agent GUI workbench contribution copy", () => {
     expect(launchResult).toMatchObject({
       defaultFrame: {
         height: 512,
-        width: 784,
-        x: 98,
+        width: 882,
+        x: 49,
         y: 81
       },
       framePolicy: "absolute"
@@ -1223,8 +1223,8 @@ describe("agent GUI workbench contribution copy", () => {
       cascadeOffset: agentGuiWorkbenchNewWindowCascadeOffset,
       defaultFrame: {
         height: 512,
-        width: 784,
-        x: 98,
+        width: 882,
+        x: 49,
         y: 81
       },
       framePolicy: "cascade-same-type-centered"
@@ -1794,6 +1794,23 @@ describe("agent GUI workbench contribution copy", () => {
 
     expect(css).toMatch(
       /\.agent-gui-node__provider-rail-config-footer:last-child\s*\{[^}]*padding-bottom:\s*12px;/s
+    );
+  });
+
+  it("keeps provider manager drag hit boxes stable while previewing insertion", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).not.toMatch(
+      /\.agent-gui-provider-manager-tile\[data-drag-over="(?:before|after)"\]\s*\{[^}]*margin-/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-provider-manager-tile\[data-drag-over="before"\]\s*>\s*:not\(\.agent-gui-provider-manager-drop-indicator\)\s*\{[^}]*translate:\s*8px 0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-provider-manager-tile\[data-drag-over="after"\]\s*>\s*:not\(\.agent-gui-provider-manager-drop-indicator\)\s*\{[^}]*translate:\s*-8px 0;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-provider-manager-tile\[data-editing="true"\]\[data-drag-active="true"\]\s*\{[^}]*animation:\s*none;/s
     );
   });
 

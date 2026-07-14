@@ -5369,6 +5369,7 @@ describe("AgentComposer", () => {
       const removeButton = within(drafts).getByRole("button", {
         name: "移除引用"
       });
+      expect(removeButton).toHaveClass("z-[2]");
       fireEvent.click(removeButton);
       rerender(renderComposer());
 

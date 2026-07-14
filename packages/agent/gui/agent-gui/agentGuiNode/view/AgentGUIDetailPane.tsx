@@ -29,6 +29,7 @@ import type {
   AgentHomeSuggestionAction,
   AgentGUINodeViewModel
 } from "../model/agentGuiNodeTypes";
+import { projectAgentGUIManagedHomeTargets } from "../model/agentGuiProviderRailOrder";
 import type {
   AgentGUINodeViewProps,
   AgentGUIProviderUnavailableStateRenderer,
@@ -54,6 +55,7 @@ import {
 import styles from "../AgentGUINode.styles";
 import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
+import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
 
 const AGENT_GUI_TIMELINE_SCROLL_AREA_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -79,6 +81,8 @@ export interface AgentGUIDetailPaneProps {
   isAgentProviderReady: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashStatusLimitsUnavailable: boolean;
+  onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
   onLinkAction?: (action: WorkspaceLinkAction) => void;
   onHandoffConversation?: AgentGUINodeViewProps["onHandoffConversation"];
   capabilityMenuState?: AgentComposerProps["capabilityMenuState"];
@@ -174,6 +178,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   isAgentProviderReady,
   slashStatusLimits,
   slashStatusLimitsLoading,
+  slashStatusLimitsUnavailable,
+  onSlashStatusOpen,
   onLinkAction,
   onHandoffConversation,
   capabilityMenuState,
@@ -252,6 +258,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
+    slashStatusLimitsUnavailable,
     viewModel
   });
   const handleInterruptCurrentTurn = useCallback(() => {
@@ -374,16 +381,27 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [submitInteractivePrompt]
   );
   const canSwitchComposerProvider = true;
-  const composerProviderTargets = viewModel.rail.agentTargets;
+  const { preferences: providerRailPreferences } =
+    useAgentGUIProviderRailPreferences();
+  const homeTargetProjection = projectAgentGUIManagedHomeTargets({
+    agentTargets: viewModel.rail.agentTargets,
+    preferences: providerRailPreferences,
+    selectedAgentTarget: viewModel.rail.selectedAgentTarget
+  });
+  const homeComposerProviderTargets = homeTargetProjection.agentTargets;
+  const selectedHomeComposerTarget = homeTargetProjection.selectedAgentTarget;
+  const composerProviderTargets =
+    viewModel.rail.activeConversationId === null
+      ? homeComposerProviderTargets
+      : viewModel.rail.agentTargets;
   const composerHandoffProviderTargets = viewModel.composer.handoffAgentTargets;
   const composerProvider =
     viewModel.rail.activeConversationId === null
-      ? (viewModel.rail.selectedAgentTarget?.provider ??
-        viewModel.shell.data.provider)
+      ? (selectedHomeComposerTarget?.provider ?? viewModel.shell.data.provider)
       : viewModel.shell.data.provider;
   const composerSelectedProviderTarget =
     viewModel.rail.activeConversationId === null
-      ? viewModel.rail.selectedAgentTarget
+      ? selectedHomeComposerTarget
       : (viewModel.rail.agentTargets.find((target) => {
           if (target.provider !== viewModel.shell.data.provider) {
             return false;
@@ -402,6 +420,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       currentUserId: viewModel.shell.currentUserId,
       provider: composerProvider,
       slashStatus,
+      onSlashStatusOpen,
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       availableCommands: viewModel.composer.availableCommands,
@@ -514,6 +533,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       labels.providerSwitchLabel,
       labels,
       onHandoffConversation,
+      onSlashStatusOpen,
       previewMode,
       workspaceReferencePickerOpen,
       composerActivePrompt,
@@ -572,11 +592,12 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     [bottomDockComposerProps]
   );
   const emptyHeroProvider =
-    viewModel.rail.selectedAgentTarget?.provider ??
-    viewModel.shell.data.provider;
-  const disabledProviderTarget = selectedAgentTargetComingSoon
-    ? (viewModel.rail.selectedAgentTarget ?? null)
-    : null;
+    composerSelectedProviderTarget?.provider ?? viewModel.shell.data.provider;
+  const disabledProviderTarget =
+    composerSelectedProviderTarget?.disabled === true ||
+    selectedAgentTargetComingSoon
+      ? composerSelectedProviderTarget
+      : null;
   const shouldRenderProviderUnavailableState =
     !hasActiveConversation &&
     disabledProviderTarget !== null &&
@@ -702,7 +723,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 viewModel.rail.conversationFilter.kind === "all"
               }
               agentTargets={composerProviderTargets}
-              selectedAgentTarget={viewModel.rail.selectedAgentTarget}
+              selectedAgentTarget={composerSelectedProviderTarget}
               onProviderSelect={
                 canSwitchComposerProvider &&
                 viewModel.rail.activeConversationId === null

@@ -36,7 +36,7 @@ export async function smokeClaudeSDKSidecar({
   });
 
   const send = (request) => {
-    child.stdin.write(`${JSON.stringify({ version: 1, ...request })}\n`);
+    child.stdin.write(`${JSON.stringify({ version: 2, ...request })}\n`);
   };
   const waitForEvent = async (predicate, label) => {
     while (true) {

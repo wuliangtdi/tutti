@@ -8,6 +8,7 @@ Open only the area that matches the symptom:
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+- [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
 - [Agent provider picker shows only Claude Code and Codex](./agent-provider-setup.md#agent-provider-picker-shows-only-claude-code-and-codex)
 - [Claude composer model list stays stale after credential switch](./agent-provider-setup.md#claude-composer-model-list-stays-stale-after-credential-switch)
 - [Claude SDK context window shows 200k for 1M models](./agent-provider-setup.md#claude-sdk-context-window-shows-200k-for-1m-models)
@@ -26,12 +27,14 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Agent provider install looks idle while a non-Codex installer is running](./agent-provider-setup.md#agent-provider-install-looks-idle-while-a-non-codex-installer-is-running)
 - [Legacy Claude ACP adapter appears stale after external registry migration](./agent-provider-setup.md#legacy-claude-acp-adapter-appears-stale-after-external-registry-migration)
 - [Cursor ACP context ring stays empty or usage looks wrong](./agent-provider-setup.md#cursor-acp-context-ring-stays-empty-or-usage-looks-wrong)
+- [Cursor free plan shows a red error on the next send after upgrade copy](./agent-provider-setup.md#cursor-free-plan-shows-a-red-error-on-the-next-send-after-upgrade-copy)
 - [Claude SDK model aliases resolve to configured Anthropic defaults](./agent-provider-setup.md#claude-sdk-model-aliases-resolve-to-configured-anthropic-defaults)
 - [Claude SDK rejects live bypassPermissions mode](./agent-provider-setup.md#claude-sdk-rejects-live-bypasspermissions-mode)
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
 - [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
+- [Provider setup notice flashes after switching to an already-connected agent](./agent-provider-setup.md#provider-setup-notice-flashes-after-switching-to-an-already-connected-agent)
 
 ## [Agent Sessions And Lifecycle](./agent-session-lifecycle.md)
 
@@ -58,6 +61,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
 
 - [External PR review approvals do not refresh gate status](./agent-approvals-subagents.md#external-pr-review-approvals-do-not-refresh-gate-status)
+- [Cursor approval card shows only title and options, no command/path detail](./agent-approvals-subagents.md#cursor-approval-card-shows-only-title-and-options-no-commandpath-detail)
 - [Agent approval controls submit stale permission requests after restart](./agent-approvals-subagents.md#agent-approval-controls-submit-stale-permission-requests-after-restart)
 - [Claude SDK ExitPlanMode fails as interrupted after plan is ready](./agent-approvals-subagents.md#claude-sdk-exitplanmode-fails-as-interrupted-after-plan-is-ready)
 - [Codex app-server subagent output appears as the parent reply](./agent-approvals-subagents.md#codex-app-server-subagent-output-appears-as-the-parent-reply)

@@ -6,6 +6,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMes
 import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
+import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
 
 const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
 
@@ -408,6 +409,7 @@ export function useAgentGUIViewLabels(input: {
       agentConfig: t("agentHost.agentGui.agentConfig"),
       agentSettingsMenu: t("agentHost.agentGui.agentSettingsMenu"),
       agentEnvSetup: t("agentHost.agentGui.agentEnvSetup"),
+      ...agentGUIProviderManagerLabels(t),
       noConversations: t("agentHost.agentGui.noConversations"),
       emptyProjectConversations: t(
         "agentHost.agentGui.emptyProjectConversations"

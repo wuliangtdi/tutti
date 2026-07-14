@@ -9,8 +9,10 @@ import {
   selectEnginePromptQueue,
   selectEnginePromptQueueError,
   selectEngineSession,
+  selectEngineSessionDeleted,
   selectEngineSessionError,
   selectEngineSessionIsRespondingToInteraction,
+  selectEngineSessionReconcile,
   selectEngineSessionSettingsUpdate,
   selectEngineSubmitAvailability,
   selectLatestActivationForSession,
@@ -76,6 +78,17 @@ export function useAgentGUISessionEngineState(input: {
   );
   const activeEngineSession = useEngineSelector(sessionEngine, (state) =>
     selectEngineSession(state, activeConversationId)
+  );
+  const activeSessionReconcile = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionReconcile(state, activeConversationId)
+  );
+  const activeSessionReconcilePending = Boolean(
+    activeSessionReconcile?.inFlightCommandId ||
+    activeSessionReconcile?.pendingMessages ||
+    activeSessionReconcile?.pendingState
+  );
+  const activeEngineSessionDeleted = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionDeleted(state, activeConversationId)
   );
   const activeEngineActiveTurn = useEngineSelector(sessionEngine, (state) =>
     selectEngineActiveTurn(state, activeConversationId)
@@ -180,12 +193,15 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineLatestTurn,
     activeEnginePendingInteractions,
     activeEngineSession,
+    activeEngineSessionDeleted,
     activeLatestPendingSubmit,
     activePendingActivation,
     activePendingSubmits,
     activeQueuedPromptInFlight: activeQueuedPromptSnapshot?.inFlight ?? null,
     activeQueuedPrompts,
     activeSessionState,
+    activeSessionReconcilePending,
+    activeSessionReconcileError: activeSessionReconcile?.errorMessage ?? null,
     hasPendingNewActivation,
     hasUnconfirmedSubmit,
     isRespondingToInteraction,

@@ -168,7 +168,7 @@ func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
 			usedPercent = 100
 		}
 		quota := map[string]any{
-			"quotaType":        window.quotaType,
+			"quotaType":        appServerRateLimitQuotaType(entry, window.quotaType),
 			"percentRemaining": 100 - usedPercent,
 		}
 		if resetsAt, ok := int64Value(entry["resetsAt"]); ok && resetsAt > 0 {
@@ -183,6 +183,24 @@ func appServerRateLimitQuotas(snapshot map[string]any) []map[string]any {
 		return nil
 	}
 	return quotas
+}
+
+// Keep duration semantics aligned with codexUsageQuotaType in
+// apps/desktop/src/main/agentProviderUsageProbe.ts. Active sessions use this
+// daemon mapper; empty-session /status uses the desktop probe.
+func appServerRateLimitQuotaType(entry map[string]any, fallback string) string {
+	durationMins, ok := int64Value(entry["windowDurationMins"])
+	if !ok {
+		return fallback
+	}
+	switch durationMins {
+	case 5 * 60:
+		return "session"
+	case 7 * 24 * 60:
+		return "weekly"
+	default:
+		return fallback
+	}
 }
 
 func appServerSystemNoticeEvent(session Session, turnID string, noticeKind string, title string, detail string, metadata ...map[string]any) activityshared.Event {

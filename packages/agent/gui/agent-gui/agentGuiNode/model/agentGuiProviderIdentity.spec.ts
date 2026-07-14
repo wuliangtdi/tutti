@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import {
-  formatAgentGUIConversationPlainTitle,
   normalizeAgentGUIProviderIdentity,
   resolveAgentGUIConversationDisplayTitle,
   resolveAgentGUIConversationTitle,
@@ -110,38 +109,22 @@ describe("agentGuiProviderIdentity", () => {
     });
   });
 
-  it("humanizes mention markdown conversation titles", () => {
+  it("accepts canonical mention titles", () => {
     expect(
-      resolveAgentGUIConversationTitle(
-        "[@wang jomes & Codex hi](mention://agent-session/session-1?workspaceId=room-1)",
-        "codex"
-      )
+      resolveAgentGUIConversationTitle("@wang jomes & Codex hi", "codex")
     ).toEqual({
       title: "@wang jomes & Codex hi",
       titleFallback: null
     });
   });
 
-  it("humanizes workspace markdown link conversation titles", () => {
+  it("accepts canonical workspace link labels", () => {
     expect(
-      resolveAgentGUIConversationTitle(
-        "[@aa.md](/workspace/ccb5cd30-b863-4b61-ab17-ccab/aa.md) 这是什么内容",
-        "codex"
-      )
+      resolveAgentGUIConversationTitle("@aa.md 这是什么内容", "codex")
     ).toEqual({
       title: "@aa.md 这是什么内容",
       titleFallback: null
     });
-  });
-
-  it("formats workspace issue mention conversation titles without adding a task prefix", () => {
-    expect(
-      formatAgentGUIConversationPlainTitle({
-        title:
-          "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=workspace-1)",
-        titleFallback: null
-      })
-    ).toBe("@调研 spool 仓库 这个任务");
   });
 
   it("resolves generic-agent fallback labels in the view layer", () => {

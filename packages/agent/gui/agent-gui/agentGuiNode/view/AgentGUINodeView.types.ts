@@ -149,6 +149,18 @@ export interface AgentGUIViewLabels {
   agentConfig: string;
   agentSettingsMenu: string;
   agentEnvSetup: string;
+  manageAgents: string;
+  manageAgentsTitle: string;
+  manageAgentsDescription: string;
+  manageAgentsAvailable: string;
+  manageAgentsDisabled: string;
+  manageAgentsNoAvailable: string;
+  manageAgentsNoDisabled: string;
+  manageAgentsKeepOneAvailable: string;
+  manageAgentsRunningBlocked: (agent: string) => string;
+  removeAgentFromSidebar: (agent: string) => string;
+  addAgentToSidebar: (agent: string) => string;
+  dragAgentToReorder: (agent: string) => string;
   noConversations: string;
   emptyProjectConversations: string;
   conversationFilterAll: string;
@@ -371,6 +383,7 @@ export interface AgentGUINodeViewProps {
   isAgentProviderReady: boolean;
   slashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading?: boolean;
+  slashStatusLimitsUnavailable?: boolean;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   railConfigProvider?: string | null;
   railSlashStatusLimits?: readonly AgentComposerSlashStatusLimit[];
@@ -386,6 +399,7 @@ export interface AgentGUINodeViewProps {
   onAgentConfigMenuOpen?: () => void;
   /** Forces a fresh usage probe from the config menu's refresh control. */
   onAgentUsageRefresh?: () => void;
+  onSlashStatusOpen?: AgentComposerProps["onSlashStatusOpen"];
   accountMenuState?: AgentGUIAccountMenuState | null;
   previewMode?: boolean;
   onAgentProviderLogin?: (provider?: string | null) => void;

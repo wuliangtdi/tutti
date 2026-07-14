@@ -56,12 +56,8 @@ export function buildWorkspaceAgentActivityListViewModel(
       const user = resolveActivityUser(session, presence, options);
       const agentProvider = resolveProvider(session, presence);
       const agentName = workspaceAgentProviderLabel(agentProvider);
-      const resolvedSortTimeUnixMs = resolveWorkspaceAgentSessionSortTimeUnixMs(
-        session,
-        {
-          messages
-        }
-      );
+      const resolvedSortTimeUnixMs =
+        resolveWorkspaceAgentSessionSortTimeUnixMs(session);
       const latestActivity = resolveLatestActivity(messages, status, {
         agentName,
         userName: user.userName

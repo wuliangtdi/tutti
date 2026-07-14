@@ -1,11 +1,13 @@
-import { memo, useCallback, useEffect } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import {
   Coins,
   Crown,
   ExternalLink,
+  Gauge,
   Gift,
   LogIn,
   LogOut,
+  ListTree,
   Settings,
   Wrench,
   X
@@ -319,6 +321,7 @@ function agentGUIAccountInitials(label: string): string {
 interface AgentGUIConfigMenuProps {
   labels: AgentGUIViewLabels;
   previewMode: boolean;
+  providerScopedActionsVisible: boolean;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
   slashStatusUsageCapturedAtUnixMs: number | null;
@@ -327,6 +330,7 @@ interface AgentGUIConfigMenuProps {
   providerAuthAccountLabel?: string | null;
   onAgentConfigMenuOpen?: () => void;
   onAgentUsageRefresh?: () => void;
+  onOpenAgentManager: () => void;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
 }
@@ -334,6 +338,7 @@ interface AgentGUIConfigMenuProps {
 export function AgentGUIConfigMenu({
   labels,
   previewMode,
+  providerScopedActionsVisible,
   slashStatusLimits,
   slashStatusLimitsLoading,
   slashStatusUsageCapturedAtUnixMs,
@@ -342,16 +347,20 @@ export function AgentGUIConfigMenu({
   providerAuthAccountLabel,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
+  onOpenAgentManager,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
+  const [open, setOpen] = useState(false);
   return (
     <Popover
-      onOpenChange={(open) => {
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
         // Refresh the underlying probe on open, the same way the window-title
         // info tooltip does; otherwise a stale/empty fetch can sit here until
         // something unrelated refreshes it.
-        if (open) {
+        if (nextOpen) {
           onAgentConfigMenuOpen?.();
         }
       }}
@@ -374,7 +383,7 @@ export function AgentGUIConfigMenu({
         data-testid="agent-gui-config-menu"
       >
         <div className="flex min-w-0 flex-col gap-3">
-          {providerAuthAccountLabel ? (
+          {providerScopedActionsVisible && providerAuthAccountLabel ? (
             <>
               <div className="flex min-w-0 flex-col gap-2 p-2">
                 <span className="text-[13px] font-semibold leading-4">
@@ -393,15 +402,33 @@ export function AgentGUIConfigMenu({
               ) : null}
             </>
           ) : null}
-          {slashStatusLimits.length > 0 ||
-          slashStatusUsageAttempted ||
-          slashStatusLimitsLoading ? (
+          {providerScopedActionsVisible &&
+          (slashStatusLimits.length > 0 ||
+            slashStatusUsageAttempted ||
+            slashStatusLimitsLoading) ? (
             <>
               <div className="flex min-w-0 flex-col gap-2 p-2">
                 <div className="flex min-w-0 items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[13px] font-semibold leading-4">
-                    {labels.slashStatusLimits}
-                  </span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Gauge
+                      aria-hidden="true"
+                      className="shrink-0"
+                      size={16}
+                      strokeWidth={1.8}
+                    />
+                    <span className="shrink-0 text-[13px] font-semibold leading-4">
+                      {labels.slashStatusLimits}
+                    </span>
+                    {slashStatusLimits.length === 0 &&
+                    !slashStatusLimitsLoading ? (
+                      <span
+                        className="min-w-0 truncate text-[var(--text-tertiary)]"
+                        data-testid="agent-gui-config-usage-unavailable"
+                      >
+                        {labels.slashStatusLimitsUnavailable}
+                      </span>
+                    ) : null}
+                  </div>
                   <AgentProbeUsageFreshness
                     testId="agent-gui-config-usage-refresh"
                     capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
@@ -419,28 +446,21 @@ export function AgentGUIConfigMenu({
                     }}
                   />
                 </div>
-                {slashStatusLimits.length > 0 ? (
-                  slashStatusLimits.map((limit) => (
-                    <AgentUsageMeter
-                      key={limit.id}
-                      label={limit.label}
-                      value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
-                      percent={
-                        typeof limit.percentRemaining === "number" &&
-                        Number.isFinite(limit.percentRemaining)
-                          ? limit.percentRemaining
-                          : null
-                      }
-                    />
-                  ))
-                ) : slashStatusLimitsLoading ? null : (
-                  <span
-                    className="text-[var(--text-tertiary)]"
-                    data-testid="agent-gui-config-usage-unavailable"
-                  >
-                    {labels.slashStatusLimitsUnavailable}
-                  </span>
-                )}
+                {slashStatusLimits.length > 0
+                  ? slashStatusLimits.map((limit) => (
+                      <AgentUsageMeter
+                        key={limit.id}
+                        label={limit.label}
+                        value={`${limit.value}${limit.reset ? ` (${limit.reset})` : ""}`}
+                        percent={
+                          typeof limit.percentRemaining === "number" &&
+                          Number.isFinite(limit.percentRemaining)
+                            ? limit.percentRemaining
+                            : null
+                        }
+                      />
+                    ))
+                  : null}
               </div>
               <div className="px-2">
                 <span className="block h-px bg-[var(--border-1)]" />
@@ -450,6 +470,31 @@ export function AgentGUIConfigMenu({
           <div className="flex min-w-0 flex-col gap-1">
             <button
               type="button"
+              data-testid="agent-gui-config-manage-agents"
+              className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+              disabled={previewMode}
+              onClick={() => {
+                setOpen(false);
+                onOpenAgentManager();
+              }}
+            >
+              <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
+              <span>{labels.manageAgents}</span>
+            </button>
+            {providerScopedActionsVisible ? (
+              <button
+                type="button"
+                data-testid="agent-gui-config-env-setup"
+                className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
+                disabled={previewMode}
+                onClick={() => onOpenAgentEnvSetup()}
+              >
+                <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
+                <span>{labels.agentEnvSetup}</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
               data-testid="agent-gui-config-settings"
               className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
               disabled={previewMode}
@@ -457,16 +502,6 @@ export function AgentGUIConfigMenu({
             >
               <SettingsLinedIcon aria-hidden="true" width={16} height={16} />
               <span>{labels.agentSettingsMenu}</span>
-            </button>
-            <button
-              type="button"
-              data-testid="agent-gui-config-env-setup"
-              className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-              disabled={previewMode}
-              onClick={() => onOpenAgentEnvSetup()}
-            >
-              <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
-              <span>{labels.agentEnvSetup}</span>
             </button>
           </div>
         </div>

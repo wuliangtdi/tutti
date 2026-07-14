@@ -49,7 +49,7 @@ export const agentGuiWorkbenchDefaultNodeFrame: WorkbenchFrame = {
   y: 48
 };
 
-export const agentGuiWorkbenchDefaultUsableWidthRatio = 0.8;
+export const agentGuiWorkbenchDefaultUsableWidthRatio = 0.9;
 export const agentGuiWorkbenchDefaultUsableHeightRatio = 0.9;
 export const agentGuiWorkbenchCompactVisibleAreaRatio = 0.9;
 export const agentGuiWorkbenchNewWindowCascadeOffset = { x: 180, y: 88 };

@@ -93,6 +93,7 @@ export interface WorkspaceAgentMessageCenterPromptFallbackLabels {
 
 export interface BuildWorkspaceAgentMessageCenterItemInput {
   session: WorkspaceAgentMessageCenterSession;
+  latestTurn?: WorkspaceAgentConsumerSession["latestTurn"] | null;
   messages: readonly AgentActivityMessage[];
   status: WorkspaceAgentActivityStatus;
   needsAttention: AgentActivityNeedsAttentionItem | null;
@@ -107,6 +108,7 @@ type WorkspaceAgentMessageCenterSession =
 
 export function buildWorkspaceAgentMessageCenterItem({
   session,
+  latestTurn,
   messages,
   status,
   needsAttention,
@@ -153,8 +155,9 @@ export function buildWorkspaceAgentMessageCenterItem({
     needsAttentionKind: needsAttention?.kind ?? null,
     needsAttentionSummary: needsAttention?.summary ?? null,
     latestTurnOutcome,
-    sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs(session, {
-      messages
+    sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs({
+      ...session,
+      latestTurn
     })
   };
 }
@@ -195,13 +198,13 @@ function resolveSessionTitle(
   latestUserMessageSummary: string,
   firstUserMessageSummary: string
 ): string {
-  const latest = latestUserMessageSummary.trim();
-  if (latest) {
-    return latest;
-  }
   const title = session.title.trim();
   if (title) {
     return title;
+  }
+  const latest = latestUserMessageSummary.trim();
+  if (latest) {
+    return latest;
   }
   return firstUserMessageSummary || session.provider || session.agentSessionId;
 }

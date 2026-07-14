@@ -1,7 +1,6 @@
 import {
   memo,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -21,11 +20,13 @@ import type {
   AgentGUIProviderRailAllPresentation
 } from "../../../types";
 import {
-  agentGUIProviderRailOrderStorageKey,
   applyAgentGUIProviderRailOrder,
-  parseAgentGUIProviderRailOrder,
+  applyAgentGUIProviderRailVisibility,
+  agentGUIRunningTargetIds,
+  changeAgentGUIProviderManagerVisibility,
+  normalizeAgentGUIProviderRailHiddenTargetIds,
   reorderAgentGUIProviderRailOrder,
-  serializeAgentGUIProviderRailOrder
+  type AgentGUIProviderManagerDropPlacement
 } from "../model/agentGuiProviderRailOrder";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type {
@@ -39,6 +40,8 @@ import {
   agentGUIProviderRailIconPresentation
 } from "./AgentGUIEmptyState";
 import styles from "../AgentGUINode.styles";
+import { AgentGUIProviderManagerDialog } from "./AgentGUIProviderManagerDialog";
+import { useAgentGUIProviderRailPreferences } from "./useAgentGUIProviderRailPreferences";
 
 const agentGUIProviderRailCatalog = [
   ...migratedAgentGUIProviderIdentityCatalog
@@ -152,10 +155,14 @@ function agentGUIProviderRailTargetsAreFullLocalFallback(
 }
 
 interface AgentGUIProviderRailProps {
+  activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
+  activeConversationId: string | null;
   conversationFilter: AgentGUINodeViewModel["rail"]["conversationFilter"];
+  conversations: AgentGUINodeViewModel["rail"]["conversations"];
   labels: AgentGUIViewLabels;
+  managerOpen: boolean;
+  onManagerOpenChange: (open: boolean) => void;
   previewMode: boolean;
-  workspaceId: string;
   selectedAgentTarget: AgentGUINodeViewModel["rail"]["selectedAgentTarget"];
   agentTargets: AgentGUINodeViewModel["rail"]["agentTargets"];
   agentTargetsLoading: AgentGUINodeViewModel["rail"]["agentTargetsLoading"];
@@ -164,6 +171,7 @@ interface AgentGUIProviderRailProps {
   providerRailAllPresentation?: AgentGUIProviderRailAllPresentation | null;
   comingSoonProviders: AgentGUINodeViewModel["rail"]["comingSoonProviders"];
   onRequestComposerFocus: () => void;
+  onSelectHomeComposerAgentTarget: AgentGUINodeViewProps["actions"]["selectHomeComposerAgentTarget"];
   onSelectConversationFilterTarget: AgentGUINodeViewProps["actions"]["selectConversationFilterTarget"];
   onUpdateConversationFilter: (
     filter: AgentGUINodeViewModel["rail"]["conversationFilter"]
@@ -179,10 +187,14 @@ type AgentGUIProviderRailDragState = {
 };
 
 export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
+  activeConversation,
+  activeConversationId,
   conversationFilter,
+  conversations,
   labels,
+  managerOpen,
+  onManagerOpenChange,
   previewMode,
-  workspaceId,
   selectedAgentTarget,
   agentTargets,
   agentTargetsLoading,
@@ -191,20 +203,15 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
   providerRailAllPresentation,
   comingSoonProviders,
   onRequestComposerFocus,
+  onSelectHomeComposerAgentTarget,
   onSelectConversationFilterTarget,
   onUpdateConversationFilter
 }: AgentGUIProviderRailProps): React.JSX.Element {
   "use memo";
-  const providerRailOrderStorageKey = useMemo(
-    () => agentGUIProviderRailOrderStorageKey(workspaceId),
-    [workspaceId]
-  );
-  const [providerRailOrder, setProviderRailOrder] = useState<readonly string[]>(
-    () =>
-      parseAgentGUIProviderRailOrder(
-        globalThis.localStorage?.getItem(providerRailOrderStorageKey)
-      )
-  );
+  const {
+    persistPreferences: persistProviderRailPreferences,
+    preferences: providerRailPreferences
+  } = useAgentGUIProviderRailPreferences();
   const [dragState, setDragState] =
     useState<AgentGUIProviderRailDragState | null>(null);
   const dragStateRef = useRef<AgentGUIProviderRailDragState | null>(null);
@@ -214,25 +221,6 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
       setDragState(nextDragState);
     },
     []
-  );
-
-  useEffect(() => {
-    setProviderRailOrder(
-      parseAgentGUIProviderRailOrder(
-        globalThis.localStorage?.getItem(providerRailOrderStorageKey)
-      )
-    );
-  }, [providerRailOrderStorageKey]);
-
-  const persistProviderRailOrder = useCallback(
-    (nextOrder: readonly string[]) => {
-      setProviderRailOrder(nextOrder);
-      globalThis.localStorage?.setItem(
-        providerRailOrderStorageKey,
-        serializeAgentGUIProviderRailOrder(nextOrder)
-      );
-    },
-    [providerRailOrderStorageKey]
   );
 
   const railProviderTargets = useMemo(
@@ -275,9 +263,35 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
               );
             });
           })();
-    return applyAgentGUIProviderRailOrder(orderedTargets, providerRailOrder);
-  }, [providerRailMode, providerRailOrder, railProviderTargets]);
-  const visibleProviderTiles = providerTiles;
+    return applyAgentGUIProviderRailOrder(
+      orderedTargets,
+      providerRailPreferences.order
+    );
+  }, [providerRailMode, providerRailPreferences.order, railProviderTargets]);
+  const effectiveHiddenTargetIds = normalizeAgentGUIProviderRailHiddenTargetIds(
+    providerTiles.map((target) => target.targetId),
+    providerRailPreferences.hiddenTargetIds
+  );
+  const effectiveProviderRailPreferences =
+    effectiveHiddenTargetIds === providerRailPreferences.hiddenTargetIds
+      ? providerRailPreferences
+      : {
+          ...providerRailPreferences,
+          hiddenTargetIds: effectiveHiddenTargetIds
+        };
+  const runningTargetIds = agentGUIRunningTargetIds({
+    activeConversation,
+    agentTargets: providerTiles,
+    conversations
+  });
+  const visibleProviderTiles = useMemo(
+    () =>
+      applyAgentGUIProviderRailVisibility(
+        providerTiles,
+        effectiveHiddenTargetIds
+      ),
+    [effectiveHiddenTargetIds, providerTiles]
+  );
   const selectedAgentTargetIsPlaceholder =
     selectedAgentTarget?.disabled === true &&
     selectedAgentTarget.targetId === `local:${selectedAgentTarget.provider}`;
@@ -457,18 +471,94 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         dropPosition,
         overTargetId
       });
-      persistProviderRailOrder(nextOrder);
+      persistProviderRailPreferences({
+        ...effectiveProviderRailPreferences,
+        order: nextOrder
+      });
       clearProviderRailDragState();
     },
     [
       clearProviderRailDragState,
       dragState,
-      persistProviderRailOrder,
+      persistProviderRailPreferences,
       previewMode,
       agentTargetsLoading,
+      effectiveProviderRailPreferences,
       visibleProviderTiles
     ]
   );
+
+  const moveProviderManagerTarget = (
+    draggedTargetId: string,
+    overTargetId: string,
+    position: "before" | "after"
+  ) => {
+    const nextOrder = reorderAgentGUIProviderRailOrder({
+      currentTargetIds: providerTiles.map((tile) => tile.targetId),
+      draggedTargetId,
+      dropPosition: position,
+      overTargetId
+    });
+    persistProviderRailPreferences({
+      ...effectiveProviderRailPreferences,
+      order: nextOrder
+    });
+  };
+  const changeProviderManagerVisibility = (
+    targetId: string,
+    visible: boolean,
+    placement?: AgentGUIProviderManagerDropPlacement
+  ) => {
+    const nextPreferences = changeAgentGUIProviderManagerVisibility({
+      currentTargetIds: providerTiles.map((target) => target.targetId),
+      placement,
+      preferences: effectiveProviderRailPreferences,
+      runningTargetIds,
+      targetId,
+      visible
+    });
+    if (nextPreferences === effectiveProviderRailPreferences) {
+      return;
+    }
+    persistProviderRailPreferences(nextPreferences);
+    const selectedTargetIds = new Set(
+      [selectedAgentTarget?.targetId, selectedAgentTarget?.agentTargetId]
+        .map((candidateId) => candidateId?.trim() ?? "")
+        .filter(Boolean)
+    );
+    if (
+      !visible &&
+      activeConversationId === null &&
+      selectedTargetIds.has(targetId)
+    ) {
+      const fallbackTargets = applyAgentGUIProviderRailVisibility(
+        providerTiles,
+        nextPreferences.hiddenTargetIds
+      );
+      const fallbackTarget =
+        fallbackTargets.find((target) => target.disabled !== true) ??
+        fallbackTargets[0];
+      if (fallbackTarget && fallbackTarget.targetId !== targetId) {
+        onSelectHomeComposerAgentTarget({
+          provider: fallbackTarget.provider,
+          agentTargetId: fallbackTarget.targetId
+        });
+      }
+    }
+    if (
+      !visible &&
+      providerTiles.some(
+        (target) =>
+          target.targetId === targetId &&
+          agentGUIProviderTargetMatchesConversationFilter(
+            target,
+            conversationFilter
+          )
+      )
+    ) {
+      onUpdateConversationFilter({ kind: "all" });
+    }
+  };
   const handleProviderRailContainerDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       const activeDragState = dragStateRef.current ?? dragState;
@@ -523,6 +613,18 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
     },
     [dragState, previewMode, agentTargetsLoading, setProviderRailDragState]
   );
+  const providerManagerDialog = (
+    <AgentGUIProviderManagerDialog
+      hiddenTargetIds={effectiveHiddenTargetIds}
+      labels={labels}
+      onMoveTarget={moveProviderManagerTarget}
+      onOpenChange={onManagerOpenChange}
+      onVisibilityChange={changeProviderManagerVisibility}
+      open={managerOpen}
+      runningTargetIds={runningTargetIds}
+      targets={providerTiles}
+    />
+  );
 
   // Exact mode with no targets (and not loading): hand the rail body to the
   // host-provided empty renderer instead of the static local catalog fallback.
@@ -541,6 +643,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
         data-empty="true"
       >
         {renderProviderRailEmpty()}
+        {providerManagerDialog}
       </div>
     );
   }
@@ -676,6 +779,7 @@ export const AgentGUIProviderRail = memo(function AgentGUIProviderRail({
           );
         })}
       </div>
+      {providerManagerDialog}
     </div>
   );
 });

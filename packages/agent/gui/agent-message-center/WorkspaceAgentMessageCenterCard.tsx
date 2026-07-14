@@ -13,7 +13,7 @@ import {
 } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button, cn, StatusDot } from "@tutti-os/ui-system";
-import { getActiveUiLanguage, useTranslation } from "../i18n/index";
+import { useTranslation } from "../i18n/index";
 import { AgentInteractivePromptSurface } from "../shared/agentConversation/components/AgentInteractivePromptSurface";
 import { AgentMessageMarkdown } from "../shared/AgentMessageMarkdown";
 import { AgentVerticalScrollArea } from "../shared/AgentVerticalScrollArea";
@@ -23,7 +23,6 @@ import {
   isWaitingMessageCenterItem,
   type WorkspaceAgentMessageCenterItem
 } from "./workspaceAgentMessageCenterModel";
-import { formatAgentGuiConversationPlainTitle } from "../workbench/sessionTitle";
 import {
   LazyMessageCenterTooltip,
   MessageCenterIdentityAvatarMark,
@@ -101,9 +100,7 @@ export const WorkspaceAgentMessageCenterCard = memo(
     "use memo";
     const { t } = useTranslation();
     const prompt = item.pendingPrompt;
-    const displayTitle = formatAgentGuiConversationPlainTitle(item, {
-      language: getActiveUiLanguage()
-    });
+    const displayTitle = item.title.trim();
     const summary = messageCenterVisibleSummary(item);
     const displayStatus = statusClass(item);
     const statusTone = messageCenterStatusTone(item);

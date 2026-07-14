@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/internal/titletext"
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func acpModeValue(update map[string]any) string {
@@ -557,7 +557,7 @@ func newSessionTitleActivityEvent(session Session, title string) activityshared.
 	if !ok {
 		return activityshared.Event{}
 	}
-	ctx.Title = titletext.Normalize(title)
+	ctx.Title = strings.TrimSpace(title)
 	return activityshared.NewSessionTitleUpdated(ctx)
 }
 

@@ -25,6 +25,7 @@ interface Input {
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
+  slashStatusLimitsUnavailable: boolean;
   viewModel: AgentGUINodeViewModel;
 }
 
@@ -35,13 +36,18 @@ export function useAgentGUIDetailModel(input: Input) {
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
+    slashStatusLimitsUnavailable,
     viewModel
   } = input;
-  const conversation = useProjectedAgentConversation({
+  const projectedConversation = useProjectedAgentConversation({
     conversation: viewModel.detail.conversation,
     detail: viewModel.detail.conversationDetail,
     avoidGroupingEdits: viewModel.detail.avoidGroupingEdits
   });
+  const conversation =
+    viewModel.detail.availability === "not_found"
+      ? null
+      : projectedConversation;
   const hasActiveConversation = viewModel.rail.activeConversationId !== null;
   const selectedAgentTargetComingSoon =
     viewModel.rail.selectedAgentTarget?.disabled === true;
@@ -63,11 +69,15 @@ export function useAgentGUIDetailModel(input: Input) {
       resolveSlashStatus({
         rawState: viewModel.interaction.sessionChrome.rawState,
         limits: slashStatusLimits,
-        limitsLoading: slashStatusLimitsLoading
+        limitsLoading: slashStatusLimitsLoading,
+        limitsUnavailable: slashStatusLimitsUnavailable,
+        usage: viewModel.detail.usage
       }),
     [
       slashStatusLimits,
       slashStatusLimitsLoading,
+      slashStatusLimitsUnavailable,
+      viewModel.detail.usage,
       viewModel.interaction.sessionChrome.rawState
     ]
   );
@@ -146,12 +156,10 @@ export function useAgentGUIDetailModel(input: Input) {
       ? null
       : activePrompt;
   const showTimelineSkeleton =
-    viewModel.detail.isLoadingMessages &&
+    viewModel.detail.availability === "loading" &&
     (!conversation || conversation.rows.length === 0);
   const showUnavailableChatEmpty =
-    hasActiveConversation &&
-    !showTimelineSkeleton &&
-    (!conversation || conversation.rows.length === 0);
+    hasActiveConversation && viewModel.detail.availability === "not_found";
   const activeDetailStatus = resolveConversationDetailStatus(
     viewModel.detail.conversationDetail
   );
@@ -229,18 +237,21 @@ export function useAgentGUIDetailModel(input: Input) {
     ]
   );
   const conversationFlowEmpty = useMemo(
-    () => (
-      <div
-        className={styles.unavailableChatEmpty}
-        data-testid="agent-gui-unavailable-chat-empty"
-      >
-        <UnavailableChatIcon className={styles.unavailableChatEmptyIcon} />
-        <span className={styles.unavailableChatEmptyText}>
-          {labels.conversationUnavailable}
-        </span>
-      </div>
-    ),
-    [labels.conversationUnavailable]
+    () =>
+      showUnavailableChatEmpty ? (
+        <div
+          className={styles.unavailableChatEmpty}
+          data-testid="agent-gui-unavailable-chat-empty"
+        >
+          <UnavailableChatIcon className={styles.unavailableChatEmptyIcon} />
+          <span className={styles.unavailableChatEmptyText}>
+            {labels.conversationUnavailable}
+          </span>
+        </div>
+      ) : (
+        <></>
+      ),
+    [labels.conversationUnavailable, showUnavailableChatEmpty]
   );
   const chromeLabels = useMemo(
     () => ({

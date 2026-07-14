@@ -44,7 +44,7 @@ export function useOptionalStableEventCallback<Args extends unknown[], Result>(
   }, [callback != null]);
 }
 import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings";
-import { formatAgentGUIConversationPlainTitle } from "../model/agentGuiProviderIdentity";
+import { resolveAgentGUIConversationDisplayTitle } from "../model/agentGuiProviderIdentity";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import type { WorkspaceFileReferenceCopy } from "@tutti-os/workspace-file-reference/contracts";
@@ -71,9 +71,10 @@ export function conversationPlainTitle(
   labels: Pick<AgentGUIViewLabels, "fallbackAgentTitle">,
   uiLanguage: UiLanguage
 ): string {
-  return formatAgentGUIConversationPlainTitle(conversation, {
-    fallbackAgentLabel: labels.fallbackAgentTitle,
-    language: uiLanguage
-  });
+  void uiLanguage;
+  return resolveAgentGUIConversationDisplayTitle(
+    conversation,
+    labels.fallbackAgentTitle
+  );
 }
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";

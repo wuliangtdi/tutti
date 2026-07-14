@@ -4,21 +4,17 @@ import {
   type AgentActivityMessage,
   type AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import {
-  formatAgentGuiSessionPlainTitle,
-  resolveAgentGuiWorkbenchSessionTitle
-} from "./sessionTitle";
+import { resolveAgentGuiWorkbenchSessionTitle } from "./sessionTitle";
 
 describe("agent GUI workbench session titles", () => {
-  it("formats raw mention markdown from snapshot titles", () => {
+  it("uses canonical snapshot titles", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: "Stale session title",
       provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
-        title:
-          "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进"
+        title: "@automation 发布 帮我跟进"
       })
     });
 
@@ -29,15 +25,14 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("formats workspace issue mention titles like the conversation rail", () => {
+  it("uses canonical workspace issue titles like the conversation rail", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
       fallbackTitle: null,
       provider: "codex",
       ...sessionState({
         agentSessionId: "session-1",
-        title:
-          "[@调研 spool 仓库 这个任务](mention://workspace-issue/issue-1?workspaceId=workspace-1)"
+        title: "@调研 spool 仓库 这个任务"
       })
     });
 
@@ -106,11 +101,10 @@ describe("agent GUI workbench session titles", () => {
     });
   });
 
-  it("uses the persisted title only as a formatted hydration fallback", () => {
+  it("uses the persisted canonical title only as a hydration fallback", () => {
     const title = resolveAgentGuiWorkbenchSessionTitle({
       agentSessionId: "session-1",
-      fallbackTitle:
-        "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进",
+      fallbackTitle: "@automation 发布 帮我跟进",
       provider: "codex"
     });
 
@@ -137,14 +131,6 @@ describe("agent GUI workbench session titles", () => {
       source: "none",
       title: null
     });
-  });
-
-  it("formats plain titles for message center and toast surfaces", () => {
-    expect(
-      formatAgentGuiSessionPlainTitle(
-        "[@automation 发布](mention://user/automation?workspaceId=workspace-1) 帮我跟进"
-      )
-    ).toBe("@automation 发布 帮我跟进");
   });
 });
 
