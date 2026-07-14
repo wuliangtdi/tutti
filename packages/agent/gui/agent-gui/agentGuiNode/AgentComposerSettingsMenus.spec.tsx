@@ -361,6 +361,55 @@ describe("AgentProjectDropdown", () => {
     expect(mockAgentHostApi.userProjects?.use).not.toHaveBeenCalled();
   });
 
+  it("does not submit an ancestor form when creating a project from the dialog", async () => {
+    const onAncestorFormSubmit = vi.fn(
+      (event: { preventDefault: () => void }) => {
+        event.preventDefault();
+      }
+    );
+    const onProjectPathChange = vi.fn();
+    mockAgentHostApi.userProjects = {
+      create: vi.fn().mockResolvedValue({
+        id: "dir-1",
+        path: "/Users/local/Documents/tutti/Tutti Demo",
+        label: "Tutti Demo"
+      }),
+      list: vi.fn().mockResolvedValue({ projects: [] }),
+      use: vi.fn()
+    };
+
+    render(
+      <form onSubmit={onAncestorFormSubmit}>
+        <AgentProjectDropdown
+          composerSettings={{
+            selectedProjectPath: null,
+            projectLocked: false
+          }}
+          labels={projectLabels}
+          i18n={workspaceUserProjectI18n}
+          onProjectPathChange={onProjectPathChange}
+        />
+      </form>
+    );
+
+    await openAddProjectDialog();
+    fireEvent.change(screen.getByPlaceholderText("Project name"), {
+      target: { value: "Tutti Demo" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(mockAgentHostApi.userProjects?.create).toHaveBeenCalledWith({
+        name: "Tutti Demo"
+      })
+    );
+    expect(onProjectPathChange).toHaveBeenCalledWith(
+      "/Users/local/Documents/tutti/Tutti Demo",
+      expect.objectContaining({ action: "create_new" })
+    );
+    expect(onAncestorFormSubmit).not.toHaveBeenCalled();
+  });
+
   it("shows a project name conflict when the created directory already exists", async () => {
     const onProjectPathChange = vi.fn();
     const conflictError = Object.assign(new Error("already exists"), {

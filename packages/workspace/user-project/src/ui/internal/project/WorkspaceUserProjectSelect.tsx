@@ -490,7 +490,11 @@ export function WorkspaceUserProjectSelect({
   ]);
 
   const submitProjectDialog = (event: FormEvent<HTMLFormElement>): void => {
+    // Dialog content is portaled in the DOM, but still sits under any ancestor
+    // React form (for example the Agent composer). Stop bubbling so Create /
+    // Enter cannot submit that outer form and send a draft prompt.
     event.preventDefault();
+    event.stopPropagation();
     void createProject();
   };
 
