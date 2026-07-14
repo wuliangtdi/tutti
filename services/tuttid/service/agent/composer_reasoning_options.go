@@ -58,8 +58,13 @@ func composerReasoningConfigFromOptions(
 	options []ComposerConfigOptionValue,
 ) ComposerConfigOption {
 	selected = strings.TrimSpace(selected)
+	profile := composerProfileFor(provider)
+	configurable := profile.ReasoningEffort
+	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		configurable = len(options) > 0
+	}
 	return ComposerConfigOption{
-		Configurable: composerProfileFor(provider).ReasoningEffort,
+		Configurable: configurable,
 		CurrentValue: selected,
 		DefaultValue: selected,
 		Options:      cloneComposerConfigOptionValues(options),
@@ -197,7 +202,8 @@ func normalizeReasoningEffortForProvider(provider string, value string) string {
 	// Model-catalog values are model-specific and authoritative. A generic
 	// provider-level normalizer must not rewrite values such as "minimal" or
 	// "none" that the selected model explicitly advertises.
-	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsModelCatalog {
+	if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsModelCatalog ||
+		profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {
 		return normalized
 	}
 	if (normalized == "minimal" || normalized == "none") &&

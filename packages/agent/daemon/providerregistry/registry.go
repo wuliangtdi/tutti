@@ -423,7 +423,7 @@ func Validate(descriptor ProviderDescriptor) error {
 			if len(descriptor.ComposerProfile.ReasoningEffortValues) == 0 {
 				return fmt.Errorf("provider %q static reasoning options require values", providerID)
 			}
-		case ReasoningEffortOptionsModelCatalog:
+		case ReasoningEffortOptionsModelCatalog, ReasoningEffortOptionsStrictModelCatalog:
 			if descriptor.ComposerProfile.ModelCatalog == "" {
 				return fmt.Errorf("provider %q model-catalog reasoning options require a model catalog", providerID)
 			}

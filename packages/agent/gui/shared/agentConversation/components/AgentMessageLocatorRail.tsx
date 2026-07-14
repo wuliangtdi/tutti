@@ -368,8 +368,8 @@ export function AgentMessageLocatorRail({
               style={
                 {
                   "--agent-message-locator-segment-position": `${
-                    index * AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX +
-                    AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX
+                    AGENT_MESSAGE_LOCATOR_HIT_SIZE_PX / 2 +
+                    (index + 0.5) * AGENT_MESSAGE_LOCATOR_ITEM_SPACING_PX
                   }px`
                 } as CSSProperties
               }

@@ -136,7 +136,7 @@ func TestNormalizeComposerSettingsClampsByProviderSupport(t *testing.T) {
 		Model:           "openai/gpt-5.3-codex-spark",
 		ReasoningEffort: "none",
 	})
-	if opencode.Model != "openai/gpt-5.3-codex-spark" || opencode.ReasoningEffort != "high" {
+	if opencode.Model != "openai/gpt-5.3-codex-spark" || opencode.ReasoningEffort != "none" {
 		t.Fatalf("opencode settings normalized unexpectedly: %+v", opencode)
 	}
 	claude := normalizeComposerSettingsForProvider("claude-code", ComposerSettings{
@@ -250,5 +250,17 @@ func TestResolveAdvertisedReasoningEffortPreservesAuthoritativeMinimalDefault(t 
 	options := composerAdvertisedReasoningOptionValues("codex", "minimal", "en", advertised)
 	if len(options) != 1 || options[0].Value != "minimal" {
 		t.Fatalf("composer advertised options = %#v, want only minimal", options)
+	}
+}
+
+func TestComposerAdvertisedReasoningOptionValuesLocalizesNone(t *testing.T) {
+	advertised := []AgentModelReasoningEffortOption{{Value: "none"}}
+	english := composerAdvertisedReasoningOptionValues("opencode", "none", "en", advertised)
+	if len(english) != 1 || english[0].Label != "Off" || english[0].Description == "" {
+		t.Fatalf("English none option = %#v", english)
+	}
+	chinese := composerAdvertisedReasoningOptionValues("opencode", "none", "zh-CN", advertised)
+	if len(chinese) != 1 || chinese[0].Label != "关闭" || chinese[0].Description == "" {
+		t.Fatalf("Chinese none option = %#v", chinese)
 	}
 }

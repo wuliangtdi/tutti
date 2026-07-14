@@ -40,6 +40,28 @@ test("agent composer options keep SDK fast speed configurable after reload", () 
   assert.equal("runtimeContext" in options, false);
 });
 
+test("agent composer options preserve an advertised empty model reasoning profile", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("opencode", {
+    modelConfig: {
+      configurable: true,
+      currentValue: "opencode/big-pickle",
+      options: [{ label: "Big Pickle", value: "opencode/big-pickle" }]
+    },
+    reasoningConfig: { configurable: false, options: [] },
+    effectiveSettings: { model: "opencode/big-pickle" },
+    runtimeContext: {
+      modelReasoningOptionsByModel: {
+        "opencode/big-pickle": { defaultValue: null, options: [] }
+      }
+    }
+  });
+
+  assert.deepEqual(options.reasoningOptionsByModel, {
+    "opencode/big-pickle": { defaultValue: null, options: [] }
+  });
+  assert.equal(options.reasoningConfigurable, false);
+});
+
 test("agent composer options project the typed slash command policy", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("codex", {
     slashCommandPolicy: {

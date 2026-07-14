@@ -236,6 +236,10 @@ must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.
 Do not render the provider-level reasoning list when a profile exists for the
 selected model.
+Reasoning values are an extensible provider vocabulary. Known shared values may
+use AgentGUI's canonical labels, while unrecognized values must preserve the
+localized option label supplied by the composer-options contract instead of
+rendering the raw protocol value or adding provider/model branches in the UI.
 If restored node data has a stale `provider` that disagrees with a resolvable
 `agentTargetId`, the target's provider wins for empty-composer settings and
 launch preparation.

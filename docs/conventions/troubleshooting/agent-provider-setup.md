@@ -917,6 +917,35 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   header, daemon visible-error classification, and rendered plans-page action as
   separate boundary tests.
 
+### OpenCode effort changes fail with `effort not found`
+
+- Symptom:
+  An OpenCode session starts successfully, but changing reasoning effort fails
+  through `session/set_config_option` with `Invalid params: effort not found`.
+  Big-Pickle is a common example.
+- Quick checks:
+  Run `opencode models <provider> --verbose` and inspect the selected model's
+  `variants` object. Compare those keys with the model-specific reasoning
+  profile returned by the composer-options endpoint. Also inspect the live ACP
+  `configOptions[id="effort"]`; a UI option that is absent from both sources
+  must never be submitted.
+- Root cause:
+  OpenCode's top-level `capabilities.reasoning` says the model can reason, but
+  it does not mean the model exposes selectable reasoning variants. Models use
+  different variant sets, and some models return an empty `variants` object.
+  A provider-wide static `low` / `medium` / `high` / `xhigh` list therefore
+  creates controls that the current model cannot honor.
+- Fix:
+  Parse `opencode models --verbose`, preserve an explicitly empty variants
+  profile, clear remembered effort values that are unsupported by the selected
+  model, and refresh composer options after model changes. Before sending a
+  live effort update, require the current ACP descriptor to advertise the exact
+  value.
+- Validation:
+  Cover a model with empty variants, a model with ordered
+  `low` / `medium` / `high` / `max` variants, remembered-setting sanitization,
+  and runtime rejection before any ACP call for an unadvertised value.
+
 ### Agent slash palette only shows Browser
 
 - Symptom:

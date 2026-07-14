@@ -163,7 +163,7 @@ function reasoningOptionsByModelFromValue(
       labelKeys: ["name", "label", "displayName"],
       valueKeys: ["value", "id"]
     });
-    if (!model.trim() || options.length === 0) {
+    if (!model.trim()) {
       return [];
     }
     return [

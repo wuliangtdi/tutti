@@ -192,6 +192,15 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 					catalogProjection.ReasoningProfiles,
 				)
 			}
+			if profile, advertised := catalogProjection.ReasoningProfiles[effectiveSettings.Model]; advertised {
+				effectiveSettings.ReasoningEffort = resolveAdvertisedReasoningEffort(
+					provider,
+					effectiveSettings.ReasoningEffort,
+					profile.DefaultReasoningEffort,
+					profile.ReasoningEfforts,
+				)
+				runtimeContext["reasoningEffort"] = nullableString(effectiveSettings.ReasoningEffort)
+			}
 		}
 	}
 	options := ComposerOptions{
@@ -365,12 +374,15 @@ func composerConfigOptions(provider string, settings ComposerSettings, modelOpti
 			"options":      composerConfigOptionValuesToRuntimeModelOptions(modelOptions),
 		})
 	}
-	if profile.ReasoningEffort {
-		options = append(options, map[string]any{
-			"currentValue": nullableString(settings.ReasoningEffort),
-			"id":           reasoningConfigOptionID(provider),
-			"options":      reasoningEffortOptions(provider, settings.ReasoningEffort),
-		})
+	if profile.ReasoningEffort && profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		reasoningOptions := reasoningEffortOptions(provider, settings.ReasoningEffort)
+		if len(reasoningOptions) > 0 {
+			options = append(options, map[string]any{
+				"currentValue": nullableString(settings.ReasoningEffort),
+				"id":           reasoningConfigOptionID(provider),
+				"options":      reasoningOptions,
+			})
+		}
 	}
 	if profile.Speed {
 		options = append(options, map[string]any{

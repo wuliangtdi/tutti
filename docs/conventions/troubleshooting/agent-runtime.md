@@ -33,6 +33,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Claude Code logs out after sending a message (invalid_grant, credentials wiped)](./agent-provider-setup.md#claude-code-logs-out-after-sending-a-message-invalidgrant-credentials-wiped)
 - [Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used](./agent-provider-setup.md#claude-code-sessions-fail-with-effectivesource-none-when-cc-switch-or-similar-proxy-tools-are-used)
 - [Tutti Agent retries a 402 and shows generic provider setup](./agent-provider-setup.md#tutti-agent-retries-a-402-and-shows-generic-provider-setup)
+- [OpenCode effort changes fail with `effort not found`](./agent-provider-setup.md#opencode-effort-changes-fail-with-effort-not-found)
 - [Provider setup notice flashes after switching to an already-connected agent](./agent-provider-setup.md#provider-setup-notice-flashes-after-switching-to-an-already-connected-agent)
 
 ## [Agent Sessions And Lifecycle](./agent-session-lifecycle.md)

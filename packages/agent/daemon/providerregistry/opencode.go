@@ -82,9 +82,7 @@ func openCodeDescriptor() ProviderDescriptor {
 			ModelSelection:         true,
 			ModelCatalog:           ModelCatalogKindOpenCodeCLI,
 			ReasoningEffort:        true,
-			ReasoningEffortValues:  []string{"low", "medium", "high", "xhigh"},
-			ReasoningEffortOptions: ReasoningEffortOptionsStatic,
-			DefaultReasoningEffort: "high",
+			ReasoningEffortOptions: ReasoningEffortOptionsStrictModelCatalog,
 			Capabilities: []string{
 				CapabilityImageInput,
 				CapabilityModelImageInputRequired,
@@ -94,6 +92,9 @@ func openCodeDescriptor() ProviderDescriptor {
 			ConfigOptionIDs: ComposerConfigOptionIDs{
 				Model:     "model",
 				Reasoning: "effort",
+			},
+			Behavior: ComposerBehaviorDescriptor{
+				RefreshModelOptionsAfterSettings: true,
 			},
 			Skills: SkillDescriptor{Kind: SkillKindOpenCode, Invocation: SkillInvocationTextTrigger, ConfigDirSuffix: "opencode"},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{

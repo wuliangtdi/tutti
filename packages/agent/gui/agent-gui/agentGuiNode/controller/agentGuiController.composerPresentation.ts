@@ -142,6 +142,12 @@ export function sanitizeComposerSettingsForOptions(
   const reasoningEffort = normalizeOptionalText(settings.reasoningEffort);
   const speed = normalizeOptionalText(settings.speed);
   const permissionModeId = normalizeOptionalText(settings.permissionModeId);
+  const modelReasoningProfile = model
+    ? options.reasoningOptionsByModel?.[model]
+    : undefined;
+  const modelReasoningValues = modelReasoningProfile
+    ? composerOptionValues(modelReasoningProfile.options)
+    : null;
   return {
     ...settings,
     model:
@@ -154,11 +160,15 @@ export function sanitizeComposerSettingsForOptions(
     reasoningEffort:
       options.reasoningConfigurable !== true
         ? null
-        : reasoningEffort &&
-            reasoningValues.size > 0 &&
-            !reasoningValues.has(reasoningEffort)
-          ? null
-          : (reasoningEffort as AgentSessionReasoningEffort | null),
+        : reasoningEffort && modelReasoningValues !== null
+          ? modelReasoningValues.has(reasoningEffort)
+            ? (reasoningEffort as AgentSessionReasoningEffort)
+            : null
+          : reasoningEffort &&
+              reasoningValues.size > 0 &&
+              !reasoningValues.has(reasoningEffort)
+            ? null
+            : (reasoningEffort as AgentSessionReasoningEffort | null),
     speed:
       speed && speedValues.size > 0 && !speedValues.has(speed)
         ? null

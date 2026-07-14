@@ -2779,8 +2779,17 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 			Provider: "opencode",
 			Source:   "opencode-cli",
 			Models: []AgentModelOption{
-				{ID: "openai/gpt-5.3-codex-spark", DisplayName: "GPT-5.3 Codex Spark", IsDefault: true, SupportsImageInput: &imageSupported},
-				{ID: "openai/gpt-5.3-codex", DisplayName: "GPT-5.3 Codex"},
+				{
+					ID:                         "openai/gpt-5.3-codex-spark",
+					DisplayName:                "GPT-5.3 Codex Spark",
+					IsDefault:                  true,
+					SupportsImageInput:         &imageSupported,
+					ReasoningEffortsAdvertised: true,
+					SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+						{Value: "low"}, {Value: "medium"}, {Value: "high"}, {Value: "max"},
+					},
+				},
+				{ID: "opencode/big-pickle", DisplayName: "Big Pickle", ReasoningEffortsAdvertised: true},
 			},
 		},
 	}
@@ -2797,11 +2806,11 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 	if options.EffectiveSettings.Model != "openai/gpt-5.3-codex-spark" {
 		t.Fatalf("effectiveSettings.model = %q, want openai/gpt-5.3-codex-spark", options.EffectiveSettings.Model)
 	}
-	if options.EffectiveSettings.ReasoningEffort != "high" {
-		t.Fatalf("effectiveSettings.reasoningEffort = %q, want high", options.EffectiveSettings.ReasoningEffort)
+	if options.EffectiveSettings.ReasoningEffort != "low" {
+		t.Fatalf("effectiveSettings.reasoningEffort = %q, want low", options.EffectiveSettings.ReasoningEffort)
 	}
 	configOptions, ok := options.RuntimeContext["configOptions"].([]map[string]any)
-	if !ok || len(configOptions) < 2 {
+	if !ok || len(configOptions) != 1 {
 		t.Fatalf("configOptions = %#v", options.RuntimeContext["configOptions"])
 	}
 	if configOptions[0]["id"] != "model" || configOptions[0]["currentValue"] != "openai/gpt-5.3-codex-spark" {
@@ -2811,17 +2820,20 @@ func TestServiceGetsComposerOptionsFromOpenCodeModelCatalogWithReasoning(t *test
 	if !ok || len(modelOptions) == 0 || modelOptions[0]["supportsImageInput"] != true {
 		t.Fatalf("model options = %#v, want supportsImageInput true", configOptions[0]["options"])
 	}
-	if configOptions[1]["id"] != "effort" || configOptions[1]["currentValue"] != "high" {
-		t.Fatalf("reasoning option = %#v", configOptions[1])
-	}
-	reasoningOptions, ok := configOptions[1]["options"].([]map[string]string)
+	profiles, ok := options.RuntimeContext["modelReasoningOptionsByModel"].(map[string]any)
 	if !ok {
-		t.Fatalf("reasoning options = %#v", configOptions[1]["options"])
+		t.Fatalf("model reasoning profiles = %#v", options.RuntimeContext["modelReasoningOptionsByModel"])
 	}
-	for _, option := range reasoningOptions {
-		if option["value"] == "none" || option["value"] == "minimal" {
-			t.Fatalf("reasoning options = %#v, want only opencode-supported efforts", reasoningOptions)
-		}
+	sparkProfile, ok := profiles["openai/gpt-5.3-codex-spark"].(map[string]any)
+	if !ok || sparkProfile["defaultValue"] != "low" {
+		t.Fatalf("spark reasoning profile = %#v", sparkProfile)
+	}
+	bigPickleProfile, ok := profiles["opencode/big-pickle"].(map[string]any)
+	if !ok {
+		t.Fatalf("Big Pickle reasoning profile = %#v", profiles["opencode/big-pickle"])
+	}
+	if reasoningOptions, ok := bigPickleProfile["options"].([]map[string]string); !ok || len(reasoningOptions) != 0 {
+		t.Fatalf("Big Pickle reasoning options = %#v, want empty", bigPickleProfile["options"])
 	}
 	if options.RuntimeContext["modelCatalogSource"] != "opencode-cli" {
 		t.Fatalf("modelCatalogSource = %#v, want opencode-cli", options.RuntimeContext["modelCatalogSource"])

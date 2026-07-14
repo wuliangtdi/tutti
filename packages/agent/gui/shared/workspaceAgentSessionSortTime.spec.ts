@@ -3,12 +3,10 @@ import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "./workspaceAgentSess
 
 describe("resolveWorkspaceAgentSessionSortTimeUnixMs", () => {
   it("uses the canonical latest turn start", () => {
-    const sortTime = resolveWorkspaceAgentSessionSortTimeUnixMs(
-      {
-        createdAtUnixMs: 100,
-        latestTurn: { startedAtUnixMs: 250 }
-      }
-    );
+    const sortTime = resolveWorkspaceAgentSessionSortTimeUnixMs({
+      createdAtUnixMs: 100,
+      latestTurn: { startedAtUnixMs: 250 }
+    });
 
     expect(sortTime).toBe(250);
   });

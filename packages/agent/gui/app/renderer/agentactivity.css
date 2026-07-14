@@ -6546,7 +6546,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-message-locator__track-segment {
   position: absolute;
   top: var(--agent-message-locator-segment-position);
-  left: 50%;
+  left: calc(var(--agent-message-locator-hit-size) / 2);
   width: 1px;
   height: 8px;
   transform: translate(-50%, -50%);

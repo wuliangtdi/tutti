@@ -313,6 +313,9 @@ func (a *standardACPAdapter) ApplySessionSettings(
 	if patch.ReasoningEffort != nil {
 		reasoning := strings.TrimSpace(*patch.ReasoningEffort)
 		if reasoning != "" {
+			if !a.sessionConfigOptionAdvertisesValue(session.AgentSessionID, "effort", reasoning) {
+				return fmt.Errorf("agent session ACP effort %q is not advertised for the current model", reasoning)
+			}
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "effort", reasoning) {
 				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "effort", reasoning); err != nil {
 					return fmt.Errorf("agent session ACP effort configuration failed: %w", err)

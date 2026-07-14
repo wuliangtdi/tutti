@@ -136,6 +136,20 @@ func TestOpenCodeApplySessionSettingsSendsLiveModelAndEffortConfigOptions(t *tes
 	t.Parallel()
 
 	transport := newStandardACPTransport("OpenCode", "opencode-session-1")
+	transport.conn.configOptions = []map[string]any{
+		{
+			"id": "model",
+			"options": []any{
+				map[string]any{"name": "GPT-5.3 Codex Spark", "value": "openai/gpt-5.3-codex-spark"},
+			},
+		},
+		{
+			"id": "effort",
+			"options": []any{
+				map[string]any{"name": "High", "value": "high"},
+			},
+		},
+	}
 	adapter := newOpenCodeTestAdapter(transport)
 	session := standardTestSession(ProviderOpenCode)
 
@@ -169,5 +183,32 @@ func TestOpenCodeApplySessionSettingsSendsLiveModelAndEffortConfigOptions(t *tes
 	}
 	if got, _ := calls[1]["value"].(string); got != "high" {
 		t.Fatalf("second config value = %q, want high", got)
+	}
+}
+
+func TestOpenCodeApplySessionSettingsRejectsUnadvertisedEffortBeforeACPCall(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-big-pickle-session")
+	transport.conn.configOptions = []map[string]any{{
+		"id": "model",
+		"options": []any{
+			map[string]any{"name": "Big Pickle", "value": "opencode/big-pickle"},
+		},
+	}}
+	adapter := newOpenCodeTestAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		ReasoningEffort: stringPtr("high"),
+	})
+	if err == nil || !strings.Contains(err.Error(), `effort "high" is not advertised`) {
+		t.Fatalf("ApplySessionSettings error = %v", err)
+	}
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("config option calls = %#v, want none", calls)
 	}
 }

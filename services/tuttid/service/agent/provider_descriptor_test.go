@@ -82,13 +82,14 @@ func TestCodexModelCatalogSpecComesFromProviderDescriptor(t *testing.T) {
 func TestOpenCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.OpenCode)
 	if !profile.ModelSelection || !profile.UsesModelCatalog || profile.ModelCatalog != "opencode-cli" ||
-		!profile.ReasoningEffort || profile.DefaultReasoningEffort != "high" {
+		!profile.ReasoningEffort || profile.DefaultReasoningEffort != "" {
 		t.Fatalf("opencode profile = %#v", profile)
 	}
-	if !reflect.DeepEqual(profile.ReasoningEffortValues, []string{"low", "medium", "high", "xhigh"}) {
-		t.Fatalf("opencode reasoning values = %#v", profile.ReasoningEffortValues)
+	if len(profile.ReasoningEffortValues) != 0 {
+		t.Fatalf("opencode reasoning values = %#v, want model-catalog values", profile.ReasoningEffortValues)
 	}
-	if profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStatic || profile.SkillConfigDirSuffix != "opencode" {
+	if profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog || profile.SkillConfigDirSuffix != "opencode" ||
+		!profile.Behavior.RefreshModelOptionsAfterSettings {
 		t.Fatalf("opencode strategy profile = %#v", profile)
 	}
 	if reasoningConfigOptionID(agentprovider.OpenCode) != "effort" {
@@ -134,7 +135,7 @@ func TestOpenCodeModelCatalogListerUsesDescriptorRuntimeCommand(t *testing.T) {
 	if !ok {
 		t.Fatalf("lister = %T, want OpenCodeCLIModelLister", spec.lister(&CachedAgentModelCatalog{}))
 	}
-	if lister.Command != "poison-opencode" || !reflect.DeepEqual(lister.Args, []string{"models"}) {
+	if lister.Command != "poison-opencode" || !reflect.DeepEqual(lister.Args, []string{"models", "--verbose"}) {
 		t.Fatalf("lister command = %q %#v", lister.Command, lister.Args)
 	}
 }

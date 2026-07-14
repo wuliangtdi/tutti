@@ -152,7 +152,7 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 				}
 				return OpenCodeCLIModelLister{
 					Command: command[0],
-					Args:    []string{"models"},
+					Args:    []string{"models", "--verbose"},
 				}
 			},
 			configuredDefaultModel:    readOpenCodeConfiguredDefaultModel,

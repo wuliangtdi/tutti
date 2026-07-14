@@ -75,7 +75,8 @@ function vm(
       { value: "low", label: "Low" },
       { value: "high", label: "High" },
       { value: "max", label: "Max" },
-      { value: "ultra", label: "ultra" }
+      { value: "ultra", label: "ultra" },
+      { value: "none", label: "Off" }
     ],
     ...overrides
   };
@@ -108,7 +109,8 @@ describe("buildComposerModelMenuModel", () => {
       { value: "low", label: "Low" },
       { value: "high", label: "High" },
       { value: "max", label: "Max" },
-      { value: "ultra", label: "Ultra" }
+      { value: "ultra", label: "Ultra" },
+      { value: "none", label: "Off" }
     ]);
 
     expect(menu.speed.show).toBe(true);
@@ -141,6 +143,26 @@ describe("buildComposerModelMenuModel", () => {
 
     expect(menu.reasoning.selectedLabel).toBe("极致");
     expect(menu.reasoning.options).toEqual([{ value: "ultra", label: "极致" }]);
+  });
+
+  it("uses the provider-localized label for an extensible reasoning value", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        draftSettings: {
+          model: "gpt-5.6-sol",
+          reasoningEffort: "none",
+          speed: "standard",
+          planMode: false,
+          permissionModeId: "preset"
+        },
+        selectedReasoningEffortValue: "none",
+        availableReasoningEfforts: [{ value: "none", label: "关闭" }]
+      }),
+      labels
+    );
+
+    expect(menu.reasoning.selectedLabel).toBe("关闭");
+    expect(menu.reasoning.options).toEqual([{ value: "none", label: "关闭" }]);
   });
 
   it("localizes ultra effort in model summaries", () => {

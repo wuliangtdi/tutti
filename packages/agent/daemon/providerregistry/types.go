@@ -302,8 +302,9 @@ const (
 type ReasoningEffortOptionsKind string
 
 const (
-	ReasoningEffortOptionsStatic       ReasoningEffortOptionsKind = "static"
-	ReasoningEffortOptionsModelCatalog ReasoningEffortOptionsKind = "model_catalog"
+	ReasoningEffortOptionsStatic             ReasoningEffortOptionsKind = "static"
+	ReasoningEffortOptionsModelCatalog       ReasoningEffortOptionsKind = "model_catalog"
+	ReasoningEffortOptionsStrictModelCatalog ReasoningEffortOptionsKind = "strict_model_catalog"
 )
 
 type ConfiguredModelOverrideKind string

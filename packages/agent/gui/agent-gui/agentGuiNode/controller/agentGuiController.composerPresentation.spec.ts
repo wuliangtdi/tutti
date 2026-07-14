@@ -207,6 +207,37 @@ describe("composer target presentation", () => {
     ).toBeNull();
   });
 
+  it("clears a remembered effort when the selected model advertises no reasoning variants", () => {
+    const settings = { model: "opencode/big-pickle", reasoningEffort: "high" };
+    const options = {
+      provider: "opencode",
+      capabilities: null,
+      models: [{ value: "opencode/big-pickle", label: "Big Pickle" }],
+      reasoningEfforts: [],
+      reasoningConfigurable: true,
+      reasoningOptionsByModel: {
+        "opencode/big-pickle": { defaultValue: null, options: [] }
+      },
+      speeds: [],
+      skills: [],
+      behavior: {
+        collapseModelOptionsToLatest: false,
+        modelOptionsAuthoritative: false,
+        refreshModelOptionsAfterSettings: true,
+        prewarmDraftSession: false,
+        planModeExclusiveWithPermissionMode: false
+      },
+      loadedAtUnixMs: 1
+    };
+
+    expect(sanitizeComposerSettingsForOptions(settings, options)).toMatchObject(
+      {
+        model: "opencode/big-pickle",
+        reasoningEffort: null
+      }
+    );
+  });
+
   it("clears reasoning effort when the target does not advertise it", () => {
     const settings = { model: "gpt-5.2", reasoningEffort: "high" };
     const cleared = sanitizeComposerSettingsForOptions(settings, {

@@ -261,6 +261,11 @@ describe("AgentTranscriptView", () => {
       expect(locator).toHaveStyle({
         "--agent-message-locator-height": "66px"
       });
+      expect(
+        locator.querySelector(".agent-gui-message-locator__track-segment")
+      ).toHaveStyle({
+        "--agent-message-locator-segment-position": "33px"
+      });
       fireEvent.mouseEnter(locator);
       const panel = screen.getByTestId("agent-message-locator-panel");
       expect(within(panel).getByText("User asks for a fix")).toBeTruthy();

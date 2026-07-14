@@ -180,7 +180,7 @@ export function buildComposerModelMenuModel(
       selectedLabel: reasoningLabel,
       options: reasoningItems.map((option) => ({
         value: option.value,
-        label: resolveReasoningOptionLabel(option.value, labels)
+        label: resolveReasoningOptionLabel(option.value, labels, option.label)
       }))
     },
     speed: {
@@ -481,10 +481,7 @@ function resolveSelectedReasoningLabel(
     (option) => option.value === selectedValue
   );
   if (selected) {
-    const resolved = resolveReasoningOptionLabel(selected.value, labels);
-    return resolved === selected.value && selected.label
-      ? selected.label
-      : resolved;
+    return resolveReasoningOptionLabel(selected.value, labels, selected.label);
   }
   if (composerSettings.reasoningUnavailable) {
     return labels.inheritedUnavailable;
@@ -510,7 +507,8 @@ export function resolveReasoningOptionLabel(
     | "reasoningOptionXHigh"
     | "reasoningOptionMax"
     | "reasoningOptionUltra"
-  >
+  >,
+  providerLabel?: string
 ): string {
   switch (value) {
     case "default":
@@ -530,7 +528,7 @@ export function resolveReasoningOptionLabel(
     case "ultra":
       return labels.reasoningOptionUltra;
     default:
-      return value;
+      return providerLabel?.trim() || value;
   }
 }
 
