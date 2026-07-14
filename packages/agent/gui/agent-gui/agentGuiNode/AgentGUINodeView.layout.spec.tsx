@@ -3038,10 +3038,17 @@ describe("AgentGUINodeView layout persistence", () => {
     expect(screen.getAllByText("No chats yet")).toHaveLength(2);
   });
 
-  it("hides batch delete from empty project section actions", async () => {
+  it("keeps project and Chats batch delete disabled for empty ordinary sections", async () => {
     renderAgentGUINodeView({
       viewModel: {
         ...createViewModel(),
+        conversations: [
+          {
+            ...createConversationSummary("pinned-session"),
+            cwd: "/workspace/app",
+            pinnedAtUnixMs: 100
+          }
+        ],
         userProjects: [
           {
             id: "project-app",
@@ -3058,8 +3065,94 @@ describe("AgentGUINodeView layout persistence", () => {
     fireEvent.pointerDown(moreActionsButton);
     fireEvent.click(moreActionsButton);
 
-    expect(screen.queryByText("batchDeleteProjectSessions")).toBeNull();
+    expect(
+      (await screen.findByText("batchDeleteProjectSessions")).closest(
+        '[role="menuitem"]'
+      )
+    ).toHaveAttribute("data-disabled");
     expect(await screen.findByText("removeProject")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    const chatsMoreActionsButton = screen.getByRole("button", {
+      name: "conversationsSectionMoreActions"
+    });
+    fireEvent.pointerDown(chatsMoreActionsButton);
+    fireEvent.click(chatsMoreActionsButton);
+
+    expect(
+      (await screen.findByText("batchDeleteConversations")).closest(
+        '[role="menuitem"]'
+      )
+    ).toHaveAttribute("data-disabled");
+  });
+
+  it("uses the immutable backend candidate snapshot for one Chats batch delete", async () => {
+    const requestCandidates = vi.fn(async () => [
+      "loaded-session",
+      "unloaded-session"
+    ]);
+    const deleteBatch = vi.fn();
+    renderAgentGUINodeView({
+      actions: {
+        ...createActions(),
+        confirmDeleteProjectConversations: requestCandidates,
+        confirmDeleteConversations: deleteBatch
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: [createConversationSummary("loaded-session")]
+      }
+    });
+
+    const moreActionsButton = screen.getByRole("button", {
+      name: "conversationsSectionMoreActions"
+    });
+    fireEvent.pointerDown(moreActionsButton);
+    fireEvent.click(moreActionsButton);
+    fireEvent.click(await screen.findByText("batchDeleteConversations"));
+
+    expect(requestCandidates).toHaveBeenCalledWith(
+      "conversations",
+      "local:codex"
+    );
+    expect(
+      await screen.findByText("batchDeleteConversationsBody:2")
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "batchDeleteConversationsConfirm" })
+    );
+
+    expect(deleteBatch).toHaveBeenCalledTimes(1);
+    expect(deleteBatch).toHaveBeenCalledWith([
+      "loaded-session",
+      "unloaded-session"
+    ]);
+  });
+
+  it("does not open a batch delete confirmation when candidates are empty", async () => {
+    const requestCandidates = vi.fn(async () => []);
+    renderAgentGUINodeView({
+      actions: {
+        ...createActions(),
+        confirmDeleteProjectConversations: requestCandidates
+      },
+      viewModel: {
+        ...createViewModel(),
+        conversations: [createConversationSummary("loaded-session")]
+      }
+    });
+
+    const moreActionsButton = screen.getByRole("button", {
+      name: "conversationsSectionMoreActions"
+    });
+    fireEvent.pointerDown(moreActionsButton);
+    fireEvent.click(moreActionsButton);
+    fireEvent.click(await screen.findByText("batchDeleteConversations"));
+
+    await waitFor(() => expect(requestCandidates).toHaveBeenCalledTimes(1));
+    expect(
+      screen.queryByText("batchDeleteConversationsTitle")
+    ).not.toBeInTheDocument();
   });
 
   it("shows a tooltip trigger for the active conversation run path", () => {
@@ -6106,7 +6199,7 @@ function createActions(): AgentGUINodeViewProps["actions"] {
     toggleConversationPinned: vi.fn(),
     markConversationUnread: vi.fn(),
     removeProject: vi.fn(),
-    confirmDeleteProjectConversations: vi.fn(),
+    confirmDeleteProjectConversations: vi.fn(async () => []),
     confirmDeleteConversations: vi.fn(),
     requestDeleteConversation: vi.fn(),
     cancelDeleteConversation: vi.fn(),

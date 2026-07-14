@@ -3,9 +3,8 @@ import {
   cancelWorkspaceAgentTurn,
   clearWorkspaceAgentSessions,
   createWorkspaceAgentSession,
-  countWorkspaceAgentSessionSection,
   deleteWorkspaceAgentSession,
-  deleteWorkspaceAgentSessionSection,
+  deleteWorkspaceAgentSessionsBatch,
   getWorkspaceAgentSession,
   goalControlWorkspaceAgentSession,
   importWorkspaceExternalAgentSessions,
@@ -13,6 +12,7 @@ import {
   listWorkspaceAgentPinnedSessionPage,
   listWorkspaceAgentSessionGitBranches,
   listWorkspaceAgentSessionMessages,
+  listWorkspaceAgentSessionSectionDeletionCandidates,
   listWorkspaceAgentSessionSectionPage,
   listWorkspaceAgentSessionSections,
   listWorkspaceAgentSessions,
@@ -38,9 +38,8 @@ type WorkspaceAgentClient = Pick<
   | "cancelWorkspaceAgentTurn"
   | "clearWorkspaceAgentSessions"
   | "createWorkspaceAgentSession"
-  | "countWorkspaceAgentSessionSection"
   | "deleteWorkspaceAgentSession"
-  | "deleteWorkspaceAgentSessionSection"
+  | "deleteWorkspaceAgentSessionsBatch"
   | "getWorkspaceAgentSession"
   | "goalControlWorkspaceAgentSession"
   | "importWorkspaceExternalAgentSessions"
@@ -48,6 +47,7 @@ type WorkspaceAgentClient = Pick<
   | "listWorkspaceAgentPinnedSessionPage"
   | "listWorkspaceAgentSessionGitBranches"
   | "listWorkspaceAgentSessionMessages"
+  | "listWorkspaceAgentSessionSectionDeletionCandidates"
   | "listWorkspaceAgentSessionSectionPage"
   | "listWorkspaceAgentSessionSections"
   | "listWorkspaceAgentSessions"
@@ -89,19 +89,19 @@ export function createWorkspaceAgentClient(
         "Delete workspace agent session request failed."
       );
     },
-    async deleteWorkspaceAgentSessionSection(
+    async deleteWorkspaceAgentSessionsBatch(
       workspaceID,
       request,
       requestOptions
     ) {
       return unwrapData(
-        await deleteWorkspaceAgentSessionSection({
+        await deleteWorkspaceAgentSessionsBatch({
           client,
+          body: request,
           path: { workspaceID },
-          query: request,
           ...requestOptions
         }),
-        "Delete workspace agent session section request failed."
+        "Delete workspace agent sessions batch request failed."
       );
     },
     async clearWorkspaceAgentSessions(workspaceID) {
@@ -160,19 +160,19 @@ export function createWorkspaceAgentClient(
         "Workspace agent session section page request failed."
       );
     },
-    async countWorkspaceAgentSessionSection(
+    async listWorkspaceAgentSessionSectionDeletionCandidates(
       workspaceID,
       request,
       requestOptions
     ) {
       return unwrapData(
-        await countWorkspaceAgentSessionSection({
+        await listWorkspaceAgentSessionSectionDeletionCandidates({
           client,
           path: { workspaceID },
           query: request,
           ...requestOptions
         }),
-        "Workspace agent session section count request failed."
+        "Workspace agent session section deletion candidates request failed."
       );
     },
     async listWorkspaceAgentPinnedSessionPage(

@@ -32,7 +32,8 @@ import type {
   CreateWorkspaceAppFactoryJobRequest,
   CreateWorkspaceTerminalRequest,
   DeleteWorkspaceAgentSessionResponse,
-  DeleteWorkspaceAgentSessionSectionResponse,
+  DeleteWorkspaceAgentSessionsBatchRequest,
+  DeleteWorkspaceAgentSessionsBatchResponse,
   DeleteIssueManagerContextRefResponse,
   DeleteIssueManagerIssueResponse,
   DeleteIssueManagerTaskResponse,
@@ -107,7 +108,7 @@ import type {
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionPageResponse,
-  WorkspaceAgentSessionSectionCountResponse,
+  WorkspaceAgentSessionSectionDeletionCandidatesResponse,
   WorkspaceAgentSessionSectionPageResponse,
   WorkspaceAgentSessionSectionsResponse,
   WorkspaceAgentSessionMessagesResponse,
@@ -264,14 +265,11 @@ export interface TuttidClient {
     workspaceID: string,
     agentSessionID: string
   ): Promise<DeleteWorkspaceAgentSessionResponse>;
-  deleteWorkspaceAgentSessionSection(
+  deleteWorkspaceAgentSessionsBatch(
     workspaceID: string,
-    request: {
-      sectionKey: string;
-      agentTargetId?: string;
-    },
+    request: DeleteWorkspaceAgentSessionsBatchRequest,
     requestOptions?: TuttidRequestOptions
-  ): Promise<DeleteWorkspaceAgentSessionSectionResponse>;
+  ): Promise<DeleteWorkspaceAgentSessionsBatchResponse>;
   clearWorkspaceAgentSessions(
     workspaceID: string
   ): Promise<ClearWorkspaceAgentSessionsResponse>;
@@ -527,14 +525,15 @@ export interface TuttidClient {
     },
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionSectionPageResponse>;
-  countWorkspaceAgentSessionSection(
+  listWorkspaceAgentSessionSectionDeletionCandidates(
     workspaceID: string,
     request: {
       sectionKey: string;
       agentTargetId?: string;
+      excludePinned?: boolean;
     },
     requestOptions?: TuttidRequestOptions
-  ): Promise<WorkspaceAgentSessionSectionCountResponse>;
+  ): Promise<WorkspaceAgentSessionSectionDeletionCandidatesResponse>;
   listWorkspaceAgentPinnedSessionPage(
     workspaceID: string,
     request?: {

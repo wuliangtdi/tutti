@@ -30,12 +30,13 @@ interface AgentGUIConversationRailSectionProps {
   section: ConversationSection;
   projectPath: string;
   projectLabel: string;
-  projectConversationCount: number;
   isSectionCollapsed: boolean;
   activeConversationId: string | null;
   pendingDeleteConversationId: string | null;
   previewMode: boolean;
   isDeletingConversation: boolean;
+  isDeletingProjectConversations: boolean;
+  isRequestingBatchDeletion: boolean;
   isLoadingMoreConversations: boolean;
   sectionHasMore: boolean;
   createConversationDisabled: boolean;
@@ -49,6 +50,7 @@ interface AgentGUIConversationRailSectionProps {
     source?: string;
   }) => void;
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
+  onRequestSectionBatchDeletion: (section: ConversationSection) => void;
   setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onLoadMoreConversations: (section: ConversationSection) => void;
@@ -67,12 +69,13 @@ export const AgentGUIConversationRailSection = memo(
     section,
     projectPath,
     projectLabel,
-    projectConversationCount,
     isSectionCollapsed,
     activeConversationId,
     pendingDeleteConversationId,
     previewMode,
     isDeletingConversation,
+    isDeletingProjectConversations,
+    isRequestingBatchDeletion,
     isLoadingMoreConversations,
     sectionHasMore,
     createConversationDisabled,
@@ -85,6 +88,7 @@ export const AgentGUIConversationRailSection = memo(
     onToggleProjectSectionCollapsed,
     onSelectConversation,
     onLoadMoreConversations,
+    onRequestSectionBatchDeletion,
     setPendingProjectAction,
     onToggleConversationPinned,
     onMarkConversationUnread,
@@ -312,22 +316,17 @@ export const AgentGUIConversationRailSection = memo(
                     >
                       <span>{labels.projectSectionViewFiles}</span>
                     </DropdownMenuItem>
-                    {projectConversationCount > 0 ? (
-                      <DropdownMenuItem
-                        className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                        onSelect={() => {
-                          const label = projectLabel || projectPath;
-                          setPendingProjectAction({
-                            kind: "batch-delete",
-                            conversationCount: projectConversationCount,
-                            label,
-                            path: projectPath
-                          });
-                        }}
-                      >
-                        <span>{labels.batchDeleteProjectSessions}</span>
-                      </DropdownMenuItem>
-                    ) : null}
+                    <DropdownMenuItem
+                      className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
+                      disabled={
+                        (section.items.length === 0 && !sectionHasMore) ||
+                        isDeletingProjectConversations ||
+                        isRequestingBatchDeletion
+                      }
+                      onSelect={() => onRequestSectionBatchDeletion(section)}
+                    >
+                      <span>{labels.batchDeleteProjectSessions}</span>
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
                       onSelect={() => {
@@ -344,9 +343,7 @@ export const AgentGUIConversationRailSection = memo(
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : null}
-              {!projectPath &&
-              section.kind === "conversations" &&
-              section.items.length > 0 ? (
+              {!projectPath && section.kind === "conversations" ? (
                 <DropdownMenu>
                   {previewMode ? (
                     <DropdownMenuTrigger asChild>
@@ -399,14 +396,12 @@ export const AgentGUIConversationRailSection = memo(
                   >
                     <DropdownMenuItem
                       className={`${styles.composerMenuItem} nodrag [-webkit-app-region:no-drag]`}
-                      onSelect={() => {
-                        setPendingProjectAction({
-                          kind: "batch-delete-conversations",
-                          conversationCount: section.items.length,
-                          label: section.label,
-                          sessionIds: section.items.map((item) => item.id)
-                        });
-                      }}
+                      disabled={
+                        (section.items.length === 0 && !sectionHasMore) ||
+                        isDeletingProjectConversations ||
+                        isRequestingBatchDeletion
+                      }
+                      onSelect={() => onRequestSectionBatchDeletion(section)}
                     >
                       <span>{labels.batchDeleteConversations}</span>
                     </DropdownMenuItem>

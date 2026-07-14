@@ -82,15 +82,21 @@ export type WorkspaceAgentActivitySessionSectionResult = Awaited<
 >;
 
 export type WorkspaceAgentActivitySessionSectionScopeInput = Parameters<
-  NonNullable<AgentActivityRuntime["countSessionSection"]>
+  NonNullable<AgentActivityRuntime["listSessionSectionDeletionCandidates"]>
 >[0];
 
-export type WorkspaceAgentActivitySessionSectionCount = Awaited<
-  ReturnType<NonNullable<AgentActivityRuntime["countSessionSection"]>>
+export type WorkspaceAgentActivitySessionSectionDeletionCandidates = Awaited<
+  ReturnType<
+    NonNullable<AgentActivityRuntime["listSessionSectionDeletionCandidates"]>
+  >
 >;
 
-export type WorkspaceAgentActivityDeleteSessionSectionResult = Awaited<
-  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionSection"]>>
+export type WorkspaceAgentActivityDeleteSessionsBatchInput = Parameters<
+  NonNullable<AgentActivityRuntime["deleteSessionsBatch"]>
+>[0];
+
+export type WorkspaceAgentActivityDeleteSessionsBatchResult = Awaited<
+  ReturnType<NonNullable<AgentActivityRuntime["deleteSessionsBatch"]>>
 >;
 
 export type WorkspaceAgentActivityListPinnedSessionsPageInput = Parameters<
@@ -173,12 +179,12 @@ export interface IWorkspaceAgentActivityService {
   listSessionSectionPage(
     input: WorkspaceAgentActivityListSessionSectionPageInput
   ): Promise<WorkspaceAgentActivitySessionSectionResult>;
-  countSessionSection(
+  listSessionSectionDeletionCandidates(
     input: WorkspaceAgentActivitySessionSectionScopeInput
-  ): Promise<WorkspaceAgentActivitySessionSectionCount>;
-  deleteSessionSection(
-    input: WorkspaceAgentActivitySessionSectionScopeInput
-  ): Promise<WorkspaceAgentActivityDeleteSessionSectionResult>;
+  ): Promise<WorkspaceAgentActivitySessionSectionDeletionCandidates>;
+  deleteSessionsBatch(
+    input: WorkspaceAgentActivityDeleteSessionsBatchInput
+  ): Promise<WorkspaceAgentActivityDeleteSessionsBatchResult>;
   listPinnedSessionsPage(
     input: WorkspaceAgentActivityListPinnedSessionsPageInput
   ): Promise<WorkspaceAgentActivityPinnedSessionsPageResult>;

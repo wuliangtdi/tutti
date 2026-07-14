@@ -973,6 +973,99 @@ test("WorkspaceAgentActivityService.listSessionSections tolerates missing pinned
   });
 });
 
+test("WorkspaceAgentActivityService lists deletion candidates with exact section filters", async () => {
+  const abortController = new AbortController();
+  const calls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      listWorkspaceAgentSessionSectionDeletionCandidates: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionDeletionCandidates"]
+        >[1],
+        options: Parameters<
+          TuttidClient["listWorkspaceAgentSessionSectionDeletionCandidates"]
+        >[2]
+      ) => {
+        calls.push({ options, request, workspaceId });
+        return {
+          agentTargetId: "codex-target",
+          excludePinned: true,
+          sectionKey: "conversations",
+          sessionIds: ["session-1", "session-2"],
+          workspaceId
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const result = await service.listSessionSectionDeletionCandidates({
+    agentTargetId: " codex-target ",
+    excludePinned: true,
+    sectionKey: "conversations",
+    signal: abortController.signal,
+    workspaceId: " ws-1 "
+  });
+
+  assert.deepEqual(calls, [
+    {
+      options: { signal: abortController.signal },
+      request: {
+        agentTargetId: "codex-target",
+        excludePinned: true,
+        sectionKey: "conversations"
+      },
+      workspaceId: "ws-1"
+    }
+  ]);
+  assert.deepEqual(result.sessionIds, ["session-1", "session-2"]);
+});
+
+test("WorkspaceAgentActivityService deletes one exact session batch", async () => {
+  const calls: unknown[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      deleteWorkspaceAgentSessionsBatch: async (
+        workspaceId: string,
+        request: Parameters<
+          TuttidClient["deleteWorkspaceAgentSessionsBatch"]
+        >[1]
+      ) => {
+        calls.push({ request, workspaceId });
+        return {
+          removedMessages: 3,
+          removedSessionIds: ["session-1"],
+          removedSessions: 1
+        };
+      },
+      listWorkspaceAgentSessions: async (workspaceId: string) => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const result = await service.deleteSessionsBatch({
+    sessionIds: ["session-1", "session-2"],
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(calls, [
+    {
+      request: { sessionIds: ["session-1", "session-2"] },
+      workspaceId: "ws-1"
+    }
+  ]);
+  assert.deepEqual(result, {
+    removedMessages: 3,
+    removedSessionIds: ["session-1"],
+    removedSessions: 1
+  });
+});
+
 test("WorkspaceAgentActivityService.listPinnedSessionsPage forwards cursor to tuttid", async () => {
   const abortController = new AbortController();
   const pageCalls: unknown[] = [];

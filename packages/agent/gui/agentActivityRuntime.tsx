@@ -257,25 +257,30 @@ export interface AgentActivityRuntimeUploadPromptContentResult {
 
 export interface AgentActivityRuntimeSessionSectionScopeInput {
   agentTargetId?: string | null;
+  excludePinned?: boolean;
   sectionKey: string;
   signal?: AbortSignal;
   workspaceId: string;
 }
 
-export interface AgentActivityRuntimeSessionSectionCount {
+export interface AgentActivityRuntimeSessionSectionDeletionCandidates {
   agentTargetId?: string | null;
-  count: number;
+  excludePinned: boolean;
   sectionKey: string;
+  sessionIds: string[];
   workspaceId: string;
 }
 
-export interface AgentActivityRuntimeDeleteSessionSectionResult {
-  agentTargetId?: string | null;
+export interface AgentActivityRuntimeDeleteSessionsBatchInput {
+  sessionIds: string[];
+  signal?: AbortSignal;
+  workspaceId: string;
+}
+
+export interface AgentActivityRuntimeDeleteSessionsBatchResult {
   removedMessages: number;
   removedSessionIds: string[];
   removedSessions: number;
-  sectionKey: string;
-  workspaceId: string;
 }
 
 export interface AgentActivityRuntimeSessionAttachment {
@@ -360,12 +365,12 @@ export interface AgentActivityRuntime {
   listSessionSectionPage?(
     input: AgentActivityRuntimeListSessionSectionPageInput
   ): Promise<AgentActivityRuntimeSessionSection>;
-  countSessionSection?(
+  listSessionSectionDeletionCandidates?(
     input: AgentActivityRuntimeSessionSectionScopeInput
-  ): Promise<AgentActivityRuntimeSessionSectionCount>;
-  deleteSessionSection?(
-    input: AgentActivityRuntimeSessionSectionScopeInput
-  ): Promise<AgentActivityRuntimeDeleteSessionSectionResult>;
+  ): Promise<AgentActivityRuntimeSessionSectionDeletionCandidates>;
+  deleteSessionsBatch?(
+    input: AgentActivityRuntimeDeleteSessionsBatchInput
+  ): Promise<AgentActivityRuntimeDeleteSessionsBatchResult>;
   listPinnedSessionsPage?(
     input: AgentActivityRuntimeListPinnedSessionsPageInput
   ): Promise<AgentActivityRuntimeSessionPage>;

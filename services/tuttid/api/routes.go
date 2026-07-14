@@ -378,12 +378,18 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		}
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/batch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DeleteWorkspaceAgentSessionsBatch(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			wrapper.ListWorkspaceAgentSessionSections(w, r)
-		case http.MethodDelete:
-			wrapper.DeleteWorkspaceAgentSessionSection(w, r)
 		default:
 			tuttitypes.WriteMethodNotAllowed(w)
 		}
@@ -397,12 +403,12 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ListWorkspaceAgentSessionSectionPage(w, r)
 	})
 
-	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/count", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)
 			return
 		}
-		wrapper.CountWorkspaceAgentSessionSection(w, r)
+		wrapper.ListWorkspaceAgentSessionSectionDeletionCandidates(w, r)
 	})
 
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-sections/pinned-page", func(w http.ResponseWriter, r *http.Request) {

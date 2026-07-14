@@ -1477,20 +1477,19 @@ function createWorkspaceAgentActivityService(
         hasMore: false
       };
     },
-    async countSessionSection(input) {
+    async listSessionSectionDeletionCandidates(input) {
       return {
-        count: 0,
+        excludePinned: input.excludePinned ?? false,
         sectionKey: input.sectionKey,
+        sessionIds: [],
         workspaceId: input.workspaceId
       };
     },
-    async deleteSessionSection(input) {
+    async deleteSessionsBatch() {
       return {
         removedMessages: 0,
         removedSessionIds: [],
-        removedSessions: 0,
-        sectionKey: input.sectionKey,
-        workspaceId: input.workspaceId
+        removedSessions: 0
       };
     },
     async listPinnedSessionsPage() {

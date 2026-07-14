@@ -1701,17 +1701,19 @@ export type DeleteWorkspaceAgentSessionResponse = {
   removed: boolean;
 };
 
-export type WorkspaceAgentSessionSectionCountResponse = {
+export type WorkspaceAgentSessionSectionDeletionCandidatesResponse = {
   workspaceId: string;
   sectionKey: string;
   agentTargetId?: string;
-  count: number;
+  excludePinned: boolean;
+  sessionIds: Array<string>;
 };
 
-export type DeleteWorkspaceAgentSessionSectionResponse = {
-  workspaceId: string;
-  sectionKey: string;
-  agentTargetId?: string;
+export type DeleteWorkspaceAgentSessionsBatchRequest = {
+  sessionIds: Array<string>;
+};
+
+export type DeleteWorkspaceAgentSessionsBatchResponse = {
   removedMessages: number;
   removedSessions: number;
   removedSessionIds: Array<string>;
@@ -5599,22 +5601,16 @@ export type CreateWorkspaceAgentSessionResponses = {
 export type CreateWorkspaceAgentSessionResponse =
   CreateWorkspaceAgentSessionResponses[keyof CreateWorkspaceAgentSessionResponses];
 
-export type DeleteWorkspaceAgentSessionSectionData = {
-  body?: never;
+export type DeleteWorkspaceAgentSessionsBatchData = {
+  body: DeleteWorkspaceAgentSessionsBatchRequest;
   path: {
     workspaceID: string;
   };
-  query: {
-    sectionKey: string;
-    /**
-     * Optional agent target filter applied before deletion.
-     */
-    agentTargetId?: string;
-  };
-  url: "/v1/workspaces/{workspaceID}/agent-session-sections";
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/batch";
 };
 
-export type DeleteWorkspaceAgentSessionSectionErrors = {
+export type DeleteWorkspaceAgentSessionsBatchErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -5641,18 +5637,18 @@ export type DeleteWorkspaceAgentSessionSectionErrors = {
   503: ApiErrorResponse;
 };
 
-export type DeleteWorkspaceAgentSessionSectionError =
-  DeleteWorkspaceAgentSessionSectionErrors[keyof DeleteWorkspaceAgentSessionSectionErrors];
+export type DeleteWorkspaceAgentSessionsBatchError =
+  DeleteWorkspaceAgentSessionsBatchErrors[keyof DeleteWorkspaceAgentSessionsBatchErrors];
 
-export type DeleteWorkspaceAgentSessionSectionResponses = {
+export type DeleteWorkspaceAgentSessionsBatchResponses = {
   /**
-   * Workspace agent session section deleted
+   * Workspace agent sessions deleted
    */
-  200: DeleteWorkspaceAgentSessionSectionResponse;
+  200: DeleteWorkspaceAgentSessionsBatchResponse;
 };
 
-export type DeleteWorkspaceAgentSessionSectionResponse2 =
-  DeleteWorkspaceAgentSessionSectionResponses[keyof DeleteWorkspaceAgentSessionSectionResponses];
+export type DeleteWorkspaceAgentSessionsBatchResponse2 =
+  DeleteWorkspaceAgentSessionsBatchResponses[keyof DeleteWorkspaceAgentSessionsBatchResponses];
 
 export type ListWorkspaceAgentSessionSectionsData = {
   body?: never;
@@ -5769,7 +5765,7 @@ export type ListWorkspaceAgentSessionSectionPageResponses = {
 export type ListWorkspaceAgentSessionSectionPageResponse =
   ListWorkspaceAgentSessionSectionPageResponses[keyof ListWorkspaceAgentSessionSectionPageResponses];
 
-export type CountWorkspaceAgentSessionSectionData = {
+export type ListWorkspaceAgentSessionSectionDeletionCandidatesData = {
   body?: never;
   path: {
     workspaceID: string;
@@ -5777,14 +5773,18 @@ export type CountWorkspaceAgentSessionSectionData = {
   query: {
     sectionKey: string;
     /**
-     * Optional agent target filter applied before counting.
+     * Optional agent target filter applied before selecting candidates.
      */
     agentTargetId?: string;
+    /**
+     * Exclude pinned sessions from the deletion candidate snapshot.
+     */
+    excludePinned?: boolean;
   };
-  url: "/v1/workspaces/{workspaceID}/agent-session-sections/count";
+  url: "/v1/workspaces/{workspaceID}/agent-session-sections/deletion-candidates";
 };
 
-export type CountWorkspaceAgentSessionSectionErrors = {
+export type ListWorkspaceAgentSessionSectionDeletionCandidatesErrors = {
   /**
    * Request payload or parameters are invalid
    */
@@ -5811,18 +5811,18 @@ export type CountWorkspaceAgentSessionSectionErrors = {
   503: ApiErrorResponse;
 };
 
-export type CountWorkspaceAgentSessionSectionError =
-  CountWorkspaceAgentSessionSectionErrors[keyof CountWorkspaceAgentSessionSectionErrors];
+export type ListWorkspaceAgentSessionSectionDeletionCandidatesError =
+  ListWorkspaceAgentSessionSectionDeletionCandidatesErrors[keyof ListWorkspaceAgentSessionSectionDeletionCandidatesErrors];
 
-export type CountWorkspaceAgentSessionSectionResponses = {
+export type ListWorkspaceAgentSessionSectionDeletionCandidatesResponses = {
   /**
-   * Workspace agent session section count
+   * Workspace agent session section deletion candidates
    */
-  200: WorkspaceAgentSessionSectionCountResponse;
+  200: WorkspaceAgentSessionSectionDeletionCandidatesResponse;
 };
 
-export type CountWorkspaceAgentSessionSectionResponse =
-  CountWorkspaceAgentSessionSectionResponses[keyof CountWorkspaceAgentSessionSectionResponses];
+export type ListWorkspaceAgentSessionSectionDeletionCandidatesResponse =
+  ListWorkspaceAgentSessionSectionDeletionCandidatesResponses[keyof ListWorkspaceAgentSessionSectionDeletionCandidatesResponses];
 
 export type ScanWorkspaceExternalAgentSessionImportsData = {
   body?: ExternalAgentImportScanRequest;
