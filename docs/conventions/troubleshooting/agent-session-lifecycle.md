@@ -328,7 +328,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   uses the previous model. Logs may show
   `agent.gui.composer_defaults.remembered` for the new model while
   `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
-  app-server `turn/start` still show the old model.
+  app-server `turn/start` still show the old model. For an Agent Extension, the
+  selected model may also change back to Auto as soon as a new session is
+  created, even though the durable session row contains the requested model.
 - Quick checks:
   Search desktop and daemon logs for the full settings chain:
   `agent.gui.composer_settings.default_only`,
@@ -339,7 +341,10 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   `agent_session.app_server.turn_start.params`. If only the defaults event is
   present, the UI changed the target default draft, not the active session. If
   daemon settings update completed but `turn_start.params.model` is old or
-  empty, inspect the app-server adapter path.
+  empty, inspect the app-server adapter path. If persistence and the provider
+  request both contain the selected model but the daemon session response omits
+  `settings.model`, inspect the service projection before debugging the
+  renderer selector.
 - Root cause:
   AgentGUI has two distinct composer surfaces. The target home composer writes
   remembered defaults and node drafts. An active conversation composer must
@@ -349,12 +354,19 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   response still reports the old model, check the service merge path:
   `serviceSessionWithPersistedFreshness` must not let a newer activity
   projection snapshot overwrite live runtime settings after an explicit
-  settings update.
+  settings update. For extension-owned open provider IDs, established runtime
+  and persisted sessions must use open-provider-aware normalization. Applying
+  the closed built-in composer registry to an ID such as `acp:<extension>`
+  produces an empty built-in provider, clamps the model, and makes the UI
+  correctly render Auto from an already-corrupted session projection.
 - Fix:
   Preserve the default-draft path, but make active-session model changes
   observable at every layer. Do not conclude that a provider ignored the model
   until the logs show the active session settings update reached the daemon and
-  the following `turn/start` carried the requested model.
+  the following `turn/start` carried the requested model. Keep closed
+  normalization for unverified composer requests, but preserve provider-owned
+  settings when projecting or resuming a session that was already authorized
+  through an Agent Target.
 - Validation:
   Reproduce by switching a model in a running session and sending a follow-up.
   Confirm the logs include the update chain above and that
@@ -362,7 +374,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   model and the next `turn/start` carries it. If the persisted
   `workspace_agent_sessions.settings_json.model` is older while the runtime is
   live, `Get` responses should still expose live runtime settings instead of
-  the stale projection value.
+  the stale projection value. Add a service regression with a generic open
+  provider ID and assert `serviceSession` retains its model; also assert an
+  invalid provider still loses stale settings.
 - References:
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
   [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
