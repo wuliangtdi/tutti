@@ -82,6 +82,20 @@ pnpm check:agent-activity-runtime-boundaries
 `hostCapabilities`, `hostActions`, and `renderSlots`. Extend the owning object;
 do not restore flat compatibility props.
 
+## Home Suggestions
+
+The five starter entries below the empty new-session composer are enabled by
+default. External hosts can hide individual entries with the public
+`AgentGUI.disabled` array:
+
+```tsx
+<AgentGUI disabled={["meet-tutti", "import-session"]} {...props} />
+```
+
+The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
+`agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
+empty array) renders all five entries.
+
 ## Agent Directory
 
 `AgentGUI` requires the host's `/agents` projection through its `agents` prop.

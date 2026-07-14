@@ -71,6 +71,18 @@ export type AgentGUIProvider = Extract<
   | "opencode"
 >;
 
+/**
+ * Stable identifiers for the starter entries shown below the empty new-session
+ * composer. Hosts can pass these values to `AgentGUI.disabled` to hide entries
+ * that should not be available in their integration.
+ */
+export type AgentGUIHomeSuggestionId =
+  | "meet-tutti"
+  | "task-breakdown"
+  | "quality-review"
+  | "agent-interaction"
+  | "import-session";
+
 export type AgentGUIAgentAvailabilityStatus =
   | "ready"
   | "checking"

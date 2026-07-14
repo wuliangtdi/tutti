@@ -17,6 +17,7 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
+  AgentGUIHomeSuggestionId,
   AgentGUIAgentTarget,
   NodeFrame,
   Point
@@ -118,6 +119,7 @@ export interface AgentGUINodeHostCapabilities {
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
 }
 
 export interface AgentGUINodeHostActions {
@@ -319,6 +321,7 @@ export function areAgentGUINodePropsEqual(
     pc.managedAgentsState === nc.managedAgentsState &&
     pc.contextMentionProviders === nc.contextMentionProviders &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
+    pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&
     pa.onLinkAction === na.onLinkAction &&
     pa.onHandoffConversation === na.onHandoffConversation &&
     pa.onCapabilitySettingsRequest === na.onCapabilitySettingsRequest &&

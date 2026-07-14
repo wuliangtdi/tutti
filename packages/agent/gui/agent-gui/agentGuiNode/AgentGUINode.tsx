@@ -111,7 +111,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerAuthAccountLabels,
     managedAgentsState,
     contextMentionProviders,
-    workspaceAppIcons
+    workspaceAppIcons,
+    disabledHomeSuggestions
   } = hostCapabilities;
   const {
     onLinkAction,
@@ -327,6 +328,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
   const labels = useAgentGUIViewLabels({
+    disabledHomeSuggestions,
     displayProviderLabel,
     fallbackAgentTitle,
     t,

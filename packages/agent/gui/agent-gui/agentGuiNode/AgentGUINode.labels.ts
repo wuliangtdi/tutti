@@ -3,6 +3,7 @@ import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import type { WorkspaceFileReferenceCopy } from "@tutti-os/workspace-file-reference/contracts";
 import type { TranslateFn } from "../../i18n/index";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
+import type { AgentGUIHomeSuggestionId } from "../../types";
 import type { AgentHomeSuggestionCategory } from "./model/agentGuiNodeTypes";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
@@ -10,10 +11,11 @@ import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLab
 
 const TASK_CENTER_WORKSPACE_APP_ID = "issue-manager";
 
-function buildAgentHomeSuggestions(
+export function buildAgentHomeSuggestions(
   t: TranslateFn,
   workspaceId: string,
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[]
+  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[],
+  disabled: readonly AgentGUIHomeSuggestionId[] = []
 ): AgentHomeSuggestionCategory[] {
   const key = (suffix: string): string =>
     `agentHost.agentGui.homeSuggestions.${suffix}`;
@@ -37,9 +39,9 @@ function buildAgentHomeSuggestions(
         }
       })})`
     : `@${taskCenterLabel}`;
-  return [
+  const categories: AgentHomeSuggestionCategory[] = [
     {
-      id: "about-tutti",
+      id: "meet-tutti",
       icon: "about",
       label: t(key("about.title")),
       prompt: t(key("about.prompt"))
@@ -73,6 +75,8 @@ function buildAgentHomeSuggestions(
       action: "import-session"
     }
   ];
+  const disabledIds = new Set<string>(disabled);
+  return categories.filter((category) => !disabledIds.has(category.id));
 }
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
@@ -146,6 +150,7 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
 };
 
 export function useAgentGUIViewLabels(input: {
+  disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
   displayProviderLabel: string;
   fallbackAgentTitle: string;
   t: TranslateFn;
@@ -153,6 +158,7 @@ export function useAgentGUIViewLabels(input: {
   workspaceId: string;
 }): AgentGUIViewLabels {
   const {
+    disabledHomeSuggestions,
     displayProviderLabel,
     fallbackAgentTitle,
     t,
@@ -365,7 +371,8 @@ export function useAgentGUIViewLabels(input: {
       homeSuggestions: buildAgentHomeSuggestions(
         t,
         workspaceId,
-        workspaceAppIcons ?? []
+        workspaceAppIcons ?? [],
+        disabledHomeSuggestions
       ),
       homeSuggestionsClose: t("agentHost.agentGui.homeSuggestionsClose"),
       emptyForProvider: (provider: string) =>
@@ -777,6 +784,7 @@ export function useAgentGUIViewLabels(input: {
     }),
     [
       displayProviderLabel,
+      disabledHomeSuggestions,
       fallbackAgentTitle,
       t,
       workspaceId,
