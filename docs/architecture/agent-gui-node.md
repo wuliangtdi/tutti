@@ -145,9 +145,10 @@ The Dock popup's New window card is a distinct launch source and must bypass
 dock-entry reuse for AgentGUI, otherwise it collapses into the normal
 restore/focus behavior instead of opening a fresh Agent window.
 Unified dock and launchpad chrome should keep the generic Agent title and
-generic Agent artwork instead of provider-branded entries. Agent window headers
-show the generic Agent title while the conversation rail is expanded. When the
-conversation rail is collapsed, that title area switches to the active session
+generic Agent artwork instead of provider-branded entries. Workbench Agent node
+headers show the generic Agent title while the conversation rail is expanded;
+standalone native Agent window headers omit that redundant app title. When the
+conversation rail is collapsed, the title area switches to the active session
 identity by showing the session's agent icon and conversation title.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
