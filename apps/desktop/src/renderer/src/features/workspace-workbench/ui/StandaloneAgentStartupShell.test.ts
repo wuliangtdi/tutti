@@ -146,7 +146,7 @@ test("standalone Agent startup shell keeps the rail and new-conversation hero vi
 test("standalone Agent tool panels expose loading UI while deferred modules start", () => {
   assert.match(
     toolSidebarSource,
-    /activePanel === panel \? \(\s*<StandaloneAgentToolLoadingState/
+    /activeTabId === tab\.id \? \(\s*<StandaloneAgentToolLoadingState/
   );
   assert.match(toolLoadingStateSource, /<Spinner/);
   const deferredPanelSources = [

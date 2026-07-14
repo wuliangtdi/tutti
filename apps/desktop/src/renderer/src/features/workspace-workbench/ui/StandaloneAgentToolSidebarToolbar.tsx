@@ -59,6 +59,7 @@ export function StandaloneAgentToolSidebarToolbar({
   copy,
   isExpanded,
   reminders,
+  onAddPanel,
   onOpenPanel,
   onToggleExpansion,
   onToggleSidebar
@@ -67,6 +68,7 @@ export function StandaloneAgentToolSidebarToolbar({
   copy: ToolSidebarCopy;
   isExpanded: boolean;
   reminders: ToolSidebarReminderCounts;
+  onAddPanel: (panel: StandaloneAgentToolPanelId) => void;
   onOpenPanel: (panel: StandaloneAgentToolPanelId) => void;
   onToggleExpansion: () => void;
   onToggleSidebar: () => void;
@@ -100,7 +102,7 @@ export function StandaloneAgentToolSidebarToolbar({
               className="min-w-36"
               style={{ zIndex: "var(--z-panel-popover)" }}
             >
-              <DropdownMenuItem onSelect={() => onOpenPanel("files")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("files")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"
@@ -108,7 +110,7 @@ export function StandaloneAgentToolSidebarToolbar({
                 />
                 <span>{copy.files}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenPanel("terminal")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("terminal")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"
@@ -116,7 +118,7 @@ export function StandaloneAgentToolSidebarToolbar({
                 />
                 <span>{copy.terminal}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenPanel("browser")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("browser")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"
@@ -124,7 +126,7 @@ export function StandaloneAgentToolSidebarToolbar({
                 />
                 <span>{copy.browser}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenPanel("tasks")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("tasks")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"
@@ -132,7 +134,7 @@ export function StandaloneAgentToolSidebarToolbar({
                 />
                 <span>{copy.tasks}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenPanel("apps")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("apps")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"
@@ -140,7 +142,7 @@ export function StandaloneAgentToolSidebarToolbar({
                 />
                 <span>{copy.apps}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onOpenPanel("messages")}>
+              <DropdownMenuItem onSelect={() => onAddPanel("messages")}>
                 <ToolSidebarPanelIcon
                   aria-hidden
                   className="size-4"

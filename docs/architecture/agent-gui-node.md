@@ -307,6 +307,12 @@ active tab strip and its add menu for files, terminal, browser, apps, and
 messages.
 Opening a tool mounts it as a tab and selecting another tab only changes the
 visible projection; this state is not durable AgentGUI session data.
+The Files tool tab remains the file-navigation surface. Opening a previewable
+file from it adds a sibling file-preview tab keyed by the file path, keeps the
+Files tab mounted, and focuses an existing matching preview tab instead of
+duplicating it. File-preview tabs reuse the workspace file-preview contribution
+for loading, rendering, editing, and saving; the standalone shell owns only the
+UI-local tab descriptor and active-tab projection.
 Unified empty-home readiness is a host-projected, agent-scoped gate,
 not a durable session rule. Desktop may subscribe to its
 `agentProviderStatusService`, merge runtime status into `/agents` availability,

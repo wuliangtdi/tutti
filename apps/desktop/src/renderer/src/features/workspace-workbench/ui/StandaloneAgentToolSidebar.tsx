@@ -14,15 +14,24 @@ import type {
   WorkbenchContribution,
   WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
-import { CloseIcon, cn } from "@tutti-os/ui-system";
+import {
+  CloseIcon,
+  FileTextIcon,
+  ImageFileIcon,
+  VideoFileIcon,
+  cn
+} from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
 import { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
+  createStandaloneAgentFilePreviewTab,
   createStandaloneAgentToolSidebarState,
+  isStandaloneAgentFilePreviewTab,
   reduceStandaloneAgentToolSidebarState,
-  type StandaloneAgentToolPanelId
+  type StandaloneAgentToolPanelId,
+  type StandaloneAgentToolTab
 } from "./standaloneAgentToolSidebarModel.ts";
 import { useStandaloneAgentToolSidebarLayout } from "./useStandaloneAgentToolSidebarLayout.ts";
 import {
@@ -130,9 +139,8 @@ export function StandaloneAgentToolSidebar({
     };
   }, [onToolHostReady, toolHostGroup]);
   const activePanel = state.activePanel;
-  const [contentReadyPanels, setContentReadyPanels] = useState<
-    StandaloneAgentToolPanelId[]
-  >([]);
+  const activeTabId = state.activeTabId;
+  const [contentReadyTabIds, setContentReadyTabIds] = useState<string[]>([]);
   const {
     activePanelLayoutWidth,
     activePanelMaxWidth,
@@ -172,7 +180,7 @@ export function StandaloneAgentToolSidebar({
     []
   );
   useEffect(() => {
-    if (!activePanel || contentReadyPanels.includes(activePanel)) {
+    if (!activeTabId || contentReadyTabIds.includes(activeTabId)) {
       return;
     }
     const delay = window.matchMedia?.("(prefers-reduced-motion: reduce)")
@@ -180,15 +188,17 @@ export function StandaloneAgentToolSidebar({
       ? 0
       : standaloneAgentToolPanelContentMountDelayMs;
     const timer = window.setTimeout(() => {
-      setContentReadyPanels((current) =>
-        current.includes(activePanel) ? current : [...current, activePanel]
+      setContentReadyTabIds((current) =>
+        current.includes(activeTabId) ? current : [...current, activeTabId]
       );
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [activePanel, contentReadyPanels]);
+  }, [activeTabId, contentReadyTabIds]);
   const lastHandledAppOpenIdRef = useRef<string | null>(null);
   const lastHandledFileOpenRequestRef = useRef<string | null>(null);
+  const fileOpenRequestTabIdRef = useRef<string | null>(null);
   const lastHandledIssueManagerOpenRequestRef = useRef<string | null>(null);
+  const issueManagerOpenRequestTabIdRef = useRef<string | null>(null);
   useEffect(() => {
     const normalizedAppOpenId = appOpenId?.trim() || null;
     if (!normalizedAppOpenId) {
@@ -200,9 +210,13 @@ export function StandaloneAgentToolSidebar({
     }
     lastHandledAppOpenIdRef.current = normalizedAppOpenId;
     onAppsOpen();
-    dispatch({ panel: "apps", type: "open-panel" });
+    dispatch({
+      panel: "apps",
+      tabId: resolveToolTabId(state.mountedTabs, "apps"),
+      type: "open-panel"
+    });
     scheduleResizeForPanel("apps");
-  }, [appOpenId, onAppsOpen, scheduleResizeForPanel]);
+  }, [appOpenId, onAppsOpen, scheduleResizeForPanel, state.mountedTabs]);
   useEffect(() => {
     if (
       !fileOpenRequest ||
@@ -211,9 +225,19 @@ export function StandaloneAgentToolSidebar({
       return;
     }
     lastHandledFileOpenRequestRef.current = fileOpenRequest.requestID;
-    dispatch({ panel: "files", type: "open-panel" });
+    const filesTabId = resolveToolTabId(state.mountedTabs, "files");
+    dispatch({ panel: "files", tabId: filesTabId, type: "open-panel" });
+    if (fileOpenRequest.target) {
+      fileOpenRequestTabIdRef.current = null;
+      dispatch({
+        tab: createStandaloneAgentFilePreviewTab(fileOpenRequest.target),
+        type: "open-file"
+      });
+    } else {
+      fileOpenRequestTabIdRef.current = filesTabId;
+    }
     scheduleResizeForPanel("files");
-  }, [fileOpenRequest, scheduleResizeForPanel]);
+  }, [fileOpenRequest, scheduleResizeForPanel, state.mountedTabs]);
   useEffect(() => {
     if (
       !issueManagerOpenRequest ||
@@ -224,23 +248,35 @@ export function StandaloneAgentToolSidebar({
     }
     lastHandledIssueManagerOpenRequestRef.current =
       issueManagerOpenRequest.requestID;
-    dispatch({ panel: "tasks", type: "open-panel" });
+    const tabId = resolveToolTabId(state.mountedTabs, "tasks");
+    issueManagerOpenRequestTabIdRef.current = tabId;
+    dispatch({ panel: "tasks", tabId, type: "open-panel" });
     scheduleResizeForPanel("tasks");
-  }, [issueManagerOpenRequest, scheduleResizeForPanel]);
+  }, [issueManagerOpenRequest, scheduleResizeForPanel, state.mountedTabs]);
   const closePanel = useCallback(() => {
-    dispatch(
-      activePanel === "terminal"
-        ? { type: "toggle-terminal" }
-        : { type: "close" }
-    );
+    dispatch({ type: "close" });
     scheduleResizeForPanel(null);
-  }, [activePanel, scheduleResizeForPanel]);
+  }, [scheduleResizeForPanel]);
   const openPanel = useCallback(
     (panel: StandaloneAgentToolPanelId) => {
       if (panel === "apps") {
         onAppsOpen();
       }
-      dispatch({ panel, type: "open-panel" });
+      dispatch({
+        panel,
+        tabId: resolveToolTabId(state.mountedTabs, panel),
+        type: "open-panel"
+      });
+      scheduleResizeForPanel(panel);
+    },
+    [onAppsOpen, scheduleResizeForPanel, state.mountedTabs]
+  );
+  const addPanel = useCallback(
+    (panel: StandaloneAgentToolPanelId) => {
+      if (panel === "apps") {
+        onAppsOpen();
+      }
+      dispatch({ panel, tabId: createToolTabId(panel), type: "add-panel" });
       scheduleResizeForPanel(panel);
     },
     [onAppsOpen, scheduleResizeForPanel]
@@ -249,24 +285,42 @@ export function StandaloneAgentToolSidebar({
     const nextPanel = activePanel ?? "files";
     dispatch(
       activePanel === null
-        ? { panel: nextPanel, type: "open-panel" }
+        ? {
+            panel: nextPanel,
+            tabId: resolveToolTabId(state.mountedTabs, nextPanel),
+            type: "open-panel"
+          }
         : { type: "close" }
     );
     scheduleResizeForPanel(activePanel === null ? nextPanel : null);
-  }, [activePanel, scheduleResizeForPanel]);
+  }, [activePanel, scheduleResizeForPanel, state.mountedTabs]);
   const closePanelTab = useCallback(
-    (panel: StandaloneAgentToolPanelId) => {
-      const nextMountedPanels = state.mountedPanels.filter(
-        (candidate) => candidate !== panel
+    (tabId: string) => {
+      const closingIndex = state.mountedTabs.findIndex(
+        (tab) => tab.id === tabId
       );
-      const nextPanel =
-        activePanel === panel
-          ? (nextMountedPanels[nextMountedPanels.length - 1] ?? null)
-          : activePanel;
-      dispatch({ panel, type: "close-panel" });
+      const remainingTabs = state.mountedTabs.filter((tab) => tab.id !== tabId);
+      const nextTab =
+        activeTabId === tabId
+          ? (remainingTabs[Math.max(0, closingIndex - 1)] ??
+            remainingTabs[0] ??
+            null)
+          : (state.mountedTabs.find((tab) => tab.id === activeTabId) ?? null);
+      dispatch({ tabId, type: "close-tab" });
+      const nextPanel = nextTab?.panel ?? null;
       scheduleResizeForPanel(nextPanel);
     },
-    [activePanel, scheduleResizeForPanel, state.mountedPanels]
+    [activeTabId, scheduleResizeForPanel, state.mountedTabs]
+  );
+  const activatePanelTab = useCallback(
+    (tab: StandaloneAgentToolTab) => {
+      if (tab.panel === "apps") {
+        onAppsOpen();
+      }
+      dispatch({ tabId: tab.id, type: "activate-tab" });
+      scheduleResizeForPanel(tab.panel);
+    },
+    [onAppsOpen, scheduleResizeForPanel]
   );
 
   return (
@@ -297,13 +351,13 @@ export function StandaloneAgentToolSidebar({
                 : undefined
             }
           >
-            {activePanel ? (
+            {activeTabId ? (
               <ToolSidebarTabBar
-                activePanel={activePanel}
+                activeTabId={activeTabId}
                 copy={copy}
-                mountedPanels={state.mountedPanels}
+                mountedTabs={state.mountedTabs}
                 onClosePanel={closePanelTab}
-                onOpenPanel={openPanel}
+                onOpenPanel={activatePanelTab}
               />
             ) : null}
             <StandaloneAgentToolSidebarToolbar
@@ -311,6 +365,7 @@ export function StandaloneAgentToolSidebar({
               copy={copy}
               isExpanded={isActivePanelExpanded}
               reminders={reminders}
+              onAddPanel={addPanel}
               onOpenPanel={openPanel}
               onToggleExpansion={() => {
                 if (activePanel) togglePanelExpansion(activePanel);
@@ -381,42 +436,53 @@ export function StandaloneAgentToolSidebar({
                 />
               ) : null}
               <div className="relative min-h-0 flex-1 overflow-hidden">
-                {state.mountedPanels.map((panel) => (
+                {state.mountedTabs.map((tab) => (
                   <div
-                    aria-hidden={activePanel !== panel}
+                    aria-hidden={activeTabId !== tab.id}
                     className={cn(
                       "absolute inset-0 min-h-0 overflow-hidden",
-                      activePanel !== panel && "invisible pointer-events-none"
+                      activeTabId !== tab.id && "invisible pointer-events-none"
                     )}
-                    key={panel}
+                    key={tab.id}
                   >
-                    {contentReadyPanels.includes(panel) ? (
+                    {contentReadyTabIds.includes(tab.id) ? (
                       <div
                         className={cn(
                           "h-full min-h-0",
-                          panel !== "terminal" &&
+                          tab.panel !== "terminal" &&
                             "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-reduce:animate-none"
                         )}
                       >
                         <StandaloneAgentToolSidebarPanel
-                          active={activePanel === panel}
+                          active={activeTabId === tab.id}
                           appI18n={appI18n}
                           activityService={activityService}
                           browserApi={browserApi}
                           contributions={contributions}
-                          fileOpenRequest={fileOpenRequest}
-                          issueManagerOpenRequest={issueManagerOpenRequest}
+                          fileOpenRequest={
+                            fileOpenRequestTabIdRef.current === tab.id
+                              ? fileOpenRequest
+                              : null
+                          }
+                          instanceId={tab.id}
+                          issueManagerOpenRequest={
+                            issueManagerOpenRequestTabIdRef.current === tab.id
+                              ? issueManagerOpenRequest
+                              : null
+                          }
                           i18n={i18n}
                           locale={locale}
-                          messageCenterOpen={activePanel === "messages"}
+                          messageCenterOpen={
+                            activeTabId === tab.id && tab.panel === "messages"
+                          }
                           onCloseMessageCenter={closePanel}
                           onOpenMessageCenterChat={onOpenMessageCenterChat}
-                          panel={panel}
                           setToolHost={toolHostGroup.setHost}
+                          tab={tab}
                           workspaceId={workspaceId}
                         />
                       </div>
-                    ) : activePanel === panel ? (
+                    ) : activeTabId === tab.id ? (
                       <StandaloneAgentToolLoadingState
                         label={i18n.t("common.loading")}
                       />
@@ -433,17 +499,17 @@ export function StandaloneAgentToolSidebar({
 }
 
 function ToolSidebarTabBar({
-  activePanel,
+  activeTabId,
   copy,
-  mountedPanels,
+  mountedTabs,
   onClosePanel,
   onOpenPanel
 }: {
-  activePanel: StandaloneAgentToolPanelId;
+  activeTabId: string;
   copy: ToolSidebarCopy;
-  mountedPanels: StandaloneAgentToolPanelId[];
-  onClosePanel: (panel: StandaloneAgentToolPanelId) => void;
-  onOpenPanel: (panel: StandaloneAgentToolPanelId) => void;
+  mountedTabs: StandaloneAgentToolTab[];
+  onClosePanel: (tabId: string) => void;
+  onOpenPanel: (tab: StandaloneAgentToolTab) => void;
 }): ReactNode {
   return (
     <div
@@ -454,36 +520,33 @@ function ToolSidebarTabBar({
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {mountedPanels.map((panel) => (
+        {mountedTabs.map((tab) => (
           <div
             className={cn(
               "group flex h-7 max-w-44 shrink-0 items-center rounded-sm overflow-hidden border text-xs text-[var(--text-tertiary)]",
-              activePanel === panel
+              activeTabId === tab.id
                 ? "border-[var(--line-2)] bg-[var(--background-fronted)] text-[var(--text-primary)]"
                 : "border-transparent"
             )}
-            key={panel}
+            key={tab.id}
           >
             <button
-              aria-selected={activePanel === panel}
+              aria-selected={activeTabId === tab.id}
               className="nodrag flex h-full min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-2 text-left outline-none [-webkit-app-region:no-drag] focus-visible:ring-2 focus-visible:ring-[var(--border-focus)]"
-              data-standalone-agent-tool-tab={panel}
+              data-standalone-agent-tool-tab={tab.panel}
+              data-standalone-agent-tool-tab-id={tab.id}
               role="tab"
               type="button"
-              onClick={() => onOpenPanel(panel)}
+              onClick={() => onOpenPanel(tab)}
             >
-              <ToolSidebarPanelIcon
-                aria-hidden
-                className="size-3.5 shrink-0"
-                panel={panel}
-              />
-              <span className="truncate">{copy[panel]}</span>
+              <ToolSidebarTabIcon tab={tab} />
+              <span className="truncate">{resolveToolTabLabel(tab, copy)}</span>
             </button>
             <button
-              aria-label={`${copy.close} ${copy[panel]}`}
+              aria-label={`${copy.close} ${resolveToolTabLabel(tab, copy)}`}
               className="nodrag mr-1 rounded p-0.5 opacity-100 hover:bg-[var(--transparency-block)] [-webkit-app-region:no-drag]"
               type="button"
-              onClick={() => onClosePanel(panel)}
+              onClick={() => onClosePanel(tab.id)}
             >
               <CloseIcon aria-hidden className="size-3" />
             </button>
@@ -492,4 +555,57 @@ function ToolSidebarTabBar({
       </div>
     </div>
   );
+}
+
+function resolveToolTabId(
+  tabs: readonly StandaloneAgentToolTab[],
+  panel: StandaloneAgentToolPanelId
+): string {
+  for (let index = tabs.length - 1; index >= 0; index -= 1) {
+    const tab = tabs[index];
+    if (tab?.panel === panel && !isStandaloneAgentFilePreviewTab(tab)) {
+      return tab.id;
+    }
+  }
+  return createToolTabId(panel);
+}
+
+function resolveToolTabLabel(
+  tab: StandaloneAgentToolTab,
+  copy: ToolSidebarCopy
+): string {
+  return isStandaloneAgentFilePreviewTab(tab)
+    ? tab.filePreview.name
+    : copy[tab.panel];
+}
+
+function ToolSidebarTabIcon({
+  tab
+}: {
+  tab: StandaloneAgentToolTab;
+}): ReactNode {
+  if (!isStandaloneAgentFilePreviewTab(tab)) {
+    return (
+      <ToolSidebarPanelIcon
+        aria-hidden
+        className="size-3.5 shrink-0"
+        panel={tab.panel}
+      />
+    );
+  }
+  const Icon =
+    tab.filePreview.fileKind === "image"
+      ? ImageFileIcon
+      : tab.filePreview.fileKind === "video"
+        ? VideoFileIcon
+        : FileTextIcon;
+  return <Icon aria-hidden className="size-3.5 shrink-0" />;
+}
+
+function createToolTabId(panel: StandaloneAgentToolPanelId): string {
+  const instanceId =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${panel}:${instanceId}`;
 }

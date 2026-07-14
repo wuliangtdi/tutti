@@ -8,7 +8,6 @@ import type {
 } from "@tutti-os/workbench-surface";
 import { cn } from "@tutti-os/ui-system";
 import { getWorkspaceTerminalSurfaceRuntime } from "../services/workspaceTerminalSurfaceRuntime.ts";
-import type { StandaloneAgentSharedToolPanelId } from "./standaloneAgentToolSidebarModel.ts";
 import { createStandaloneAgentDirectToolHost } from "./standaloneAgentToolWorkbench.ts";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
@@ -24,18 +23,17 @@ const terminalCloseGuardDescriptionI18nKey: TerminalNodeI18nKey =
 
 export function StandaloneAgentTerminalPanel({
   contributions,
+  instanceId,
   loadingLabel,
   open,
   setToolHost,
   unavailableLabel
 }: {
   contributions: readonly WorkbenchContribution[] | undefined;
+  instanceId: string;
   loadingLabel: string;
   open: boolean;
-  setToolHost: (
-    panel: StandaloneAgentSharedToolPanelId,
-    host: WorkbenchHostHandle | null
-  ) => void;
+  setToolHost: (instanceId: string, host: WorkbenchHostHandle | null) => void;
   unavailableLabel: string;
 }): ReactNode {
   const runtime = useMemo(() => {
@@ -75,9 +73,9 @@ export function StandaloneAgentTerminalPanel({
   );
 
   useEffect(() => {
-    setToolHost("terminal", directHost.host);
-    return () => setToolHost("terminal", null);
-  }, [directHost, setToolHost]);
+    setToolHost(instanceId, directHost.host);
+    return () => setToolHost(instanceId, null);
+  }, [directHost, instanceId, setToolHost]);
 
   useEffect(() => {
     directHost.setNode(

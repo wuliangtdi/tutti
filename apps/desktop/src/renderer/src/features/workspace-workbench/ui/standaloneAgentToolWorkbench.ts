@@ -103,10 +103,7 @@ function createStandaloneAgentBrowserHostApi(
 
 export interface StandaloneAgentToolHostGroup {
   readonly host: WorkbenchHostHandle;
-  setHost(
-    panel: StandaloneAgentSharedToolPanelId,
-    host: WorkbenchHostHandle | null
-  ): void;
+  setHost(instanceId: string, host: WorkbenchHostHandle | null): void;
 }
 
 export interface StandaloneAgentDirectToolHost {
@@ -209,10 +206,7 @@ export function createStandaloneAgentDirectToolHost(): StandaloneAgentDirectTool
 }
 
 export function createStandaloneAgentToolHostGroup(): StandaloneAgentToolHostGroup {
-  const hosts = new Map<
-    StandaloneAgentSharedToolPanelId,
-    WorkbenchHostHandle
-  >();
+  const hosts = new Map<string, WorkbenchHostHandle>();
 
   const allHosts = (): WorkbenchHostHandle[] => [...hosts.values()];
   const findHostByNodeId = (nodeId: string): WorkbenchHostHandle | null =>
@@ -227,7 +221,11 @@ export function createStandaloneAgentToolHostGroup(): StandaloneAgentToolHostGro
         [StandaloneAgentSharedToolPanelId, string]
       >
     ).find(([, typeId]) => typeId === input.typeId)?.[0];
-    return panel ? (hosts.get(panel) ?? null) : null;
+    if (!panel) {
+      return null;
+    }
+    const candidates = allHosts();
+    return candidates[candidates.length - 1] ?? null;
   };
   const emptySnapshot = (): WorkbenchState<WorkbenchHostNodeData> => ({
     activeDragNodeId: null,
@@ -337,11 +335,11 @@ export function createStandaloneAgentToolHostGroup(): StandaloneAgentToolHostGro
 
   return {
     host,
-    setHost(panel, nextHost) {
+    setHost(instanceId, nextHost) {
       if (nextHost) {
-        hosts.set(panel, nextHost);
+        hosts.set(instanceId, nextHost);
       } else {
-        hosts.delete(panel);
+        hosts.delete(instanceId);
       }
     }
   };

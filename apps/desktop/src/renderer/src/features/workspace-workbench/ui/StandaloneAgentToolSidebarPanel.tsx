@@ -5,13 +5,12 @@ import type {
   WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
-import type {
-  StandaloneAgentSharedToolPanelId,
-  StandaloneAgentToolPanelId
-} from "./standaloneAgentToolSidebarModel.ts";
+import type { StandaloneAgentToolTab } from "./standaloneAgentToolSidebarModel.ts";
+import { isStandaloneAgentFilePreviewTab } from "./standaloneAgentToolSidebarModel.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
@@ -50,10 +49,18 @@ const LazyStandaloneAgentTerminalPanel = lazy(() =>
     })
   )
 );
+const LazyStandaloneAgentFilePreviewPanel = lazy(() =>
+  import("./StandaloneAgentFilePreviewPanel.tsx").then(
+    ({ StandaloneAgentFilePreviewPanel }) => ({
+      default: StandaloneAgentFilePreviewPanel
+    })
+  )
+);
 
 export interface StandaloneAgentFileOpenRequest {
   path: string;
   requestID: string;
+  target?: WorkspaceFileActivationTarget;
 }
 
 export function StandaloneAgentToolSidebarPanel({
@@ -63,13 +70,14 @@ export function StandaloneAgentToolSidebarPanel({
   browserApi,
   contributions,
   fileOpenRequest,
+  instanceId,
   issueManagerOpenRequest,
   i18n,
   locale,
   messageCenterOpen,
   onCloseMessageCenter,
   onOpenMessageCenterChat,
-  panel,
+  tab,
   setToolHost,
   workspaceId
 }: {
@@ -79,6 +87,7 @@ export function StandaloneAgentToolSidebarPanel({
   browserApi?: DesktopBrowserApi;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest: StandaloneAgentFileOpenRequest | null;
+  instanceId: string;
   issueManagerOpenRequest: StandaloneAgentIssueManagerOpenRequest | null;
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
@@ -88,13 +97,34 @@ export function StandaloneAgentToolSidebarPanel({
     agentSessionId: string;
     provider: string;
   }) => void;
-  panel: StandaloneAgentToolPanelId;
-  setToolHost: (
-    panel: StandaloneAgentSharedToolPanelId,
-    host: WorkbenchHostHandle | null
-  ) => void;
+  tab: StandaloneAgentToolTab;
+  setToolHost: (instanceId: string, host: WorkbenchHostHandle | null) => void;
   workspaceId: string;
 }): ReactNode {
+  if (isStandaloneAgentFilePreviewTab(tab)) {
+    return (
+      <Suspense
+        fallback={
+          <StandaloneAgentToolLoadingState label={i18n.t("common.loading")} />
+        }
+      >
+        <LazyStandaloneAgentFilePreviewPanel
+          active={active}
+          contributions={contributions}
+          instanceId={instanceId}
+          setToolHost={setToolHost}
+          target={tab.filePreview}
+          unavailableLabel={i18n.t(
+            "workspace.agentGui.toolSidebar.unavailable",
+            { tool: tab.filePreview.name }
+          )}
+          workspaceId={workspaceId}
+        />
+      </Suspense>
+    );
+  }
+
+  const panel = tab.panel;
   if (panel === "files") {
     return (
       <Suspense
@@ -189,6 +219,7 @@ export function StandaloneAgentToolSidebarPanel({
       >
         <LazyStandaloneAgentTerminalPanel
           contributions={contributions}
+          instanceId={instanceId}
           loadingLabel={i18n.t("common.loading")}
           open={active}
           setToolHost={setToolHost}

@@ -1,3 +1,6 @@
+import type { WorkspaceFileActivationTarget } from "@tutti-os/workspace-file-manager/services";
+import { createWorkspaceFilePreviewInstanceID } from "../services/workspaceFilePreviewLaunch.ts";
+
 export type StandaloneAgentToolPanelId =
   | "files"
   | "browser"
@@ -50,6 +53,33 @@ export const standaloneAgentToolPanelMaxWidthById: Record<
 };
 export const standaloneAgentMainMinWidth = 280;
 
+export interface StandaloneAgentToolTab {
+  filePreview?: WorkspaceFileActivationTarget;
+  id: string;
+  panel: StandaloneAgentToolPanelId;
+}
+
+export type StandaloneAgentFilePreviewTab = StandaloneAgentToolTab & {
+  filePreview: WorkspaceFileActivationTarget;
+  panel: "files";
+};
+
+export function createStandaloneAgentFilePreviewTab(
+  target: WorkspaceFileActivationTarget
+): StandaloneAgentFilePreviewTab {
+  return {
+    filePreview: target,
+    id: `file-preview:${createWorkspaceFilePreviewInstanceID(target)}`,
+    panel: "files"
+  };
+}
+
+export function isStandaloneAgentFilePreviewTab(
+  tab: StandaloneAgentToolTab
+): tab is StandaloneAgentFilePreviewTab {
+  return tab.panel === "files" && tab.filePreview !== undefined;
+}
+
 export function resolveStandaloneAgentToolPanelExpansionReset(input: {
   expandedPanel: StandaloneAgentToolPanelId | null;
   nextPanel: StandaloneAgentToolPanelId | null;
@@ -71,51 +101,75 @@ export function resolveStandaloneAgentToolPanelExpansionReset(input: {
 
 export interface StandaloneAgentToolSidebarState {
   activePanel: StandaloneAgentToolPanelId | null;
-  mountedPanels: StandaloneAgentToolPanelId[];
-  terminalOpen: boolean;
-  terminalMounted: boolean;
+  activeTabId: string | null;
+  mountedTabs: StandaloneAgentToolTab[];
 }
 
 export type StandaloneAgentToolSidebarAction =
   | {
       panel: StandaloneAgentToolPanelId;
+      tabId: string;
       type: "open-panel";
     }
   | {
-      panel: Exclude<StandaloneAgentToolPanelId, "browser">;
-      type: "toggle-panel";
-    }
-  | {
       panel: StandaloneAgentToolPanelId;
-      type: "close-panel";
+      tabId: string;
+      type: "add-panel";
     }
   | {
-      panel: StandaloneAgentToolLauncherPanelId;
-      type: "select-tool";
+      tabId: string;
+      type: "activate-tab" | "close-tab";
     }
-  | { type: "toggle-terminal" }
+  | {
+      tab: StandaloneAgentFilePreviewTab;
+      type: "open-file";
+    }
   | { type: "close" };
 
 export function createStandaloneAgentToolSidebarState(
   initial?: Partial<StandaloneAgentToolSidebarState>
 ): StandaloneAgentToolSidebarState {
   const activePanel = initial?.activePanel ?? null;
+  const mountedTabs = initial?.mountedTabs ?? [];
+  const activeTabId =
+    initial?.activeTabId ??
+    (activePanel === null
+      ? null
+      : (findLastTabByPanel(mountedTabs, activePanel)?.id ?? null));
   return {
-    activePanel,
-    mountedPanels:
-      initial?.mountedPanels ?? (activePanel === null ? [] : [activePanel]),
-    terminalMounted: initial?.terminalMounted ?? initial?.terminalOpen === true,
-    terminalOpen: initial?.terminalOpen ?? false
+    activePanel: activeTabId === null ? null : activePanel,
+    activeTabId,
+    mountedTabs
   };
 }
 
-function mountPanel(
-  mountedPanels: StandaloneAgentToolPanelId[],
+function addTab(
+  state: StandaloneAgentToolSidebarState,
+  tab: StandaloneAgentToolTab
+): StandaloneAgentToolSidebarState {
+  const mountedTabs = state.mountedTabs.some(
+    (candidate) => candidate.id === tab.id
+  )
+    ? state.mountedTabs
+    : [...state.mountedTabs, tab];
+  return {
+    activePanel: tab.panel,
+    activeTabId: tab.id,
+    mountedTabs
+  };
+}
+
+function findLastTabByPanel(
+  tabs: readonly StandaloneAgentToolTab[],
   panel: StandaloneAgentToolPanelId
-): StandaloneAgentToolPanelId[] {
-  return mountedPanels.includes(panel)
-    ? mountedPanels
-    : [...mountedPanels, panel];
+): StandaloneAgentToolTab | null {
+  for (let index = tabs.length - 1; index >= 0; index -= 1) {
+    const tab = tabs[index];
+    if (tab?.panel === panel && !isStandaloneAgentFilePreviewTab(tab)) {
+      return tab;
+    }
+  }
+  return null;
 }
 
 export function reduceStandaloneAgentToolSidebarState(
@@ -124,68 +178,74 @@ export function reduceStandaloneAgentToolSidebarState(
 ): StandaloneAgentToolSidebarState {
   switch (action.type) {
     case "close":
-      return state.activePanel === null
+      return state.activeTabId === null
         ? state
-        : { ...state, activePanel: null };
-    case "close-panel": {
-      const mountedPanels = state.mountedPanels.filter(
-        (panel) => panel !== action.panel
+        : { ...state, activePanel: null, activeTabId: null };
+    case "close-tab": {
+      const closingIndex = state.mountedTabs.findIndex(
+        (tab) => tab.id === action.tabId
       );
-      const nextActivePanel =
-        state.activePanel === action.panel
-          ? (mountedPanels[mountedPanels.length - 1] ?? null)
-          : state.activePanel;
+      if (closingIndex < 0) {
+        return state;
+      }
+      const mountedTabs = state.mountedTabs.filter(
+        (tab) => tab.id !== action.tabId
+      );
+      if (state.activeTabId !== action.tabId) {
+        return { ...state, mountedTabs };
+      }
+      const nextTab =
+        mountedTabs[Math.max(0, closingIndex - 1)] ?? mountedTabs[0] ?? null;
       return {
-        ...state,
-        activePanel: nextActivePanel,
-        mountedPanels,
-        ...(action.panel === "terminal"
-          ? { terminalMounted: false, terminalOpen: false }
-          : {})
+        activePanel: nextTab?.panel ?? null,
+        activeTabId: nextTab?.id ?? null,
+        mountedTabs
       };
     }
-    case "select-tool":
-      if (action.panel === "terminal") {
+    case "activate-tab": {
+      const tab = state.mountedTabs.find(
+        (candidate) => candidate.id === action.tabId
+      );
+      if (!tab) {
+        return state;
+      }
+      return {
+        ...state,
+        activePanel: tab.panel,
+        activeTabId: tab.id
+      };
+    }
+    case "open-file": {
+      const existingIndex = state.mountedTabs.findIndex(
+        (tab) =>
+          isStandaloneAgentFilePreviewTab(tab) &&
+          tab.filePreview.path === action.tab.filePreview.path
+      );
+      const mountedTabs =
+        existingIndex < 0
+          ? [...state.mountedTabs, action.tab]
+          : state.mountedTabs.map((tab, index) =>
+              index === existingIndex ? action.tab : tab
+            );
+      return {
+        activePanel: "files",
+        activeTabId: action.tab.id,
+        mountedTabs
+      };
+    }
+    case "add-panel":
+      return addTab(state, { id: action.tabId, panel: action.panel });
+    case "open-panel": {
+      const existingTab = findLastTabByPanel(state.mountedTabs, action.panel);
+      if (existingTab) {
         return {
           ...state,
-          activePanel: "terminal",
-          mountedPanels: mountPanel(state.mountedPanels, "terminal"),
-          terminalMounted: true,
-          terminalOpen: true
+          activePanel: existingTab.panel,
+          activeTabId: existingTab.id
         };
       }
-      return {
-        activePanel: action.panel,
-        mountedPanels: mountPanel(state.mountedPanels, action.panel),
-        terminalMounted: state.terminalMounted,
-        terminalOpen: state.terminalOpen
-      };
-    case "open-panel":
-      return {
-        ...state,
-        activePanel: action.panel,
-        mountedPanels: mountPanel(state.mountedPanels, action.panel),
-        ...(action.panel === "terminal"
-          ? { terminalMounted: true, terminalOpen: true }
-          : {})
-      };
-    case "toggle-panel":
-      if (state.activePanel === action.panel) {
-        return { ...state, activePanel: null };
-      }
-      return {
-        ...state,
-        activePanel: action.panel,
-        mountedPanels: mountPanel(state.mountedPanels, action.panel)
-      };
-    case "toggle-terminal":
-      return {
-        ...state,
-        activePanel: state.activePanel === "terminal" ? null : "terminal",
-        mountedPanels: mountPanel(state.mountedPanels, "terminal"),
-        terminalMounted: true,
-        terminalOpen: !state.terminalOpen
-      };
+      return addTab(state, { id: action.tabId, panel: action.panel });
+    }
   }
 }
 
