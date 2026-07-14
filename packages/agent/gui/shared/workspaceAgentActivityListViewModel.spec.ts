@@ -1027,6 +1027,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-20",
           cwd: "/repo",
           status: "completed",
+          createdAtUnixMs: 1_000,
           title: "产出 Landing 页面信息设计文档"
         },
         {
@@ -1037,6 +1038,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-21",
           cwd: "/repo",
           status: "failed",
+          createdAtUnixMs: 2_000,
           title: "Run failing issue"
         }
       ]
@@ -2195,6 +2197,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-22",
           cwd: "/repo",
           status: "completed",
+          createdAtUnixMs: 1_000,
           title: "Finished issue"
         },
         {
@@ -2205,6 +2208,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-23",
           cwd: "/repo",
           status: "canceled",
+          createdAtUnixMs: 2_000,
           title: "Canceled issue"
         },
         {
@@ -2215,6 +2219,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-24",
           cwd: "/repo",
           status: "canceled",
+          createdAtUnixMs: 3_000,
           title: "Canceled issue"
         }
       ]
@@ -2677,6 +2682,13 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-older-session-new-turn",
           cwd: "/repo",
           effectiveStatus: "working",
+          latestTurn: {
+            agentSessionId: "older-session-new-turn",
+            phase: "running",
+            startedAtUnixMs: 9000,
+            turnId: "turn-new",
+            updatedAtUnixMs: 9000
+          },
           updatedAtUnixMs: 9000,
           createdAtUnixMs: 1000,
           title: "Older session new turn"
@@ -2689,6 +2701,13 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
           providerSessionId: "provider-newer-session-old-turn",
           cwd: "/repo",
           effectiveStatus: "working",
+          latestTurn: {
+            agentSessionId: "newer-session-old-turn",
+            phase: "running",
+            startedAtUnixMs: 3000,
+            turnId: "turn-old",
+            updatedAtUnixMs: 3000
+          },
           updatedAtUnixMs: 8000,
           createdAtUnixMs: 2000,
           title: "Newer session old turn"
@@ -2727,7 +2746,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
-  it("falls back to session update time when messages have not been loaded", () => {
+  it("falls back to session creation time when messages have not been loaded", () => {
     const snapshot = {
       presences: [],
       sessions: [
@@ -2761,8 +2780,8 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     const view = buildWorkspaceAgentActivityListViewModel(snapshot);
 
     expect(view.activities.map((activity) => activity.sessionId)).toEqual([
-      "created-earlier-updated-later",
-      "created-later-updated-earlier"
+      "created-later-updated-earlier",
+      "created-earlier-updated-later"
     ]);
   });
 

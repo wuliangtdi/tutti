@@ -232,6 +232,7 @@ describe("agentGuiConversationModel", () => {
           provider: "codex",
           sessionOrigin: AGENT_GUI_RUNTIME_SESSION_ORIGIN,
           title: "Runtime Codex",
+          createdAtUnixMs: 1,
           updatedAtUnixMs: 30
         }),
         workspaceAgentSession({
@@ -239,6 +240,7 @@ describe("agentGuiConversationModel", () => {
           provider: "codex",
           sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_UNKNOWN",
           title: "Unknown Origin Codex",
+          createdAtUnixMs: 2,
           updatedAtUnixMs: 40
         }),
         workspaceAgentSession({

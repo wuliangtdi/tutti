@@ -47,6 +47,12 @@ turn and may contain many settled turns. Running, waiting, completed, failed,
 and canceled are turn lifecycle states; they must not be copied onto the
 session as a competing lifecycle field.
 
+Conversation lists order a session by the latest user turn: each turn's time is
+the earliest user message in that turn, and the session time is the maximum of
+those turn times. The renderer uses the projected latest turn directly rather
+than loading message history just to calculate this key. A session with no user
+message uses its creation time.
+
 Commands that cross process or persistence boundaries use a saga/outbox flow:
 
 ```text

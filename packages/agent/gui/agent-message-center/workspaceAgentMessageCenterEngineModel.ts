@@ -42,6 +42,7 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
         : null;
       return buildWorkspaceAgentMessageCenterItem({
         session: consumer.session,
+        latestTurn: consumer.latestTurn,
         messages: sessionMessages(snapshot.sessionMessagesById, consumer),
         status: consumer.displayStatus,
         needsAttention,
