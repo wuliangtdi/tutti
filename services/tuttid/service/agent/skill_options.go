@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -52,6 +53,97 @@ func (s *Service) discoverComposerSkillOptions(provider string, cwd string, env 
 	options := discoverComposerSkillOptionsFromRoots(roots, triggerFor)
 	cache.set(key, options)
 	return cloneComposerSkillOptions(options)
+}
+
+func (s *Service) discoverComposerSkillOptionsForLaunch(
+	ctx context.Context,
+	provider string,
+	cwd string,
+	env []string,
+	providerTargetRef map[string]any,
+) []ComposerSkillOption {
+	if providerTargetRefKind(providerTargetRef) != "agent_extension" {
+		return s.discoverComposerSkillOptions(provider, cwd, env)
+	}
+	resolver := s.ExtensionComposerProfiles
+	installationID := strings.TrimSpace(stringFromAny(providerTargetRef["extensionInstallationId"]))
+	if resolver == nil || installationID == "" {
+		return nil
+	}
+	profile, err := resolver.ResolveExtensionComposerProfile(ctx, installationID)
+	if err != nil || profile.Skills == nil {
+		return nil
+	}
+	roots := extensionComposerSkillRoots(cwd, profile.Skills.Roots)
+	triggerFor := extensionSkillTrigger(profile.Skills.TriggerPrefix)
+	if triggerFor == nil {
+		return nil
+	}
+	options := discoverComposerSkillOptionsFromRoots(roots, triggerFor)
+	for index := range options {
+		options[index].Invocation = strings.TrimSpace(profile.Skills.Invocation)
+	}
+	return options
+}
+
+func extensionComposerSkillRoots(cwd string, declarations []ExtensionComposerSkillRoot) []composerSkillRoot {
+	roots := make([]composerSkillRoot, 0, len(declarations))
+	for _, declaration := range declarations {
+		relativePath := filepath.Clean(strings.TrimSpace(declaration.Path))
+		if relativePath == "." || filepath.IsAbs(relativePath) || relativePath == ".." || strings.HasPrefix(relativePath, ".."+string(filepath.Separator)) {
+			continue
+		}
+		switch strings.TrimSpace(declaration.Scope) {
+		case "workspace":
+			roots = append(roots, ancestorDeclaredSkillRoots(cwd, relativePath)...)
+		case "user":
+			if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+				roots = append(roots, composerSkillRoot{
+					path:       filepath.Join(home, relativePath),
+					sourceKind: composerSkillSourcePersonal,
+				})
+			}
+		}
+	}
+	return roots
+}
+
+func ancestorDeclaredSkillRoots(cwd string, relativePath string) []composerSkillRoot {
+	current := strings.TrimSpace(cwd)
+	if current == "" {
+		return nil
+	}
+	current, err := filepath.Abs(current)
+	if err != nil {
+		return nil
+	}
+	roots := make([]composerSkillRoot, 0)
+	for {
+		roots = append(roots, composerSkillRoot{
+			path:       filepath.Join(current, relativePath),
+			sourceKind: composerSkillSourceProject,
+		})
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	return roots
+}
+
+func extensionSkillTrigger(prefix string) skillTriggerFunc {
+	prefix = strings.TrimSpace(prefix)
+	if prefix != "/" && prefix != "$" {
+		return nil
+	}
+	return func(_ composerSkillRoot, name string) string {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return ""
+		}
+		return prefix + name
+	}
 }
 
 func composerSkillDiscoveryPlan(provider string, cwd string, env []string) ([]composerSkillRoot, skillTriggerFunc) {
@@ -596,6 +688,9 @@ func composerSkillOptionsRuntimeContext(options []ComposerSkillOption) []map[str
 		if option.Path != "" {
 			value["path"] = option.Path
 		}
+		if option.Invocation != "" {
+			value["invocation"] = option.Invocation
+		}
 		result = append(result, value)
 	}
 	return result
@@ -612,7 +707,10 @@ func composerCapabilityCatalogFromSkills(provider string, skills []ComposerSkill
 		if name == "" || trigger == "" {
 			continue
 		}
-		invocation := strings.TrimSpace(composerProfileFor(provider).SkillInvocation)
+		invocation := strings.TrimSpace(skill.Invocation)
+		if invocation == "" {
+			invocation = strings.TrimSpace(composerProfileFor(provider).SkillInvocation)
+		}
 		if invocation == "" {
 			invocation = "textTrigger"
 		}

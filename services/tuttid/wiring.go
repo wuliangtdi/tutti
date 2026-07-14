@@ -19,6 +19,7 @@ import (
 	tuttiserver "github.com/tutti-os/tutti/services/tuttid/server"
 	accountservice "github.com/tutti-os/tutti/services/tuttid/service/account"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
@@ -233,6 +234,16 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentTargets := agenttargetservice.Service{
 		Store: agentTargetStore,
 	}
+	agentExtensionManager := &agentextensionservice.Manager{
+		Sources:  tuttitypes.ResolveAgentExtensionSources(),
+		StateDir: tuttitypes.DefaultStateDir(),
+		Store:    agentTargetStore,
+	}
+	agentTargets.AvailabilityResolver = agentExtensionManager
+	for _, reconcileErr := range agentExtensionManager.Reconcile(ctx) {
+		payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
+		slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
+	}
 	managedCredentials := &managedcredentialsservice.Service{
 		Store: managedCredentialsStore,
 	}
@@ -256,12 +267,20 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 		RunOutcomes:       runOutcomes,
 	}
 	accountService := accountservice.NewService("")
+	agentProcessTransport := agentdaemon.NewLocalProcessTransport()
+	agentHostMetadata := agentdaemon.HostMetadata{
+		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
+		WorkspaceEnvName: "TUTTI_WORKSPACE_ID", OpenClawSessionKeyPrefix: "agent:main:tsh-",
+	}
 	agentRuntime, err := agentdaemon.NewRuntime(agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			inner: agentActivityProjection,
 			store: runOutcomes,
 		},
-		ProcessTransport: agentdaemon.NewLocalProcessTransport(),
+		ProcessTransport: agentProcessTransport,
+		AdapterResolver: agentextensionservice.RuntimeResolver{
+			Manager: agentExtensionManager, Transport: agentProcessTransport, Host: agentHostMetadata,
+		},
 		ProviderCommandResolver: func(ctx context.Context, provider string) (agentdaemon.ProviderCommand, error) {
 			resolved, err := agentStatusService.ResolveProviderCommand(ctx, provider)
 			if err != nil {
@@ -272,15 +291,7 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 				Env:     resolved.Env,
 			}, nil
 		},
-		HostMetadata: agentdaemon.HostMetadata{
-			ClientInfo: agentdaemon.ClientInfo{
-				Name:    "tutti-desktop",
-				Title:   "Tutti",
-				Version: "0.1.0",
-			},
-			WorkspaceEnvName:         "TUTTI_WORKSPACE_ID",
-			OpenClawSessionKeyPrefix: "agent:main:tsh-",
-		},
+		HostMetadata: agentHostMetadata,
 	})
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
@@ -303,6 +314,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	agentSessionService.ModelCatalog = agentModelCatalog
 	agentSessionService.ModelCapabilities = agentModelCapabilities
 	agentSessionService.AgentTargetStore = agentTargetStore
+	agentSessionService.ExtensionComposerProfiles = agentExtensionComposerProfileResolver{
+		manager: agentExtensionManager,
+	}
 	agentSessionService.SessionReader = agentActivityProjection
 	agentSessionService.UserProjectReader = userProjectService
 	agentSessionService.MessageReader = agentActivityProjection

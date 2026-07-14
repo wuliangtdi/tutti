@@ -349,7 +349,15 @@ function DesktopAgentProviderManageRowView({
           src={agentGuiDockIconUrls[row.provider]}
         />
         <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
-          {t(providerLabelKeys[row.provider])}
+          {(providerLabelKeys as Partial<Record<string, DesktopI18nKey>>)[
+            row.provider
+          ]
+            ? t(
+                (providerLabelKeys as Partial<Record<string, DesktopI18nKey>>)[
+                  row.provider
+                ]!
+              )
+            : row.provider}
         </span>
       </div>
       <div className="flex min-w-0 items-center gap-2" role="cell">

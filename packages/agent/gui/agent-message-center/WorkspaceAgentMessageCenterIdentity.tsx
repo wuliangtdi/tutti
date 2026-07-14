@@ -46,6 +46,8 @@ export function MessageCenterOpenChatButton({
   return (
     <div className="workspace-agent-message-center__footer flex min-w-0 items-center justify-between gap-2">
       <MessageCenterIdentityLabel
+        agentAvatarUrl={item.agentAvatarUrl}
+        agentName={item.agentName}
         identity={item.identity}
         provider={provider}
       />
@@ -80,20 +82,32 @@ export function MessageCenterOpenChatButton({
 }
 
 export function MessageCenterIdentityLabel({
+  agentAvatarUrl,
+  agentName,
   identity,
   provider
 }: {
+  agentAvatarUrl?: string | null;
+  agentName?: string | null;
   identity: WorkspaceAgentMessageCenterIdentity | null;
   provider: string;
 }): JSX.Element {
   "use memo";
 
   if (!identity) {
-    return <AgentProviderLabel provider={provider} />;
+    return (
+      <AgentProviderLabel
+        agentAvatarUrl={agentAvatarUrl}
+        agentName={agentName}
+        provider={provider}
+      />
+    );
   }
 
-  const agentAvatarUrl =
-    identity.agentAvatarUrl?.trim() || managedAgentRoundedIconUrl(provider);
+  const resolvedAgentAvatarUrl =
+    identity.agentAvatarUrl?.trim() ||
+    agentAvatarUrl?.trim() ||
+    managedAgentRoundedIconUrl(provider);
   const title = `${identity.userName} & ${identity.agentName}`;
 
   return (
@@ -104,7 +118,7 @@ export function MessageCenterIdentityLabel({
       <MessageCenterIdentityAvatarStack
         userAvatarUrl={identity.userAvatarUrl}
         userName={identity.userName}
-        agentAvatarUrl={agentAvatarUrl}
+        agentAvatarUrl={resolvedAgentAvatarUrl}
       />
       <span className="workspace-agent-message-center__identity-names flex min-w-0 items-center gap-1 truncate text-[13px] leading-5 text-[var(--text-secondary)]">
         <span className="min-w-0 truncate">{identity.userName}</span>
@@ -116,10 +130,12 @@ export function MessageCenterIdentityLabel({
 }
 
 export function MessageCenterIdentityAvatarMark({
+  agentAvatarUrl,
   identity,
   provider,
   userId
 }: {
+  agentAvatarUrl?: string | null;
   identity: WorkspaceAgentMessageCenterIdentity | null;
   provider: string;
   userId?: string | null;
@@ -130,7 +146,7 @@ export function MessageCenterIdentityAvatarMark({
   if (!userName) {
     return (
       <img
-        src={managedAgentRoundedIconUrl(provider)}
+        src={agentAvatarUrl?.trim() || managedAgentRoundedIconUrl(provider)}
         alt=""
         className="size-5 shrink-0 rounded-full"
         decoding="async"
@@ -146,7 +162,9 @@ export function MessageCenterIdentityAvatarMark({
       userAvatarUrl={identity?.userAvatarUrl}
       userName={userName}
       agentAvatarUrl={
-        identity?.agentAvatarUrl?.trim() || managedAgentRoundedIconUrl(provider)
+        identity?.agentAvatarUrl?.trim() ||
+        agentAvatarUrl?.trim() ||
+        managedAgentRoundedIconUrl(provider)
       }
     />
   );
@@ -292,14 +310,22 @@ export function LazyMessageCenterTooltip({
   );
 }
 
-function AgentProviderLabel({ provider }: { provider: string }): JSX.Element {
+function AgentProviderLabel({
+  agentAvatarUrl,
+  agentName,
+  provider
+}: {
+  agentAvatarUrl?: string | null;
+  agentName?: string | null;
+  provider: string;
+}): JSX.Element {
   "use memo";
-  const label = workspaceAgentProviderLabel(provider);
+  const label = agentName?.trim() || workspaceAgentProviderLabel(provider);
 
   return (
     <span className="workspace-agent-message-center__provider inline-flex min-w-0 max-w-full items-center gap-1.5">
       <img
-        src={managedAgentRoundedIconUrl(provider)}
+        src={agentAvatarUrl?.trim() || managedAgentRoundedIconUrl(provider)}
         alt=""
         className="workspace-agent-message-center__provider-icon size-5 shrink-0 rounded-full"
         decoding="async"

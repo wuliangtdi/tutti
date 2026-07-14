@@ -37,6 +37,7 @@ type Service struct {
 	RuntimePreparer                runtimeprep.Preparer
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
+	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -92,6 +93,25 @@ type AgentTargetStore interface {
 
 type ComposerCapabilityLister interface {
 	ListComposerCapabilityOptions(context.Context, string, string, []ComposerSkillOption) ([]ComposerCapabilityOption, []string)
+}
+
+type ExtensionComposerProfileResolver interface {
+	ResolveExtensionComposerProfile(context.Context, string) (ExtensionComposerProfile, error)
+}
+
+type ExtensionComposerProfile struct {
+	Skills *ExtensionComposerSkillProfile
+}
+
+type ExtensionComposerSkillProfile struct {
+	Invocation    string
+	TriggerPrefix string
+	Roots         []ExtensionComposerSkillRoot
+}
+
+type ExtensionComposerSkillRoot struct {
+	Scope string
+	Path  string
 }
 
 type Session struct {
@@ -341,6 +361,7 @@ type RuntimeResumeInput struct {
 	UpdatedAtUnixMS        int64
 	Visible                *bool
 	RuntimeContext         map[string]any
+	ProviderTargetRef      map[string]any
 	Metadata               agentactivitybiz.SessionMetadata
 	InternalRuntimeContext map[string]any
 	// RecreateIfMissing lets the runtime start a fresh provider session in place

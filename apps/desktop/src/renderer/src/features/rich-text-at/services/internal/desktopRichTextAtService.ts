@@ -134,7 +134,10 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
         agentProviderStatuses: dependencies.agentProviderStatuses,
         isTuttiAgentSwitchEnabled: dependencies.isTuttiAgentSwitchEnabled
       }),
-      createAgentSessionAtContributor(dependencies.tuttidClient),
+      createAgentSessionAtContributor({
+        agentsService: dependencies.agentsService,
+        tuttidClient: dependencies.tuttidClient
+      }),
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
         getLocale: dependencies.getLocale

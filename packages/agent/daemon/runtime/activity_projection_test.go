@@ -7,6 +7,27 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+func TestExtensionProviderProjectsTurnLifecycleEvents(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.Provider = "acp:gemini"
+	started := newTurnActivityEvent(session, EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil)
+	failed := newTurnActivityEvent(session, EventTurnFailed, "turn-1", SessionStatusFailed, "", "", map[string]any{
+		"error": "quota exceeded",
+	})
+
+	if started.Type != activityshared.EventTurnStarted {
+		t.Fatalf("extension turn started event = %#v, want %q", started, activityshared.EventTurnStarted)
+	}
+	if failed.Type != activityshared.EventTurnFailed {
+		t.Fatalf("extension turn failed event = %#v, want %q", failed, activityshared.EventTurnFailed)
+	}
+	if started.Provider != activityshared.Provider("acp:gemini") || failed.Provider != activityshared.Provider("acp:gemini") {
+		t.Fatalf("extension event providers = %q, %q; want acp:gemini", started.Provider, failed.Provider)
+	}
+}
+
 func TestReportableActivityEventsReportsOnlyCompletedAssistantSnapshots(t *testing.T) {
 	t.Parallel()
 

@@ -34,8 +34,6 @@ const dockSuppressedProviderSet = new Set<AgentGuiWorkbenchProvider>(
 const comingSoonProviderSet = new Set<AgentGuiWorkbenchProvider>(
   agentGuiWorkbenchComingSoonProviders
 );
-const enabledWorkbenchProviderSet = new Set<string>(agentGuiWorkbenchProviders);
-
 const agentGuiWorkbenchLabelProviders = [
   ...agentGuiWorkbenchProviders,
   "nexight"
@@ -49,12 +47,12 @@ export const agentGuiWorkbenchProviderLabels = Object.fromEntries(
     }
     return [provider, identity.displayName];
   })
-) as Record<AgentGuiWorkbenchProvider, string>;
+) as Record<string, string>;
 
 export function resolveAgentGuiWorkbenchProviderLabel(
   provider: AgentGuiWorkbenchProvider
 ): string {
-  return agentGuiWorkbenchProviderLabels[provider];
+  return agentGuiWorkbenchProviderLabels[provider] ?? provider;
 }
 
 export function isAgentGuiWorkbenchDefaultDockProvider(
@@ -78,12 +76,16 @@ export function isAgentGuiWorkbenchComingSoonProvider(
 export function isAgentGuiWorkbenchProvider(
   value: unknown
 ): value is AgentGuiWorkbenchProvider {
-  return typeof value === "string" && enabledWorkbenchProviderSet.has(value);
+  return (
+    typeof value === "string" && /^[a-z][a-z0-9._:-]{0,127}$/.test(value.trim())
+  );
 }
 
 export function normalizeAgentGuiWorkbenchProvider(
-  value: unknown,
-  fallbackProvider: AgentGuiWorkbenchProvider = "codex"
+  value: unknown
 ): AgentGuiWorkbenchProvider {
-  return isAgentGuiWorkbenchProvider(value) ? value : fallbackProvider;
+  if (!isAgentGuiWorkbenchProvider(value)) {
+    throw new Error("agent_gui_workbench.invalid_provider");
+  }
+  return value.trim();
 }

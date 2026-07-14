@@ -288,7 +288,9 @@ export function resolveAgentGuiWorkbenchProviderIconUrl(input: {
   provider: AgentGuiWorkbenchProvider;
 }): string {
   return (
-    input.dockIconUrls?.[input.provider] ?? agentGuiDockIconUrls[input.provider]
+    input.dockIconUrls?.[input.provider] ??
+    agentGuiDockIconUrls[input.provider] ??
+    ""
   );
 }
 

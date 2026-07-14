@@ -1312,7 +1312,7 @@ function createTuttiAgentTarget(enabled: boolean): AgentTarget {
     enabled,
     iconKey: "tutti-agent",
     id: "local:tutti-agent",
-    launchRef: { provider: "tutti-agent", type: "local_cli" },
+    launchRef: { provider: "tutti-agent", type: "builtin_local" },
     name: "Tutti Agent",
     provider: "tutti-agent",
     sortOrder: 30,

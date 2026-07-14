@@ -88,7 +88,7 @@ export function useAgentGUIConversationPresentation(
     }
     if (!input.activeConversationId) return null;
     const providerLabel =
-      AGENT_PROVIDER_LABEL[input.data.provider] ??
+      (AGENT_PROVIDER_LABEL as Record<string, string>)[input.data.provider] ??
       input.data.provider ??
       translate("sidebar.fallbackAgentLabel");
     const fallbackStatus =

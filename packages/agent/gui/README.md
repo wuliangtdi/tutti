@@ -107,6 +107,7 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
+  heroImageUrl?: string | null;
   description?: string | null;
   owner?: {
     name?: string | null;
@@ -137,9 +138,10 @@ Runnable provider targets are host-supplied. If the target catalog is absent,
 AgentGUI presents an explicit unavailable state; it does not synthesize local
 targets from presentation metadata.
 
-Agent names and primary icons always come from `agents[].name` and
-`agents[].iconUrl`. `owner.avatarUrl` is rendered separately as an ownership
-badge. Invalid entries and duplicate `agentTargetId` values are discarded by
+Agent names, primary icons, and optional home-carousel artwork come from
+`agents[].name`, `agents[].iconUrl`, and `agents[].heroImageUrl`.
+`owner.avatarUrl` is rendered separately as an ownership badge. Invalid entries
+and duplicate `agentTargetId` values are discarded by
 `normalizeAgentGUIAgents`, with the first occurrence preserving host order.
 
 With one agent, AgentGUI hides the aggregate `All` entry and renders that agent

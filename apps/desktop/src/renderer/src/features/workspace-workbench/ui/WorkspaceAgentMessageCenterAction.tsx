@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore
+} from "react";
 import {
   AgentInteractivePromptSurface,
   buildWorkspaceAgentInteractivePromptLabels,
@@ -40,6 +47,7 @@ import { MessageCenterOpenedReporter } from "@renderer/features/analytics/report
 import { MessageCenterNotificationActionedReporter } from "@renderer/features/analytics/reporters/message-center-notification-actioned/messageCenterNotificationActionedReporter.ts";
 import { IReporterService } from "@renderer/features/analytics";
 import { IWorkspaceAgentActivityService } from "@renderer/features/workspace-agent/services/workspaceAgentActivityService.interface.ts";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
 import { runDesktopAgentGUILinkAction } from "@renderer/features/workspace-agent/services/desktopAgentGUILinkActions.ts";
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
@@ -81,6 +89,12 @@ export function WorkspaceAgentMessageCenterAction({
   const { i18n, locale, t } = useTranslation();
   const workspaceAgentActivityService = useService(
     IWorkspaceAgentActivityService
+  );
+  const agentsService = useService(IAgentsService);
+  const agentDirectory = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
   );
   const reporterService = useService(IReporterService);
   const notifications = useService(INotificationService);
@@ -129,6 +143,7 @@ export function WorkspaceAgentMessageCenterAction({
       messageCenterPresentation,
       { sessionMessagesById, workspaceId: workspace.id },
       {
+        agentPresentations: agentDirectory.agentTargets,
         promptFallbackLabels: {
           constraintHeader: t(
             "workspace.agentMessageCenter.promptConstraintHeader"
@@ -149,6 +164,7 @@ export function WorkspaceAgentMessageCenterAction({
     return stableModel;
   }, [
     messageCenterPresentation,
+    agentDirectory.agentTargets,
     messageCenterItemCutoffUnixMs,
     sessionMessagesById,
     t,

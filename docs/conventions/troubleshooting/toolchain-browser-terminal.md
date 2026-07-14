@@ -365,6 +365,35 @@ delimited by ---`, and the composer skill picker may show partial or
   [packages/workspace/issue-manager/package.json](../../../packages/workspace/issue-manager/package.json)
   [packages/workspace/issue-manager/src/workbench/index.ts](../../../packages/workspace/issue-manager/src/workbench/index.ts)
 
+### New release CDN namespace returns an S3 403
+
+- Symptom:
+  Release artifacts upload successfully and `s3api head-object` finds them,
+  but the corresponding CloudFront URL returns HTTP 403 with
+  `server: AmazonS3` and `x-cache: Error from cloudfront`.
+- Quick checks:
+  Compare the requested path with the distribution's ordered cache behaviors,
+  identify the selected origin, and inspect the origin bucket policy for a
+  matching `s3:GetObject` resource prefix. Do not treat a successful S3 upload
+  or invalidation as proof that the CDN route exists.
+- Root cause:
+  The new release namespace was uploaded before its CloudFront path behavior
+  and S3 read policy were provisioned. The request fell through to an unrelated
+  default origin, which correctly returned AccessDenied.
+- Fix:
+  Add a read-only cache behavior for the namespace that targets the intended S3
+  origin, append the narrow bucket-policy resource prefix, wait for the
+  distribution deployment, and invalidate the new namespace. Preserve every
+  unrelated distribution behavior and use the current distribution ETag when
+  updating it.
+- Validation:
+  Download mutable index metadata, immutable release metadata, and the artifact
+  from the public CDN. Require HTTP 200 and rerun signature, SHA-256, and byte
+  size verification against those downloaded files.
+- References:
+  [Agent Extensions](../../architecture/agent-extensions.md) and the concrete
+  Agent repository's release workflow.
+
 ### Browser Node focus pings miss iframe-hosted editors
 
 - Symptom:

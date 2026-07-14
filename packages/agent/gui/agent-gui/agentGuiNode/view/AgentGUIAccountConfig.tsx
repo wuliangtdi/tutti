@@ -319,6 +319,7 @@ function agentGUIAccountInitials(label: string): string {
 }
 
 interface AgentGUIConfigMenuProps {
+  environmentSetupVisible: boolean;
   labels: AgentGUIViewLabels;
   previewMode: boolean;
   providerScopedActionsVisible: boolean;
@@ -336,6 +337,7 @@ interface AgentGUIConfigMenuProps {
 }
 
 export function AgentGUIConfigMenu({
+  environmentSetupVisible,
   labels,
   previewMode,
   providerScopedActionsVisible,
@@ -481,7 +483,7 @@ export function AgentGUIConfigMenu({
               <ListTree aria-hidden="true" size={16} strokeWidth={1.8} />
               <span>{labels.manageAgents}</span>
             </button>
-            {providerScopedActionsVisible ? (
+            {providerScopedActionsVisible && environmentSetupVisible ? (
               <button
                 type="button"
                 data-testid="agent-gui-config-env-setup"

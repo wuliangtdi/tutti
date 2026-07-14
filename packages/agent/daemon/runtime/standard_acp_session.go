@@ -109,6 +109,7 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	session.ProviderSessionID = providerSessionID
 	acpSession.providerSessionID = providerSessionID
 	applyACPConfigOptionsResult(&acpSession.acpLiveState, newSessionResult)
+	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult)
 	if err := a.applySessionConfigOptions(ctx, client, session, newSessionResult); err != nil {
 		a.logHermesStartupDiagnostics("config_options.failed", map[string]any{
 			"room_id":             session.RoomID,
@@ -207,6 +208,7 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		return classifyACPResumeError(session, method, err)
 	}
 	applyACPConfigOptionsResult(&acpSession.acpLiveState, loadSessionResult)
+	applyACPModelsResult(&acpSession.acpLiveState, loadSessionResult)
 	if err := a.applySessionConfigOptions(ctx, client, session, loadSessionResult); err != nil {
 		return err
 	}

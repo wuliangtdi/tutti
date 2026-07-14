@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import { selectEnginePendingInteractions } from "@tutti-os/agent-activity-core";
 import {
   buildWorkspaceAgentMessageCenterModelFromEngine,
@@ -12,6 +19,8 @@ import {
 } from "@tutti-os/agent-gui/agent-message-center";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import { IAgentsService } from "@renderer/features/workspace-agent/services/agentsService.interface.ts";
+import { useService } from "@tutti-os/infra/di";
 import type { useTranslation } from "@renderer/i18n";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 
@@ -34,6 +43,12 @@ export function StandaloneAgentMessageCenterToolPanel({
   onClose,
   onOpenChat
 }: StandaloneAgentMessageCenterToolPanelProps): ReactNode {
+  const agentsService = useService(IAgentsService);
+  const agentDirectory = useSyncExternalStore(
+    (listener) => agentsService.subscribe(listener),
+    () => agentsService.getSnapshot(),
+    () => agentsService.getSnapshot()
+  );
   const activitySnapshot = useExternalStoreValue(
     (listener) => activityService.subscribe(workspaceId, listener),
     () => activityService.getSnapshot(workspaceId),
@@ -57,6 +72,7 @@ export function StandaloneAgentMessageCenterToolPanel({
       presentationState,
       activitySnapshot,
       {
+        agentPresentations: agentDirectory.agentTargets,
         itemCutoffUnixMs,
         promptFallbackLabels: {
           constraintHeader: i18n.t(
@@ -75,7 +91,13 @@ export function StandaloneAgentMessageCenterToolPanel({
     );
     modelRef.current = stableModel;
     return stableModel;
-  }, [activitySnapshot, i18n, itemCutoffUnixMs, presentationState]);
+  }, [
+    activitySnapshot,
+    agentDirectory.agentTargets,
+    i18n,
+    itemCutoffUnixMs,
+    presentationState
+  ]);
   const requestedSessionSummaryIdsRef = useRef(new Set<string>());
 
   useEffect(() => {

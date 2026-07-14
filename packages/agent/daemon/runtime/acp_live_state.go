@@ -12,6 +12,7 @@ type acpLiveState struct {
 	commandsKnown           bool
 	configOptions           map[string]any
 	configOptionDescriptors []map[string]any
+	modelsAPI               bool
 	usage                   acpUsageState
 	goal                    map[string]any
 }
@@ -21,6 +22,7 @@ type acpLiveStateSnapshot struct {
 	availableCommands       []AgentSessionCommand
 	configOptions           map[string]any
 	configOptionDescriptors []map[string]any
+	modelsAPI               bool
 	usage                   acpUsageState
 	goal                    map[string]any
 }
@@ -54,6 +56,7 @@ func cloneACPLiveState(state acpLiveState) acpLiveState {
 		availableCommands:       cloneAgentSessionCommands(state.availableCommands),
 		commandsKnown:           state.commandsKnown,
 		configOptionDescriptors: cloneConfigOptionDescriptors(state.configOptionDescriptors),
+		modelsAPI:               state.modelsAPI,
 		usage:                   state.usage,
 		goal:                    clonePayload(state.goal),
 	}
@@ -71,6 +74,7 @@ func snapshotACPLiveState(state acpLiveState) acpLiveStateSnapshot {
 		availableCommands:       cloneAgentSessionCommands(state.availableCommands),
 		configOptions:           clonePayload(state.configOptions),
 		configOptionDescriptors: cloneConfigOptionDescriptors(state.configOptionDescriptors),
+		modelsAPI:               state.modelsAPI,
 		usage:                   state.usage,
 		goal:                    clonePayload(state.goal),
 	}
@@ -351,6 +355,64 @@ func applyACPConfigOptionsResult(state *acpLiveState, raw json.RawMessage) {
 		return
 	}
 	applyACPConfigOptionDescriptors(state, payload.ConfigOptions)
+}
+
+func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
+	if state == nil || len(raw) == 0 {
+		return
+	}
+	var payload struct {
+		Models *struct {
+			AvailableModels []struct {
+				Description string `json:"description"`
+				ModelID     string `json:"modelId"`
+				Name        string `json:"name"`
+			} `json:"availableModels"`
+			CurrentModelID string `json:"currentModelId"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil || payload.Models == nil {
+		return
+	}
+	state.modelsAPI = true
+	options := make([]any, 0, len(payload.Models.AvailableModels))
+	for _, model := range payload.Models.AvailableModels {
+		modelID := strings.TrimSpace(model.ModelID)
+		if modelID == "" {
+			continue
+		}
+		label := strings.TrimSpace(model.Name)
+		if label == "" {
+			label = modelID
+		}
+		option := map[string]any{"value": modelID, "label": label}
+		if description := strings.TrimSpace(model.Description); description != "" {
+			option["description"] = description
+		}
+		options = append(options, option)
+	}
+	if len(options) == 0 {
+		return
+	}
+	descriptor := map[string]any{
+		"id":           "model",
+		"name":         "Model",
+		"currentValue": strings.TrimSpace(payload.Models.CurrentModelID),
+		"options":      options,
+	}
+	descriptors := cloneConfigOptionDescriptors(state.configOptionDescriptors)
+	replaced := false
+	for index := range descriptors {
+		if strings.TrimSpace(asString(descriptors[index]["id"])) == "model" {
+			descriptors[index] = descriptor
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		descriptors = append(descriptors, descriptor)
+	}
+	applyACPConfigOptionDescriptors(state, descriptors)
 }
 
 func applyACPConfigOptionDescriptors(state *acpLiveState, descriptors []map[string]any) {

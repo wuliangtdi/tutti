@@ -83,6 +83,7 @@ type ComposerSkillOption struct {
 	Description string
 	PluginName  string
 	Path        string
+	Invocation  string
 }
 
 type ComposerCapabilityOption struct {
@@ -127,7 +128,12 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		if err != nil {
 			return ComposerOptions{}, err
 		}
-		provider = agentprovider.Normalize(launch.Provider)
+		// The Agent Target is the authority for an extension-owned provider
+		// identity. Preserve open provider ids (for example acp:gemini) after the
+		// target lookup has validated the launch binding; the closed built-in
+		// normalizer would otherwise erase them and reject target-scoped composer
+		// option requests before the runtime can start.
+		provider = agentprovider.NormalizeOpen(launch.Provider)
 		input.Provider = provider
 		input.AgentTargetID = agentTargetID
 		input.providerTargetRef = clonePayload(launch.ProviderTargetRef)
@@ -144,6 +150,11 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		ReasoningEffort:  strings.TrimSpace(input.Settings.ReasoningEffort),
 		Speed:            strings.TrimSpace(input.Settings.Speed),
 	})
+	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+		settings.Model = strings.TrimSpace(input.Settings.Model)
+		settings.PermissionModeID = strings.TrimSpace(input.Settings.PermissionModeID)
+		settings.PlanMode = input.Settings.PlanMode
+	}
 	effectiveSettings := resolveComposerEffectiveSettings(
 		ctx,
 		provider,
@@ -165,11 +176,18 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		"reasoningEffort":  nullableString(effectiveSettings.ReasoningEffort),
 		"speed":            nullableString(effectiveSettings.Speed),
 	}
+	if commands := s.composerCommandsFromRunningSession(
+		input.WorkspaceID,
+		provider,
+		agentTargetID,
+	); len(commands) > 0 {
+		runtimeContext["availableCommands"] = commands
+	}
 	slashCommandPolicy := composerSlashCommandPolicy(provider)
 	if agentTargetID != "" {
 		runtimeContext["agentTargetId"] = agentTargetID
 	}
-	skills := s.discoverComposerSkillOptions(provider, input.Cwd, nil)
+	skills := s.discoverComposerSkillOptionsForLaunch(ctx, provider, input.Cwd, nil, input.providerTargetRef)
 	capabilityCatalog := []ComposerCapabilityOption{}
 	capabilityErrors := []string(nil)
 	if composerOptionsIncludeCapabilityCatalog(input) {
@@ -217,7 +235,8 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		Behavior:           composerProfileFor(provider).Behavior,
 		SlashCommandPolicy: slashCommandPolicy,
 	}
-	if composerProfileFor(provider).LiveModelDiscovery {
+	if composerProfileFor(provider).LiveModelDiscovery ||
+		providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
 		var err error
 		options, err = s.mergeLiveComposerModelsForComposerOptions(ctx, input, effectiveSettings, options)
 		if err != nil {
@@ -460,6 +479,13 @@ func clampComposerModelForProvider(provider string, model string) string {
 		return ""
 	}
 	return strings.TrimSpace(model)
+}
+
+func clampComposerModelForLaunch(provider string, providerTargetRef map[string]any, model string) string {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+		return strings.TrimSpace(model)
+	}
+	return clampComposerModelForProvider(provider, model)
 }
 
 // clampComposerPlanModeForProvider forces plan mode off for providers whose

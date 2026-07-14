@@ -212,6 +212,8 @@ export type {
   AgentSlashCommandPolicy,
   AgentSubmitDiagnostics,
   AgentTarget,
+  AgentTargetBuiltinLocalLaunchRef,
+  AgentTargetExtensionLaunchRef,
   AgentTargetLaunchRef,
   AgentTargetProvider,
   AgentTargetSource,

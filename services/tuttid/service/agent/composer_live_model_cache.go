@@ -63,7 +63,7 @@ func (c *composerLiveModelCache) invalidateProvider(provider string) int {
 	if c == nil {
 		return 0
 	}
-	prefix := "live-model:" + agentprovider.Normalize(provider) + ":"
+	prefix := "live-model:" + agentprovider.NormalizeOpen(provider) + ":"
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	deleted := 0
@@ -84,7 +84,7 @@ func (s *Service) InvalidateLiveComposerModels(provider string) {
 	if s == nil {
 		return
 	}
-	normalized := agentprovider.Normalize(provider)
+	normalized := agentprovider.NormalizeOpen(provider)
 	if normalized == "" {
 		return
 	}

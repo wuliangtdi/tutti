@@ -82,6 +82,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
 	})
 }
 
@@ -251,6 +252,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		UpdatedAtUnixMS:   input.UpdatedAtUnixMS,
 		Visible:           input.Visible,
 		RuntimeContext:    cloneRuntimeContext(input.RuntimeContext),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
 		RecreateIfMissing: input.RecreateIfMissing,
 	})
 	if err != nil {

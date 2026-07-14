@@ -27,7 +27,7 @@ describe("agent gui workbench launch contract", () => {
       "openclaw"
     );
     expect(agentGuiWorkbenchProviderFromIdentifier("agent-gui:unknown")).toBe(
-      null
+      "unknown"
     );
   });
 

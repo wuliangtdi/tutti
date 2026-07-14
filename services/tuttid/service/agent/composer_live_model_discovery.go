@@ -19,6 +19,16 @@ const liveModelDiscoveryTimeout = 20 * time.Second
 const liveModelDiscoveryDeleteDelay = 10 * time.Minute
 const liveModelDiscoveryLifecycleTimeout = 10 * time.Minute
 const claudeModelCatalogInvalidationDebugPrefix = "CLAUDE_MODEL_CATALOG_INVALIDATION_DEBUG"
+const agentExtensionComposerDebugPrefix = "AGENT_EXTENSION_COMPOSER_DEBUG"
+
+func logAgentExtensionComposerDebug(stage string, payload map[string]any) {
+	payload["stage"] = stage
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		encoded = []byte(`{"stage":"debug_payload_unavailable"}`)
+	}
+	slog.Info(agentExtensionComposerDebugPrefix, "payload_json", string(encoded))
+}
 
 var claudeModelCatalogDebugSafeFields = map[string]struct{}{
 	"agentSessionId":        {},
@@ -87,7 +97,7 @@ func (s *Service) awaitClaudeStartupSlot(ctx context.Context, provider string) (
 // lets model discovery reuse an in-flight conversation instead of spawning a
 // second process next to it.
 func (s *Service) liveModelOptionsFromRunningSession(workspaceID string, provider string, agentTargetIDs ...string) ([]ComposerConfigOptionValue, bool) {
-	provider = agentprovider.Normalize(provider)
+	provider = agentprovider.NormalizeOpen(provider)
 	agentTargetID := ""
 	if len(agentTargetIDs) > 0 {
 		agentTargetID = agentTargetIDs[0]
@@ -95,7 +105,7 @@ func (s *Service) liveModelOptionsFromRunningSession(workspaceID string, provide
 	hasProviderSession := false
 	invalidatedAtUnixMS := s.liveModelInvalidatedAtUnixMSForProvider(provider)
 	for _, session := range s.controller().Sessions(workspaceID) {
-		if agentprovider.Normalize(session.Provider) != provider {
+		if agentprovider.NormalizeOpen(session.Provider) != provider {
 			continue
 		}
 		if agentTargetID = strings.TrimSpace(agentTargetID); agentTargetID != "" && strings.TrimSpace(session.AgentTargetID) != agentTargetID {
@@ -152,7 +162,7 @@ func (s *Service) liveModelOptionsFromRunningSession(workspaceID string, provide
 }
 
 func (s *Service) liveModelInvalidatedAtUnixMSForProvider(provider string) int64 {
-	normalized := agentprovider.Normalize(provider)
+	normalized := agentprovider.NormalizeOpen(provider)
 	if normalized == "" {
 		return 0
 	}
@@ -170,9 +180,27 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 	providerTargetRef map[string]any,
 	settings ComposerSettings,
 ) ([]ComposerConfigOptionValue, error) {
+	isExtension := providerTargetRefKind(providerTargetRef) == "agent_extension"
+	if isExtension {
+		logAgentExtensionComposerDebug("discovery_started", map[string]any{
+			"agentTargetId": scope.agentTargetID,
+			"provider":      scope.provider,
+			"workspaceId":   scope.workspaceID,
+		})
+	}
 	resolvedCwd, err := s.resolveLiveModelDiscoveryCwd(ctx, scope.provider, scope.cwd)
 	if err != nil {
+		if isExtension {
+			logAgentExtensionComposerDebug("cwd_resolution_failed", map[string]any{"error": err.Error(), "provider": scope.provider})
+		}
 		return nil, err
+	}
+	if isExtension && strings.TrimSpace(resolvedCwd) == "" {
+		resolvedCwd, err = resolveAgentExtensionComposerDiscoveryCwd(scope.provider)
+		if err != nil {
+			logAgentExtensionComposerDebug("cwd_resolution_failed", map[string]any{"error": err.Error(), "provider": scope.provider})
+			return nil, err
+		}
 	}
 	if reused, hasProviderSession := s.liveModelOptionsFromRunningSession(scope.workspaceID, scope.provider, scope.agentTargetID); hasProviderSession {
 		if len(reused) > 0 {
@@ -184,10 +212,11 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 	// real provider session (and, for account-backed CLIs, server-side
 	// artifacts), so providers without the flag only ever reuse running
 	// sessions.
-	if !composerProfileFor(scope.provider).LiveModelProbeSession {
+	if !composerProfileFor(scope.provider).LiveModelProbeSession &&
+		providerTargetRefKind(providerTargetRef) != "agent_extension" {
 		return nil, errLiveModelDiscoveryAlreadyAttempted
 	}
-	if err := s.ensureProviderRuntimeInstalled(ctx, scope.provider); err != nil {
+	if err := s.ensureProviderRuntimeInstalledForLaunch(ctx, scope.provider, providerTargetRef); err != nil {
 		return nil, err
 	}
 	releaseStartup, err := s.awaitClaudeStartupSlot(ctx, scope.provider)
@@ -233,7 +262,7 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 			Cwd:               prepared.Cwd,
 			Env:               prepared.Env,
 			PermissionModeID:  value(startInput.PermissionModeID),
-			Model:             clampComposerModelForProvider(scope.provider, value(startInput.Model)),
+			Model:             clampComposerModelForLaunch(scope.provider, providerTargetRef, value(startInput.Model)),
 			PlanMode:          clampComposerPlanModeForProvider(scope.provider, valueBool(startInput.PlanMode)),
 			BrowserUse:        startInput.BrowserUse,
 			ComputerUse:       startInput.ComputerUse,
@@ -252,6 +281,13 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		return runtimeSession, nil
 	}()
 	if err != nil {
+		if isExtension {
+			logAgentExtensionComposerDebug("runtime_start_failed", map[string]any{
+				"agentTargetId": scope.agentTargetID,
+				"error":         err.Error(),
+				"provider":      scope.provider,
+			})
+		}
 		cleanupErr := s.cleanupRuntime(ctx, scope.workspaceID, startInput.AgentSessionID)
 		if cleanupErr != nil {
 			return nil, errors.Join(err, cleanupErr)
@@ -259,6 +295,13 @@ func (s *Service) discoverLiveComposerModelsUncachedForScope(
 		return nil, err
 	}
 	s.markLiveModelDiscoveryAttempted(scope.key())
+	if isExtension {
+		logAgentExtensionComposerDebug("runtime_started", map[string]any{
+			"agentSessionId": session.ID,
+			"agentTargetId":  scope.agentTargetID,
+			"provider":       scope.provider,
+		})
+	}
 	s.trackLiveModelDiscoverySession(scope, session.ID)
 	s.scheduleLiveModelDiscoveryDelete(scope.workspaceID, session.ID)
 	return s.pollComposerModelOptions(ctx, scope.workspaceID, session)
@@ -473,7 +516,7 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 	effectiveSettings ComposerSettings,
 	options ComposerOptions,
 ) (ComposerOptions, error) {
-	provider := agentprovider.Normalize(input.Provider)
+	provider := agentprovider.NormalizeOpen(input.Provider)
 	scope := newComposerLiveModelScope(provider, input.WorkspaceID, input.Cwd, input.AgentTargetID)
 	var liveModels []ComposerConfigOptionValue
 	modelSource := "claude-static"

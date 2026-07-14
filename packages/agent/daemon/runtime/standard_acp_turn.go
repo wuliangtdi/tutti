@@ -37,6 +37,7 @@ func (a *standardACPAdapter) Exec(
 		if len(next) == 0 {
 			return
 		}
+		next = a.stampTurnLifecycleSnapshots(acpSession, next)
 		events = append(events, next...)
 		if emit != nil {
 			emit(next)

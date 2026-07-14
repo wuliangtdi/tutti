@@ -14,6 +14,7 @@ export function MessageCenterGroupHeading({
 }): React.JSX.Element {
   "use memo";
   const statusSignal = messageCenterGroupStatusSignal(group.id);
+  const firstItem = group.items[0];
 
   if (group.provider) {
     return (
@@ -24,12 +25,15 @@ export function MessageCenterGroupHeading({
       >
         {group.identity ? (
           <MessageCenterIdentityLabel
+            agentAvatarUrl={firstItem?.agentAvatarUrl}
+            agentName={firstItem?.agentName}
             identity={group.identity}
             provider={group.provider}
           />
         ) : (
           <span className="inline-flex min-w-0 items-center gap-1.5">
             <MessageCenterIdentityAvatarMark
+              agentAvatarUrl={firstItem?.agentAvatarUrl}
               identity={null}
               provider={group.provider}
               userId={group.userId ?? null}

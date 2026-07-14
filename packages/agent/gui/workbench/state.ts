@@ -110,10 +110,10 @@ export function normalizeAgentGuiWorkbenchNodeState(
   fallbackProvider: AgentGuiWorkbenchProvider = "codex"
 ): AgentGuiWorkbenchNodeState {
   const persistedState = isRecord(state) ? state : {};
-  const provider = normalizeAgentGuiWorkbenchProvider(
-    persistedState.provider,
-    fallbackProvider
-  );
+  const provider =
+    persistedState.provider === undefined || persistedState.provider === null
+      ? fallbackProvider
+      : normalizeAgentGuiWorkbenchProvider(persistedState.provider);
   return {
     ...createDefaultAgentGuiWorkbenchNodeState(provider),
     agentTargetId: normalizeOptionalNonEmptyString(

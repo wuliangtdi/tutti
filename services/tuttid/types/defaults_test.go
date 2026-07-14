@@ -48,6 +48,18 @@ func TestResolveDefaultsFromEnvAppliesOverrides(t *testing.T) {
 	assertEqual(t, got.Transport.TCPAddr, "127.0.0.1:1111")
 }
 
+func TestResolveAgentExtensionSourcesAppliesEnabledOverride(t *testing.T) {
+	t.Setenv("TUTTI_AGENT_EXTENSION_GEMINI_ENABLED", "true")
+
+	sources := ResolveAgentExtensionSources()
+	if len(sources) != 1 || sources[0].Key != "gemini" || !sources[0].Enabled {
+		t.Fatalf("agent extension sources = %#v", sources)
+	}
+	if sources[0].SigningKeyID == "" || sources[0].SigningPublicKey == "" {
+		t.Fatalf("agent extension trust configuration is incomplete: %#v", sources[0])
+	}
+}
+
 func TestDesktopLoginCallbackURLUsesEnvironmentScheme(t *testing.T) {
 	t.Setenv("TUTTI_ENV", "development")
 	assertEqual(t, DesktopLoginCallbackURL(), "tutti-dev://login/callback")

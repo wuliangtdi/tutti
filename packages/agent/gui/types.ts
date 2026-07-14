@@ -59,17 +59,13 @@ export interface AgentGUINodeData {
   > | null;
 }
 
-export type AgentGUIProvider = Extract<
-  AgentProvider,
-  | "claude-code"
-  | "codex"
-  | "tutti-agent"
-  | "cursor"
-  | "nexight"
-  | "hermes"
-  | "openclaw"
-  | "opencode"
->;
+/**
+ * Open runtime metadata reported by an Agent Target.
+ *
+ * Built-in providers still use AgentProvider, while externally installed ACP
+ * extensions use namespaced values such as `acp:gemini`.
+ */
+export type AgentGUIProvider = string;
 
 /**
  * Stable identifiers for the starter entries shown below the empty new-session
@@ -115,6 +111,7 @@ export interface AgentGUIAgent {
   agentTargetId: string;
   name: string;
   iconUrl: string;
+  heroImageUrl?: string | null;
   description?: string | null;
   owner?: AgentGUIAgentOwner | null;
   availability: AgentGUIAgentAvailability;
@@ -162,6 +159,7 @@ export interface AgentGUIAgentTarget {
   label: string;
   description?: string;
   iconUrl?: string | null;
+  heroImageUrl?: string | null;
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string;
   disabled?: boolean;

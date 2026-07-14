@@ -157,7 +157,10 @@ export function resolveSlashCommandsForProvider({
   browserSupported?: boolean;
   computerSupported?: boolean;
 }): AgentSlashCommand[] {
-  const descriptorCommands = policy ? commands : [];
+  // Provider-advertised commands are runtime capabilities. Open extension
+  // providers do not have a built-in Tutti policy descriptor, but their ACP
+  // command catalog is still authoritative and must remain visible.
+  const descriptorCommands = commands;
   const mergedEntries = mergeSlashCommands(
     filterUnavailableSlashCommands(descriptorCommands, {
       compactSupported,
@@ -173,7 +176,7 @@ export function resolveSlashCommandsForProvider({
   const commandEntries = mergedEntries.filter((entry) => {
     const commandName = normalizedCommandName(entry);
     return (
-      commandName !== "plan" &&
+      !isLocalTogglePlanCommand(commandName, policy) &&
       isSlashPaletteCommandVisible(commandName, policy)
     );
   });
@@ -211,7 +214,10 @@ export function resolveSlashCommandSelectionEffect({
     };
   }
   if (!policy) {
-    return null;
+    return {
+      kind: "fillDraft",
+      draft: draftForSlashCommand(command, currentDraft)
+    };
   }
   const commandName = normalizedCommandName(command);
   if (isLocalTogglePlanCommand(commandName, policy)) {

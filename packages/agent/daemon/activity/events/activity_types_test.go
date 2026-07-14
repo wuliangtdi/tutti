@@ -67,6 +67,14 @@ func TestNormalizeProviderHermes(t *testing.T) {
 		}
 	}
 }
+func TestNormalizeProviderAcceptsOpenExtensionIdentity(t *testing.T) {
+	t.Parallel()
+
+	provider, ok := NormalizeProvider("acp:gemini")
+	if !ok || provider != Provider("acp:gemini") {
+		t.Fatalf("NormalizeProvider(acp:gemini) = %q, %v; want acp:gemini, true", provider, ok)
+	}
+}
 
 func TestEventBuildersTrimRawSessionAndStampMilliseconds(t *testing.T) {
 	t.Parallel()

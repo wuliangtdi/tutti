@@ -125,6 +125,28 @@ func agentSessionCommandNames(commands []AgentSessionCommand) []string {
 	return names
 }
 
+func agentSessionCommandsRuntimeContext(commands []AgentSessionCommand) []map[string]any {
+	if len(commands) == 0 {
+		return []map[string]any{}
+	}
+	result := make([]map[string]any, 0, len(commands))
+	for _, command := range commands {
+		name := strings.TrimSpace(command.Name)
+		if name == "" {
+			continue
+		}
+		value := map[string]any{"name": name}
+		if description := strings.TrimSpace(command.Description); description != "" {
+			value["description"] = description
+		}
+		if inputHint := strings.TrimSpace(command.InputHint); inputHint != "" {
+			value["inputHint"] = inputHint
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
 func acpConfigValues(update map[string]any) map[string]any {
 	values := map[string]any{}
 	for _, key := range []string{"config", "option", "options"} {

@@ -23,7 +23,9 @@ import {
 } from "./desktopRichTextAtMentionSupport.ts";
 
 interface AgentSessionAtItem {
+  agentIconUrl?: string | null;
   agentName?: string | null;
+  agentTargetId?: string | null;
   createdAtUnixMs?: number | null;
   id: string;
   initiatorName?: string | null;
@@ -42,6 +44,7 @@ interface AgentTargetAtItem {
   displayName: string;
   iconUrl: string;
   provider: WorkspaceAgentProvider;
+  sortOrder: number;
   targetId: string;
   workspaceId: string;
 }
@@ -128,9 +131,10 @@ export function createAgentTargetAtContributor(contributorInput: {
   };
 }
 
-export function createAgentSessionAtContributor(
-  tuttidClient: TuttidClient
-): DesktopRichTextAtContributor {
+export function createAgentSessionAtContributor(contributorInput: {
+  agentsService?: Pick<IAgentsService, "load">;
+  tuttidClient: TuttidClient;
+}): DesktopRichTextAtContributor {
   return {
     capability: "agent-session",
     getProviders(input) {
@@ -144,28 +148,46 @@ export function createAgentSessionAtContributor(
               searchInput.context.metadata,
               "currentUserId"
             );
-            const response = await tuttidClient.listWorkspaceAgentSessions(
-              input.workspaceId,
-              {
-                limit: searchInput.maxResults,
-                searchQuery: searchInput.keyword.trim()
-              }
-            );
+            const [response, agentDirectory] = await Promise.all([
+              contributorInput.tuttidClient.listWorkspaceAgentSessions(
+                input.workspaceId,
+                {
+                  limit: searchInput.maxResults,
+                  searchQuery: searchInput.keyword.trim()
+                }
+              ),
+              contributorInput.agentsService?.load(searchInput.abortSignal) ??
+                null
+            ]);
             if (searchInput.abortSignal?.aborted) return [];
-            return response.sessions.map((session) => ({
-              agentName: resolveAgentSessionProviderLabel(session.provider),
-              createdAtUnixMs: session.createdAtUnixMs,
-              id: session.id,
-              initiatorName: "local",
-              provider: session.provider,
-              scope: resolveAgentSessionScope(currentUserId, "local"),
-              sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
-              status: workspaceAgentSessionStatus(session),
-              title: session.title,
-              updatedAtUnixMs: session.updatedAtUnixMs,
-              userId: "local",
-              workspaceId: response.workspaceId || input.workspaceId
-            }));
+            return response.sessions.map((session) => {
+              const agentTarget = resolveSessionAgentTarget(
+                session.agentTargetId,
+                agentDirectory?.agentTargets
+              );
+              return {
+                ...(agentTarget?.iconUrl
+                  ? { agentIconUrl: agentTarget.iconUrl }
+                  : {}),
+                agentName:
+                  agentTarget?.name ??
+                  resolveAgentSessionProviderLabel(session.provider),
+                ...(session.agentTargetId?.trim()
+                  ? { agentTargetId: session.agentTargetId.trim() }
+                  : {}),
+                createdAtUnixMs: session.createdAtUnixMs,
+                id: session.id,
+                initiatorName: "local",
+                provider: session.provider,
+                scope: resolveAgentSessionScope(currentUserId, "local"),
+                sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
+                status: workspaceAgentSessionStatus(session),
+                title: session.title,
+                updatedAtUnixMs: session.updatedAtUnixMs,
+                userId: "local",
+                workspaceId: response.workspaceId || input.workspaceId
+              };
+            });
           },
           getItemKey: (item) => item.id,
           getItemLabel: resolveAgentSessionLabel,
@@ -185,6 +207,7 @@ export function createAgentSessionAtContributor(
               }),
               presentation: compactMentionPresentation({
                 agentProviderId: item.provider?.trim() ?? "",
+                iconUrl: item.agentIconUrl?.trim() ?? "",
                 participant: [item.initiatorName, item.agentName]
                   .map((value) => value?.trim() ?? "")
                   .filter(Boolean)
@@ -198,9 +221,16 @@ export function createAgentSessionAtContributor(
             const workspaceId = scopeString(identity.scope, "workspaceId");
             if (!workspaceId) return null;
             return resolveMentionSafely(async () => {
-              const session = await tuttidClient.getWorkspaceAgentSession(
-                workspaceId,
-                identity.entityId
+              const [session, agentDirectory] = await Promise.all([
+                contributorInput.tuttidClient.getWorkspaceAgentSession(
+                  workspaceId,
+                  identity.entityId
+                ),
+                contributorInput.agentsService?.load() ?? null
+              ]);
+              const agentTarget = resolveSessionAgentTarget(
+                session.agentTargetId,
+                agentDirectory?.agentTargets
               );
               return {
                 label: resolveAgentSessionLabel({
@@ -211,8 +241,11 @@ export function createAgentSessionAtContributor(
                 }),
                 presentation: compactMentionPresentation({
                   agentProviderId: session.provider,
+                  iconUrl: agentTarget?.iconUrl ?? "",
                   status: workspaceAgentSessionStatus(session),
-                  subtitle: resolveAgentSessionProviderLabel(session.provider)
+                  subtitle:
+                    agentTarget?.name ??
+                    resolveAgentSessionProviderLabel(session.provider)
                 })
               };
             });
@@ -221,6 +254,19 @@ export function createAgentSessionAtContributor(
       ];
     }
   };
+}
+
+function resolveSessionAgentTarget(
+  agentTargetId: string | null | undefined,
+  targets: readonly AgentTargetPresentation[] | undefined
+): Pick<AgentTargetPresentation, "iconUrl" | "name"> | null {
+  const targetId = agentTargetId?.trim() ?? "";
+  if (!targetId) {
+    return null;
+  }
+  return (
+    targets?.find((target) => target.agentTargetId.trim() === targetId) ?? null
+  );
 }
 
 function agentTargetAtItemsFromTargets(input: {
@@ -236,15 +282,19 @@ function agentTargetAtItemsFromTargets(input: {
     .filter((target) => target.enabled)
     .map((target): AgentTargetAtItem | null => {
       const identity = resolveAgentGUIProviderCatalogIdentity(target.provider);
-      if (!identity) return null;
-      const provider = identity.providerId as WorkspaceAgentProvider;
+      const provider = target.provider.trim() as WorkspaceAgentProvider;
+      if (!provider) return null;
       if (
-        identity.desktop.visibilityGate === "tutti_agent" &&
+        identity?.desktop.visibilityGate === "tutti_agent" &&
         input.isTuttiAgentSwitchEnabled?.() !== true
       ) {
         return null;
       }
+      if (target.availability.status !== "ready") {
+        return null;
+      }
       if (
+        identity &&
         input.agentProviderStatuses !== undefined &&
         !input.agentProviderStatuses.some(
           (status) =>
@@ -264,6 +314,7 @@ function agentTargetAtItemsFromTargets(input: {
         displayName: label,
         iconUrl: target.iconUrl,
         provider,
+        sortOrder: target.sortOrder,
         targetId,
         workspaceId: input.workspaceId
       };
@@ -278,13 +329,8 @@ function agentTargetAtItemsFromTargets(input: {
             .includes(keyword)
     )
     .sort((left, right) => {
-      const providerOrder =
-        (resolveAgentGUIProviderCatalogIdentity(left.provider)?.target
-          .sortOrder ?? Number.MAX_SAFE_INTEGER) -
-        (resolveAgentGUIProviderCatalogIdentity(right.provider)?.target
-          .sortOrder ?? Number.MAX_SAFE_INTEGER);
       return (
-        providerOrder ||
+        left.sortOrder - right.sortOrder ||
         left.displayName.localeCompare(right.displayName, undefined, {
           sensitivity: "base"
         }) ||

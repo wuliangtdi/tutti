@@ -139,7 +139,8 @@ export function useAgentGUIComposerOptionsSync(input: {
           selectedTarget: input.selectedComposerTargetDataRef.current
         }).provider;
         const activeId = input.activeConversationIdRef.current;
-        if (!event.providers.includes(provider)) return;
+        if (!event.providers.some((candidate) => candidate === provider))
+          return;
         loadDraftComposerOptions({ force: true });
         if (
           !activeId ||

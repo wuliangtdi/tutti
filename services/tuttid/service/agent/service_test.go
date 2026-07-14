@@ -382,8 +382,8 @@ func TestServiceCreateResolvesAgentTargetID(t *testing.T) {
 	if got := runtime.startCalls[0].Provider; got != "codex" {
 		t.Fatalf("runtime provider = %q, want codex", got)
 	}
-	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "local_cli" {
-		t.Fatalf("provider target ref kind = %#v, want local_cli", got)
+	if got := runtime.startCalls[0].ProviderTargetRef["kind"]; got != "builtin_local" {
+		t.Fatalf("provider target ref kind = %#v, want builtin_local", got)
 	}
 	if got := runtime.startCalls[0].ProviderTargetRef["targetId"]; got != "local-codex" {
 		t.Fatalf("provider target ref targetId = %#v, want local-codex", got)
@@ -2512,6 +2512,58 @@ func TestServiceGetComposerOptionsResolvesProviderFromAgentTargetID(t *testing.T
 	}
 	if options.RuntimeContext["agentTargetId"] != agenttargetbiz.IDLocalCodex {
 		t.Fatalf("runtimeContext agentTargetId = %#v, want %q", options.RuntimeContext["agentTargetId"], agenttargetbiz.IDLocalCodex)
+	}
+}
+
+func TestServiceGetComposerOptionsPreservesExtensionProviderFromAgentTargetID(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			session.RuntimeContext = map[string]any{
+				"configOptions": []any{
+					map[string]any{
+						"id": "model",
+						"options": []any{
+							map[string]any{"value": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+						},
+					},
+				},
+			}
+		}
+		return session
+	}
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
+		"extension:gemini": {
+			ID:            "extension:gemini",
+			Provider:      "acp:gemini",
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"gemini@1.0.0"}`,
+			Name:          "Gemini CLI",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceSystem,
+		},
+	}}
+	service.CapabilityLister = &recordingComposerCapabilityLister{}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: "extension:gemini",
+		Provider:      "acp:gemini",
+		WorkspaceID:   "workspace-1",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if options.Provider != "acp:gemini" {
+		t.Fatalf("provider = %q, want acp:gemini", options.Provider)
+	}
+	if options.RuntimeContext["agentTargetId"] != "extension:gemini" {
+		t.Fatalf("runtimeContext agentTargetId = %#v, want extension:gemini", options.RuntimeContext["agentTargetId"])
+	}
+	if !options.ModelConfig.Configurable || len(options.ModelConfig.Options) != 1 || options.ModelConfig.Options[0].Value != "gemini-2.5-pro" {
+		t.Fatalf("modelConfig = %#v, want live extension model options", options.ModelConfig)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].ProviderTargetRef["kind"] != "agent_extension" {
+		t.Fatalf("runtime start calls = %#v, want one target-scoped extension discovery", runtime.startCalls)
 	}
 }
 

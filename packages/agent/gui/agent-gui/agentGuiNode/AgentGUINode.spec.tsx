@@ -1024,6 +1024,38 @@ describe("AgentGUINode", () => {
     ).not.toBe(0);
   });
 
+  it("does not offer the desktop-managed environment wizard for an extension target", () => {
+    const geminiTarget = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      targetId: "extension:gemini",
+      agentTargetId: "extension:gemini",
+      provider: "acp:gemini",
+      label: "Gemini CLI"
+    };
+    mockViewModel = createViewModel({
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "extension:gemini"
+      },
+      selectedAgentTarget: geminiTarget,
+      agentTargets: [geminiTarget]
+    });
+
+    renderAgentGUINode({
+      state: {
+        provider: "acp:gemini",
+        agentTargetId: "extension:gemini",
+        lastActiveAgentSessionId: null,
+        conversationRailWidthPx: null
+      }
+    });
+
+    fireEvent.click(screen.getByTitle("agentHost.agentGui.agentConfig"));
+
+    expect(screen.queryByTestId("agent-gui-config-env-setup")).toBeNull();
+    expect(screen.getByTestId("agent-gui-config-settings")).toBeInTheDocument();
+  });
+
   it("renders rail config usage from the unified provider filter target", async () => {
     const onAgentProbeDemandChange = vi.fn();
     const codexTarget = createLocalAgentGUIAgentTarget("codex");
