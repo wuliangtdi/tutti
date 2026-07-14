@@ -219,7 +219,15 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 		models = a.fetchModels(ctx, client, session, trace)
 	}
 	if len(models) > 0 && strings.TrimSpace(session.SettingsValue().ReasoningEffort) != "" {
+		hasExplicitModel := strings.TrimSpace(session.SettingsValue().Model) != ""
 		effectiveSettings := codexAppServerEffectiveSettings(models, session, nil)
+		// The catalog default is needed to validate an effort-only persisted
+		// setting, but it must not become a thread/resume model override. The
+		// existing thread remains authoritative until the resume result reports
+		// its actual model.
+		if !hasExplicitModel {
+			effectiveSettings.Model = ""
+		}
 		session.Settings = &effectiveSettings
 	}
 	planModeMask, defaultModeMask := a.fetchCollaborationModeMasks(ctx, client, session, trace)

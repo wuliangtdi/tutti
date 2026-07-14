@@ -959,6 +959,39 @@ func TestCodexAppServerAdapterResumeClampsPersistedReasoningBeforeRequest(t *tes
 	}
 }
 
+func TestCodexAppServerAdapterResumeDoesNotInferModelOverrideForPersistedReasoning(t *testing.T) {
+	t.Parallel()
+
+	transport := newScriptedAppServerTransport()
+	transport.conn.modelList = []any{map[string]any{
+		"id":                        "gpt-current-default",
+		"model":                     "gpt-current-default",
+		"isDefault":                 true,
+		"defaultReasoningEffort":    "medium",
+		"supportedReasoningEfforts": []any{"low", "medium"},
+	}}
+	adapter := NewCodexAppServerAdapter(transport)
+	session := testAppServerSession()
+	session.ProviderSessionID = "codex-thread-1"
+	session.Settings = &SessionSettings{ReasoningEffort: "ultra"}
+
+	if err := adapter.Resume(context.Background(), session); err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	threadResume := appServerRequestParams(t, transport.conn, appServerMethodThreadResume)
+	if got := asString(threadResume["model"]); got != "" {
+		t.Fatalf("thread/resume model = %q, want existing thread model preserved", got)
+	}
+	config, _ := threadResume["config"].(map[string]any)
+	if got := asString(config["model_reasoning_effort"]); got != "medium" {
+		t.Fatalf("thread/resume reasoning effort = %q, want catalog default medium", got)
+	}
+	state := adapter.SessionState(session)
+	if state.Settings == nil || state.Settings.Model != "gpt-5.1-codex" {
+		t.Fatalf("resumed settings = %#v, want model reported by existing thread", state.Settings)
+	}
+}
+
 func TestCodexAppServerAdapterStartUsesModelFieldForCatalogDefault(t *testing.T) {
 	t.Parallel()
 
