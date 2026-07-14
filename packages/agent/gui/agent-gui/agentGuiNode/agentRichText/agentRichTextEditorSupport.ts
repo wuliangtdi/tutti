@@ -18,6 +18,28 @@ export function isAgentRichTextLargeTextPaste(text: string): boolean {
   return text.trim().length >= AGENT_RICH_TEXT_LARGE_PASTE_MIN_CHARS;
 }
 
+export type AgentRichTextTextPasteKind =
+  | "empty"
+  | "large-text"
+  | "plain-text"
+  | "structured-mention";
+
+export function classifyAgentRichTextTextPaste(
+  text: string,
+  html: string,
+  largeTextHandlingAvailable: boolean
+): AgentRichTextTextPasteKind {
+  if (!text) {
+    return "empty";
+  }
+  if (largeTextHandlingAvailable && isAgentRichTextLargeTextPaste(text)) {
+    return "large-text";
+  }
+  return html.includes("data-agent-file-mention")
+    ? "structured-mention"
+    : "plain-text";
+}
+
 export function buildWorkspaceFileMentionDropContent(
   entries: ReadonlyArray<{
     path: string;

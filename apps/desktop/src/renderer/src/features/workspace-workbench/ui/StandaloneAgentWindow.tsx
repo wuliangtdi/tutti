@@ -689,8 +689,7 @@ export function StandaloneAgentWindow({
             primaryAccessory={<AppUpdateStatus presentation="standalone" />}
             secondaryAccessory={isContentLoading ? null : toolActions}
             showConversationRailToggle={!isContentLoading}
-            showAppTitle
-            title={i18n.t("workspace.agentGui.fallbackAgentLabel")}
+            showAppTitle={false}
             windowActions={{
               close: () => {
                 void toolWorkbench.requestWindowClose();

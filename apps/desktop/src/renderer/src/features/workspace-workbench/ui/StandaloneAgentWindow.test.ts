@@ -170,10 +170,11 @@ test("standalone Agent restores the active session title in the window header", 
   );
 });
 
-test("standalone Agent keeps its window title visible", () => {
-  assert.match(
+test("standalone Agent hides the generic app title", () => {
+  assert.match(standaloneWindowSource, /showAppTitle=\{false\}/);
+  assert.doesNotMatch(
     standaloneWindowSource,
-    /showAppTitle\s*\n?\s+title=\{i18n\.t\("workspace\.agentGui\.fallbackAgentLabel"\)\}/
+    /title=\{i18n\.t\("workspace\.agentGui\.fallbackAgentLabel"\)\}/
   );
 });
 

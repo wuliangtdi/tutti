@@ -38,6 +38,7 @@ import type {
 } from "./AgentRichTextEditor.types";
 import {
   buildWorkspaceFileMentionDropContent,
+  classifyAgentRichTextTextPaste,
   createAgentRichTextCaretAnchorExtension,
   createAgentRichTextPlaceholderExtension,
   isAgentRichTextLargeTextPaste,
@@ -435,21 +436,24 @@ export const AgentRichTextEditor = forwardRef<
             }
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
-          if (html.includes("data-agent-file-mention")) {
+          const text = event.clipboardData?.getData("text/plain") ?? "";
+          const textPasteKind = classifyAgentRichTextTextPaste(
+            text,
+            html,
+            Boolean(onPasteLargeTextRef.current)
+          );
+          if (textPasteKind === "empty") {
             return false;
           }
-          const text = event.clipboardData?.getData("text/plain") ?? "";
-          if (!text) {
+          if (textPasteKind === "large-text") {
+            event.preventDefault();
+            onPasteLargeTextRef.current?.(text);
+            return true;
+          }
+          if (textPasteKind === "structured-mention") {
             return false;
           }
           event.preventDefault();
-          if (
-            onPasteLargeTextRef.current &&
-            isAgentRichTextLargeTextPaste(text)
-          ) {
-            onPasteLargeTextRef.current(text);
-            return true;
-          }
           const currentEditor = editorRef.current;
           if (!currentEditor) {
             return true;

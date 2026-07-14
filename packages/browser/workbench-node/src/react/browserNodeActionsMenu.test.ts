@@ -62,3 +62,10 @@ test("Browser Node chrome keeps tabs above the address bar", () => {
   assert.match(browserNodeChromeSource, /feature\.tabsStore\.addTab/);
   assert.match(browserNodeChromeSource, /closeBrowserNodeTab/);
 });
+
+test("Browser Node selected tab uses the fronted background and line-2 border", () => {
+  assert.match(
+    browserNodeChromeSource,
+    /active\s*\? "border-\[var\(--line-2\)\] bg-\[var\(--background-fronted\)\] text-\[var\(--text-primary\)\] shadow-sm"/
+  );
+});

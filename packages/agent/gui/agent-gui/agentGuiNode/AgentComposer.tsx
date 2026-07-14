@@ -167,6 +167,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const promptFilesSupported = Boolean(
     resolveDroppedFileReferences && promptFileUploadSupported
   );
+  const pastedTextStagingSupported = Boolean(
+    canUploadAttachment && agentActivityRuntime?.stagePastedText
+  );
   const [isPaletteOpen, setIsPaletteOpen] = useState(true);
   const [isReviewPickerOpen, setIsReviewPickerOpen] = useState(false);
   const [isHandoffIconPlaying, setIsHandoffIconPlaying] = useState(false);
@@ -466,6 +469,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     promptFileUploadSupported,
     promptFilesSupported,
+    pastedTextStagingSupported,
     editorHandleRef,
     draftPromptRef,
     draftImagesRef,

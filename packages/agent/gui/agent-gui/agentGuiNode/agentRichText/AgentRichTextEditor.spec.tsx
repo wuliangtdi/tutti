@@ -368,6 +368,32 @@ describe("AgentRichTextEditor", () => {
     );
   });
 
+  it("detects long pasted text before handling structured mention html", async () => {
+    const onChange = vi.fn();
+    const onPasteLargeText = vi.fn();
+    const pastedText = "x".repeat(5_000);
+    render(
+      <AgentRichTextEditor
+        value="before "
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        onPasteLargeText={onPasteLargeText}
+      />
+    );
+
+    fireEvent.paste(await screen.findByRole("textbox", { name: "Prompt" }), {
+      clipboardData: clipboard(
+        pastedText,
+        '<span data-agent-file-mention="true">copied mention</span>'
+      )
+    });
+
+    expect(onPasteLargeText).toHaveBeenCalledWith(pastedText);
+    expect(onChange).not.toHaveBeenCalledWith(expect.stringContaining("xxx"));
+  });
+
   it("keeps short pasted text inline when large text handling is available", async () => {
     const onChange = vi.fn();
     const onPasteLargeText = vi.fn();

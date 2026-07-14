@@ -235,6 +235,7 @@ export const enAgentGui = {
   pastedTextFileLine:
     '- pasted text file "{{preview}}": {{path}}. Read this file before continuing.',
   pastedTextAttachmentTitle: "Pasted text",
+  pastedTextAttachmentFailed: "Pasted text couldn't be saved",
   pastedTextRestoreToComposer: "Show in text field",
   copyMessage: "Copy message",
   copyImage: "Copy image",

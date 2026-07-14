@@ -218,6 +218,7 @@ export const zhCNAgentGui = {
   pastedTextFileLine:
     '- 粘贴的文本文件 "{{preview}}"：{{path}}，继续前请先阅读此文件。',
   pastedTextAttachmentTitle: "粘贴的文本",
+  pastedTextAttachmentFailed: "无法保存粘贴的文本",
   pastedTextRestoreToComposer: "在文本框中显示",
   copyMessage: "复制消息",
   copyImage: "复制图片",

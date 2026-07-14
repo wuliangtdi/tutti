@@ -27,9 +27,25 @@ Runtime-owned capability declarations are optional and default to enabled:
 - `canSubmitInteractive`: shows approval, ask-user, and plan-decision
   interaction entries.
 - `canGoalControl`: shows goal banner controls, `/goal`, and the goal badge.
-- `canUploadAttachment`: enables prompt attachment upload paths such as pasted
-  images, pasted large text, and dropped or host-local files. Ordinary `@`
-  references and workspace-reference mentions remain available.
+- `canUploadAttachment`: enables prompt attachment paths. Pasted large text
+  additionally requires the explicit `AgentActivityRuntime.stagePastedText`
+  host method; AgentGUI does not infer that capability from generic file
+  upload support. Ordinary `@` references and workspace-reference mentions
+  remain available.
+
+## Pasted Text Staging
+
+AgentGUI classifies plain-text clipboard content before delegating structured
+mention HTML. A trimmed payload of at least 5,000 characters is never inserted
+into the prompt automatically. It becomes a pasted-text draft attachment and
+is passed as raw text to `AgentActivityRuntime.stagePastedText`; the host owns
+local persistence and returns `{ path, name, sizeBytes }`.
+
+If the method is absent or staging fails, the attachment remains in an explicit
+failed state and retains its in-memory text. AgentGUI must not silently put the
+payload back into the input. The user can explicitly choose “Show in text
+field” to do that. Generic `uploadPromptContent` remains the contract for
+images and host-local files; it is not a pasted-text capability signal.
 
 Slash commands come from the runtime session command snapshot. AgentGUI keeps
 legacy provider-default slash entries unless the host passes

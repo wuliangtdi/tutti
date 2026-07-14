@@ -61,6 +61,9 @@ export function ComposerDraftAttachments({
             const attachmentTitle = translate(
               "agentHost.agentGui.pastedTextAttachmentTitle"
             );
+            const attachmentStatus = item.uploadError
+              ? translate("agentHost.agentGui.pastedTextAttachmentFailed")
+              : attachmentTitle;
             const restoreLabel = translate(
               "agentHost.agentGui.pastedTextRestoreToComposer"
             );
@@ -82,7 +85,9 @@ export function ComposerDraftAttachments({
                   className="flex min-w-0 items-center gap-2 rounded-[8px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--text-primary)_34%,transparent)] disabled:cursor-default"
                   disabled={!canRestore}
                   aria-label={restoreLabel}
-                  title={canRestore ? restoreLabel : preview}
+                  title={
+                    item.uploadError ?? (canRestore ? restoreLabel : preview)
+                  }
                   onClick={() => expandDraftLargeTextToPrompt(item.id)}
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-[var(--transparency-hover)] text-[var(--text-secondary)]">
@@ -102,7 +107,7 @@ export function ComposerDraftAttachments({
                       {preview}
                     </span>
                     <span className="max-w-[200px] truncate text-[11px] text-[var(--text-tertiary)]">
-                      {attachmentTitle}
+                      {attachmentStatus}
                     </span>
                   </span>
                 </button>
