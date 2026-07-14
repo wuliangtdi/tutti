@@ -98,13 +98,14 @@ export function emptyAgentComposerDraft(): AgentComposerDraft {
 export function snapshotAgentComposerDraft(
   draft: AgentComposerDraft
 ): AgentComposerDraft {
-  return draft.map((block) => ({ ...block }));
+  const [textBlock, ...attachmentBlocks] = draft;
+  return [{ ...textBlock }, ...attachmentBlocks.map((block) => ({ ...block }))];
 }
 
 export function agentComposerDraftPrompt(
   draft: AgentComposerDraftContent
 ): string {
-  return draft.find((block) => block.type === "text")?.text ?? "";
+  return draft[0].text;
 }
 
 export function agentComposerDraftImages(
@@ -146,15 +147,35 @@ export function agentComposerDraftLargeTexts(
         block
       ): block is Extract<
         AgentComposerDraftContent[number],
-        { type: "file" }
-      > & {
-        text: string;
-      } =>
-        block.type === "file" &&
-        block.kind === AGENT_PASTED_TEXT_BLOCK_KIND &&
-        typeof block.text === "string"
+        { type: "file"; kind: typeof AGENT_PASTED_TEXT_BLOCK_KIND }
+      > => block.type === "file" && block.kind === AGENT_PASTED_TEXT_BLOCK_KIND
     )
     .map(({ type: _type, kind: _kind, ...item }) => item);
+}
+
+interface AgentComposerDraftAttachmentProjection {
+  images: AgentComposerDraftImage[];
+  files: AgentComposerDraftFile[];
+  largeTexts: AgentComposerDraftLargeText[];
+}
+
+const attachmentProjectionByDraft = new WeakMap<
+  AgentComposerDraftContent,
+  AgentComposerDraftAttachmentProjection
+>();
+
+export function agentComposerDraftAttachmentProjection(
+  draft: AgentComposerDraftContent
+): AgentComposerDraftAttachmentProjection {
+  const cached = attachmentProjectionByDraft.get(draft);
+  if (cached) return cached;
+  const projection = {
+    images: agentComposerDraftImages(draft),
+    files: agentComposerDraftFiles(draft),
+    largeTexts: agentComposerDraftLargeTexts(draft)
+  };
+  attachmentProjectionByDraft.set(draft, projection);
+  return projection;
 }
 
 export function buildAgentComposerDraft(input: {
@@ -209,7 +230,7 @@ export function agentComposerDraftHasContent(
     if (block.type === "image") return true;
     return block.kind === "file"
       ? true
-      : (block.text?.trim() ?? "") !== "" || Boolean(block.path);
+      : block.text.trim() !== "" || Boolean(block.path);
   });
 }
 

@@ -7,7 +7,8 @@ import type { AgentGUIConversationSummary } from "../model/agentGuiConversationM
 import { resolveAgentGUIExplicitConversationTitle } from "../model/agentGuiProviderIdentity";
 import {
   agentComposerDraftPrompt,
-  buildAgentComposerDraft
+  emptyAgentComposerDraft,
+  updateAgentComposerDraft
 } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { buildContinueInNewConversationPrompt } from "./agentGuiController.conversationHelpers";
@@ -48,6 +49,13 @@ interface UseAgentGUIContinueConversationInput {
   workspaceId: string;
 }
 
+export function buildContinueInNewConversationDraft(input: {
+  sourceDraft: AgentComposerDraft;
+  prompt: string;
+}): AgentComposerDraft {
+  return updateAgentComposerDraft(input.sourceDraft, { prompt: input.prompt });
+}
+
 export function useAgentGUIContinueConversation(
   input: UseAgentGUIContinueConversationInput
 ) {
@@ -66,6 +74,11 @@ export function useAgentGUIContinueConversation(
       current.createConversation();
       return;
     }
+    const sourceDraftScopeKey = resolveAgentComposerDraftScopeKey({
+      agentSessionId: currentConversationId
+    });
+    const sourceDraft =
+      current.draftByScopeKey[sourceDraftScopeKey] ?? emptyAgentComposerDraft();
     const nextDraftPrompt = buildContinueInNewConversationPrompt({
       workspaceId: current.workspaceId,
       agentSessionId: activeConversation.id,
@@ -77,13 +90,7 @@ export function useAgentGUIContinueConversation(
       conversationTitle:
         resolveAgentGUIExplicitConversationTitle(activeConversation) ??
         translate("agentHost.workspaceAgentsUntitledTask"),
-      existingDraftPrompt: agentComposerDraftPrompt(
-        current.draftByScopeKey[
-          resolveAgentComposerDraftScopeKey({
-            agentSessionId: currentConversationId
-          })
-        ] ?? []
-      )
+      existingDraftPrompt: agentComposerDraftPrompt(sourceDraft)
     });
     reportAgentGUIActiveConversationCleared({
       details: { sourceConversationId: activeConversation.id },
@@ -104,7 +111,10 @@ export function useAgentGUIContinueConversation(
       ...drafts,
       [resolveAgentComposerDraftScopeKey({
         projectPath: current.selectedProjectPathRef.current
-      })]: buildAgentComposerDraft({ prompt: nextDraftPrompt })
+      })]: buildContinueInNewConversationDraft({
+        sourceDraft,
+        prompt: nextDraftPrompt
+      })
     }));
     current.persistActiveConversation(null);
     current.loadDraftComposerOptions();

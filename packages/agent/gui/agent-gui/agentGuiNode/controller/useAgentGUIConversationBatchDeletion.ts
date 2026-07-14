@@ -18,9 +18,11 @@ import {
 } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
-  AgentGUIProjectConversationDeleteTarget
+  AgentGUIProjectConversationDeleteTarget,
+  SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { deleteSubmittedDraftSnapshotsForScopes } from "./agentGuiController.draftMessageHelpers";
 import { getAgentGUIErrorMessage } from "./agentGuiController.errors";
 import {
   normalizeProjectConversationPath,
@@ -53,6 +55,7 @@ export interface UseAgentGUIConversationBatchDeletionInput {
   setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
+  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   sessionEngine: AgentSessionEngine;
   activeConversationIdRef: RefObject<string | null>;
   markSelectedConversationDetailPending: (
@@ -91,6 +94,7 @@ export function useAgentGUIConversationBatchDeletion(
     deleteAgentSessionView,
     sessionViewRef,
     setDraftByScopeKey,
+    submittedDraftSnapshotsRef,
     sessionEngine,
     activeConversationIdRef,
     markSelectedConversationDetailPending,
@@ -156,16 +160,19 @@ export function useAgentGUIConversationBatchDeletion(
       for (const id of targetIds) {
         deleteAgentSessionView(sessionViewRef(id));
       }
-      setDraftByScopeKey((current) =>
-        omitConversationLocalState(
-          current,
-          new Set(
-            [...targetIds].map((agentSessionId) =>
-              resolveAgentComposerDraftScopeKey({ agentSessionId })
-            )
-          )
+      const deletedScopeKeys = new Set(
+        [...targetIds].map((agentSessionId) =>
+          resolveAgentComposerDraftScopeKey({ agentSessionId })
         )
       );
+      setDraftByScopeKey((current) =>
+        omitConversationLocalState(current, deletedScopeKeys)
+      );
+      deleteSubmittedDraftSnapshotsForScopes({
+        snapshots: submittedDraftSnapshotsRef.current,
+        scopeKeys: deletedScopeKeys,
+        targetAgentSessionIds: targetIds
+      });
       for (const id of targetIds) {
         sessionEngine.dispatch({
           agentSessionId: id,

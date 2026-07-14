@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentComposerDraft } from "../model/agentComposerDraft";
+import {
+  buildAgentComposerDraft,
+  snapshotAgentComposerDraft
+} from "../model/agentComposerDraft";
 import type { SubmittedDraftSnapshot } from "../model/agentGuiNodeTypes";
 import {
   areAgentComposerDraftsEqual,
-  clearSubmittedDraftIfUnchanged
+  clearSubmittedDraftIfUnchanged,
+  deleteSubmittedDraftSnapshotsForScopes,
+  deleteUnacceptedSubmittedDraftSnapshot
 } from "./agentGuiController.draftMessageHelpers";
 
 describe("submitted composer draft cleanup", () => {
@@ -37,7 +42,7 @@ describe("submitted composer draft cleanup", () => {
   });
   const snapshot: SubmittedDraftSnapshot = {
     sourceScopeKey,
-    content: submittedDraft.map((block) => ({ ...block }))
+    content: snapshotAgentComposerDraft(submittedDraft)
   };
 
   it("clears the entire source scope when its full content still matches", () => {
@@ -67,13 +72,21 @@ describe("submitted composer draft cleanup", () => {
   });
 
   it("treats attachment upload metadata as part of the atomic content", () => {
-    const current = submittedDraft.map((block) =>
-      block.type === "image" ? { ...block, uploading: true } : { ...block }
-    );
+    const current = snapshotAgentComposerDraft(submittedDraft);
+    const image = current.find((block) => block.type === "image");
+    if (image) image.uploading = true;
 
     expect(areAgentComposerDraftsEqual(current, submittedDraft)).toBe(false);
     const drafts = { [sourceScopeKey]: current };
     expect(clearSubmittedDraftIfUnchanged({ drafts, snapshot })).toBe(drafts);
+  });
+
+  it("compares newly-added block metadata without maintaining a field list", () => {
+    const current = snapshotAgentComposerDraft(submittedDraft);
+    const image = current.find((block) => block.type === "image");
+    Object.assign(image ?? {}, { futureMetadata: "edited" });
+
+    expect(areAgentComposerDraftsEqual(current, submittedDraft)).toBe(false);
   });
 
   it("does not clear a different project or session scope", () => {
@@ -85,5 +98,59 @@ describe("submitted composer draft cleanup", () => {
 
     const result = clearSubmittedDraftIfUnchanged({ drafts, snapshot });
     expect(result[otherScopeKey]).toBe(drafts[otherScopeKey]);
+  });
+
+  it("deletes unresolved snapshots owned by deleted scopes only", () => {
+    const snapshots: Record<string, SubmittedDraftSnapshot> = {
+      "submit-1": snapshot,
+      "submit-2": {
+        sourceScopeKey: "session:session-2",
+        content: buildAgentComposerDraft({ prompt: "Keep me" })
+      },
+      "submit-3": {
+        sourceScopeKey: "project:/workspace/recovered",
+        targetAgentSessionId: "session-1",
+        content: buildAgentComposerDraft({ prompt: "Recovered draft" })
+      }
+    };
+
+    deleteSubmittedDraftSnapshotsForScopes({
+      snapshots,
+      scopeKeys: new Set([sourceScopeKey]),
+      targetAgentSessionIds: new Set(["session-1"])
+    });
+
+    expect(snapshots).toEqual({
+      "submit-2": {
+        sourceScopeKey: "session:session-2",
+        content: buildAgentComposerDraft({ prompt: "Keep me" })
+      }
+    });
+  });
+
+  it("drops a snapshot immediately when the engine rejects the submit", () => {
+    const snapshots = { "submit-1": snapshot };
+
+    deleteUnacceptedSubmittedDraftSnapshot({
+      snapshots,
+      clientSubmitId: "submit-1",
+      accepted: false,
+      queued: false
+    });
+
+    expect(snapshots).toEqual({});
+  });
+
+  it("keeps a snapshot while an accepted submit is pending", () => {
+    const snapshots = { "submit-1": snapshot };
+
+    deleteUnacceptedSubmittedDraftSnapshot({
+      snapshots,
+      clientSubmitId: "submit-1",
+      accepted: true,
+      queued: false
+    });
+
+    expect(snapshots["submit-1"]).toBe(snapshot);
   });
 });

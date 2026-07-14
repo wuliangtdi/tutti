@@ -4676,6 +4676,97 @@ describe("AgentComposer", () => {
     ]);
   });
 
+  it("finishes image uploads in the draft scope where they started", async () => {
+    type UploadResult = AgentActivityRuntimeUploadPromptContentResult;
+    let resolveUpload: (result: UploadResult) => void = () => undefined;
+    const uploadPromptContent = vi.fn(
+      () =>
+        new Promise<UploadResult>((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+    setAgentActivityRuntimeForTests({
+      uploadPromptContent
+    } as unknown as AgentActivityRuntime);
+
+    const projectA = "project:/workspace/a";
+    const projectB = "project:/workspace/b";
+    let currentScopeKey = projectA;
+    const drafts: Record<string, AgentComposerDraft> = {
+      [projectA]: createDraft("project a"),
+      [projectB]: createDraft("project b")
+    };
+    const onDraftContentChange = vi.fn(
+      (nextDraft: AgentComposerDraft, sourceScopeKey?: string) => {
+        drafts[sourceScopeKey ?? currentScopeKey] = nextDraft;
+      }
+    );
+    const renderComposer = () => (
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={drafts[currentScopeKey]!}
+        draftScopeKey={currentScopeKey}
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings()}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        onDraftContentChange={onDraftContentChange}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+    const { rerender } = render(renderComposer());
+
+    fireEvent.click(screen.getByTestId("mock-paste-image"));
+    rerender(renderComposer());
+    expect(agentComposerDraftImages(drafts[projectA]!)[0]).toMatchObject({
+      uploading: true
+    });
+
+    currentScopeKey = projectB;
+    rerender(renderComposer());
+    resolveUpload({
+      content: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          path: "/var/cache/tsh/local-assets/workspace-1/screen.png",
+          name: "screen.png"
+        }
+      ]
+    });
+
+    await waitFor(() =>
+      expect(agentComposerDraftImages(drafts[projectA]!)[0]).toMatchObject({
+        uploading: false,
+        path: "/var/cache/tsh/local-assets/workspace-1/screen.png"
+      })
+    );
+    expect(drafts[projectB]).toEqual(createDraft("project b"));
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      drafts[projectA],
+      projectA
+    );
+  });
+
   it("uses the development console diagnostic sink even when the upload runtime has a reporter", async () => {
     vi.stubEnv("AGENT_GUI_DEV_DIAGNOSTIC_CONSOLE", "1");
     const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => {});

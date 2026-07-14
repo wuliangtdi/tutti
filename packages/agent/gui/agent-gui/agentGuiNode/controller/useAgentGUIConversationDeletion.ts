@@ -11,8 +11,12 @@ import type { AgentSessionViewRef } from "../../../contexts/workspace/presentati
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import { type AgentGUIConversationListQuery } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
-import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
+import type {
+  AgentComposerDraft,
+  SubmittedDraftSnapshot
+} from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import { deleteSubmittedDraftSnapshotsForScopes } from "./agentGuiController.draftMessageHelpers";
 import { getAgentGUIErrorMessage } from "./agentGuiController.errors";
 import {
   reportAgentGUIRuntimeError,
@@ -45,6 +49,7 @@ export interface UseAgentGUIConversationDeletionInput {
   setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
+  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   sessionEngine: AgentSessionEngine;
   deleteAgentSessionView: (ref: AgentSessionViewRef) => void;
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
@@ -77,6 +82,7 @@ export function useAgentGUIConversationDeletion(
     activation,
     agentActivityRuntime,
     setDraftByScopeKey,
+    submittedDraftSnapshotsRef,
     sessionEngine,
     deleteAgentSessionView,
     conversationsRef,
@@ -135,12 +141,18 @@ export function useAgentGUIConversationDeletion(
         })
       )
       .then(() => {
+        const deletedScopeKey = resolveAgentComposerDraftScopeKey({
+          agentSessionId: target.id
+        });
         setDraftByScopeKey((current) => {
           const next = { ...current };
-          delete next[
-            resolveAgentComposerDraftScopeKey({ agentSessionId: target.id })
-          ];
+          delete next[deletedScopeKey];
           return next;
+        });
+        deleteSubmittedDraftSnapshotsForScopes({
+          snapshots: submittedDraftSnapshotsRef.current,
+          scopeKeys: new Set([deletedScopeKey]),
+          targetAgentSessionIds: new Set([target.id])
         });
         sessionEngine.dispatch({
           agentSessionId: target.id,

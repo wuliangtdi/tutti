@@ -279,46 +279,71 @@ export function areAgentComposerDraftsEqual(
   left: AgentComposerDraft,
   right: AgentComposerDraft
 ): boolean {
+  return areDraftValuesStructurallyEqual(left, right);
+}
+
+function areDraftValuesStructurallyEqual(
+  left: unknown,
+  right: unknown
+): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) =>
+        areDraftValuesStructurallyEqual(value, right[index])
+      )
+    );
+  }
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
   return (
-    left.length === right.length &&
-    left.every((block, index) => {
-      const other = right[index];
-      if (!other || block.type !== other.type) return false;
-      if (block.type === "text" && other.type === "text") {
-        return block.text === other.text;
-      }
-      if (block.type === "image" && other.type === "image") {
-        return (
-          block.id === other.id &&
-          block.name === other.name &&
-          block.mimeType === other.mimeType &&
-          block.attachmentId === other.attachmentId &&
-          block.data === other.data &&
-          block.url === other.url &&
-          block.path === other.path &&
-          block.previewUrl === other.previewUrl &&
-          block.uploading === other.uploading &&
-          block.uploadError === other.uploadError
-        );
-      }
-      if (block.type === "file" && other.type === "file") {
-        return (
-          block.kind === other.kind &&
-          block.id === other.id &&
-          block.name === other.name &&
-          block.mimeType === other.mimeType &&
-          block.path === other.path &&
-          block.hostPath === other.hostPath &&
-          block.assetId === other.assetId &&
-          block.sizeBytes === other.sizeBytes &&
-          block.uploading === other.uploading &&
-          block.uploadError === other.uploadError &&
-          block.text === other.text
-        );
-      }
-      return false;
-    })
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        areDraftValuesStructurallyEqual(leftRecord[key], rightRecord[key])
+    )
   );
+}
+
+export function deleteSubmittedDraftSnapshotsForScopes(input: {
+  snapshots: Record<string, SubmittedDraftSnapshot>;
+  scopeKeys: ReadonlySet<string>;
+  targetAgentSessionIds?: ReadonlySet<string>;
+}): void {
+  for (const [clientSubmitId, snapshot] of Object.entries(input.snapshots)) {
+    if (
+      input.scopeKeys.has(snapshot.sourceScopeKey) ||
+      (snapshot.targetAgentSessionId != null &&
+        input.targetAgentSessionIds?.has(snapshot.targetAgentSessionId))
+    ) {
+      delete input.snapshots[clientSubmitId];
+    }
+  }
+}
+
+export function deleteUnacceptedSubmittedDraftSnapshot(input: {
+  snapshots: Record<string, SubmittedDraftSnapshot>;
+  clientSubmitId: string;
+  accepted: boolean;
+  queued: boolean;
+}): void {
+  if (!input.accepted && !input.queued) {
+    delete input.snapshots[input.clientSubmitId];
+  }
 }
 
 export function readAgentComposerDraftContent(input: {

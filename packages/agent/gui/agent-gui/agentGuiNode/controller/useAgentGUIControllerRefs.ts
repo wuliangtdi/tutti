@@ -83,7 +83,12 @@ export function useAgentGUIControllerRefs(
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { immediate?: boolean; sendNow?: boolean; trackDraft?: boolean }
+      options?: {
+        immediate?: boolean;
+        sendNow?: boolean;
+        sourceScopeKey?: string;
+        trackDraft?: boolean;
+      }
     ) => void
   >(() => {});
   const submitPromptRef = useRef<

@@ -35,6 +35,7 @@ import {
 } from "../../../shared/agentConversation/planImplementationPresentation";
 import {
   clearSubmittedDraftIfUnchanged,
+  deleteUnacceptedSubmittedDraftSnapshot,
   GOAL_CLEAR_PROMPT,
   toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
@@ -76,7 +77,12 @@ interface UseAgentGUISubmitInteractionActionsInput {
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { immediate?: boolean; sendNow?: boolean; trackDraft?: boolean }
+      options?: {
+        immediate?: boolean;
+        sendNow?: boolean;
+        sourceScopeKey?: string;
+        trackDraft?: boolean;
+      }
     ) => void
   >;
   isComposerHomeRef: RefObject<boolean>;
@@ -150,10 +156,12 @@ export function useAgentGUISubmitInteractionActions(
     (state) =>
       Object.entries(submittedDraftSnapshotsRef.current).flatMap(
         ([clientSubmitId, snapshot]) => {
-          if (!snapshot.sourceScopeKey.startsWith("session:")) return [];
-          const agentSessionId = snapshot.sourceScopeKey.slice(
-            "session:".length
-          );
+          const agentSessionId =
+            snapshot.targetAgentSessionId ??
+            (snapshot.sourceScopeKey.startsWith("session:")
+              ? snapshot.sourceScopeKey.slice("session:".length)
+              : "");
+          if (!agentSessionId) return [];
           const record = selectPendingSubmitsForSession(
             state,
             agentSessionId
@@ -189,7 +197,12 @@ export function useAgentGUISubmitInteractionActions(
       agentSessionId: string,
       content: AgentPromptContentBlock[],
       displayPrompt?: string,
-      options?: { immediate?: boolean; sendNow?: boolean; trackDraft?: boolean }
+      options?: {
+        immediate?: boolean;
+        sendNow?: boolean;
+        sourceScopeKey?: string;
+        trackDraft?: boolean;
+      }
     ) => {
       const normalizedContent = normalizeAgentPromptContentBlocks(content);
       if (!agentSessionId || normalizedContent.length === 0) {
@@ -211,15 +224,16 @@ export function useAgentGUISubmitInteractionActions(
         startedAtUnixMs: submittedAtUnixMs
       });
       if (options?.trackDraft === true) {
-        const sourceScopeKey = resolveAgentComposerDraftScopeKey({
-          agentSessionId
-        });
+        const sourceScopeKey =
+          options.sourceScopeKey ??
+          resolveAgentComposerDraftScopeKey({ agentSessionId });
         const submittedDraft =
           draftByScopeKeyRef.current[sourceScopeKey] ??
           emptyAgentComposerDraft();
         submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
           sourceScopeKey,
-          content: snapshotAgentComposerDraft(submittedDraft)
+          content: snapshotAgentComposerDraft(submittedDraft),
+          targetAgentSessionId: agentSessionId
         };
       }
       const targetConversation = resolveConversationSummaryById(
@@ -265,6 +279,10 @@ export function useAgentGUISubmitInteractionActions(
           submitTrace.clientSubmitId
         )
       );
+      const accepted = selectPendingSubmitsForSession(
+        sessionEngine.getSnapshot(),
+        agentSessionId
+      ).some((record) => record.clientSubmitId === submitTrace.clientSubmitId);
       submitTrace.queued = queued;
       if (queued) {
         const snapshot =
@@ -285,6 +303,12 @@ export function useAgentGUISubmitInteractionActions(
       if (!queued) {
         setDetailError(null);
       }
+      deleteUnacceptedSubmittedDraftSnapshot({
+        snapshots: submittedDraftSnapshotsRef.current,
+        clientSubmitId: submitTrace.clientSubmitId,
+        accepted,
+        queued
+      });
       reportAgentSubmitTraceDiagnostic({
         event: "send_input.requested",
         runtime: agentActivityRuntime,
@@ -340,7 +364,11 @@ export function useAgentGUISubmitInteractionActions(
       agentSessionId: string,
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
-      options?: { sendNow?: boolean; trackDraft?: boolean }
+      options?: {
+        sendNow?: boolean;
+        sourceScopeKey?: string;
+        trackDraft?: boolean;
+      }
     ) => {
       if (isSessionMarkedNonResumable(agentSessionId)) {
         setDetailError(
@@ -365,6 +393,7 @@ export function useAgentGUISubmitInteractionActions(
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
         sendNow: options?.sendNow === true,
+        sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
       });
     },
@@ -480,7 +509,12 @@ export function useAgentGUISubmitInteractionActions(
               recoveredAgentSessionId,
               normalizedContent,
               displayPromptText,
-              { trackDraft: true }
+              {
+                sourceScopeKey: resolveAgentComposerDraftScopeKey({
+                  projectPath: selectedProjectPathRef.current
+                }),
+                trackDraft: true
+              }
             );
             return;
           }
@@ -653,21 +687,26 @@ export function useAgentGUISubmitInteractionActions(
     [sessionEngine]
   );
 
-  const updateDraftContent = useCallback((draftContent: AgentComposerDraft) => {
-    const agentSessionId = activeConversationIdRef.current;
-    const draftKey = resolveAgentComposerDraftScopeKey({
-      agentSessionId,
-      projectPath: selectedProjectPathRef.current
-    });
-    draftByScopeKeyRef.current = {
-      ...draftByScopeKeyRef.current,
-      [draftKey]: draftContent
-    };
-    setDraftByScopeKey((current) => ({
-      ...current,
-      [draftKey]: draftContent
-    }));
-  }, []);
+  const updateDraftContent = useCallback(
+    (draftContent: AgentComposerDraft, sourceScopeKey?: string) => {
+      const agentSessionId = activeConversationIdRef.current;
+      const draftKey =
+        sourceScopeKey ??
+        resolveAgentComposerDraftScopeKey({
+          agentSessionId,
+          projectPath: selectedProjectPathRef.current
+        });
+      draftByScopeKeyRef.current = {
+        ...draftByScopeKeyRef.current,
+        [draftKey]: draftContent
+      };
+      setDraftByScopeKey((current) => ({
+        ...current,
+        [draftKey]: draftContent
+      }));
+    },
+    []
+  );
 
   return {
     goalControl,

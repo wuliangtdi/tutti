@@ -114,10 +114,8 @@ export interface AgentComposerImageBlock {
   uploadError?: string;
 }
 
-export interface AgentComposerFileBlock {
+interface AgentComposerFileBlockBase {
   type: "file";
-  /** Distinguishes regular attachments from archived pasted text. */
-  kind: "file" | typeof AGENT_PASTED_TEXT_BLOCK_KIND;
   id: string;
   name: string;
   mimeType?: string;
@@ -127,16 +125,35 @@ export interface AgentComposerFileBlock {
   sizeBytes?: number;
   uploading?: boolean;
   uploadError?: string;
-  /** Present only for pasted-text blocks before or during upload. */
-  text?: string;
 }
 
-export type AgentComposerDraftBlock =
-  | AgentComposerTextBlock
+export interface AgentComposerRegularFileBlock extends AgentComposerFileBlockBase {
+  kind: "file";
+  text?: never;
+}
+
+export interface AgentComposerPastedTextBlock extends AgentComposerFileBlockBase {
+  kind: typeof AGENT_PASTED_TEXT_BLOCK_KIND;
+  /** Empty only when a queued pasted-text attachment is restored by path. */
+  text: string;
+}
+
+export type AgentComposerFileBlock =
+  | AgentComposerRegularFileBlock
+  | AgentComposerPastedTextBlock;
+
+export type AgentComposerAttachmentBlock =
   | AgentComposerImageBlock
   | AgentComposerFileBlock;
 
-export type AgentComposerDraftContent = AgentComposerDraftBlock[];
+export type AgentComposerDraftBlock =
+  | AgentComposerTextBlock
+  | AgentComposerAttachmentBlock;
+
+export type AgentComposerDraftContent = [
+  AgentComposerTextBlock,
+  ...AgentComposerAttachmentBlock[]
+];
 
 /** One atomic, unsent composer message. */
 export type AgentComposerDraft = AgentComposerDraftContent;
@@ -144,20 +161,20 @@ export type AgentComposerDraft = AgentComposerDraftContent;
 export interface SubmittedDraftSnapshot {
   sourceScopeKey: string;
   content: AgentComposerDraftContent;
+  /** Existing-session destination; may differ from source after recovery. */
+  targetAgentSessionId?: string;
 }
 
 /** UI aliases retained for focused attachment components. */
 export type AgentComposerDraftImage = Omit<AgentComposerImageBlock, "type">;
 export type AgentComposerDraftFile = Omit<
-  AgentComposerFileBlock,
-  "type" | "kind" | "text"
+  AgentComposerRegularFileBlock,
+  "type" | "kind"
 >;
 export type AgentComposerDraftLargeText = Omit<
-  AgentComposerFileBlock,
-  "type" | "kind" | "text"
-> & {
-  text: string;
-};
+  AgentComposerPastedTextBlock,
+  "type" | "kind"
+>;
 
 /**
  * Built-in glyph for a home-suggestion category chip. Keeps the localized data

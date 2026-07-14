@@ -239,6 +239,11 @@ describe("agentComposerDraft", () => {
     expect(agentComposerDraftFiles(draft)).toEqual([]);
     expect(agentComposerDraftLargeTexts(draft)).toHaveLength(1);
     expect(agentComposerDraftLargeTexts(draft)[0]).toMatchObject({
+      text: "",
+      path: "/archive/aa/deadbeef.txt"
+    });
+    expect(agentComposerDraftHasContent(draft)).toBe(true);
+    expect(agentComposerDraftLargeTexts(draft)[0]).toMatchObject({
       name: "pasted-text.txt",
       path: "/archive/aa/deadbeef.txt",
       sizeBytes: 22,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type HTMLAttributes } from "react";
 import type {
+  AgentComposerDraft,
   AgentComposerDraftFile,
   AgentComposerDraftImage,
   AgentComposerDraftLargeText
@@ -35,6 +36,7 @@ import {
 } from "./composer/AgentComposerChrome";
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import {
+  agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
@@ -94,6 +96,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     provider,
     slashStatus = null,
     draftContent,
+    draftScopeKey = "current",
     availableCommands,
     hasCompactableContext = true,
     compactSupported = null,
@@ -148,9 +151,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     ? goalDraftObjectiveFromPrompt(draftPrompt)
     : null;
   const isGoalModeActive = goalDraftObjective !== null;
-  const draftImages = agentComposerDraftImages(draftContent);
-  const draftFiles = agentComposerDraftFiles(draftContent);
-  const draftLargeTexts = agentComposerDraftLargeTexts(draftContent);
+  const {
+    images: draftImages,
+    files: draftFiles,
+    largeTexts: draftLargeTexts
+  } = agentComposerDraftAttachmentProjection(draftContent);
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const agentHostApi = useOptionalAgentHostApi();
   const getReferenceForFile = agentHostApi?.workspace.getReferenceForFile;
@@ -209,6 +214,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   const draftFilesRef = useRef<AgentComposerDraftFile[]>(draftFiles);
   const draftLargeTextsRef =
     useRef<AgentComposerDraftLargeText[]>(draftLargeTexts);
+  const draftByScopeKeyRef = useRef<Record<string, AgentComposerDraft>>({
+    [draftScopeKey]: draftContent
+  });
+  draftByScopeKeyRef.current[draftScopeKey] = draftContent;
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const mentionControllerRef = useRef<AgentMentionSearchController | null>(
     null
@@ -348,16 +357,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   }, [draftPrompt, goalDraftObjective]);
 
   useEffect(() => {
-    draftImagesRef.current = draftImages;
-  }, [draftImages]);
-
-  useEffect(() => {
-    draftFilesRef.current = draftFiles;
-  }, [draftFiles]);
-
-  useEffect(() => {
-    draftLargeTextsRef.current = draftLargeTexts;
-  }, [draftLargeTexts]);
+    draftImagesRef.current = agentComposerDraftImages(draftContent);
+    draftFilesRef.current = agentComposerDraftFiles(draftContent);
+    draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
+  }, [draftContent]);
 
   useEffect(() => {
     if (
@@ -456,6 +459,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     workspaceId,
     workspacePath,
     draftContent,
+    draftScopeKey,
+    draftByScopeKeyRef,
     goalDraftObjective,
     isGoalModeActive,
     promptImagesSupported: canUploadAttachment && promptImagesSupported,

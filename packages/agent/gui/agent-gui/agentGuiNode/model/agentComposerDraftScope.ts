@@ -4,9 +4,10 @@ export function normalizeAgentComposerDraftProjectPath(
   value: string | null | undefined
 ): string | null {
   const slashed = value?.trim().replaceAll("\\", "/") ?? "";
-  const normalized =
-    slashed === "/" || /^[A-Za-z]:\/$/.test(slashed)
-      ? slashed
+  const normalized = /^\/+$/u.test(slashed)
+    ? "/"
+    : /^[A-Za-z]:\/+$/u.test(slashed)
+      ? `${slashed.slice(0, 2)}/`
       : slashed.replace(/\/+$/, "");
   return normalized ? normalized : null;
 }

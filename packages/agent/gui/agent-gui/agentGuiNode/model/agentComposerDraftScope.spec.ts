@@ -33,7 +33,9 @@ describe("agentComposerDraftScope", () => {
       resolveAgentComposerDraftScopeKey({ projectPath: "/workspace/app///" })
     ).toBe("project:/workspace/app");
     expect(normalizeAgentComposerDraftProjectPath("/")).toBe("/");
+    expect(normalizeAgentComposerDraftProjectPath("///")).toBe("/");
     expect(normalizeAgentComposerDraftProjectPath("C:\\")).toBe("C:/");
+    expect(normalizeAgentComposerDraftProjectPath("C:\\\\\\")).toBe("C:/");
   });
 
   it("uses a stable scope when no project is selected", () => {
