@@ -6987,6 +6987,43 @@ function createViewModel(
   return groupAgentGUINodeViewModelFixture(flat);
 }
 
+describe("AgentGUINodeView conversation presentation", () => {
+  it("uses the signed Agent Target icon for an extension conversation", () => {
+    const iconUrl = "data:image/svg+xml;base64,gemini";
+    const agentTargetId = "extension:gemini";
+    const geminiTarget = {
+      ...createLocalAgentGUIAgentTarget("acp:gemini"),
+      targetId: agentTargetId,
+      agentTargetId,
+      iconUrl,
+      label: "Gemini CLI"
+    };
+    const conversation = createConversationSummary("gemini-session", {
+      agentTargetId,
+      provider: "acp:gemini"
+    });
+    const rendered = renderAgentGUINodeView({
+      viewModel: createViewModel({
+        selectedAgentTarget: geminiTarget,
+        agentTargets: [geminiTarget],
+        conversations: [conversation]
+      })
+    });
+
+    const row = screen.getByTestId(
+      "agent-gui-conversation-item-gemini-session"
+    );
+    const icon = row.querySelector(
+      ".agent-gui-node__conversation-provider-icon"
+    );
+    expect(icon).not.toBeNull();
+    expect(icon).toHaveStyle({
+      "--agent-gui-conversation-provider-icon-url": `url("${iconUrl}")`
+    });
+    rendered.unmount();
+  });
+});
+
 function createActiveRenderBudgetViewModel(): AgentGUINodeViewModel {
   const activeConversation = createConversationSummary("session-1");
   const conversationDetail = createConversationDetail();

@@ -16,7 +16,7 @@ import {
   withDesktopAgentGUIProviderComposerDefaults
 } from "./ui/desktopAgentGUIWorkbenchStateHelpers.ts";
 
-test("desktop agent gui node state preserves supported providers and falls back to codex", () => {
+test("desktop agent gui node state preserves open valid providers", () => {
   assert.equal(
     normalizeDesktopAgentGUINodeState({
       provider: "claude-code"
@@ -27,7 +27,7 @@ test("desktop agent gui node state preserves supported providers and falls back 
     normalizeDesktopAgentGUINodeState({
       provider: "unsupported"
     } as unknown as Partial<DesktopAgentGUINodeState>).provider,
-    "codex"
+    "unsupported"
   );
 });
 
@@ -275,9 +275,9 @@ test("desktop agent gui provider derives from workbench instance id", () => {
     desktopAgentGUIProviderFromInstanceId("agent-gui:hermes:panel:abc"),
     "hermes"
   );
-  assert.throws(
-    () => desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
-    /agent_gui_workbench.instance_provider_required/
+  assert.equal(
+    desktopAgentGUIProviderFromInstanceId("agent-gui:unsupported"),
+    "unsupported"
   );
 });
 

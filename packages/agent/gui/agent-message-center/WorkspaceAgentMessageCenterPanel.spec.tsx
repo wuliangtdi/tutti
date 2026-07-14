@@ -627,6 +627,30 @@ describe("WorkspaceAgentMessageCenterCard", () => {
     ).toBeTruthy();
   });
 
+  it("renders Agent Target name and icon for open-provider card footers", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <WorkspaceAgentMessageCenterCard
+          item={createTestCardItem({
+            agentAvatarUrl: "data:image/svg+xml;base64,gemini",
+            agentName: "Gemini CLI",
+            agentTargetId: "extension:gemini",
+            provider: "acp:gemini"
+          })}
+          isSubmitting={false}
+          onOpenChat={vi.fn()}
+          onSubmitPrompt={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Gemini CLI")).toBeInTheDocument();
+    expect(screen.queryByText("acp:gemini")).toBeNull();
+    expect(
+      container.querySelector('img[src="data:image/svg+xml;base64,gemini"]')
+    ).toBeTruthy();
+  });
+
   it("renders summary relative file links as plain text", () => {
     const onLinkAction = vi.fn();
     render(

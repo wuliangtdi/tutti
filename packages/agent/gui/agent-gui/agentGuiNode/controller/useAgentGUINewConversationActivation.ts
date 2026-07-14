@@ -109,7 +109,9 @@ export function useAgentGUINewConversationActivation(
         initialDisplayPrompt ??
         agentPromptContentDisplayText(normalizedInitialContent);
       const initialConversationTitle =
-        normalizedInitialPrompt || AGENT_PROVIDER_LABEL[targetData.provider];
+        normalizedInitialPrompt ||
+        (AGENT_PROVIDER_LABEL as Record<string, string>)[targetData.provider] ||
+        targetData.provider;
       isCreatingConversationRef.current = true;
       setDetailError(null);
       const provider = targetData.provider;

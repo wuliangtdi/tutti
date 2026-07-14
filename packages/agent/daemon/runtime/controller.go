@@ -28,6 +28,7 @@ type Controller struct {
 	mu                          sync.Mutex
 	sessions                    map[string]Session
 	adapters                    map[string]Adapter
+	adapterResolver             AdapterResolver
 	turns                       map[string]activeTurn
 	commands                    map[string]AgentSessionCommandSnapshot
 	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
@@ -89,6 +90,10 @@ type asyncActivityReporter interface {
 }
 
 func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
+	return NewControllerWithAdapterResolver(adapters, reporter, nil)
+}
+
+func NewControllerWithAdapterResolver(adapters []Adapter, reporter ActivityReporter, resolver AdapterResolver) *Controller {
 	byProvider := make(map[string]Adapter, len(adapters))
 	for _, adapter := range adapters {
 		if adapter == nil {
@@ -102,6 +107,7 @@ func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
 		adapters:                    byProvider,
+		adapterResolver:             resolver,
 		turns:                       make(map[string]activeTurn),
 		commands:                    make(map[string]AgentSessionCommandSnapshot),
 		pendingCommandSnapshots:     make(map[string]AgentSessionCommandSnapshot),
@@ -119,20 +125,27 @@ func NewController(adapters []Adapter, reporter ActivityReporter) *Controller {
 		}
 	}
 	for _, adapter := range byProvider {
-		if sinkAdapter, ok := adapter.(CommandSnapshotSinkAdapter); ok {
-			sinkAdapter.SetCommandSnapshotSink(controller.applyCommandSnapshotByAgentSessionID)
-		}
-		if sinkAdapter, ok := adapter.(SessionEventSinkAdapter); ok {
-			sinkAdapter.SetSessionEventSink(controller.applySessionEventsByAgentSessionID)
-		}
-		if sinkAdapter, ok := adapter.(ConfigOptionsUpdateSinkAdapter); ok {
-			sinkAdapter.SetConfigOptionsUpdateSink(controller.applyConfigOptionsUpdateByAgentSessionID)
-		}
-		if sinkAdapter, ok := adapter.(InteractiveDispositionSinkAdapter); ok {
-			sinkAdapter.SetInteractiveDispositionSink(controller.recordTerminalInteractiveDisposition)
-		}
+		controller.configureAdapter(adapter)
 	}
 	return controller
+}
+
+func (c *Controller) configureAdapter(adapter Adapter) {
+	if adapter == nil {
+		return
+	}
+	if sinkAdapter, ok := adapter.(CommandSnapshotSinkAdapter); ok {
+		sinkAdapter.SetCommandSnapshotSink(c.applyCommandSnapshotByAgentSessionID)
+	}
+	if sinkAdapter, ok := adapter.(SessionEventSinkAdapter); ok {
+		sinkAdapter.SetSessionEventSink(c.applySessionEventsByAgentSessionID)
+	}
+	if sinkAdapter, ok := adapter.(ConfigOptionsUpdateSinkAdapter); ok {
+		sinkAdapter.SetConfigOptionsUpdateSink(c.applyConfigOptionsUpdateByAgentSessionID)
+	}
+	if sinkAdapter, ok := adapter.(InteractiveDispositionSinkAdapter); ok {
+		sinkAdapter.SetInteractiveDispositionSink(c.recordTerminalInteractiveDisposition)
+	}
 }
 
 func NewDefaultController(reporter ActivityReporter) *Controller {
@@ -156,5 +169,5 @@ func NewDefaultControllerWithOptions(
 	host := options.HostMetadata
 	adapters := newMigratedProviderAdapters(transport, host, options.ProviderCommandResolver)
 	setProviderLaunchPreparer(adapters, options.ProviderLaunchPreparer)
-	return NewController(adapters, reporter)
+	return NewControllerWithAdapterResolver(adapters, reporter, options.AdapterResolver)
 }

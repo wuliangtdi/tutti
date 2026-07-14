@@ -1692,7 +1692,7 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 
 	var response tuttigenerated.AgentProviderComposerOptionsResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if response.Provider != tuttigenerated.Codex {
+	if response.Provider != tuttigenerated.WorkspaceAgentProvider("codex") {
 		t.Fatalf("provider = %q, want codex", response.Provider)
 	}
 	if response.Capabilities == nil || !response.Capabilities.ImageInput || !response.Capabilities.PlanMode || !response.Capabilities.BrowserUse || response.Capabilities.ComputerUse {
@@ -2254,8 +2254,9 @@ func TestDaemonAPIGeneratedRoutesListAgentTargets(t *testing.T) {
 		providerregistry.OpenClawTargetID,
 	}
 	for index, target := range response.Targets {
-		if target.Id != wantIDs[index] || target.LaunchRef.Type != tuttigenerated.LocalCli {
-			t.Fatalf("target[%d] = %#v, want id %q local_cli", index, target, wantIDs[index])
+		launchRef, err := target.LaunchRef.AsAgentTargetBuiltinLocalLaunchRef()
+		if err != nil || target.Id != wantIDs[index] || launchRef.Type != tuttigenerated.AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal {
+			t.Fatalf("target[%d] = %#v, want id %q builtin_local", index, target, wantIDs[index])
 		}
 	}
 }

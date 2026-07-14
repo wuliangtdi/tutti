@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type standardACPConfig struct {
@@ -55,6 +57,7 @@ type standardACPConfig struct {
 	planModeRuntimeID              string
 	projectCurrentMode             bool
 	startupDiagnostics             bool
+	toolAliases                    map[string]string
 }
 
 type standardACPAdapter struct {
@@ -84,10 +87,25 @@ type standardACPSession struct {
 	backgroundAgents map[string]standardACPBackgroundAgent
 	recentTurnID     string
 	recentTurnExpiry time.Time
+	// lifecycleSeq orders provider-agnostic authoritative turn snapshots
+	// emitted by the standard ACP adapter (ADR 0008).
+	lifecycleSeq uint64
 	// permissionModeID tracks the session's live permission tier so an
 	// auto-approve tier (e.g. Cursor "full access") applies to permission
 	// requests immediately after a mid-session tier change, without a respawn.
 	permissionModeID string
+}
+
+func (a *standardACPAdapter) stampTurnLifecycleSnapshots(acpSession *standardACPSession, events []activityshared.Event) []activityshared.Event {
+	if a == nil || acpSession == nil || len(events) == 0 {
+		return events
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return stampAdapterTurnLifecycleEvents(events, func() uint64 {
+		acpSession.lifecycleSeq++
+		return acpSession.lifecycleSeq
+	})
 }
 
 type standardACPSessionLock struct {
@@ -112,6 +130,7 @@ type standardACPBackgroundAgent struct {
 const standardACPRecentTurnTTL = 10 * time.Minute
 
 const acpMethodSetConfigOption = "session/set_config_option"
+const acpMethodSetModel = "session/set_model"
 const acpMethodCloseSession = "session/close"
 const (
 	acpCloseCallTimeout  = 750 * time.Millisecond

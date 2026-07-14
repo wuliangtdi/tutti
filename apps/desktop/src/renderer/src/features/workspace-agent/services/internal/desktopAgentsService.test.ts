@@ -28,6 +28,7 @@ test("desktop agents service publishes explicit idle, loading, and ready lifecyc
     targets: [
       createAgentTarget({
         id: "local:codex",
+        heroImageUrl: "data:image/jpeg;base64,hero",
         name: "Codex",
         provider: "codex",
         sortOrder: 10
@@ -123,6 +124,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       }),
       createAgentTarget({
         id: "local:codex",
+        heroImageUrl: "data:image/jpeg;base64,hero",
         iconKey: "codex-descriptor",
         name: "Codex",
         provider: "codex",
@@ -139,6 +141,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
     presentations.map((target) => ({
       agentTargetId: target.agentTargetId,
       iconUrl: target.iconUrl,
+      heroImageUrl: target.heroImageUrl,
       launchRefType: target.launchRefType,
       provider: target.provider
     })),
@@ -146,13 +149,15 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       {
         agentTargetId: "local:codex",
         iconUrl: "tutti-asset://agent/codex-descriptor.png",
-        launchRefType: "local_cli",
+        heroImageUrl: "data:image/jpeg;base64,hero",
+        launchRefType: "builtin_local",
         provider: "codex"
       },
       {
         agentTargetId: "local:claude-code",
         iconUrl: "tutti-asset://agent/claude-code.png",
-        launchRefType: "local_cli",
+        heroImageUrl: null,
+        launchRefType: "builtin_local",
         provider: "claude-code"
       }
     ]
@@ -163,6 +168,7 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
       agentTargetId: "local:codex",
       availability: { status: "ready" },
       iconUrl: "tutti-asset://agent/codex-descriptor.png",
+      heroImageUrl: "data:image/jpeg;base64,hero",
       name: "Codex",
       provider: "codex"
     }
@@ -173,6 +179,7 @@ function createAgentTarget(input: {
   enabled?: boolean;
   id: string;
   iconKey?: string | null;
+  heroImageUrl?: string | null;
   name: string;
   provider: "claude-code" | "codex";
   sortOrder: number;
@@ -181,10 +188,11 @@ function createAgentTarget(input: {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
     iconKey: input.iconKey ?? null,
+    heroImageUrl: input.heroImageUrl ?? null,
     id: input.id,
     launchRef: {
       provider: input.provider,
-      type: "local_cli"
+      type: "builtin_local"
     },
     name: input.name,
     provider: input.provider,

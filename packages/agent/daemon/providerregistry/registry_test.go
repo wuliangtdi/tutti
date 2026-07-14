@@ -89,6 +89,27 @@ func TestMigratedProviderSetIsComplete(t *testing.T) {
 	}
 }
 
+func TestNormalizeOpenProviderID(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		" CODEX ":         CodexProviderID,
+		"acp:gemini":      "acp:gemini",
+		"vendor.agent-v2": "vendor.agent-v2",
+	}
+	for input, want := range tests {
+		got, ok := NormalizeOpenProviderID(input)
+		if !ok || got != want {
+			t.Fatalf("NormalizeOpenProviderID(%q) = %q, %v; want %q, true", input, got, ok, want)
+		}
+	}
+	for _, input := range []string{"", "ACP:gemini", "acp/gemini", "-gemini"} {
+		if got, ok := NormalizeOpenProviderID(input); ok {
+			t.Fatalf("NormalizeOpenProviderID(%q) = %q, true; want rejected", input, got)
+		}
+	}
+}
+
 func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 	want := map[string]SidecarDescriptor{
 		CodexProviderID:      {ExecutionEnvironment: SidecarExecutionEnvironmentCodexSandbox},

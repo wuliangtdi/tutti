@@ -26,6 +26,10 @@ import {
   useOptionalAgentHostApi
 } from "../../../agentActivityHost";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations
+} from "../../../shared/AgentTargetPresentationContext";
 import { ConversationMeta } from "../agentGuiNodeViewConversation";
 import { createAgentSessionMarkdownLink } from "../agentRichText/agentFileMentionExtension";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
@@ -34,10 +38,21 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
 
-function agentGUIConversationProviderIconUrl(
-  provider: string | undefined
+function agentGUIConversationIconUrl(
+  provider: string | undefined,
+  agentTargetId: string | null | undefined,
+  workspaceId: string,
+  agentTargets: ReturnType<typeof useAgentTargetPresentations>
 ): string | null {
-  return resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  const targetPresentation = resolveAgentTargetPresentation({
+    agentTargetId: agentTargetId ?? "",
+    agentTargets,
+    workspaceId
+  });
+  return (
+    targetPresentation?.iconUrl?.trim() ||
+    resolveAgentGuiSessionProviderFlatIconUrl(provider)
+  );
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -86,7 +101,13 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
-    const providerIconUrl = agentGUIConversationProviderIconUrl(item.provider);
+    const agentTargets = useAgentTargetPresentations();
+    const conversationIconUrl = agentGUIConversationIconUrl(
+      item.provider,
+      item.agentTargetId,
+      workspaceId,
+      agentTargets
+    );
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
@@ -204,13 +225,13 @@ export const AgentGUIConversationRailItem = memo(
           }}
         >
           <span className={styles.conversationTitleRow}>
-            {providerIconUrl ? (
+            {conversationIconUrl ? (
               <span
                 aria-hidden="true"
                 className={styles.conversationProviderIcon}
                 style={
                   {
-                    "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
+                    "--agent-gui-conversation-provider-icon-url": `url("${conversationIconUrl}")`
                   } as CSSProperties
                 }
               />

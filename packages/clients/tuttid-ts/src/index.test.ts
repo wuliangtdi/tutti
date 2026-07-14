@@ -140,7 +140,7 @@ test("shared tuttid client unwraps agent target responses", async () => {
               id: "local:codex",
               provider: "codex",
               launchRef: {
-                type: "local_cli",
+                type: "builtin_local",
                 provider: "codex"
               },
               name: "Codex",
@@ -167,7 +167,7 @@ test("shared tuttid client unwraps agent target responses", async () => {
         id: "local:codex",
         provider: "codex",
         launchRef: {
-          type: "local_cli",
+          type: "builtin_local",
           provider: "codex"
         },
         name: "Codex",
@@ -196,7 +196,7 @@ test("shared tuttid client updates system agent target visibility", async () => 
       return Response.json({
         id: "local:tutti-agent",
         provider: "tutti-agent",
-        launchRef: { type: "local_cli", provider: "tutti-agent" },
+        launchRef: { type: "builtin_local", provider: "tutti-agent" },
         name: "Tutti Agent",
         iconKey: "tutti-agent",
         enabled: false,

@@ -39,6 +39,7 @@ type ProviderLaunchPrepareInput = agentruntime.ProviderLaunchPrepareInput
 type ProviderLaunchPrepareResult = agentruntime.ProviderLaunchPrepareResult
 type ProviderLaunchPreparer = agentruntime.ProviderLaunchPreparer
 type ProviderLaunchPreparerAdapter = agentruntime.ProviderLaunchPreparerAdapter
+type AdapterResolver = agentruntime.AdapterResolver
 
 type Config struct {
 	Reporter                ActivityReporter
@@ -46,6 +47,7 @@ type Config struct {
 	HostMetadata            HostMetadata
 	ProviderCommandResolver ProviderCommandResolver
 	ProviderLaunchPreparer  ProviderLaunchPreparer
+	AdapterResolver         AdapterResolver
 	Adapters                []Adapter
 	LiveSessionReaper       LiveSessionReaperConfig
 }
@@ -82,6 +84,7 @@ func NewRuntime(config Config) (*Runtime, error) {
 				HostMetadata:            config.HostMetadata,
 				ProviderCommandResolver: config.ProviderCommandResolver,
 				ProviderLaunchPreparer:  config.ProviderLaunchPreparer,
+				AdapterResolver:         config.AdapterResolver,
 			},
 		)
 	}

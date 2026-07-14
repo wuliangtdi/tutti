@@ -106,7 +106,8 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 ) error {
 	settings := session.SettingsValue()
 	supported := acpConfigOptionIDs(startResult)
-	if len(supported) == 0 {
+	modelsAPI := acpModelsResultPresent(startResult)
+	if len(supported) == 0 && !modelsAPI {
 		a.logHermesStartupDiagnostics("config_options.skipped", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
@@ -127,8 +128,14 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 	// rejects (e.g. a model alias the signed-in account cannot access) must
 	// not abort the whole session. The session stays usable on the agent's
 	// default, and the user can pick a supported value from the live list.
-	if model := strings.TrimSpace(settings.Model); model != "" && shouldApplyACPModelConfigOption(supported) {
-		if err := a.setSessionConfigOption(ctx, client, session, "model", model); err != nil {
+	if model := strings.TrimSpace(settings.Model); model != "" && (modelsAPI || shouldApplyACPModelConfigOption(supported)) {
+		var err error
+		if modelsAPI {
+			err = a.setSessionModel(ctx, client, session, model)
+		} else {
+			err = a.setSessionConfigOption(ctx, client, session, "model", model)
+		}
+		if err != nil {
 			a.logStartupConfigOptionRejected(session, "model", model, err)
 		} else {
 			a.updateSessionConfigOption(session.AgentSessionID, "model", model)
@@ -176,6 +183,33 @@ func (a *standardACPAdapter) logStartupConfigOptionRejected(
 
 func shouldApplyACPModelConfigOption(supported map[string]bool) bool {
 	return supported["model"]
+}
+
+func acpModelsResultPresent(raw json.RawMessage) bool {
+	var payload struct {
+		Models json.RawMessage `json:"models"`
+	}
+	return json.Unmarshal(raw, &payload) == nil && len(payload.Models) > 0 && string(payload.Models) != "null"
+}
+
+func (a *standardACPAdapter) setSessionModel(
+	ctx context.Context,
+	client *acpClient,
+	session Session,
+	modelID string,
+) error {
+	result, err := client.CallWithTimeout(ctx, acpStartCallTimeout, acpMethodSetModel, map[string]any{
+		"sessionId": session.ProviderSessionID,
+		"modelId":   strings.TrimSpace(modelID),
+	}, func(ctx context.Context, message acpMessage) error {
+		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	a.updateSessionConfigOptionsResult(session.AgentSessionID, result)
+	return nil
 }
 
 func (a *standardACPAdapter) setSessionConfigOption(
@@ -236,6 +270,7 @@ func (a *standardACPAdapter) updateSessionConfigOptionsResult(agentSessionID str
 		return
 	}
 	applyACPConfigOptionsResult(&session.acpLiveState, raw)
+	applyACPModelsResult(&session.acpLiveState, raw)
 }
 
 func (a *standardACPAdapter) updateSessionConfigOption(
@@ -302,7 +337,13 @@ func (a *standardACPAdapter) ApplySessionSettings(
 		supported := map[string]bool{"model": true}
 		if advertised || shouldApplyACPModelConfigOption(supported) {
 			if !a.sessionConfigOptionMatches(session.AgentSessionID, "model", model) {
-				if err := a.setSessionConfigOption(ctx, acpSession.client, session, "model", model); err != nil {
+				var err error
+				if a.sessionUsesACPModelsAPI(session.AgentSessionID) {
+					err = a.setSessionModel(ctx, acpSession.client, session, model)
+				} else {
+					err = a.setSessionConfigOption(ctx, acpSession.client, session, "model", model)
+				}
+				if err != nil {
 					return fmt.Errorf("agent session ACP model configuration failed: %w", err)
 				}
 				a.updateSessionConfigOption(session.AgentSessionID, "model", model)
@@ -338,6 +379,16 @@ func (a *standardACPAdapter) ApplySessionSettings(
 	}
 
 	return nil
+}
+
+func (a *standardACPAdapter) sessionUsesACPModelsAPI(agentSessionID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	return session != nil && session.modelsAPI
 }
 
 func (a *standardACPAdapter) ApplyPermissionMode(ctx context.Context, session Session) error {
@@ -442,6 +493,7 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	}
 	if len(state.availableCommands) > 0 {
 		snapshot.RuntimeContext["commands"] = agentSessionCommandNames(state.availableCommands)
+		snapshot.RuntimeContext["availableCommands"] = agentSessionCommandsRuntimeContext(state.availableCommands)
 	}
 	if len(state.configOptions) > 0 {
 		snapshot.RuntimeContext["config"] = state.configOptions

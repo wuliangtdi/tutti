@@ -91,7 +91,7 @@ test("workspace agent GUI identifiers require explicit provider identities", () 
   );
   assert.equal(
     workspaceAgentGuiProviderFromIdentifier("agent-gui:unknown"),
-    null
+    "unknown"
   );
 });
 

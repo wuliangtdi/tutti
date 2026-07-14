@@ -38,6 +38,7 @@ describe("normalizeAgentGUIAgents", () => {
       createAgent(" alice ", {
         name: " Alice ",
         iconUrl: " app://agents/alice.png ",
+        heroImageUrl: " app://agents/alice-hero.jpg ",
         description: " Shared agent ",
         owner: { name: " Owner ", avatarUrl: " app://owner.png " },
         availability: { status: "unavailable", reason: " Offline " }
@@ -53,6 +54,7 @@ describe("normalizeAgentGUIAgents", () => {
         agentTargetId: "alice",
         name: "Alice",
         iconUrl: "app://agents/alice.png",
+        heroImageUrl: "app://agents/alice-hero.jpg",
         description: "Shared agent",
         owner: { name: "Owner", avatarUrl: "app://owner.png" },
         availability: { status: "unavailable", reason: "Offline" },

@@ -6,10 +6,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
-import type {
-  AgentProvider,
-  AgentSettings
-} from "../../contexts/settings/domain/agentSettings";
+import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
   AgentGUINodeData,
@@ -17,6 +14,7 @@ import type {
   AgentGUIProviderRailAllPresentation,
   AgentGUIProviderRailMode,
   AgentGUIProviderReadinessGate,
+  AgentGUIHomeSuggestionId,
   AgentGUIAgentTarget,
   NodeFrame,
   Point
@@ -69,7 +67,7 @@ export interface AgentGUINodeWorkspace {
   resolveMentionReferenceTarget?: AgentMentionReferenceTargetResolver | null;
   resolveReferenceInitialTarget?: AgentWorkspaceReferenceInitialTargetResolver | null;
   onFileReferencesAdded?: (input: {
-    provider: AgentProvider;
+    provider: AgentGUIProvider;
     references: readonly WorkspaceFileReference[];
   }) => void | Promise<void>;
   agentSettings: Pick<AgentSettings, "avoidGroupingEdits">;
@@ -118,6 +116,7 @@ export interface AgentGUINodeHostCapabilities {
   managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
 }
 
 export interface AgentGUINodeHostActions {
@@ -125,13 +124,13 @@ export interface AgentGUINodeHostActions {
   onHandoffConversation?: (input: {
     agentTargetId?: string | null;
     draftPrompt: string;
-    provider: AgentProvider;
+    provider: AgentGUIProvider;
     userProjectPath?: string | null;
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
   ) => void;
-  onAgentProviderLogin?: (provider: AgentProvider) => void;
+  onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onClose: () => void;
   onResize: (frame: NodeFrame) => void;
@@ -319,6 +318,7 @@ export function areAgentGUINodePropsEqual(
     pc.managedAgentsState === nc.managedAgentsState &&
     pc.contextMentionProviders === nc.contextMentionProviders &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
+    pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&
     pa.onLinkAction === na.onLinkAction &&
     pa.onHandoffConversation === na.onHandoffConversation &&
     pa.onCapabilitySettingsRequest === na.onCapabilitySettingsRequest &&

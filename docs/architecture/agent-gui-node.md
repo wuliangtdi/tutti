@@ -257,6 +257,12 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+Daemon-managed extension targets use this same host-projected availability.
+Their signed target name, icon URL, and open provider identity flow through the
+host `agents` array; AgentGUI must not add extension keys, provider fallbacks,
+or extension-specific artwork. A missing compatible local runtime projects as
+`not-installed`, while historical sessions keep their recorded target and
+remain outside the empty-home readiness gate.
 When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
@@ -2360,6 +2366,10 @@ the resolved icon, label, and optional owner badge. The DOM rail, single-agent
 empty state, and WebGL empty-home carousel consume that same presentation;
 renderer adapters may differ, but they must not create parallel icon-only
 models that can silently discard badge or identity fields.
+Conversation rail rows resolve their icon from the conversation's
+`agentTargetId` through that same Target presentation. A provider-catalog icon
+is only a compatibility path for historical sessions without a resolvable
+Target; open extension providers must not require a renderer icon catalog entry.
 One carousel image-load owner fetches and decodes icon, vinyl-cover, and badge
 images for a complete item generation. Remote badge images must be requested
 with anonymous CORS before assigning `src`, and the asset host must return an
@@ -2409,6 +2419,16 @@ fallbacks to make providers look aligned. For OpenCode, `/compact` and
 surface these as OpenCode fallbacks. OpenCode may reuse the shared review
 picker, but picker selections must still submit provider-native `/review ...`
 text and must not call Codex's structured `review/start` protocol.
+Standard ACP command snapshots also project their detailed catalog into the
+session runtime context. Composer options may reuse that catalog when the
+renderer subscribed after the startup update or after a restart; a live engine
+snapshot remains authoritative whenever it is present. This recovery path must
+preserve provider-advertised names, descriptions, and input hints and must not
+invent an extension-specific fallback list.
+Open Agent Extensions declare Skill discovery roots, invocation mode, and
+trigger prefix in their validated composer profile. The daemon resolves only
+safe relative workspace/user roots and projects the resulting Skill options;
+AgentGUI must not infer Skill behavior from an open provider identifier.
 Legacy local hosts may keep AgentGUI's provider-default slash entries by
 omitting `slashCommandFallbackMode`. Shared or remote-owner hosts that already
 query slash commands from the owning runtime must pass
@@ -2605,6 +2625,12 @@ not serialize provider ids or icon hints into the href. Renderer display code
 must resolve labels, providers, and icons by looking up the current
 `agentTargetId` in `AgentsService`-derived presentation data, so future
 user-defined icons and editable targets have one renderer source of truth.
+The same rule applies to Agent Session mention rows and message-center cards:
+`provider` remains runtime/protocol identity, while user-visible Agent name and
+artwork come from the session's `agentTargetId`. Open extension providers must
+not be filtered through the built-in provider catalog. Historical sessions
+without an `agentTargetId` may use the provider presentation as their legacy
+display identity.
 Historical pseudo-app mentions may remain as display tokens but are not a new
 insertion target.
 Desktop AgentGUI host input must include the `agent-target` capability when it

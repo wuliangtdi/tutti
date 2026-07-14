@@ -85,6 +85,7 @@ type ResumeInput struct {
 	Status            string
 	Visible           *bool
 	RuntimeContext    map[string]any
+	ProviderTargetRef map[string]any
 	PermissionModeID  string
 	Settings          *SessionSettings
 	CreatedAtUnixMS   int64

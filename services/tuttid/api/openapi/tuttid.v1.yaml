@@ -4848,6 +4848,11 @@ components:
         - codex
         - cursor
         - opencode
+      x-enum-varnames:
+        - DesktopDefaultAgentProviderClaudeCode
+        - DesktopDefaultAgentProviderCodex
+        - DesktopDefaultAgentProviderCursor
+        - DesktopDefaultAgentProviderOpencode
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4949,21 +4954,24 @@ components:
           $ref: "#/components/schemas/DesktopPreferences"
     AgentTargetProvider:
       type: string
-      enum:
-        - codex
-        - claude-code
-        - tutti-agent
-        - cursor
-        - opencode
-        - nexight
-        - hermes
-        - openclaw
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentTargetSource:
       type: string
       enum:
         - system
         - user
     AgentTargetLaunchRef:
+      oneOf:
+        - $ref: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+        - $ref: "#/components/schemas/AgentTargetExtensionLaunchRef"
+      discriminator:
+        propertyName: type
+        mapping:
+          builtin_local: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+          agent_extension: "#/components/schemas/AgentTargetExtensionLaunchRef"
+    AgentTargetBuiltinLocalLaunchRef:
       type: object
       additionalProperties: false
       required:
@@ -4973,9 +4981,27 @@ components:
         type:
           type: string
           enum:
-            - local_cli
+            - builtin_local
+          x-enum-varnames:
+            - AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
+    AgentTargetExtensionLaunchRef:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - extensionInstallationId
+      properties:
+        type:
+          type: string
+          enum:
+            - agent_extension
+          x-enum-varnames:
+            - AgentTargetExtensionLaunchRefTypeAgentExtension
+        extensionInstallationId:
+          type: string
+          minLength: 1
     AgentTarget:
       type: object
       additionalProperties: false
@@ -5000,6 +5026,16 @@ components:
           type: string
         iconKey:
           type: string
+          nullable: true
+        iconUrl:
+          type: string
+          nullable: true
+        heroImageUrl:
+          type: string
+          nullable: true
+        availability:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderAvailability"
           nullable: true
         enabled:
           type: boolean
@@ -6240,15 +6276,9 @@ components:
           $ref: "#/components/schemas/WorkspaceTerminalCloseGuard"
     WorkspaceAgentProvider:
       type: string
-      enum:
-        - claude-code
-        - codex
-        - tutti-agent
-        - cursor
-        - nexight
-        - hermes
-        - openclaw
-        - opencode
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentSessionComposerSettings:
       type: object
       additionalProperties: false

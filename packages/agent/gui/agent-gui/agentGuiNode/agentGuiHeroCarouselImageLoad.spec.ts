@@ -53,6 +53,7 @@ describe("AgentGuiHeroCarouselImageLoad", () => {
         agentTargetId: "local:codex",
         badge: { iconUrl: "https://cdn.example.com/owner.png" },
         iconUrl: "app://codex.png",
+        heroImageUrl: "app://codex-hero.jpg",
         label: "Codex",
         provider: "codex",
         targetId: "local:codex"
@@ -63,6 +64,7 @@ describe("AgentGuiHeroCarouselImageLoad", () => {
 
     expect(FakeImage.instances).toHaveLength(3);
     expect(FakeImage.instances[2]?.crossOrigin).toBe("anonymous");
+    expect(FakeImage.instances[1]?.src).toBe("app://codex-hero.jpg");
     expect(result.icons[0]).toBe(FakeImage.instances[0]);
     expect(result.covers[0]).toBe(FakeImage.instances[1]);
     expect(result.badges[0]).toBe(FakeImage.instances[2]);

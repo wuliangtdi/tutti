@@ -1783,6 +1783,7 @@ describe("AgentMentionSearchController", () => {
                 workspaceId: item.workspaceId
               },
               presentation: {
+                agentIconUrl: "data:image/svg+xml;base64,gemini",
                 status: item.status,
                 subtitle: item.agentName
               }
@@ -1816,6 +1817,7 @@ describe("AgentMentionSearchController", () => {
               expect.objectContaining({
                 kind: "session",
                 agentName: "Codex",
+                agentIconUrl: "data:image/svg+xml;base64,gemini",
                 initiatorName: "",
                 name: "Fix mention session provider",
                 scope: "my_sessions",

@@ -91,6 +91,15 @@ Migrated agent runtime state should derive from the same root:
   agent/
     discovery/
       claude-code/
+    extensions/
+      <agent-key>/
+        active.json
+        <extension-version>/
+          installation.json
+          tutti.agent.json
+          profiles/
+          locales/
+          assets/
     sessions/
       <date>-<sequence>/
     runs/
@@ -145,6 +154,14 @@ live under the matching run directory. Codex sessions use `codex-home` and
 receive it through `CODEX_HOME`; Tutti Agent sessions use `tutti-agent-home`
 and receive it through `TUTTI_AGENT_HOME`. `agent/attachments` stores persisted
 prompt attachments by agent session.
+
+`agent/extensions` is daemon-owned verified Agent Extension state. Version
+directories are immutable after installation; `active.json` selects the
+currently registered version and is replaced atomically. Extension ZIPs do not
+contain runtimes or executables. Cached assets and profiles remain under each
+fixed installation for integrity checks and future session-pinned resume.
+Session-level runtime/profile pinning remains tracked in the Agent Extension
+architecture migration; `active.json` alone is not a durable session pin.
 
 Filesystem paths under `<state-dir>` must not expose `workspaceId` as a
 directory segment. Workspace ownership belongs in the SQLite database and

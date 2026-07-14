@@ -16,7 +16,7 @@ func (s *Service) liveModelOptionsFromPersistedSessions(workspaceID string, prov
 	if s.SessionReader == nil {
 		return nil
 	}
-	provider = agentprovider.Normalize(provider)
+	provider = agentprovider.NormalizeOpen(provider)
 	agentTargetID := ""
 	if len(agentTargetIDs) > 0 {
 		agentTargetID = agentTargetIDs[0]
@@ -30,7 +30,7 @@ func (s *Service) liveModelOptionsFromPersistedSessions(workspaceID string, prov
 	bestUnixMS := int64(-1)
 	for _, session := range sessions {
 		runtimeContext := persistedSessionRuntimeContext(session)
-		if agentprovider.Normalize(session.Provider) != provider {
+		if agentprovider.NormalizeOpen(session.Provider) != provider {
 			continue
 		}
 		if agentTargetID != "" && session.AgentTargetID != agentTargetID {

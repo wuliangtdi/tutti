@@ -93,6 +93,32 @@ test("agent composer options project the typed slash command policy", () => {
   });
 });
 
+test("agent composer options restore commands advertised by a running ACP session", () => {
+  const options = agentActivityComposerOptionsFromTuttidResult("acp:gemini", {
+    runtimeContext: {
+      availableCommands: [
+        {
+          name: "memory",
+          description: "Manage memory",
+          inputHint: "show | refresh"
+        },
+        { name: "help" },
+        { name: "memory" },
+        { description: "invalid" }
+      ]
+    }
+  });
+
+  assert.deepEqual(options.commands, [
+    {
+      name: "memory",
+      description: "Manage memory",
+      inputHint: "show | refresh"
+    },
+    { name: "help" }
+  ]);
+});
+
 test("agent composer options project typed pre-session capabilities separately from the tool catalog", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("cursor", {
     capabilities: {

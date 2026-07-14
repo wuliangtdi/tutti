@@ -39,7 +39,9 @@ export class AgentGuiHeroCarouselImageLoad {
         const [icon, cover, badge] = await Promise.all([
           this.loadImage(item.iconUrl, false),
           this.loadImage(
-            AGENT_VINYL_COVER_BY_PROVIDER[item.provider] ?? null,
+            item.heroImageUrl?.trim() ||
+              AGENT_VINYL_COVER_BY_PROVIDER[item.provider] ||
+              null,
             false
           ),
           this.loadImage(item.badge?.iconUrl ?? null, true)

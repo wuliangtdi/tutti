@@ -50,6 +50,14 @@ func (s *Service) discoverLiveComposerModels(
 			settings,
 		)
 		if err != nil {
+			if providerTargetRefKind(input.providerTargetRef) == "agent_extension" {
+				logAgentExtensionComposerDebug("discovery_failed", map[string]any{
+					"agentTargetId": scope.agentTargetID,
+					"error":         err.Error(),
+					"provider":      scope.provider,
+					"workspaceId":   scope.workspaceID,
+				})
+			}
 			logClaudeModelCatalogInvalidationDebug("discovery_uncached_failed", map[string]any{
 				"workspaceId":       scope.workspaceID,
 				"provider":          scope.provider,

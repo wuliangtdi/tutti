@@ -25,7 +25,7 @@ type composerLiveModelScope struct {
 
 func newComposerLiveModelScope(provider, workspaceID, cwd, agentTargetID string) composerLiveModelScope {
 	return composerLiveModelScope{
-		provider:      agentprovider.Normalize(provider),
+		provider:      agentprovider.NormalizeOpen(provider),
 		workspaceID:   strings.TrimSpace(workspaceID),
 		cwd:           strings.TrimSpace(cwd),
 		agentTargetID: strings.TrimSpace(agentTargetID),
@@ -74,9 +74,25 @@ func (s *Service) resolveLiveModelDiscoveryCwd(
 	if stateDir == "." || stateDir == string(filepath.Separator) {
 		return "", errors.New("agent discovery state directory is not configured")
 	}
-	discoveryCwd := filepath.Join(stateDir, "agent", "discovery", agentprovider.Normalize(provider))
+	discoveryCwd := filepath.Join(stateDir, "agent", "discovery", agentprovider.NormalizeOpen(provider))
 	if err := os.MkdirAll(discoveryCwd, 0o700); err != nil {
 		return "", fmt.Errorf("create Claude live-model discovery directory: %w", err)
+	}
+	return discoveryCwd, nil
+}
+
+func resolveAgentExtensionComposerDiscoveryCwd(provider string) (string, error) {
+	stateDir := filepath.Clean(strings.TrimSpace(tuttitypes.DefaultStateDir()))
+	if stateDir == "." || stateDir == string(filepath.Separator) {
+		return "", errors.New("agent discovery state directory is not configured")
+	}
+	provider = agentprovider.NormalizeOpen(provider)
+	if provider == "" {
+		return "", errors.New("agent extension provider is invalid")
+	}
+	discoveryCwd := filepath.Join(stateDir, "agent", "discovery", strings.ReplaceAll(provider, ":", "-"))
+	if err := os.MkdirAll(discoveryCwd, 0o700); err != nil {
+		return "", fmt.Errorf("create agent extension composer discovery directory: %w", err)
 	}
 	return discoveryCwd, nil
 }

@@ -14,6 +14,7 @@ import {
 } from "@tutti-os/workspace-file-reference/ui";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
+import { resolveAgentGUIProviderCatalogIdentity } from "../../providerIdentityCatalog";
 import { openWorkspaceSettingsPanel } from "../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
 import { SettingsLinedIcon } from "../../app/renderer/components/icons/SettingsLinedIcon";
 import {
@@ -42,7 +43,6 @@ import {
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
-
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -258,7 +258,6 @@ export function AgentGUINodeView({
       workspaceAppIcons
     ]
   );
-
   const clampConversationRailWidth = useCallback(
     (widthPx: number) =>
       Math.min(
@@ -414,6 +413,9 @@ export function AgentGUINodeView({
     viewModel.rail.conversationFilter.kind === "all" ||
     viewModel.rail.selectedAgentTarget?.disabled !== true;
   const shouldShowProviderRailConfigMenu = shouldShowProviderRailConfigButton;
+  const environmentSetupVisible = !!resolveAgentGUIProviderCatalogIdentity(
+    effectiveRailConfigProvider ?? ""
+  );
   const effectiveProviderAuthAccountLabel = useMemo(() => {
     const provider =
       (effectiveRailConfigProvider ?? viewModel.shell.data.provider)?.trim() ??
@@ -599,6 +601,7 @@ export function AgentGUINodeView({
               >
                 {shouldShowProviderRailConfigMenu ? (
                   <AgentGUIConfigMenu
+                    environmentSetupVisible={environmentSetupVisible}
                     labels={labels}
                     previewMode={previewMode}
                     providerScopedActionsVisible={

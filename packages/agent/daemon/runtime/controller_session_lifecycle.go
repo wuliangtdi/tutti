@@ -21,7 +21,10 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if provider == "" {
 		return StartResult{}, fmt.Errorf("provider is required")
 	}
-	adapter := c.adapter(provider)
+	adapter, err := c.resolveAdapter(ctx, AdapterResolveInput{Provider: provider, AgentTargetID: input.AgentTargetID, CWD: input.CWD, ProviderTargetRef: clonePayload(input.ProviderTargetRef)})
+	if err != nil {
+		return StartResult{}, err
+	}
 	if adapter == nil {
 		return StartResult{}, fmt.Errorf("unsupported agent session provider %q", provider)
 	}
@@ -122,7 +125,10 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if existing, ok := c.get(roomID, agentSessionID); ok {
 		return existing, nil
 	}
-	adapter := c.adapter(provider)
+	adapter, err := c.resolveAdapter(ctx, AdapterResolveInput{Provider: provider, AgentTargetID: input.AgentTargetID, CWD: input.CWD, ProviderTargetRef: clonePayload(input.ProviderTargetRef)})
+	if err != nil {
+		return Session{}, err
+	}
 	if adapter == nil {
 		return Session{}, fmt.Errorf("unsupported agent session provider %q", provider)
 	}
@@ -147,6 +153,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		Title:             firstNonEmpty(strings.TrimSpace(input.Title), provider),
 		Visible:           sessionVisible(input.Visible),
 		RuntimeContext:    clonePayload(input.RuntimeContext),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
 		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
 		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
 		CreatedAtUnixMS:   createdAtUnixMS,

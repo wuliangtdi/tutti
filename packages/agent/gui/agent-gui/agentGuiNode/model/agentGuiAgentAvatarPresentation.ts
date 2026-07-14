@@ -16,6 +16,7 @@ export interface AgentGUIAgentAvatarPresentation {
   badge?: AgentGUIAgentTargetBadge | null;
   disabled?: boolean;
   iconUrl: string;
+  heroImageUrl?: string | null;
   label: string;
   provider: AgentGUIProvider;
   targetId: string;
@@ -52,6 +53,9 @@ export function projectAgentGUIAgentTargetAvatar(
     provider: target.provider,
     label: target.label,
     iconUrl: resolveAgentGUIAgentAvatarIconUrl(target.provider, target.iconUrl),
+    ...(target.heroImageUrl?.trim()
+      ? { heroImageUrl: target.heroImageUrl.trim() }
+      : {}),
     ...(target.badge ? { badge: target.badge } : {}),
     ...(target.disabled === true ? { disabled: true } : {})
   };

@@ -39,7 +39,9 @@ describe("managed agent icon assets", () => {
       MANAGED_AGENT_ICON_FALLBACK_URL,
       agentGuiDockIconUrl,
       ...Object.values(agentGuiDockIconUrls)
-    ].forEach(expectPackagedIconUrl);
+    ]
+      .filter((url): url is string => typeof url === "string")
+      .forEach(expectPackagedIconUrl);
   });
 
   it("reuses identical provider artwork across manage, rounded, and dock maps", () => {

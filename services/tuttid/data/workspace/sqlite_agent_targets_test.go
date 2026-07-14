@@ -221,8 +221,8 @@ func TestSQLiteStorePutAgentTargetCanonicalizesLaunchRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PutAgentTarget() error = %v", err)
 	}
-	if target.LaunchRefJSON != `{"type":"local_cli","provider":"codex"}` {
-		t.Fatalf("LaunchRefJSON = %q, want canonical local_cli codex", target.LaunchRefJSON)
+	if target.LaunchRefJSON != `{"type":"builtin_local","provider":"codex"}` {
+		t.Fatalf("LaunchRefJSON = %q, want canonical builtin_local codex", target.LaunchRefJSON)
 	}
 	if target.Name != "Custom Codex" {
 		t.Fatalf("Name = %q, want trimmed Custom Codex", target.Name)

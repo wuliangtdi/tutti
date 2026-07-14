@@ -88,6 +88,40 @@ describe("workspaceAgentConsumerSelectors", () => {
     });
   });
 
+  it("projects signed Agent Target presentation for open-provider sessions", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          agentTargetId: "extension:gemini",
+          provider: "acp:gemini"
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} },
+      {
+        agentPresentations: [
+          {
+            agentTargetId: "extension:gemini",
+            iconUrl: "data:image/svg+xml;base64,gemini",
+            name: "Gemini CLI"
+          }
+        ]
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      agentTargetId: "extension:gemini",
+      agentName: "Gemini CLI",
+      agentAvatarUrl: "data:image/svg+xml;base64,gemini",
+      provider: "acp:gemini"
+    });
+  });
+
   it("keeps canonical settled turn state authoritative over stale status messages", () => {
     const engine = createEngine();
     engine.dispatch({

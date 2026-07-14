@@ -121,6 +121,25 @@ func (s *Service) ensureProviderRuntimeInstalled(ctx context.Context, provider s
 	return nil
 }
 
+func (s *Service) ensureProviderRuntimeInstalledForLaunch(
+	ctx context.Context,
+	provider string,
+	providerTargetRef map[string]any,
+) error {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+		// Extension runtime availability is resolved from the signed installation
+		// and fixed Target binding by the dynamic adapter resolver. The legacy
+		// provider status service owns only the built-in provider catalog.
+		return nil
+	}
+	return s.ensureProviderRuntimeInstalled(ctx, provider)
+}
+
+func providerTargetRefKind(providerTargetRef map[string]any) string {
+	kind, _ := providerTargetRef["kind"].(string)
+	return strings.TrimSpace(kind)
+}
+
 func providerAvailabilityInputProviders(input ProviderAvailabilityInput) ([]string, error) {
 	provider := strings.TrimSpace(input.Provider)
 	if provider == "" {

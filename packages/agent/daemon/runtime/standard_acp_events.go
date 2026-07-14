@@ -82,6 +82,7 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "tool_call", "tool_call_update":
+		applyStandardACPToolAlias(config, params.Update)
 		if events, ok := normalizer.StandardToolCallEvents(session, turnID, updateType, params.Update); ok {
 			return events
 		}
@@ -123,6 +124,18 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		return nil
 	default:
 		return nil
+	}
+}
+
+func applyStandardACPToolAlias(config standardACPConfig, update map[string]any) {
+	if len(config.toolAliases) == 0 || strings.TrimSpace(asString(update["toolName"])) != "" {
+		return
+	}
+	for _, value := range []string{asString(update["name"]), asString(update["title"]), asString(update["toolCallId"]), asString(update["id"])} {
+		if canonical := config.toolAliases[strings.ToLower(strings.TrimSpace(value))]; canonical != "" {
+			update["toolName"] = canonical
+			return
+		}
 	}
 }
 

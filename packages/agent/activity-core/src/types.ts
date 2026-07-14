@@ -120,9 +120,16 @@ export interface AgentActivityComposerSettingOption {
   supportsImageInput?: boolean;
 }
 
+export interface AgentActivityComposerCommandOption {
+  name: string;
+  description?: string;
+  inputHint?: string;
+}
+
 export interface AgentActivityComposerSkillOption {
   name: string;
   trigger: string;
+  invocation?: "promptItem" | "textTrigger";
   sourceKind:
     | "project"
     | "personal"
@@ -231,6 +238,8 @@ export interface AgentActivityComposerOptions {
   draftAgentSessionId?: string | null;
   modelOptionsLoading?: boolean;
   skills: AgentActivityComposerSkillOption[];
+  /** Commands advertised by the live provider session and reusable after event replay gaps. */
+  commands?: readonly AgentActivityComposerCommandOption[];
   capabilityCatalog?: AgentActivityComposerCapabilityOption[];
   behavior: AgentActivityComposerBehavior;
   slashCommandPolicy?: AgentActivitySlashCommandPolicy | null;

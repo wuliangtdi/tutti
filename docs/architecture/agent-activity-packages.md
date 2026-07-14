@@ -180,6 +180,13 @@ typed slash policy owns fallback commands and command effects; a missing policy
 produces no provider slash commands or local command effects. Agent GUI must not
 infer Cursor, Codex, Claude, or universal command behavior from provider names.
 
+Runtime `provider` is open execution metadata. Agent GUI and Workbench must
+preserve an unknown valid provider string and use `agentTargetId` for selection,
+launch, grouping, and persisted composer state. They must not coerce an
+extension provider to Codex. Verified Agent Extension presentation assets come
+from the Agent Target contract; renderer packages do not add extension-specific
+icon catalogs or provider branches.
+
 The synthesized `plan-implementation` / `implement` decision crosses the
 desktop boundary as one semantic, turn-and-request-scoped daemon command with
 a caller-stable idempotency key. Desktop transport must not expand that command

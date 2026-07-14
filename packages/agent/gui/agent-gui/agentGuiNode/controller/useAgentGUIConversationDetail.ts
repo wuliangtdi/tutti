@@ -143,8 +143,12 @@ export function useAgentGUIConversationDetail(
     (state) => selectEngineAvailableCommands(state, input.activeConversationId)
   );
   const availableCommands = useMemo(
-    () => engineAvailableCommands.map((command) => ({ ...command })),
-    [engineAvailableCommands]
+    () =>
+      (engineAvailableCommands.length > 0
+        ? engineAvailableCommands
+        : (input.providerComposerOptions?.commands ?? [])
+      ).map((command) => ({ ...command })),
+    [engineAvailableCommands, input.providerComposerOptions]
   );
   const availableSkills = useStableProviderSkillOptions(
     useMemo(

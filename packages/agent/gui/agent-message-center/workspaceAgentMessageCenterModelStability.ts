@@ -64,6 +64,9 @@ function messageCenterItemsEqual(
   return (
     left.id === right.id &&
     left.agentSessionId === right.agentSessionId &&
+    left.agentTargetId === right.agentTargetId &&
+    left.agentName === right.agentName &&
+    left.agentAvatarUrl === right.agentAvatarUrl &&
     left.provider === right.provider &&
     left.userId === right.userId &&
     left.title === right.title &&

@@ -88,11 +88,36 @@ export function agentActivityComposerOptionsFromTuttidResult(
       recordValue(runtimeContext.appServerStartup).models === "loading",
     skills:
       skillsFromResult.length > 0 ? skillsFromResult : skillsFromRuntimeContext,
+    commands: commandOptionsFromValue(runtimeContext.availableCommands),
     capabilityCatalog,
     behavior: composerBehaviorFromValue(result.behavior),
     slashCommandPolicy: slashCommandPolicyFromValue(result.slashCommandPolicy),
     loadedAtUnixMs: Date.now()
   };
+}
+
+function commandOptionsFromValue(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const commands: Array<{
+    name: string;
+    description?: string;
+    inputHint?: string;
+  }> = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const command = recordValue(raw);
+    const name = normalizeText(command.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const description = normalizeText(command.description);
+    const inputHint = normalizeText(command.inputHint);
+    commands.push({
+      name,
+      ...(description ? { description } : {}),
+      ...(inputHint ? { inputHint } : {})
+    });
+  }
+  return commands;
 }
 
 function settingOptionsWithLocalizedPresentation(
@@ -410,6 +435,7 @@ function skillOptionsFromValue(
     const pluginName = normalizeText(record.pluginName);
     const path = normalizeText(record.path);
     const kind = normalizeSkillKind(record.kind);
+    const invocation = normalizeSkillInvocation(record.invocation);
     options.push({
       name,
       trigger,
@@ -417,10 +443,20 @@ function skillOptionsFromValue(
       ...(description ? { description } : {}),
       ...(pluginName ? { pluginName } : {}),
       ...(path ? { path } : {}),
-      ...(kind ? { kind } : {})
+      ...(kind ? { kind } : {}),
+      ...(invocation ? { invocation } : {})
     });
   }
   return options;
+}
+
+function normalizeSkillInvocation(
+  value: unknown
+): AgentActivityComposerSkillOption["invocation"] | null {
+  const normalized = normalizeText(value);
+  return normalized === "promptItem" || normalized === "textTrigger"
+    ? normalized
+    : null;
 }
 
 function normalizeSkillSourceKind(

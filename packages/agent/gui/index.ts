@@ -37,6 +37,7 @@ export type {
   AgentGUIAgentAvailabilityAction,
   AgentGUIAgentAvailabilityStatus,
   AgentGUIAgentOwner,
+  AgentGUIHomeSuggestionId,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,

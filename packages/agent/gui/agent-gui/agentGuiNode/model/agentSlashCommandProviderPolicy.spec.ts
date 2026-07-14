@@ -471,30 +471,30 @@ describe("agentSlashCommandProviderPolicy", () => {
     ).toEqual([]);
   });
 
-  it("returns no Cursor slash behavior when its descriptor policy is missing", () => {
+  it("keeps runtime commands provider-native when a descriptor policy is missing", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "cursor",
         commands: [{ name: "plan" }, { name: "compact" }],
         planSupported: true
       })
-    ).toEqual([]);
+    ).toEqual([{ name: "plan" }, { name: "compact" }]);
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "cursor",
         command: { name: "plan" },
         currentDraft: "/"
       })
-    ).toBeNull();
+    ).toEqual({ kind: "fillDraft", draft: "/plan " });
   });
 
-  it("returns no unknown-provider slash behavior without a descriptor policy", () => {
+  it("shows open-provider runtime commands without a descriptor policy", () => {
     expect(
       resolveSlashCommandsForProvider({
         provider: "other-provider",
         commands: [{ name: "compact" }]
       })
-    ).toEqual([]);
+    ).toEqual([{ name: "compact" }]);
   });
 
   it("keeps non-plan advertised Claude Code controls provider-native", () => {
@@ -607,13 +607,13 @@ describe("agentSlashCommandProviderPolicy", () => {
     }
   );
 
-  it("does not open the review picker for unknown providers", () => {
+  it("keeps review provider-native for unknown providers", () => {
     expect(
       resolveSlashCommandSelectionEffect({
         provider: "other-provider",
         command: { name: "review", description: "Review" },
         currentDraft: "/rev"
       })
-    ).toBeNull();
+    ).toEqual({ kind: "fillDraft", draft: "/review " });
   });
 });
