@@ -1113,6 +1113,97 @@ describe("AgentRichTextEditor", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("deletes a line-start mention and its caret anchor with Backspace", async () => {
+    const onChange = vi.fn();
+    const ref = createRef<AgentRichTextEditorHandle>();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value="[@AI Canvas](mention://workspace-app/ai-media-canvas?workspaceId=workspace-1)"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await waitFor(() => expect(editor).toHaveTextContent("AI Canvas"));
+    act(() => {
+      ref.current?.focusAtEnd();
+    });
+    fireEvent.keyDown(editor, { key: "Backspace" });
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+    expect(editor).toHaveTextContent("");
+    expect(editor.querySelector('[data-agent-file-mention="true"]')).toBeNull();
+  });
+
+  it("deletes a line-start mention and its caret anchor with Delete", async () => {
+    const onChange = vi.fn();
+    const ref = createRef<AgentRichTextEditorHandle>();
+    render(
+      <AgentRichTextEditor
+        ref={ref}
+        value="[@AI Canvas](mention://workspace-app/ai-media-canvas?workspaceId=workspace-1)"
+        disabled={false}
+        placeholder="Prompt"
+        onChange={onChange}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    const editor = await screen.findByRole("textbox", { name: "Prompt" });
+    await waitFor(() => expect(editor).toHaveTextContent("AI Canvas"));
+    act(() => {
+      ref.current?.focusAtStart();
+    });
+    fireEvent.keyDown(editor, { key: "Delete" });
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+    expect(editor).toHaveTextContent("");
+    expect(editor.querySelector('[data-agent-file-mention="true"]')).toBeNull();
+  });
+
+  it.each(["Backspace", "Delete"])(
+    "keeps the caret anchor when another mention remains after %s",
+    async (key) => {
+      const onChange = vi.fn();
+      const ref = createRef<AgentRichTextEditorHandle>();
+      render(
+        <AgentRichTextEditor
+          ref={ref}
+          value={
+            "[@AI Canvas](mention://workspace-app/ai-media-canvas?workspaceId=workspace-1)" +
+            "[@Tasks](mention://workspace-app/issue-manager?workspaceId=workspace-1)"
+          }
+          disabled={false}
+          placeholder="Prompt"
+          onChange={onChange}
+          onSubmit={vi.fn()}
+        />
+      );
+
+      const editor = await screen.findByRole("textbox", { name: "Prompt" });
+      await waitFor(() => expect(editor).toHaveTextContent("AI CanvasTasks"));
+      act(() => {
+        ref.current?.focusAtStart();
+      });
+      if (key === "Backspace") {
+        fireEvent.keyDown(editor, { key: "ArrowRight" });
+      }
+      fireEvent.keyDown(editor, { key });
+
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith(
+          "[@Tasks](mention://workspace-app/issue-manager?workspaceId=workspace-1)"
+        )
+      );
+      expect(editor).not.toHaveTextContent("AI Canvas");
+      expect(editor).toHaveTextContent("Tasks");
+    }
+  );
+
   it("removes hydrated file mentions through the icon hover remove button", async () => {
     const onChange = vi.fn();
     render(

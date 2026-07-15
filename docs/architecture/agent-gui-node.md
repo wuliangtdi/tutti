@@ -2605,6 +2605,15 @@ Tiptap suggestion plugin publish `AgentRichTextEditor` suggestion state. Do not
 open the mention palette as a separate UI-only state path; the trigger range
 still owns command replacement, keyboard handling, and panel anchoring.
 
+Line-start mention chips may use an editor-only zero-width caret anchor so the
+caret can move to both sides of an atomic Tiptap node. That anchor is not prompt
+content and is removed during prompt serialization. Its lifecycle therefore
+belongs to the rich-text document layer: deleting the last adjacent line-start
+mention with Backspace or Delete must remove the mention and anchor in the same
+transaction. If another adjacent mention remains at line start, retain the
+anchor for that node. Never leave an anchor-only document whose serialized
+prompt is empty while its editor DOM is not.
+
 Pasting text that contains an `@` must not be treated as active mention input
 unless the paste leaves the caret immediately after the `@` trigger. A bare
 `@` paste may open the mention panel; a complete pasted query such as `@readme`
