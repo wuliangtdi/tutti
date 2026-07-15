@@ -2885,6 +2885,13 @@ runtime messages
 Check stale prompt IDs, answered prompt filtering, bottom dock state, and
 selected conversation synchronization together.
 
+Approval transport calls are interaction plumbing, not transcript content.
+Conversation projection must remove top-level and delegated-task tool calls
+identified by `callType=approval` or `toolName=Approval` before they reach
+React. Pending approvals remain sourced from canonical Interaction state, so
+hiding running, completed, and failed Approval tool cards must not remove the
+actionable approval surfaces.
+
 ### Composer Settings
 
 ```text
