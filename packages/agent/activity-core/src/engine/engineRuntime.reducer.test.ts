@@ -221,6 +221,7 @@ test("canceling a queued submit atomically removes queue and pending intent", ()
         },
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 1,
           turnId: "turn-1",
@@ -275,6 +276,7 @@ test("later queued submit stays requested when its expiry follows the prior deli
   const runningSession = {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",
@@ -522,6 +524,7 @@ test("an uncertain queued submit cannot be half-canceled", () => {
   const runningSession = {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",
@@ -706,6 +709,7 @@ test("an invalid send-now request cannot cancel an unrelated active turn", () =>
         },
         activeTurn: {
           agentSessionId: "session-1",
+          origin: "user_prompt",
           phase: "running",
           startedAtUnixMs: 1,
           turnId: "turn-1",
@@ -836,6 +840,7 @@ function runningSession(capabilityList: AgentActivitySessionCapabilities) {
   return {
     activeTurn: {
       agentSessionId: "session-1",
+      origin: "user_prompt" as const,
       phase: "running" as const,
       startedAtUnixMs: 1,
       turnId: "turn-1",
