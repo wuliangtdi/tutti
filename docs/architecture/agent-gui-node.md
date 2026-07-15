@@ -271,7 +271,11 @@ When a model catalog advertises model-specific reasoning profiles, the composer
 must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.
 Do not render the provider-level reasoning list when a profile exists for the
-selected model.
+selected model. The presence of any non-empty model profile keeps the reasoning
+dimension available across model switches even when the initially selected
+model has no options. An advertised empty profile for the selected model is
+authoritative: hide the reasoning control and do not reinsert a stale selected
+or draft effort as a synthetic option.
 Reasoning values are an extensible provider vocabulary. Known shared values may
 use AgentGUI's canonical labels, while unrecognized values must preserve the
 localized option label supplied by the composer-options contract instead of
