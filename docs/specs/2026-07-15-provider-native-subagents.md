@@ -626,7 +626,31 @@ Treat ACP as capability-driven:
 
 - The current standard ACP adapter does not opt in. It does not infer child
   sessions from ordinary tool/progress updates and exposes no parallel
-  background-agent runtime projection.
+  background-agent runtime projection. Cursor and OpenCode therefore remain
+  root-only until their ACP transports expose the required identity and
+  lifecycle facts; a tool named `Task`, `Agent`, or similar is not enough.
+- Cursor Agent `2026.07.01-41b2de7` also emits a private, non-blocking
+  `cursor/task` extension containing `toolCallId`, `agentId`, task metadata,
+  and optional duration after Task activity. This is stronger identity
+  evidence than the ordinary Task card, but it does not supply one uniform
+  child lifecycle. For a foreground Task, the extension follows the completed
+  Task execution. For `run_in_background=true`, the Task result and extension
+  acknowledge launch within the root prompt while the detached child continues
+  running. Cursor records the later completion in its internal background-work
+  registry, but this ACP version does not bridge that terminal back through a
+  child event or a synthetic provider turn. Log only identifiers, field
+  presence, enum/model values, durations, and text lengths; never log task
+  prompt or description content.
+- Until Cursor ACP exposes the detached child terminal, Tutti supports Cursor
+  Task execution only in the foreground at the canonical-model level. Cursor
+  Agent `2026.07.01-41b2de7` does not merge hooks from `--plugin-dir` into its
+  ACP hook executor, so Tutti cannot currently enforce that restriction before
+  launch without modifying user/project Cursor configuration. Runtimeprep keeps
+  a tested `preToolUse` background-Task guard dormant, but deliberately omits it
+  from the generated plugin manifest and runtime artifact. Do not claim that
+  background Task is blocked, do not write the guard into user/project config,
+  and do not invent a child terminal, keep the canonical root waiting, or
+  settle from a guessed timeout when a detached Task is observed.
 - An ACP provider may create child sessions only when it supplies a stable child
   id, the direct parent session/turn or parent tool-call id, and child turn
   terminal events.
@@ -636,6 +660,12 @@ Treat ACP as capability-driven:
   reconcile the explicit ids before emitting `root_provider_turn_completed`.
 - Root provider terminal events map to `root_provider_turn_completed` and use
   the same `services/tuttid` root/child completion rule as Codex and Claude.
+  Standard ACP adapters must not emit a canonical root `turn.completed`,
+  `turn.failed`, or `turn.canceled` directly from the `session/prompt` result.
+- Turn-scoped ACP message, thought, tool, and permission events are accepted
+  only while their owning `session/prompt` call is active. A late notification
+  after the prompt result must not be attached to a recently settled root turn,
+  and the adapter must not fabricate a synthetic turn to make it persistable.
 - If the provider only emits ordinary tool calls, display text, or progress
   without stable parent/child ids, treat them as ordinary tool calls, not child
   sessions.
@@ -644,6 +674,12 @@ Treat ACP as capability-driven:
   child cancel API does not justify a second completion model.
 - Root-turn guidance support is declared by the provider. Direct user guidance
   to one child remains unsupported.
+- Standard ACP cancellation is root-only. A failed `session/cancel` transport
+  write is an operation failure, not provider confirmation; it must propagate
+  to the durable cancel workflow instead of being reported as success.
+- The same rule applies to automatic permission decisions: a failed ACP
+  response write must be surfaced as an operation failure, never treated as a
+  resolved approval while the provider is still waiting.
 
 ACP adapters should not invent subagent identity from display text, tool title,
 or message order alone.

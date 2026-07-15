@@ -78,3 +78,4 @@ Approval gates, plan exits, root/parent/child event attribution, child sessions,
 - [Claude SDK subagent approval stuck in Message Center](./agent-approvals-subagents.md#claude-sdk-subagent-approval-stuck-in-message-center)
 - [Root remains active after all child turns settle](./agent-approvals-subagents.md#root-remains-active-after-all-child-turns-settle)
 - [Provider terminal report replays a settled root as running](./agent-approvals-subagents.md#provider-terminal-report-replays-a-settled-root-as-running)
+- [Cursor or OpenCode turn settles before late ACP activity arrives](./agent-session-lifecycle.md#cursor-or-opencode-turn-settles-before-late-acp-activity-arrives)

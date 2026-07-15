@@ -448,6 +448,10 @@ func Validate(descriptor ProviderDescriptor) error {
 	default:
 		return fmt.Errorf("provider %q live model discovery kind %q is unsupported", providerID, descriptor.ComposerProfile.LiveModelDiscovery.Kind)
 	}
+	if descriptor.ComposerProfile.LiveModelDiscovery.Kind == "" &&
+		(descriptor.ComposerProfile.LiveModelDiscovery.HiddenProbe || descriptor.ComposerProfile.LiveModelDiscovery.AccountScoped) {
+		return fmt.Errorf("provider %q live model discovery behavior requires a discovery kind", providerID)
+	}
 	if descriptor.ComposerProfile.LiveModelDiscovery.Kind != "" && descriptor.ComposerProfile.ModelCatalog != "" {
 		return fmt.Errorf("provider %q cannot declare both live model discovery and a model catalog", providerID)
 	}

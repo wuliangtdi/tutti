@@ -387,12 +387,15 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   `cwd/AGENTS.md`, which dirtied tracked repositories.
 - Fix:
   Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
-  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`, expose it through
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`; expose it through
   `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
   `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
   `.cursor/skills` discoverable for composer options, but never write Tutti
   injected skills or Tutti runtime instructions into the workspace cwd for
-  Cursor sessions.
+  Cursor sessions. Cursor Agent `2026.07.01-41b2de7` does not load plugin hooks
+  in ACP mode, so do not advertise the dormant background-Task guard in the
+  plugin manifest and do not claim that background Task is blocked. Do not
+  install the hook into user or project Cursor configuration as a workaround.
 - Validation:
   Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
   while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime

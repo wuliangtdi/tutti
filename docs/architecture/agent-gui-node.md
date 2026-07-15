@@ -330,6 +330,17 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+Providers whose model catalog exists only after runtime session bootstrap must
+declare hidden live-model probing and its cache scope in their provider
+descriptor. The daemon may
+start an invisible, no-prompt discovery session, cache the advertised catalog,
+and clean up that session after discovery so a first-time empty composer can
+choose a non-default model before creating a visible conversation. When visible
+conversation creation settles, AgentGUI must force one target-scoped options
+refresh: an earlier selected-model-only bootstrap response must not stay
+valid merely because its request signature matches. This refresh goes through
+`AgentActivityRuntime`; AgentGUI must not recover the catalog by reading private
+session runtime context.
 When a model catalog advertises model-specific reasoning profiles, the composer
 must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.

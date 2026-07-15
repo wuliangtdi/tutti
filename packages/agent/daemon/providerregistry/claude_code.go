@@ -68,8 +68,9 @@ func claudeCodeDescriptor() ProviderDescriptor {
 		ComposerProfile: ComposerProfileDescriptor{
 			ModelSelection: true,
 			LiveModelDiscovery: LiveModelDiscoveryDescriptor{
-				Kind:        LiveModelDiscoveryKindClaudeSDK,
-				HiddenProbe: true,
+				Kind:          LiveModelDiscoveryKindClaudeSDK,
+				HiddenProbe:   true,
+				AccountScoped: true,
 			},
 			ReasoningEffort:        true,
 			ReasoningEffortValues:  []string{"low", "medium", "high", "xhigh"},

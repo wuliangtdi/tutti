@@ -33,6 +33,18 @@ func (a *standardACPAdapter) handleACPMessage(
 		"message_method", message.Method,
 		"message_id", rawMessageLogValue(message.ID),
 	)
+	if diagnostics := a.config.messageDiagnostics; diagnostics != nil &&
+		message.Method == diagnostics.method {
+		if diagnostics.observeMessage != nil {
+			diagnostics.observeMessage(a.config, session, turnID, message, normalizer)
+		}
+		// Provider diagnostic extensions are observational until their ordering
+		// and lifecycle semantics are deliberately mapped to durable entities.
+		if len(message.ID) > 0 {
+			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: "method not supported"})
+		}
+		return nil, nil
+	}
 	switch message.Method {
 	case acpMethodUpdate:
 		if !a.standardACPUpdateMatchesProviderSession(session, message.Params) {
@@ -65,18 +77,23 @@ func (a *standardACPAdapter) handleACPMessage(
 		}
 		return events, nil
 	case acpMethodPermission:
-		sessionLevelEmit := false
-		if strings.TrimSpace(turnID) == "" {
-			turnID = a.ensureSessionRecentTurnID(session.AgentSessionID)
-		}
-		if emit == nil {
-			sessionLevelEmit = true
-			emit = func(events []activityshared.Event) {
-				a.emitSessionEvents(session.AgentSessionID, events)
-			}
-		}
-		if strings.TrimSpace(turnID) == "" {
-			err := errors.New("permission request outside active prompt turn is missing a turn id")
+		// A permission callback is actionable only while the session/prompt call
+		// that owns its canonical turn is active. The global client handler has no
+		// normalizer; binding such a late callback to recentTurnID would reopen a
+		// settled turn, while fabricating a synthetic turn would violate durable
+		// turn ownership.
+		if normalizer == nil || strings.TrimSpace(turnID) == "" {
+			err := errors.New("permission request arrived outside an active prompt turn")
+			slog.Warn("agent session ACP rejected permission outside active prompt",
+				"event", "agent_session.acp.permission.turn_scope_missing",
+				"provider", a.config.provider,
+				"adapter", a.config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"recent_turn_id", strings.TrimSpace(turnID),
+				"request_id", rawMessageLogValue(message.ID),
+			)
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 			return nil, err
 		}
@@ -85,20 +102,25 @@ func (a *standardACPAdapter) handleACPMessage(
 		// streams its own activity via session/update.
 		if decision := a.autoApprovePermissionDecision(session.AgentSessionID); decision != "" {
 			if optionID, ok := acpPermissionRequestDecisionOptionID(message.Params, decision); ok {
-				_ = client.Respond(ctx, message.ID, acpPermissionResponseResult(optionID), nil)
+				if err := client.Respond(ctx, message.ID, acpPermissionResponseResult(optionID), nil); err != nil {
+					slog.Warn("agent session ACP auto-approve response failed",
+						"event", "agent_session.acp.permission.auto_approve_response_failed",
+						"provider", a.config.provider,
+						"adapter", a.config.adapterName,
+						"room_id", session.RoomID,
+						"agent_session_id", session.AgentSessionID,
+						"provider_session_id", session.ProviderSessionID,
+						"turn_id", turnID,
+						"request_id", rawMessageLogValue(message.ID),
+						"error", err.Error(),
+					)
+					return nil, err
+				}
 				return nil, nil
 			}
 		}
-		if sessionLevelEmit {
-			emit([]activityshared.Event{newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
-				"synthetic": true,
-			})})
-		}
 		events, pending, err := standardACPPermissionRequested(a, session, turnID, message.ID, message.Params, normalizer)
 		if err != nil {
-			if sessionLevelEmit {
-				emit(events)
-			}
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32602, Message: err.Error()})
 			return events, err
 		}
@@ -109,9 +131,6 @@ func (a *standardACPAdapter) handleACPMessage(
 		if err != nil {
 			pending.finish(pendingInteractiveRequestStateInterrupted)
 			events := normalizedPermissionResolvedEvents(session, turnID, pending, pendingInteractiveResponse{}, err)
-			if sessionLevelEmit {
-				emit(events)
-			}
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
 			return events, err
 		}
@@ -124,16 +143,10 @@ func (a *standardACPAdapter) handleACPMessage(
 			if pending.finish(pendingInteractiveRequestStateSuperseded) {
 				events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, err)
 			}
-			if sessionLevelEmit {
-				emit(events)
-			}
 			return events, err
 		}
 		if pending.finish(pendingInteractiveRequestStateAnswered) {
 			events = normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil)
-		}
-		if sessionLevelEmit {
-			emit(events)
 		}
 		return events, nil
 	default:
@@ -329,15 +342,6 @@ func (a *standardACPAdapter) rememberSessionTurn(agentSessionID string, turnID s
 	}
 	acpSession.recentTurnID = turnID
 	acpSession.recentTurnExpiry = time.Now().Add(standardACPRecentTurnTTL)
-}
-
-func (a *standardACPAdapter) ensureSessionRecentTurnID(agentSessionID string) string {
-	if turnID := a.sessionRecentTurnID(agentSessionID); turnID != "" {
-		return turnID
-	}
-	turnID := "synthetic-" + newID()
-	a.rememberSessionTurn(agentSessionID, turnID)
-	return turnID
 }
 
 func (a *standardACPAdapter) sessionRecentTurnID(agentSessionID string) string {

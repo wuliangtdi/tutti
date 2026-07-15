@@ -43,6 +43,164 @@ func TestStandardACPAdapterStampsAuthoritativeTurnLifecycle(t *testing.T) {
 	}
 }
 
+func TestStandardACPAdaptersReportProviderLifecycleWithoutSettlingCanonicalRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		agentTitle        string
+		providerSessionID string
+		provider          string
+		build             func(ProcessTransport) *standardACPAdapter
+	}{
+		{name: "cursor", agentTitle: "Cursor Agent", providerSessionID: "cursor-session-root-lifecycle", provider: ProviderCursor, build: func(transport ProcessTransport) *standardACPAdapter {
+			return newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+		}},
+		{name: "opencode", agentTitle: "OpenCode", providerSessionID: "opencode-session-root-lifecycle", provider: ProviderOpenCode, build: newOpenCodeTestAdapter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transport := newStandardACPTransport(tt.agentTitle, tt.providerSessionID)
+			adapter := tt.build(transport)
+			session := standardTestSession(tt.provider)
+			if _, err := adapter.Start(context.Background(), session); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			session.ProviderSessionID = tt.providerSessionID
+
+			events, err := adapter.Exec(context.Background(), session, textPrompt("inspect the workspace"), "", "root-turn-1", nil, nil)
+			if err != nil {
+				t.Fatalf("Exec: %v", err)
+			}
+			if !adapter.UsesRootProviderTurnLifecycle() {
+				t.Fatal("standard ACP adapter did not opt into daemon-owned root settlement")
+			}
+
+			var started, completed bool
+			for _, event := range events {
+				switch event.Type {
+				case activityshared.EventRootProviderTurnStarted:
+					started = event.Payload.TurnID == "root-turn-1" && event.Payload.ProviderTurnID == "root-turn-1"
+				case activityshared.EventRootProviderTurnCompleted:
+					completed = event.Payload.TurnID == "root-turn-1" &&
+						event.Payload.ProviderTurnID == "root-turn-1" &&
+						event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted)
+				case activityshared.EventTurnCompleted, activityshared.EventTurnFailed, activityshared.EventTurnCanceled:
+					t.Fatalf("standard ACP emitted canonical terminal event before daemon settlement: %#v", event)
+				}
+			}
+			if !started || !completed {
+				t.Fatalf("provider lifecycle started=%v completed=%v, events=%#v", started, completed, activityEventTypeCounts(events))
+			}
+		})
+	}
+}
+
+func TestStandardACPDropsLateTurnScopedUpdatesOutsidePromptCall(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderOpenCode)
+	events := standardACPUpdateEvents(
+		newOpenCodeTestAdapter(nil).config,
+		session,
+		"settled-root-turn",
+		json.RawMessage(`{"update":{"sessionUpdate":"tool_call","toolCallId":"late-task","title":"Task","status":"pending"}}`),
+		nil,
+	)
+	if len(events) != 0 {
+		t.Fatalf("late tool events = %#v, want no events attached to the settled root", events)
+	}
+}
+
+func TestStandardACPRejectsLatePermissionOutsidePromptCall(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-late-permission")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-late-permission"
+	client := adapter.getSession(session.AgentSessionID).client
+
+	events, err := adapter.handleACPMessage(context.Background(), client, session, "settled-root-turn", acpMessage{
+		ID:     json.RawMessage(`"late-permission"`),
+		Method: acpMethodPermission,
+		Params: json.RawMessage(`{"toolCall":{"toolCallId":"late-task","title":"Allow Task"},"options":[{"optionId":"allow","kind":"allow_once"}]}`),
+	}, nil, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "outside an active prompt turn") {
+		t.Fatalf("late permission error = %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("late permission events = %#v, want no synthetic turn or interaction", events)
+	}
+	if pending := adapter.getPendingApproval(session.AgentSessionID, "settled-root-turn", "late-permission"); pending != nil {
+		t.Fatalf("late permission created pending interaction: %#v", pending)
+	}
+}
+
+func TestStandardACPCancelPropagatesNotifyFailure(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("cancel transport unavailable")
+	adapter := newCursorAdapterWithHostMetadata(nil, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	adapter.storeSession(session.AgentSessionID, &standardACPSession{
+		client:            &acpClient{conn: standardACPFailingSendConnection{err: wantErr}},
+		providerSessionID: "cursor-session-cancel",
+	})
+
+	if _, err := adapter.Cancel(context.Background(), session, "user canceled"); !errors.Is(err, wantErr) {
+		t.Fatalf("Cancel error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestStandardACPAutoApprovePropagatesResponseFailure(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("permission response transport unavailable")
+	adapter := newCursorAdapterWithHostMetadata(nil, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = "full-access"
+	adapter.storeSession(session.AgentSessionID, &standardACPSession{
+		client:            &acpClient{conn: standardACPFailingSendConnection{err: wantErr}},
+		providerSessionID: "cursor-session-auto-approve",
+		permissionModeID:  "full-access",
+	})
+	client := adapter.getSession(session.AgentSessionID).client
+
+	events, err := adapter.handleACPMessage(context.Background(), client, session, "root-turn-1", acpMessage{
+		ID:     json.RawMessage(`"permission-1"`),
+		Method: acpMethodPermission,
+		Params: json.RawMessage(`{"toolCall":{"toolCallId":"task-1","title":"Allow Task"},"options":[{"optionId":"allow","kind":"allow_once"}]}`),
+	}, newACPTurnNormalizer(), nil, nil)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("auto-approve response error = %v, want %v", err, wantErr)
+	}
+	if len(events) != 0 {
+		t.Fatalf("auto-approve response events = %#v, want no false resolution", events)
+	}
+}
+
+type standardACPFailingSendConnection struct {
+	err error
+}
+
+func (c standardACPFailingSendConnection) Send([]byte) error {
+	return c.err
+}
+
+func (standardACPFailingSendConnection) Recv() (ProcessFrame, error) {
+	return ProcessFrame{}, io.EOF
+}
+
+func (standardACPFailingSendConnection) Close() error {
+	return nil
+}
+
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
 

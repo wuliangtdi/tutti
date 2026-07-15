@@ -58,6 +58,13 @@ type standardACPConfig struct {
 	projectCurrentMode             bool
 	startupDiagnostics             bool
 	toolAliases                    map[string]string
+	messageDiagnostics             *standardACPMessageDiagnostics
+}
+
+type standardACPMessageDiagnostics struct {
+	method         string
+	observeMessage func(standardACPConfig, Session, string, acpMessage, *acpTurnNormalizer)
+	observeUpdate  func(standardACPConfig, Session, string, string, map[string]any)
 }
 
 type standardACPAdapter struct {
@@ -212,6 +219,15 @@ func (a *standardACPAdapter) Provider() string {
 		return ""
 	}
 	return a.config.provider
+}
+
+// UsesRootProviderTurnLifecycle keeps provider completion separate from the
+// canonical root turn. Standard ACP does not currently expose durable child
+// sessions, but it must still use the same daemon-owned settlement path as
+// every other provider so adding an ACP child-session strategy cannot create a
+// second completion model.
+func (*standardACPAdapter) UsesRootProviderTurnLifecycle() bool {
+	return true
 }
 
 func (a *standardACPAdapter) SetCommandSnapshotSink(sink CommandSnapshotSink) {

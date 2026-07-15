@@ -150,6 +150,75 @@ func TestControllerCodexStreamNeverIdlesMidTurn(t *testing.T) {
 	}
 }
 
+func TestControllerStandardACPWaitsForDaemonRootSettlement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		agentTitle string
+		provider   string
+		build      func(ProcessTransport) *standardACPAdapter
+	}{
+		{name: "cursor", agentTitle: "Cursor Agent", provider: ProviderCursor, build: func(transport ProcessTransport) *standardACPAdapter {
+			return newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+		}},
+		{name: "opencode", agentTitle: "OpenCode", provider: ProviderOpenCode, build: newOpenCodeTestAdapter},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			transport := newStandardACPTransport(tt.agentTitle, tt.name+"-root-settlement")
+			adapter := tt.build(transport)
+			controller := NewController([]Adapter{adapter}, nil)
+			started, err := controller.Start(context.Background(), StartInput{
+				RoomID: "room-1", Provider: tt.provider, CWD: "/workspace", Title: tt.agentTitle,
+			})
+			if err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			agentSessionID := started.Session.AgentSessionID
+			stream, unsubscribe, ok := controller.Subscribe("room-1", agentSessionID)
+			if !ok {
+				t.Fatal("Subscribe returned ok=false")
+			}
+			defer unsubscribe()
+
+			execResult, err := controller.Exec(context.Background(), ExecInput{
+				RoomID: "room-1", AgentSessionID: agentSessionID, Content: textPrompt("inspect the workspace"),
+			})
+			if err != nil {
+				t.Fatalf("Exec: %v", err)
+			}
+
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+			providerCompleted := false
+			for !providerCompleted {
+				select {
+				case event := <-stream:
+					patch, ok := event.Data.(agentsessionstore.WorkspaceAgentStatePatch)
+					providerCompleted = event.EventType == StreamEventStatePatch && ok &&
+						patch.RootProviderTurn != nil &&
+						patch.RootProviderTurn.Phase == agentsessionstore.RootProviderTurnPhaseCompleted
+				case <-deadline.C:
+					t.Fatal("stream never published root provider completion")
+				}
+			}
+			if !controller.HasActiveTurn("room-1", agentSessionID) {
+				t.Fatal("controller cleared canonical root before daemon settlement")
+			}
+
+			controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+				RoomID: "room-1", AgentSessionID: agentSessionID, TurnID: execResult.TurnID, Outcome: "completed",
+			})
+			if controller.HasActiveTurn("room-1", agentSessionID) {
+				t.Fatal("controller retained canonical root after daemon settlement")
+			}
+		})
+	}
+}
+
 // applyLifecycleSnapshotToPatch must be provider-agnostic: any provider whose
 // adapter stamps snapshots gets the copied patch, no codex special case.
 func TestApplyLifecycleSnapshotToPatchProviderAgnostic(t *testing.T) {

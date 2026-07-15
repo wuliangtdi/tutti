@@ -227,6 +227,63 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
+### Cursor or OpenCode turn settles before late ACP activity arrives
+
+- Symptom:
+  A Cursor or OpenCode turn appears complete, then a delayed tool or permission
+  event is projected onto the old turn; the composer may relock, persistence
+  may reject a settled-to-running transition, or a synthetic turn may appear.
+  A Cursor background Task may also appear launched successfully while its
+  detached child later requests permissions that never reach the UI.
+- Quick checks:
+  Correlate `session/prompt` response timing with later `session/update` or
+  `session/request_permission` messages. If the prompt response arrived first,
+  the late event no longer has an active canonical turn owner. Also verify the
+  terminal report is `root_provider_turn.completed`, not a direct canonical
+  `turn.completed` from the ACP adapter. For Cursor Task/subagent probes,
+  correlate `agent_session.cursor.task_tool_update` with
+  `agent_session.cursor.task_extension`; the latter records only redacted
+  identity, ordering, field-presence, and duration facts. A background Task
+  tool result with `isBackground=true` and a very short duration is a launch
+  acknowledgement, not child terminal evidence. Permission requests arriving
+  after the root prompt result confirm the child is still running out of scope.
+- Root cause:
+  Standard ACP has one active prompt handler and a session-level fallback
+  handler. Reusing a recent turn ID in the fallback path treats temporal
+  proximity as ownership. That can reopen a settled root or fabricate a turn,
+  and ordinary tool display fields do not supply the stable child identity and
+  terminal lifecycle required for a provider-native child session. Cursor's
+  background Task implementation records eventual completion in an internal
+  work registry, but Cursor ACP `2026.07.01-41b2de7` does not expose that
+  terminal to Tutti.
+- Fix:
+  Route every Standard ACP prompt terminal through the daemon-owned root
+  provider lifecycle. Drop turn-scoped tool/message updates outside the active
+  prompt call and reject out-of-band permission callbacks; never synthesize a
+  canonical turn. Keep Cursor/OpenCode root-only until their ACP transports
+  expose stable child, parent, and child-terminal facts. Cursor Agent
+  `2026.07.01-41b2de7` does not merge `--plugin-dir` hooks into ACP, so the
+  dormant `preToolUse` Task guard is deliberately not advertised or
+  materialized. Do not treat background Task as supported or blocked, do not
+  write hooks into user/project configuration, and do not settle a detached
+  child from a guessed timeout.
+- Validation:
+  Cover Cursor and OpenCode normal completion with
+  `root_provider_turn.started/completed` and no canonical terminal from the
+  adapter. Deliver a late tool update and late permission after prompt return
+  and verify neither creates a turn, interaction, or child session. Make a
+  `session/cancel` write fail and verify the error reaches the caller. Also
+  fail an automatic permission-response write and verify the adapter does not
+  report a false approval while the provider is still waiting. Verify the
+  dormant Cursor hook allows foreground Task inputs, rejects snake-case and
+  camel-case background flags, does not match flag-like text inside the Task
+  prompt, and fails closed for malformed input; separately verify the current
+  ACP plugin manifest does not advertise or materialize that hook.
+- References:
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [standard_acp_stream.go](../../../packages/agent/daemon/runtime/standard_acp_stream.go)
+  [provider-native subagents](../../specs/2026-07-15-provider-native-subagents.md)
+
 ### Codex goal stops after a turn while the goal remains active
 
 - Symptom:

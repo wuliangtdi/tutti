@@ -2,9 +2,10 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
 func TestClaudeModelCatalogDebugPayloadDropsSensitiveDiagnostics(t *testing.T) {
@@ -73,19 +74,40 @@ func TestLiveModelOptionsFromRunningSessionFiltersProvider(t *testing.T) {
 	}
 }
 
-func TestDiscoverLiveComposerModelsUncachedSkipsProbeForCursor(t *testing.T) {
-	t.Parallel()
+func TestGetComposerOptionsStartsHiddenProbeBeforeFirstCursorSession(t *testing.T) {
+	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 	runtime := newFakeRuntime()
-	service := newIsolatedAgentService(runtime)
-
-	_, err := service.discoverLiveComposerModelsUncached(
-		context.Background(), "cursor", "ws-1", "", ComposerSettings{},
-	)
-	if !errors.Is(err, errLiveModelDiscoveryAlreadyAttempted) {
-		t.Fatalf("err = %v, want probe skipped for cursor", err)
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Provider != "cursor" {
+			t.Fatalf("start provider = %q, want cursor", input.Provider)
+		}
+		if input.Visible == nil || *input.Visible {
+			t.Fatalf("visible = %#v, want hidden discovery session", input.Visible)
+		}
+		if input.RuntimeContext["hiddenLiveModelDiscovery"] != true {
+			t.Fatalf("runtime context = %#v, want hidden discovery marker", input.RuntimeContext)
+		}
+		session.RuntimeContext = cursorModelRuntimeContext()
+		return session
 	}
-	if len(runtime.startCalls) != 0 {
-		t.Fatalf("start calls = %#v, cursor discovery must never spawn a hidden session", runtime.startCalls)
+	service := newIsolatedAgentService(runtime)
+	service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
+	service.LiveModelDiscoveryDeleteDelay = time.Hour
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		AgentTargetID: agenttarget.IDLocalCursor,
+		Provider:      "cursor",
+		WorkspaceID:   "ws-1",
+		Cwd:           "/repo",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions: %v", err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %#v, want one hidden cursor discovery session", runtime.startCalls)
+	}
+	if len(options.ModelConfig.Options) != 3 || options.ModelConfig.Options[0].Value != "default[]" {
+		t.Fatalf("model config = %#v, want live cursor model catalog", options.ModelConfig)
 	}
 }
 
@@ -125,8 +147,7 @@ func TestGetComposerOptionsMergesLiveCursorModels(t *testing.T) {
 
 // After a daemon restart the runtime session and the in-memory cache are both
 // gone; the model list a past cursor conversation persisted in its runtime
-// context must restore the picker instead of collapsing it to the single
-// selected model (Cursor has no probe session to re-discover with).
+// context must restore the picker without starting an unnecessary probe.
 func TestGetComposerOptionsRestoresCursorModelsFromPersistedSessions(t *testing.T) {
 	t.Parallel()
 	service := newIsolatedAgentService(newFakeRuntime())

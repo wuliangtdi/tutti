@@ -195,7 +195,9 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 	}
 	if descriptor.Runtime.Kind != RuntimeKindClaudeSDK ||
 		descriptor.Status.Kind != StatusKindClaudeCLI ||
-		descriptor.ComposerProfile.LiveModelDiscovery.Kind != LiveModelDiscoveryKindClaudeSDK {
+		descriptor.ComposerProfile.LiveModelDiscovery.Kind != LiveModelDiscoveryKindClaudeSDK ||
+		!descriptor.ComposerProfile.LiveModelDiscovery.HiddenProbe ||
+		!descriptor.ComposerProfile.LiveModelDiscovery.AccountScoped {
 		t.Fatalf("implementation kinds = %#v", descriptor)
 	}
 	if descriptor.Target.ID != ClaudeCodeTargetID ||
