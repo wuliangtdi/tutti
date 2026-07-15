@@ -410,6 +410,8 @@ export function StandaloneAgentToolSidebar({
             <div
               className={cn(
                 "absolute inset-y-0 right-0 flex flex-col bg-[var(--background-session-sidepanel)]",
+                isSidebarOpen &&
+                  "motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-[160ms] motion-safe:ease-out motion-reduce:animate-none",
                 !isSidebarOpen && "invisible"
               )}
               style={

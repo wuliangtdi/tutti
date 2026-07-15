@@ -169,7 +169,7 @@ test("standalone Agent unified panel button uses chrome and active variants", ()
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
-    /activePanel === null && isOpen && "ml-1\.25"/
+    /activePanel === null && isOpen && "ml-auto"/
   );
 });
 
@@ -204,6 +204,14 @@ test("standalone Agent quick actions open the apps and messages panel tabs", () 
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
     /quick-action="messages"[\s\S]*?ReminderBadge count=\{reminders\.messages\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /ToolbarQuickActionTooltip label=\{copy\.tasks\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.apps\}[\s\S]*?ToolbarQuickActionTooltip label=\{copy\.messages\}/
+  );
+  assert.match(
+    standaloneAgentToolSidebarToolbarSource,
+    /<TooltipContent side="bottom">\{label\}<\/TooltipContent>/
   );
   assert.match(
     standaloneAgentToolSidebarToolbarSource,
@@ -371,6 +379,10 @@ test("standalone Agent right sidebar avoids layout animation before mounting hea
   assert.doesNotMatch(
     standaloneAgentToolSidebarSource,
     /transition-\[width\]|will-change-\[width\]/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /isSidebarOpen &&\s+"motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-\[160ms\] motion-safe:ease-out motion-reduce:animate-none"/
   );
   assert.match(
     standaloneAgentToolSidebarSource,

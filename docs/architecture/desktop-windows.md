@@ -144,6 +144,8 @@ AgentGUI header close, minimize, and maximize controls call typed host window
 IPC instead of relying on native traffic lights.
 The Agent-only shell places Browser and other desktop-owned auxiliary tools in
 a right sidebar, while Terminal opens in a bottom tray below the conversation.
+When the sidebar is closed, its Apps and Message Center quick actions expose
+localized hover tooltips alongside the Tasks action.
 Opening a right-sidebar tool expands the native content width first so the
 sidebar is appended beside the existing message flow. Native right-edge growth
 continues to grow the sidebar; when the screen cannot provide enough outward
@@ -154,7 +156,10 @@ restores the pre-panel native width. This sizing remains renderer/main window
 presentation state and never enters AgentGUI or workbench snapshots.
 An Agent-only right sidebar with no mounted tool uses a compact picker width at
 60% of the Files panel default. Selecting a tool switches the reserved layout
-and requested native width to that tool's normal default.
+and requested native width to that tool's normal default. While the picker is
+visible, its sole header toggle stays right-anchored to the same window edge
+as the collapsed sidebar control, avoiding a horizontal jump when the panel
+opens.
 The renderer commits the panel shell's final layout width before issuing the
 native resize IPC on the next frame, so host latency cannot block visual
 feedback. The shell must not animate layout width; any optional entrance stays

@@ -84,7 +84,7 @@ export function StandaloneAgentToolSidebarToolbar({
         aria-label={copy.tool}
         className={cn(
           "nodrag pointer-events-auto flex h-[var(--agent-gui-workbench-header-height,44px)] items-center gap-1 [-webkit-app-region:no-drag]",
-          activePanel === null && isOpen && "ml-1.25"
+          activePanel === null && isOpen && "ml-auto"
         )}
         data-standalone-agent-tool-sidebar-toolbar="true"
         onDoubleClick={(event) => event.stopPropagation()}
@@ -161,55 +161,61 @@ export function StandaloneAgentToolSidebarToolbar({
         ) : null}
         {activePanel === null && !isOpen ? (
           <>
-            <Button
-              aria-label={copy.tasks}
-              aria-pressed={activePanel === "tasks"}
-              className="relative text-[var(--text-secondary)]"
-              data-standalone-agent-tool-sidebar-quick-action="tasks"
-              size="icon-sm"
-              type="button"
-              variant="chrome"
-              onClick={() => onOpenPanel("tasks")}
-            >
-              <ToolSidebarPanelIcon
-                aria-hidden
-                className="size-4"
-                panel="tasks"
-              />
-            </Button>
-            <Button
-              aria-label={copy.apps}
-              aria-pressed={activePanel === "apps"}
-              className="relative text-[var(--text-secondary)]"
-              data-standalone-agent-tool-sidebar-quick-action="apps"
-              size="icon-sm"
-              type="button"
-              variant="chrome"
-              onClick={() => onOpenPanel("apps")}
-            >
-              <ToolSidebarPanelIcon
-                aria-hidden
-                className="size-4"
-                panel="apps"
-              />
-            </Button>
-            <Button
-              aria-label={copy.messages}
-              aria-pressed={activePanel === "messages"}
-              className="relative text-[var(--text-secondary)]"
-              data-standalone-agent-tool-sidebar-quick-action="messages"
-              size="icon-sm"
-              type="button"
-              variant="chrome"
-              onClick={() => onOpenPanel("messages")}
-            >
-              <ToolSidebarPanelIcon
-                aria-hidden
-                className="size-4"
-                panel="messages"
-              />
-              <ReminderBadge count={reminders.messages} />
-            </Button>
+            <ToolbarQuickActionTooltip label={copy.tasks}>
+              <Button
+                aria-label={copy.tasks}
+                aria-pressed={activePanel === "tasks"}
+                className="relative text-[var(--text-secondary)]"
+                data-standalone-agent-tool-sidebar-quick-action="tasks"
+                size="icon-sm"
+                type="button"
+                variant="chrome"
+                onClick={() => onOpenPanel("tasks")}
+              >
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="tasks"
+                />
+              </Button>
+            </ToolbarQuickActionTooltip>
+            <ToolbarQuickActionTooltip label={copy.apps}>
+              <Button
+                aria-label={copy.apps}
+                aria-pressed={activePanel === "apps"}
+                className="relative text-[var(--text-secondary)]"
+                data-standalone-agent-tool-sidebar-quick-action="apps"
+                size="icon-sm"
+                type="button"
+                variant="chrome"
+                onClick={() => onOpenPanel("apps")}
+              >
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="apps"
+                />
+              </Button>
+            </ToolbarQuickActionTooltip>
+            <ToolbarQuickActionTooltip label={copy.messages}>
+              <Button
+                aria-label={copy.messages}
+                aria-pressed={activePanel === "messages"}
+                className="relative text-[var(--text-secondary)]"
+                data-standalone-agent-tool-sidebar-quick-action="messages"
+                size="icon-sm"
+                type="button"
+                variant="chrome"
+                onClick={() => onOpenPanel("messages")}
+              >
+                <ToolSidebarPanelIcon
+                  aria-hidden
+                  className="size-4"
+                  panel="messages"
+                />
+                <ReminderBadge count={reminders.messages} />
+              </Button>
+            </ToolbarQuickActionTooltip>
           </>
         ) : null}
         {activePanel ? (
@@ -248,6 +254,21 @@ export function StandaloneAgentToolSidebarToolbar({
         </Tooltip>
       </nav>
     </TooltipProvider>
+  );
+}
+
+function ToolbarQuickActionTooltip({
+  children,
+  label
+}: {
+  children: ReactNode;
+  label: string;
+}): ReactNode {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
