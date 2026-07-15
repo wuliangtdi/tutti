@@ -879,8 +879,8 @@ export const zhCN = {
         unsupportedFallback: "暂时不支持预览，使用本地软件打开。"
       },
       filesLaunch: {
-        openFailedDescription: "这个会话原本的工作目录在本机上已经找不到了。",
-        openFailedTitle: "无法打开文件夹"
+        openFailedDescription: "无法在对应地址找到该文件或文件夹",
+        openFailedTitle: "文件或文件夹已不存在"
       },
       agentProviders: {
         checking: "正在检测本地 CLI 状态...",

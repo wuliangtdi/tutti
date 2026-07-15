@@ -788,13 +788,12 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
     ["local:codex", "local:claude-code"]
   );
   assert.equal(provider.getItemIconUrl?.(items[0]), tuttiAgentAssetUrls.codex);
+  assert.equal(provider.getItemSubtitle, undefined);
   assert.deepEqual(provider.toInsertResult(items[0]), {
     kind: "mention",
     mention: {
       entityId: "local:codex",
       label: "Codex",
-      // description/subtitle are blanked when identical to the label (avoids
-      // rendering "Codex Codex"), so the compact presentation omits them.
       presentation: {
         agentProviderId: "codex",
         iconUrl: tuttiAgentAssetUrls.codex

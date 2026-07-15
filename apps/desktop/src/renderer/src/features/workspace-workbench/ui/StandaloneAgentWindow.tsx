@@ -75,6 +75,7 @@ import {
   useStandaloneAgentWindowHeaderIdentity
 } from "./StandaloneAgentWindowHeader.tsx";
 import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowContentReady.tsx";
+import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -293,20 +294,33 @@ export function StandaloneAgentWindow({
   const [fileOpenRequest, setFileOpenRequest] =
     useState<StandaloneAgentFileOpenRequest | null>(null);
   const fileOpenRequestSequenceRef = useRef(0);
-  const openFileInSidebar = useCallback((file: string): boolean => {
-    const normalizedPath = file.trim();
-    if (!normalizedPath) {
-      return false;
-    }
-    setFileOpenRequest({
-      path: normalizedPath,
-      requestID: `standalone-agent-file-${++fileOpenRequestSequenceRef.current}`
-    });
-    return true;
-  }, []);
+  const openFileInSidebar = useCallback(
+    async (file: string, validateExists = false): Promise<boolean> => {
+      const normalizedPath = file.trim();
+      if (!normalizedPath) {
+        return false;
+      }
+      if (
+        validateExists &&
+        !(await workspaceFileManagerService.entryExists({
+          path: normalizedPath,
+          workspaceID: workspaceId
+        }))
+      ) {
+        showWorkspaceFileMissingToast();
+        return false;
+      }
+      setFileOpenRequest({
+        path: normalizedPath,
+        requestID: `standalone-agent-file-${++fileOpenRequestSequenceRef.current}`
+      });
+      return true;
+    },
+    [workspaceFileManagerService, workspaceId]
+  );
   const openWorkspaceAppExternalFile = useCallback(
     async (input: TuttiExternalFileOpenInput) => {
-      if (!openFileInSidebar(input.path)) {
+      if (!(await openFileInSidebar(input.path))) {
         throw new Error("Workspace files could not be opened.");
       }
     },

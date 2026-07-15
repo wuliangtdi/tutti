@@ -101,7 +101,11 @@ test("standalone Agent opens files like Finder and routes links into the right s
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(
     standaloneLaunchRoutingSource,
-    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path \}\) => openFileInSidebar\(path\)/
+    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path, validateExists \}\) =>[\s\S]*?openFileInSidebar\(path, validateExists\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /validateExists &&[\s\S]*?workspaceFileManagerService\.entryExists\([\s\S]*?showWorkspaceFileMissingToast\(\)/
   );
   assert.match(
     standaloneWindowSource,

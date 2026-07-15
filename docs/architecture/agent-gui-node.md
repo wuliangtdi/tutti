@@ -555,6 +555,12 @@ they cannot collide with Files, Tools, Apps, or Message Center launch buttons.
 The outer right-sidebar container owns the shared panel stacking level for its
 separator and panel-local popovers, while the panel body remains a normal
 sibling of the message flow rather than relying on stacking to cover it.
+Portaled conversation modals, including the image preview, must use the UI
+System dialog stacking token above that panel layer so their backdrop covers
+both the standalone header and right-side tool chrome. While such a modal is
+open, Escape handling belongs at the window capture boundary because focus may
+remain in host chrome outside the portaled dialog; remove that listener when the
+modal closes or unmounts.
 The Files panel uses the same roomy adjacent default width as Browser and Apps,
 then keeps its wider resize range for the embedded location, list, and detail
 columns. On the minimum native window width, preserving the standalone
@@ -2911,7 +2917,10 @@ absolute paths. Relative markdown links remain display text unless another
 structured reference contract marks them as a workspace reference. Host adapters
 that open workspace file nodes should validate explicit agent-command file
 targets before launching the files surface, so a speculative or stale agent
-path does not open a misleading workbench node.
+path does not open a misleading workbench node. Both workspace and standalone
+Agent window host routes must honor that validation intent and surface the same
+localized missing-target feedback instead of opening an empty files surface or
+silently doing nothing.
 
 Provider host-app-context prompts should mirror that contract: when agents
 reference code or workspace files in responses, instruct them to emit Markdown

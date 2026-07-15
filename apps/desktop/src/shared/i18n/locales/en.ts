@@ -934,8 +934,8 @@ export const en = {
       },
       filesLaunch: {
         openFailedDescription:
-          "This session's original working directory could no longer be found on this computer.",
-        openFailedTitle: "Couldn't open folder"
+          "The referenced file or folder could not be found at its original location.",
+        openFailedTitle: "File or folder no longer exists"
       },
       agentProviders: {
         checking: "Checking local CLI status...",

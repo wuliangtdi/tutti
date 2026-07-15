@@ -1876,6 +1876,17 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("keeps the image preview modal above standalone Agent window chrome", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.tsh-zoom-dialog\[data-rmiz-modal\]\s*{[^}]*z-index:\s*var\(--z-dialog\);/s
+    );
+    expect(css).toMatch(
+      /\.workbench-window:has\(\s*\.agent-gui-workbench-header\[data-agent-gui-standalone-window-header="true"\]\s*\)\s*\.workbench-window__header\s*{[^}]*z-index:\s*calc\(var\(--z-panel\) \+ 1\);/s
+    );
+  });
+
   it("keeps a lone provider settings footer clear of the window edge", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
