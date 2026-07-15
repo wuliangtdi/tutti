@@ -229,6 +229,12 @@
     color 200ms ease;
 }
 
+.rich-text-at-mention-palette__row-button:has(
+  .rich-text-at-mention-row__open-references
+) {
+  padding-right: 4px;
+}
+
 .rich-text-at-mention-palette__row-button > svg,
 .rich-text-at-mention-palette__row-button svg {
   flex-shrink: 0;
