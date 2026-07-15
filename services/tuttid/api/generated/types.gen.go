@@ -430,51 +430,30 @@ func (e AgentSlashCommandEffect) Valid() bool {
 	}
 }
 
-// Defines values for AgentTargetLaunchRefType.
+// Defines values for AgentTargetBuiltinLocalLaunchRefType.
 const (
-	LocalCli AgentTargetLaunchRefType = "local_cli"
+	AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal AgentTargetBuiltinLocalLaunchRefType = "builtin_local"
 )
 
-// Valid indicates whether the value is a known member of the AgentTargetLaunchRefType enum.
-func (e AgentTargetLaunchRefType) Valid() bool {
+// Valid indicates whether the value is a known member of the AgentTargetBuiltinLocalLaunchRefType enum.
+func (e AgentTargetBuiltinLocalLaunchRefType) Valid() bool {
 	switch e {
-	case LocalCli:
+	case AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for AgentTargetProvider.
+// Defines values for AgentTargetExtensionLaunchRefType.
 const (
-	AgentTargetProviderClaudeCode AgentTargetProvider = "claude-code"
-	AgentTargetProviderCodex      AgentTargetProvider = "codex"
-	AgentTargetProviderCursor     AgentTargetProvider = "cursor"
-	AgentTargetProviderHermes     AgentTargetProvider = "hermes"
-	AgentTargetProviderNexight    AgentTargetProvider = "nexight"
-	AgentTargetProviderOpenclaw   AgentTargetProvider = "openclaw"
-	AgentTargetProviderOpencode   AgentTargetProvider = "opencode"
-	AgentTargetProviderTuttiAgent AgentTargetProvider = "tutti-agent"
+	AgentTargetExtensionLaunchRefTypeAgentExtension AgentTargetExtensionLaunchRefType = "agent_extension"
 )
 
-// Valid indicates whether the value is a known member of the AgentTargetProvider enum.
-func (e AgentTargetProvider) Valid() bool {
+// Valid indicates whether the value is a known member of the AgentTargetExtensionLaunchRefType enum.
+func (e AgentTargetExtensionLaunchRefType) Valid() bool {
 	switch e {
-	case AgentTargetProviderClaudeCode:
-		return true
-	case AgentTargetProviderCodex:
-		return true
-	case AgentTargetProviderCursor:
-		return true
-	case AgentTargetProviderHermes:
-		return true
-	case AgentTargetProviderNexight:
-		return true
-	case AgentTargetProviderOpenclaw:
-		return true
-	case AgentTargetProviderOpencode:
-		return true
-	case AgentTargetProviderTuttiAgent:
+	case AgentTargetExtensionLaunchRefTypeAgentExtension:
 		return true
 	default:
 		return false
@@ -1333,42 +1312,6 @@ func (e WorkspaceAgentPlanDecisionOperationStatus) Valid() bool {
 	case WorkspaceAgentPlanDecisionOperationStatusLeased:
 		return true
 	case WorkspaceAgentPlanDecisionOperationStatusPrepared:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WorkspaceAgentProvider.
-const (
-	ClaudeCode WorkspaceAgentProvider = "claude-code"
-	Codex      WorkspaceAgentProvider = "codex"
-	Cursor     WorkspaceAgentProvider = "cursor"
-	Hermes     WorkspaceAgentProvider = "hermes"
-	Nexight    WorkspaceAgentProvider = "nexight"
-	Openclaw   WorkspaceAgentProvider = "openclaw"
-	Opencode   WorkspaceAgentProvider = "opencode"
-	TuttiAgent WorkspaceAgentProvider = "tutti-agent"
-)
-
-// Valid indicates whether the value is a known member of the WorkspaceAgentProvider enum.
-func (e WorkspaceAgentProvider) Valid() bool {
-	switch e {
-	case ClaudeCode:
-		return true
-	case Codex:
-		return true
-	case Cursor:
-		return true
-	case Hermes:
-		return true
-	case Nexight:
-		return true
-	case Openclaw:
-		return true
-	case Opencode:
-		return true
-	case TuttiAgent:
 		return true
 	default:
 		return false
@@ -2457,29 +2400,46 @@ type AgentSubmitDiagnostics struct {
 
 // AgentTarget defines model for AgentTarget.
 type AgentTarget struct {
-	CreatedAtUnixMs int64                `json:"createdAtUnixMs"`
-	Enabled         bool                 `json:"enabled"`
-	IconKey         *string              `json:"iconKey,omitempty"`
-	Id              string               `json:"id"`
-	LaunchRef       AgentTargetLaunchRef `json:"launchRef"`
-	Name            string               `json:"name"`
-	Provider        AgentTargetProvider  `json:"provider"`
-	SortOrder       int                  `json:"sortOrder"`
-	Source          AgentTargetSource    `json:"source"`
-	UpdatedAtUnixMs int64                `json:"updatedAtUnixMs"`
+	Availability    *AgentProviderAvailability `json:"availability,omitempty"`
+	CreatedAtUnixMs int64                      `json:"createdAtUnixMs"`
+	Enabled         bool                       `json:"enabled"`
+	HeroImageUrl    *string                    `json:"heroImageUrl,omitempty"`
+	IconKey         *string                    `json:"iconKey,omitempty"`
+	IconUrl         *string                    `json:"iconUrl,omitempty"`
+	Id              string                     `json:"id"`
+	LaunchRef       AgentTargetLaunchRef       `json:"launchRef"`
+	Name            string                     `json:"name"`
+	Provider        AgentTargetProvider        `json:"provider"`
+	SortOrder       int                        `json:"sortOrder"`
+	Source          AgentTargetSource          `json:"source"`
+	UpdatedAtUnixMs int64                      `json:"updatedAtUnixMs"`
 }
+
+// AgentTargetBuiltinLocalLaunchRef defines model for AgentTargetBuiltinLocalLaunchRef.
+type AgentTargetBuiltinLocalLaunchRef struct {
+	Provider AgentTargetProvider                  `json:"provider"`
+	Type     AgentTargetBuiltinLocalLaunchRefType `json:"type"`
+}
+
+// AgentTargetBuiltinLocalLaunchRefType defines model for AgentTargetBuiltinLocalLaunchRef.Type.
+type AgentTargetBuiltinLocalLaunchRefType string
+
+// AgentTargetExtensionLaunchRef defines model for AgentTargetExtensionLaunchRef.
+type AgentTargetExtensionLaunchRef struct {
+	ExtensionInstallationId string                            `json:"extensionInstallationId"`
+	Type                    AgentTargetExtensionLaunchRefType `json:"type"`
+}
+
+// AgentTargetExtensionLaunchRefType defines model for AgentTargetExtensionLaunchRef.Type.
+type AgentTargetExtensionLaunchRefType string
 
 // AgentTargetLaunchRef defines model for AgentTargetLaunchRef.
 type AgentTargetLaunchRef struct {
-	Provider AgentTargetProvider      `json:"provider"`
-	Type     AgentTargetLaunchRefType `json:"type"`
+	union json.RawMessage
 }
 
-// AgentTargetLaunchRefType defines model for AgentTargetLaunchRef.Type.
-type AgentTargetLaunchRefType string
-
 // AgentTargetProvider defines model for AgentTargetProvider.
-type AgentTargetProvider string
+type AgentTargetProvider = string
 
 // AgentTargetSource defines model for AgentTargetSource.
 type AgentTargetSource string
@@ -3904,7 +3864,7 @@ type WorkspaceAgentPlanDecisionResponse struct {
 }
 
 // WorkspaceAgentProvider defines model for WorkspaceAgentProvider.
-type WorkspaceAgentProvider string
+type WorkspaceAgentProvider = string
 
 // WorkspaceAgentSession defines model for WorkspaceAgentSession.
 type WorkspaceAgentSession struct {
@@ -4018,6 +3978,10 @@ type WorkspaceAgentSessionGoalControlResponse struct {
 
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {
+	HasMore bool `json:"hasMore"`
+
+	// NextCursor Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
+	NextCursor  *string                 `json:"nextCursor,omitempty"`
 	Sessions    []WorkspaceAgentSession `json:"sessions"`
 	WorkspaceId string                  `json:"workspaceId"`
 }
@@ -4057,6 +4021,9 @@ type WorkspaceAgentSessionPage struct {
 	// NextCursor Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
 	NextCursor *string                 `json:"nextCursor,omitempty"`
 	Sessions   []WorkspaceAgentSession `json:"sessions"`
+
+	// TotalCount Total visible sessions in this page scope before cursor pagination.
+	TotalCount int `json:"totalCount"`
 }
 
 // WorkspaceAgentSessionPageResponse defines model for WorkspaceAgentSessionPageResponse.
@@ -4075,11 +4042,14 @@ type WorkspaceAgentSessionSection struct {
 	HasMore bool                             `json:"hasMore"`
 	Kind    WorkspaceAgentSessionSectionKind `json:"kind"`
 
-	// NextCursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
-	NextCursor  *string                 `json:"nextCursor,omitempty"`
-	SectionKey  string                  `json:"sectionKey"`
-	Sessions    []WorkspaceAgentSession `json:"sessions"`
-	UserProject *UserProject            `json:"userProject,omitempty"`
+	// NextCursor Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
+	NextCursor *string                 `json:"nextCursor,omitempty"`
+	SectionKey string                  `json:"sectionKey"`
+	Sessions   []WorkspaceAgentSession `json:"sessions"`
+
+	// TotalCount Total visible sessions in this section before cursor pagination.
+	TotalCount  int          `json:"totalCount"`
+	UserProject *UserProject `json:"userProject,omitempty"`
 }
 
 // WorkspaceAgentSessionSectionDeletionCandidatesResponse defines model for WorkspaceAgentSessionSectionDeletionCandidatesResponse.
@@ -4817,7 +4787,7 @@ type ListWorkspaceAgentSessionSectionDeletionCandidatesParams struct {
 type ListWorkspaceAgentSessionSectionPageParams struct {
 	SectionKey string `form:"sectionKey" json:"sectionKey"`
 
-	// Cursor Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+	// Cursor Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -4837,7 +4807,11 @@ type ListWorkspaceAgentPinnedSessionPageParams struct {
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
 type ListWorkspaceAgentSessionsParams struct {
+	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+
+	// SearchQuery Case-insensitive, whitespace-tokenized search over the session title only.
 	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+	Cursor      *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit       *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
@@ -5122,6 +5096,95 @@ type ResizeWorkspaceTerminalJSONRequestBody = ResizeWorkspaceTerminalRequest
 
 // PutWorkspaceWorkbenchJSONRequestBody defines body for PutWorkspaceWorkbench for application/json ContentType.
 type PutWorkspaceWorkbenchJSONRequestBody = PutWorkspaceWorkbenchRequest
+
+// AsAgentTargetBuiltinLocalLaunchRef returns the union data inside the AgentTargetLaunchRef as a AgentTargetBuiltinLocalLaunchRef
+func (t AgentTargetLaunchRef) AsAgentTargetBuiltinLocalLaunchRef() (AgentTargetBuiltinLocalLaunchRef, error) {
+	var body AgentTargetBuiltinLocalLaunchRef
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentTargetBuiltinLocalLaunchRef overwrites any union data inside the AgentTargetLaunchRef as the provided AgentTargetBuiltinLocalLaunchRef
+func (t *AgentTargetLaunchRef) FromAgentTargetBuiltinLocalLaunchRef(v AgentTargetBuiltinLocalLaunchRef) error {
+	v.Type = "builtin_local"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentTargetBuiltinLocalLaunchRef performs a merge with any union data inside the AgentTargetLaunchRef, using the provided AgentTargetBuiltinLocalLaunchRef
+func (t *AgentTargetLaunchRef) MergeAgentTargetBuiltinLocalLaunchRef(v AgentTargetBuiltinLocalLaunchRef) error {
+	v.Type = "builtin_local"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentTargetExtensionLaunchRef returns the union data inside the AgentTargetLaunchRef as a AgentTargetExtensionLaunchRef
+func (t AgentTargetLaunchRef) AsAgentTargetExtensionLaunchRef() (AgentTargetExtensionLaunchRef, error) {
+	var body AgentTargetExtensionLaunchRef
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentTargetExtensionLaunchRef overwrites any union data inside the AgentTargetLaunchRef as the provided AgentTargetExtensionLaunchRef
+func (t *AgentTargetLaunchRef) FromAgentTargetExtensionLaunchRef(v AgentTargetExtensionLaunchRef) error {
+	v.Type = "agent_extension"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentTargetExtensionLaunchRef performs a merge with any union data inside the AgentTargetLaunchRef, using the provided AgentTargetExtensionLaunchRef
+func (t *AgentTargetLaunchRef) MergeAgentTargetExtensionLaunchRef(v AgentTargetExtensionLaunchRef) error {
+	v.Type = "agent_extension"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AgentTargetLaunchRef) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t AgentTargetLaunchRef) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "agent_extension":
+		return t.AsAgentTargetExtensionLaunchRef()
+	case "builtin_local":
+		return t.AsAgentTargetBuiltinLocalLaunchRef()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t AgentTargetLaunchRef) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AgentTargetLaunchRef) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsAppFileReference returns the union data inside the AppReference as a AppFileReference
 func (t AppReference) AsAppFileReference() (AppFileReference, error) {

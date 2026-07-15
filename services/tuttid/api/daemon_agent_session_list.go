@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -26,6 +27,12 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		}, nil
 	}
 	input := agentservice.ListSessionsInput{}
+	if request.Params.AgentTargetId != nil {
+		input.AgentTargetID = strings.TrimSpace(*request.Params.AgentTargetId)
+	}
+	if request.Params.Cursor != nil {
+		input.Cursor = strings.TrimSpace(*request.Params.Cursor)
+	}
 	if request.Params.SearchQuery != nil {
 		input.SearchQuery = strings.TrimSpace(*request.Params.SearchQuery)
 	}
@@ -35,14 +42,25 @@ func (api DaemonAPI) ListWorkspaceAgentSessions(ctx context.Context, request tut
 		}
 		input.Limit = int(*request.Params.Limit)
 	}
-	sessions, err := api.AgentSessionService.ListFiltered(ctx, string(request.WorkspaceID), input)
+	workspaceID := string(request.WorkspaceID)
+	page, err := api.AgentSessionService.ListPage(ctx, workspaceID, input)
 	if err != nil {
 		return writeListWorkspaceAgentSessionsError(err), nil
 	}
-	return tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
-		Sessions:    generatedAgentSessions(sessions),
-		WorkspaceId: string(request.WorkspaceID),
-	}, nil
+	slog.Info("workspace agent sessions list completed",
+		"event", "workspace.agent_session.api.list_completed",
+		"workspace_id", workspaceID,
+		"session_count", len(page.Sessions),
+	)
+	response := tuttigenerated.ListWorkspaceAgentSessions200JSONResponse{
+		HasMore:     page.HasMore,
+		Sessions:    generatedAgentSessions(page.Sessions),
+		WorkspaceId: workspaceID,
+	}
+	if page.NextCursor != "" {
+		response.NextCursor = &page.NextCursor
+	}
+	return response, nil
 }
 
 func (api DaemonAPI) ListWorkspaceAgentSessionSections(ctx context.Context, request tuttigenerated.ListWorkspaceAgentSessionSectionsRequestObject) (tuttigenerated.ListWorkspaceAgentSessionSectionsResponseObject, error) {

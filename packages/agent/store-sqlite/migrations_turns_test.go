@@ -81,19 +81,39 @@ func TestWorkspaceAgentTurnsBackfillPreservesMessagesAndIsRerunSafe(t *testing.T
 	}
 
 	reportTestMessage(t, store, "session-done", "msg-1", "turn-1", 110)
+	reportTestMessage(t, store, "session-done", "msg-1b", "turn-1", 115)
 	reportTestMessage(t, store, "session-done", "msg-2", "turn-2", 120)
 	// Turnless message: stays session-level (turn_id NULL) and must never
 	// gain a fabricated turn from the backfill.
 	reportTestMessage(t, store, "session-done", "msg-3", "", 130)
 	reportTestMessage(t, store, "session-failed", "msg-1", "turn-b1", 110)
 	reportTestMessage(t, store, "session-failed", "msg-2", "turn-b2", 120)
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:      "ws-1",
+		AgentSessionID:   "session-deleted",
+		Origin:           "runtime",
+		Provider:         "codex",
+		Status:           "completed",
+		OccurredAtUnixMS: 100,
+	}); err != nil {
+		t.Fatalf("ReportSessionState(session-deleted) error = %v", err)
+	}
+	reportTestMessage(t, store, "session-deleted", "msg-deleted", "turn-deleted", 125)
+	// Preserve the historical turn id while marking both legacy rows deleted.
+	// This is the pre-turn-schema shape that the migration must ignore.
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions SET deleted_at_unix_ms = 130 WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-deleted';
+UPDATE workspace_agent_messages SET deleted_at_unix_ms = 130 WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-deleted';
+`); err != nil {
+		t.Fatalf("mark legacy session deleted: %v", err)
+	}
 
 	messagesDoneBefore := snapshotSessionMessages(t, store, "ws-1", "session-done")
 	messagesFailedBefore := snapshotSessionMessages(t, store, "ws-1", "session-failed")
 
 	// Simulate a legacy database that has messages but predates the turns
 	// migration, then re-run Migrate so the backfill executes against them.
-	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id = ?`, schemaMigrationWorkspaceAgentActivityTurnsV1); err != nil {
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM `+schemaMigrationsTable+` WHERE id IN (?, ?)`, schemaMigrationWorkspaceAgentActivityTurnsV1, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1); err != nil {
 		t.Fatalf("reset turns migration ledger: %v", err)
 	}
 	if _, err := store.db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
@@ -113,6 +133,9 @@ func TestWorkspaceAgentTurnsBackfillPreservesMessagesAndIsRerunSafe(t *testing.T
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate(backfill) error = %v", err)
 	}
+	if deleted, err := store.SessionDeleted(ctx, "ws-1", "session-deleted"); err != nil || !deleted {
+		t.Fatalf("SessionDeleted(session-deleted) deleted=%v error=%v", deleted, err)
+	}
 
 	doneTurns, err := store.ListSessionTurns(ctx, "ws-1", "session-done")
 	if err != nil {
@@ -125,6 +148,43 @@ func TestWorkspaceAgentTurnsBackfillPreservesMessagesAndIsRerunSafe(t *testing.T
 		if turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCompleted || !turn.Backfilled {
 			t.Fatalf("backfilled turn = %#v, want settled/completed/backfilled", turn)
 		}
+	}
+	turnOne, ok, err := store.GetTurn(ctx, "ws-1", "session-done", "turn-1")
+	if err != nil || !ok {
+		t.Fatalf("GetTurn(session-done/turn-1) ok=%v error=%v", ok, err)
+	}
+	if turnOne.StartedAtUnixMS != 110 || turnOne.SettledAtUnixMS != 115 ||
+		turnOne.CreatedAtUnixMS != 110 || turnOne.UpdatedAtUnixMS != 115 {
+		t.Fatalf("backfilled turn timestamps = %#v, want message-derived 110..115", turnOne)
+	}
+	deletedTurns, err := store.ListSessionTurns(ctx, "ws-1", "session-deleted")
+	if err != nil {
+		t.Fatalf("ListSessionTurns(session-deleted) error = %v", err)
+	}
+	if len(deletedTurns) != 0 {
+		t.Fatalf("deleted session turns = %#v, want none", deletedTurns)
+	}
+	var deletedMessageTurnID *string
+	if err := store.db.QueryRowContext(ctx, `
+SELECT turn_id
+FROM workspace_agent_messages
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-deleted' AND message_id = 'msg-deleted'
+`).Scan(&deletedMessageTurnID); err != nil {
+		t.Fatalf("read deleted message turn id: %v", err)
+	}
+	if deletedMessageTurnID != nil {
+		t.Fatalf("deleted message turn id = %q, want NULL", *deletedMessageTurnID)
+	}
+	var foreignKeyViolationCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&foreignKeyViolationCount); err != nil {
+		t.Fatalf("check foreign keys: %v", err)
+	}
+	if foreignKeyViolationCount != 0 {
+		t.Fatalf("foreign key violations = %d, want 0", foreignKeyViolationCount)
+	}
+	var latestTurnIndexCount int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_workspace_agent_turns_session_latest'`).Scan(&latestTurnIndexCount); err != nil || latestTurnIndexCount != 1 {
+		t.Fatalf("latest-turn index count = %d, error = %v", latestTurnIndexCount, err)
 	}
 
 	failedTurns, err := store.ListSessionTurns(ctx, "ws-1", "session-failed")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 )
 
 // applyWorkspaceAgentActivityTurnsV1 creates the protocol v2 turn and
@@ -161,31 +160,55 @@ CREATE INDEX idx_workspace_agent_interactions_session_status
 }
 
 func backfillWorkspaceAgentTurnsTx(ctx context.Context, tx *sql.Tx) error {
-	now := unixMs(time.Now().UTC())
 	if _, err := tx.ExecContext(ctx, `
 INSERT OR IGNORE INTO workspace_agent_turns (
   workspace_id, agent_session_id, turn_id, phase, outcome, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 )
 SELECT
-  workspace_id,
-  agent_session_id,
-  TRIM(turn_id),
+  message_times.workspace_id,
+  message_times.agent_session_id,
+  message_times.turn_id,
   'settled',
   'completed',
   1,
-  MIN(CASE
-    WHEN started_at_unix_ms > 0 THEN started_at_unix_ms
-    WHEN occurred_at_unix_ms > 0 THEN occurred_at_unix_ms
-    ELSE created_at_unix_ms
-  END),
-  MAX(MAX(completed_at_unix_ms, occurred_at_unix_ms, updated_at_unix_ms)),
-  ?,
-  ?
-FROM workspace_agent_messages
-WHERE TRIM(turn_id) != ''
-GROUP BY workspace_id, agent_session_id, TRIM(turn_id)
-`, now, now); err != nil {
+  COALESCE(
+    MIN(CASE WHEN message_times.role = 'user' THEN message_times.started_at_unix_ms END),
+    MIN(message_times.started_at_unix_ms)
+  ),
+  MAX(message_times.settled_at_unix_ms),
+  COALESCE(
+    MIN(CASE WHEN message_times.role = 'user' THEN message_times.started_at_unix_ms END),
+    MIN(message_times.started_at_unix_ms)
+  ),
+  MAX(message_times.settled_at_unix_ms)
+FROM (
+  SELECT
+    m.workspace_id,
+    m.agent_session_id,
+    TRIM(m.turn_id) AS turn_id,
+    m.role,
+    CASE
+      WHEN m.started_at_unix_ms > 0 THEN m.started_at_unix_ms
+      WHEN m.occurred_at_unix_ms > 0 THEN m.occurred_at_unix_ms
+      ELSE m.created_at_unix_ms
+    END AS started_at_unix_ms,
+    CASE
+      WHEN m.completed_at_unix_ms > 0 THEN m.completed_at_unix_ms
+      WHEN m.occurred_at_unix_ms > 0 THEN m.occurred_at_unix_ms
+      WHEN m.updated_at_unix_ms > 0 THEN m.updated_at_unix_ms
+      ELSE m.created_at_unix_ms
+    END AS settled_at_unix_ms
+  FROM workspace_agent_messages m
+  INNER JOIN workspace_agent_sessions s
+    ON s.workspace_id = m.workspace_id
+   AND s.agent_session_id = m.agent_session_id
+  WHERE TRIM(m.turn_id) != ''
+    AND m.deleted_at_unix_ms = 0
+    AND s.deleted_at_unix_ms = 0
+) AS message_times
+GROUP BY message_times.workspace_id, message_times.agent_session_id, message_times.turn_id
+`); err != nil {
 		return fmt.Errorf("backfill workspace agent turns: %w", err)
 	}
 
@@ -210,8 +233,7 @@ SET outcome = (
   FROM workspace_agent_sessions s
   WHERE s.workspace_id = workspace_agent_turns.workspace_id
     AND s.agent_session_id = workspace_agent_turns.agent_session_id
-),
-updated_at_unix_ms = ?
+)
 WHERE backfilled = 1
   AND EXISTS (
     SELECT 1
@@ -234,7 +256,7 @@ WHERE backfilled = 1
         )
       )
   )
-`, now); err != nil {
+`); err != nil {
 		return fmt.Errorf("repair backfilled workspace agent turn outcomes: %w", err)
 	}
 	return nil
@@ -335,7 +357,19 @@ INSERT INTO workspace_agent_messages_v2 (
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 )
 SELECT
-  id, workspace_id, agent_session_id, message_id, version, NULLIF(TRIM(turn_id), ''), role, kind, status,
+  id, workspace_id, agent_session_id, message_id, version,
+  CASE
+    WHEN NULLIF(TRIM(turn_id), '') IS NULL THEN NULL
+    WHEN EXISTS (
+      SELECT 1
+      FROM workspace_agent_turns turn_parent
+      WHERE turn_parent.workspace_id = workspace_agent_messages.workspace_id
+        AND turn_parent.agent_session_id = workspace_agent_messages.agent_session_id
+        AND turn_parent.turn_id = TRIM(workspace_agent_messages.turn_id)
+    ) THEN TRIM(turn_id)
+    ELSE NULL
+  END,
+  role, kind, status,
   payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
   deleted_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_messages
@@ -359,6 +393,58 @@ CREATE INDEX IF NOT EXISTS idx_workspace_agent_messages_session_display
 		}
 		return recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentActivityMessagesV2)
 	})
+}
+
+// applyWorkspaceAgentActivityTurnIntegrityV1 repairs child references written
+// by the original messages-v2 rebuild and adds the index used by conversation
+// rail latest-turn ordering.
+func (s *Store) applyWorkspaceAgentActivityTurnIntegrityV1(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent activity turn integrity v1: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_messages
+SET turn_id = NULL
+WHERE turn_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM workspace_agent_turns turn_parent
+    WHERE turn_parent.workspace_id = workspace_agent_messages.workspace_id
+      AND turn_parent.agent_session_id = workspace_agent_messages.agent_session_id
+      AND turn_parent.turn_id = workspace_agent_messages.turn_id
+  );
+
+CREATE INDEX IF NOT EXISTS idx_workspace_agent_turns_session_latest
+  ON workspace_agent_turns(
+    workspace_id,
+    agent_session_id,
+    updated_at_unix_ms DESC,
+    created_at_unix_ms DESC,
+    started_at_unix_ms DESC,
+    turn_id DESC
+  );
+`); err != nil {
+		return fmt.Errorf("apply workspace agent activity turn integrity v1: %w", err)
+	}
+	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentActivityTurnIntegrityV1); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent activity turn integrity v1: %w", err)
+	}
+	committed = true
+	return nil
 }
 
 func runInConnTx(ctx context.Context, conn *sql.Conn, fn func(*sql.Tx) error) error {

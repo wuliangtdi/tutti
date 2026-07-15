@@ -32,6 +32,7 @@ const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_ra
 const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
 const schemaMigrationWorkspaceAgentActivityInteractionsV2 = "workspace_agent_activity_interactions_v2"
 const schemaMigrationWorkspaceAgentActivityMessagesV2 = "workspace_agent_activity_messages_v2"
+const schemaMigrationWorkspaceAgentActivityTurnIntegrityV1 = "workspace_agent_activity_turn_integrity_v1"
 const schemaMigrationWorkspaceAgentSessionMetadataV1 = "workspace_agent_session_metadata_v1"
 const schemaMigrationWorkspaceAgentSessionMetadataV2 = "workspace_agent_session_metadata_v2"
 const schemaMigrationWorkspaceAgentSessionEntitiesV3 = "workspace_agent_session_entities_v3"
@@ -41,6 +42,8 @@ const schemaMigrationWorkspaceAgentRuntimeOperationsV2 = "workspace_agent_runtim
 const schemaMigrationWorkspaceAgentRuntimeOperationsV3 = "workspace_agent_runtime_operations_v3"
 const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
+const schemaMigrationAgentTargetsV2 = "agent_targets_v2"
+const schemaMigrationAgentTargetsV3 = "agent_targets_v3"
 const schemaMigrationWorkspaceAgentSessionTitlesV1 = "workspace_agent_session_titles_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
@@ -104,6 +107,12 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyAgentTargetsV1(ctx); err != nil {
 		return err
 	}
+	if err := s.applyAgentTargetsV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentTargetsV3(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentActivityRailV1(ctx); err != nil {
 		return err
 	}
@@ -114,6 +123,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentActivityMessagesV2(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentActivityTurnIntegrityV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentSessionMetadataV1(ctx); err != nil {

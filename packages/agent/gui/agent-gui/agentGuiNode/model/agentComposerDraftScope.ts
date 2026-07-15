@@ -1,4 +1,5 @@
-export const AGENT_COMPOSER_NO_PROJECT_SCOPE = "project:<none>";
+/** Shared home-composer draft scope. Project selection does not partition this. */
+export const AGENT_COMPOSER_HOME_DRAFT_SCOPE = "home";
 
 export function normalizeAgentComposerDraftProjectPath(
   value: string | null | undefined
@@ -14,14 +15,15 @@ export function normalizeAgentComposerDraftProjectPath(
 
 export function resolveAgentComposerDraftScopeKey(input: {
   agentSessionId?: string | null;
+  /**
+   * Retained for call-site compatibility. Home drafts ignore project identity;
+   * only an active session partitions composer draft content.
+   */
   projectPath?: string | null;
 }): string {
   const agentSessionId = input.agentSessionId?.trim() ?? "";
   if (agentSessionId) {
     return `session:${agentSessionId}`;
   }
-  const projectPath = normalizeAgentComposerDraftProjectPath(input.projectPath);
-  return projectPath
-    ? `project:${projectPath}`
-    : AGENT_COMPOSER_NO_PROJECT_SCOPE;
+  return AGENT_COMPOSER_HOME_DRAFT_SCOPE;
 }

@@ -347,13 +347,11 @@ export function deleteUnacceptedSubmittedDraftSnapshot(input: {
 }
 
 export function readAgentComposerDraftContent(input: {
-  projectPath: string | null;
   drafts: Record<string, AgentComposerDraft>;
 }): AgentComposerDraft {
   return (
-    input.drafts[
-      resolveAgentComposerDraftScopeKey({ projectPath: input.projectPath })
-    ] ?? EMPTY_AGENT_COMPOSER_DRAFT
+    input.drafts[resolveAgentComposerDraftScopeKey({})] ??
+    EMPTY_AGENT_COMPOSER_DRAFT
   );
 }
 

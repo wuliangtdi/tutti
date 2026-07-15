@@ -27,7 +27,9 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
   >("@tutti-os/ui-system");
 
   return {
-    AgentGUINode: () => {
+    AgentGUINode: (props: {
+      hostCapabilities: { disabledHomeSuggestions?: readonly string[] };
+    }) => {
       const { t } = useTranslation();
       const activityRuntime = useOptionalAgentActivityRuntime();
       return (
@@ -37,6 +39,11 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
           </div>
           <div data-testid="agent-gui-runtime-probe">
             {activityRuntime ? "provided" : "missing"}
+          </div>
+          <div data-testid="agent-gui-disabled-suggestions-probe">
+            {JSON.stringify(
+              props.hostCapabilities.disabledHomeSuggestions ?? []
+            )}
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -84,5 +91,18 @@ describe("AgentGUI i18n", () => {
     expect(screen.getByTestId("agent-gui-runtime-probe")).toHaveTextContent(
       "provided"
     );
+  });
+
+  it("forwards disabled home suggestions to the internal node", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        disabled={["meet-tutti", "import-session"]}
+      />
+    );
+
+    expect(
+      screen.getByTestId("agent-gui-disabled-suggestions-probe")
+    ).toHaveTextContent('["meet-tutti","import-session"]');
   });
 });

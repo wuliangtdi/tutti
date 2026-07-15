@@ -89,7 +89,7 @@ describe("submitted composer draft cleanup", () => {
     expect(areAgentComposerDraftsEqual(current, submittedDraft)).toBe(false);
   });
 
-  it("does not clear a different project or session scope", () => {
+  it("does not clear a different draft scope", () => {
     const otherScopeKey = "session:session-2";
     const drafts = {
       [sourceScopeKey]: submittedDraft,
@@ -108,7 +108,7 @@ describe("submitted composer draft cleanup", () => {
         content: buildAgentComposerDraft({ prompt: "Keep me" })
       },
       "submit-3": {
-        sourceScopeKey: "project:/workspace/recovered",
+        sourceScopeKey: "home",
         targetAgentSessionId: "session-1",
         content: buildAgentComposerDraft({ prompt: "Recovered draft" })
       }

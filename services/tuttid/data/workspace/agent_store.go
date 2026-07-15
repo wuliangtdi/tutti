@@ -103,6 +103,10 @@ func (s *SQLiteStore) GetSession(ctx context.Context, workspaceID string, agentS
 	return s.agentStore().GetSession(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	return s.agentStore().SessionDeleted(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]agentactivitybiz.Session, bool, error) {
 	return s.agentStore().ListSessions(ctx, workspaceID)
 }
@@ -297,6 +301,8 @@ func agentTargetToStore(target agenttargetbiz.Target) agentstore.Target {
 		LaunchRefJSON:   target.LaunchRefJSON,
 		Name:            target.Name,
 		IconKey:         target.IconKey,
+		IconURL:         target.IconURL,
+		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,
 		SortOrder:       target.SortOrder,
@@ -312,6 +318,8 @@ func agentTargetFromStore(target agentstore.Target) agenttargetbiz.Target {
 		LaunchRefJSON:   target.LaunchRefJSON,
 		Name:            target.Name,
 		IconKey:         target.IconKey,
+		IconURL:         target.IconURL,
+		HeroImageURL:    target.HeroImageURL,
 		Enabled:         target.Enabled,
 		Source:          target.Source,
 		SortOrder:       target.SortOrder,

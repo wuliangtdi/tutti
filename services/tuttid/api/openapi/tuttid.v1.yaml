@@ -988,7 +988,7 @@ paths:
         Read-only subset of desktop agent preferences for one workspace app
         runtime. Intended for workspace app server tokens; exposes default
         provider selection and developer-gated provider visibility only. Deprecated
-        for Agent integrations: use `tutti --json agent providers` through
+        for Agent integrations: use the current agent catalog (`tutti --json agent list`) through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.
@@ -1027,7 +1027,8 @@ paths:
         for enabled daemon-owned Agent Targets visible to Agent GUI. When
         `providers` is supplied, it narrows that Agent Target set and cannot
         expose providers outside it. Deprecated for Agent integrations: use
-        `tutti --json agent providers` through `@tutti-os/agent-acp-kit/tutti`.
+        the current agent catalog (`tutti --json agent list`) through
+        `@tutti-os/agent-acp-kit/tutti`.
         Removal is gated by the production-usage telemetry and release criteria
         in `docs/conventions/deprecated-workspace-app-agent-apis.md`.
       parameters:
@@ -1083,7 +1084,7 @@ paths:
         Workspace-app scoped alias of
         `POST /v1/agent-providers/{provider}/composer-options` for app server
         tokens. Deprecated for Agent integrations: use
-        `tutti --json agent composer-options --provider <providerId>` through
+        `tutti --json agent composer-options --agent-id <agentId>` through
         `@tutti-os/agent-acp-kit/tutti`. Removal is gated by the production-usage
         telemetry and release criteria in
         `docs/conventions/deprecated-workspace-app-agent-apis.md`.
@@ -1858,11 +1859,24 @@ paths:
         - agent-session
       summary: List agent sessions for one workspace
       parameters:
-        - name: searchQuery
+        - name: agentTargetId
           in: query
           required: false
           schema:
             type: string
+            minLength: 1
+        - name: searchQuery
+          in: query
+          required: false
+          description: Case-insensitive, whitespace-tokenized search over the session title only.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
         - name: limit
           in: query
           required: false
@@ -2036,7 +2050,7 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           schema:
             type: string
             minLength: 1
@@ -4836,6 +4850,11 @@ components:
         - codex
         - cursor
         - opencode
+      x-enum-varnames:
+        - DesktopDefaultAgentProviderClaudeCode
+        - DesktopDefaultAgentProviderCodex
+        - DesktopDefaultAgentProviderCursor
+        - DesktopDefaultAgentProviderOpencode
     DesktopAgentDockLayout:
       type: string
       enum:
@@ -4937,21 +4956,24 @@ components:
           $ref: "#/components/schemas/DesktopPreferences"
     AgentTargetProvider:
       type: string
-      enum:
-        - codex
-        - claude-code
-        - tutti-agent
-        - cursor
-        - opencode
-        - nexight
-        - hermes
-        - openclaw
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentTargetSource:
       type: string
       enum:
         - system
         - user
     AgentTargetLaunchRef:
+      oneOf:
+        - $ref: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+        - $ref: "#/components/schemas/AgentTargetExtensionLaunchRef"
+      discriminator:
+        propertyName: type
+        mapping:
+          builtin_local: "#/components/schemas/AgentTargetBuiltinLocalLaunchRef"
+          agent_extension: "#/components/schemas/AgentTargetExtensionLaunchRef"
+    AgentTargetBuiltinLocalLaunchRef:
       type: object
       additionalProperties: false
       required:
@@ -4961,9 +4983,27 @@ components:
         type:
           type: string
           enum:
-            - local_cli
+            - builtin_local
+          x-enum-varnames:
+            - AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
+    AgentTargetExtensionLaunchRef:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - extensionInstallationId
+      properties:
+        type:
+          type: string
+          enum:
+            - agent_extension
+          x-enum-varnames:
+            - AgentTargetExtensionLaunchRefTypeAgentExtension
+        extensionInstallationId:
+          type: string
+          minLength: 1
     AgentTarget:
       type: object
       additionalProperties: false
@@ -4980,6 +5020,8 @@ components:
       properties:
         id:
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"
         provider:
           $ref: "#/components/schemas/AgentTargetProvider"
         launchRef:
@@ -4988,6 +5030,16 @@ components:
           type: string
         iconKey:
           type: string
+          nullable: true
+        iconUrl:
+          type: string
+          nullable: true
+        heroImageUrl:
+          type: string
+          nullable: true
+        availability:
+          allOf:
+            - $ref: "#/components/schemas/AgentProviderAvailability"
           nullable: true
         enabled:
           type: boolean
@@ -6228,15 +6280,9 @@ components:
           $ref: "#/components/schemas/WorkspaceTerminalCloseGuard"
     WorkspaceAgentProvider:
       type: string
-      enum:
-        - claude-code
-        - codex
-        - tutti-agent
-        - cursor
-        - nexight
-        - hermes
-        - openclaw
-        - opencode
+      minLength: 1
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9._:-]*$"
     AgentSessionComposerSettings:
       type: object
       additionalProperties: false
@@ -7649,6 +7695,7 @@ components:
       required:
         - workspaceId
         - sessions
+        - hasMore
       properties:
         workspaceId:
           type: string
@@ -7657,12 +7704,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentSession"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
+          description: Cursor for the next older matching session page, encoded as conversationSortTimeUnixMs|agentSessionId.
     WorkspaceAgentSessionPage:
       type: object
       additionalProperties: false
       required:
         - sessions
         - hasMore
+        - totalCount
       properties:
         sessions:
           type: array
@@ -7670,6 +7724,10 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this page scope before cursor pagination.
         nextCursor:
           type: string
           description: Cursor for the next older page, encoded as pinnedAtUnixMs|agentSessionId for pinned pages.
@@ -7687,6 +7745,7 @@ components:
         - sectionKey
         - sessions
         - hasMore
+        - totalCount
       properties:
         kind:
           $ref: "#/components/schemas/WorkspaceAgentSessionSectionKind"
@@ -7701,9 +7760,13 @@ components:
             $ref: "#/components/schemas/WorkspaceAgentSession"
         hasMore:
           type: boolean
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total visible sessions in this section before cursor pagination.
         nextCursor:
           type: string
-          description: Cursor for the next older page, encoded as updatedAtUnixMs|agentSessionId.
+          description: Cursor for the next older page, encoded as conversationSortTimeUnixMs|agentSessionId.
           minLength: 1
     WorkspaceAgentSessionSectionsResponse:
       type: object

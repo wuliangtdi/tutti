@@ -483,10 +483,10 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           onSubmit(submitContent);
         }
       }
-      // Submission acknowledgment is asynchronous. The controller owns draft
-      // clearing after the engine accepts or confirms this exact content, so a
-      // rejected send cannot erase the user's prompt and a later edit cannot
-      // be overwritten by an in-flight submission.
+      // The controller owns draft clearing: an in-session send clears the
+      // composer optimistically at hand-off, and a rejected send restores this
+      // exact content, so a later edit is never overwritten by an in-flight
+      // submission.
     }
   );
 

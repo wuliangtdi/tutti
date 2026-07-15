@@ -209,6 +209,7 @@ const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "referencePicker.loadMoreGroups":
     "agentHost.agentGui.referencePicker.loadMoreGroups",
   "referencePicker.loading": "agentHost.agentGui.referencePicker.loading",
+  "referencePicker.loadError": "agentHost.agentGui.referencePicker.loadError",
   "referencePicker.previewBinary":
     "agentHost.agentGui.referencePicker.previewBinary",
   "referencePicker.previewDecodeFailed":

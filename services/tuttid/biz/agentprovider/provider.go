@@ -38,6 +38,17 @@ func Normalize(provider string) string {
 	return ""
 }
 
+// NormalizeOpen preserves registered-provider alias handling while accepting
+// extension-owned runtime provider identities such as acp:gemini. Open
+// identities are metadata, not authority: callers must still resolve an Agent
+// Target before they can start a runtime.
+func NormalizeOpen(provider string) string {
+	if normalized, ok := providerregistry.NormalizeOpenProviderID(provider); ok {
+		return normalized
+	}
+	return ""
+}
+
 func IsSupported(provider string) bool {
 	return Normalize(provider) != ""
 }

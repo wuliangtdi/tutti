@@ -339,15 +339,21 @@ vi.mock("./agentRichText/AgentRichTextEditor", async () => {
 
 vi.mock("./AgentComposerSettingsMenus", () => ({
   AgentProjectDropdown: ({
+    onDismissAutoFocus,
     onProjectMissingChange
   }: {
+    onDismissAutoFocus?: (event: Event) => void;
     onProjectMissingChange?: (isMissing: boolean) => void;
   }) => {
     queueMicrotask(() => {
       onProjectMissingChange?.(mockProjectMissingState.current);
     });
     return (
-      <button type="button" data-testid="agent-project-dropdown">
+      <button
+        type="button"
+        data-testid="agent-project-dropdown"
+        onClick={() => onDismissAutoFocus?.(new Event("focus"))}
+      >
         项目
       </button>
     );
@@ -3285,6 +3291,48 @@ describe("AgentComposer", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("提及上下文");
   });
 
+  it("focuses the shared home draft at the end after the project menu dismisses", () => {
+    render(
+      <AgentComposer
+        workspaceId="workspace-1"
+        currentUserId="user-1"
+        provider="codex"
+        draftContent={createDraft("keep typing here")}
+        draftScopeKey="home"
+        availableCommands={[] satisfies readonly AgentHostAgentSessionCommand[]}
+        disabled={false}
+        submitDisabled={false}
+        placeholder="placeholder"
+        composerSettings={createComposerSettings({
+          selectedProjectPath: "/workspace/a"
+        })}
+        queuedPrompts={[]}
+        drainingQueuedPromptId={null}
+        canQueueWhileBusy={false}
+        showStopButton={false}
+        activePrompt={null}
+        isInterrupting={false}
+        isSendingTurn={false}
+        isSubmittingPrompt={false}
+        labels={createLabels()}
+        workspaceUserProjectI18n={workspaceUserProjectI18n}
+        layoutMode="hero"
+        onDraftContentChange={vi.fn()}
+        onSettingsChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSendQueuedPromptNext={vi.fn()}
+        onRemoveQueuedPrompt={vi.fn()}
+        onEditQueuedPrompt={vi.fn()}
+        onInterruptCurrentTurn={vi.fn()}
+        onSubmitInteractivePrompt={vi.fn()}
+      />
+    );
+
+    mockEditorFocusAtEnd.mockClear();
+    fireEvent.click(screen.getByTestId("agent-project-dropdown"));
+    expect(mockEditorFocusAtEnd).toHaveBeenCalled();
+  });
+
   it("hides the project row for locked dock composers in existing conversations", () => {
     const { container } = render(
       <AgentComposer
@@ -5878,6 +5926,7 @@ function createLabels(): Parameters<typeof AgentComposer>[0]["labels"] {
     computerUseCapabilitySettingsLabel: "电脑控制设置",
     computerUseCapabilitySettingsDescription: "安装、移除或授权电脑控制。",
     queuedLabel: "排队",
+    queuePausedByUserLabel: "由于你中断了当前响应，队列已暂停",
     sendQueuedPromptNext: "下一条发送",
     editQueuedPrompt: "编辑",
     deleteQueuedPrompt: "删除",

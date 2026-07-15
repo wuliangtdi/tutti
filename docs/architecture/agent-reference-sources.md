@@ -66,6 +66,10 @@ and preview operations remain source-owned and are delegated back to the host.
   deduplicate safely.
 - Append cursor pages without reordering already loaded entries.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
+- Expose only running workspace apps in the app-artifact sidebar; installed or
+  enabled apps that are not running are not valid reference sources.
+- Preserve per-app list and scoped-search failures as picker content errors;
+  do not present a failed request as an empty artifact set.
 - Keep source-specific transport and absolute host paths outside the shared UI
   package.
 - Use `ReferenceHandle` for app/issue groups that should resolve lazily at agent

@@ -209,6 +209,38 @@ test("refreshChildren reloads an already loaded app group", async () => {
   );
 });
 
+test("failed app group loading is retained as content state instead of empty data", async () => {
+  const appGroup = folder("app-artifact", "app:broken", "Broken App");
+  const expected = new Error("reference endpoint unavailable");
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({ tabs: [tabsTwo[1]!], children: {} }),
+      async listChildren(_scope, ref: NodeRef): Promise<ListChildrenResult> {
+        if (ref.nodeId === SOURCE_ROOT_NODE_ID) {
+          return { entries: [appGroup], nextCursor: null };
+        }
+        throw expected;
+      }
+    },
+    scope,
+    searchDebounceMs: 0
+  });
+
+  controller.open();
+  await flush();
+  controller.refreshChildren(appGroup);
+  await flush();
+
+  const state =
+    controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
+      nodeRefKey(appGroup.ref)
+    ];
+  assert.equal(state?.loaded, false);
+  assert.equal(state?.loading, false);
+  assert.equal(state?.entries.length, 0);
+  assert.equal(state?.error, expected);
+});
+
 test("toggleSingleSelectionAndExpand single-selects and expands folders", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({

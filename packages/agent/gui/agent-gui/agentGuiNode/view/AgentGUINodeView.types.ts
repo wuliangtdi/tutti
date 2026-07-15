@@ -113,6 +113,7 @@ export interface AgentGUIViewLabels {
   planModeOffLabel: string;
   planUnavailable: string;
   queuedLabel: string;
+  queuePausedByUserLabel: string;
   sendQueuedPromptNext: string;
   editQueuedPrompt: string;
   deleteQueuedPrompt: string;
@@ -174,6 +175,8 @@ export interface AgentGUIViewLabels {
   loadingConversation: string;
   scrollToBottom: string;
   searchNoConversations: string;
+  searchFailed: string;
+  retrySearch: string;
   conversationUnavailable: string;
   fallbackAgentTitle: string;
   searchPlaceholder: string;

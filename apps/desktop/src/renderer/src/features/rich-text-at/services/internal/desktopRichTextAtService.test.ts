@@ -465,6 +465,88 @@ test("desktop rich text @ service assembles agent session providers by capabilit
   });
 });
 
+test("desktop rich text @ service presents extension sessions with Agent Target identity", async () => {
+  const extensionTarget = createAgentTarget({
+    iconUrl: "data:image/svg+xml;base64,gemini",
+    id: "extension:gemini",
+    launchRef: {
+      type: "agent_extension",
+      extensionInstallationId: "gemini@1.0.0"
+    },
+    name: "Gemini CLI",
+    provider: "acp:gemini",
+    sortOrder: 700
+  });
+  const service = new DesktopRichTextAtService({
+    agentsService: createAgentsService([extensionTarget]),
+    resolveAgentIconUrl: () => "tutti-asset://agent/all.png",
+    resolveSessionStatusView: (status) => ({
+      dataStatus: status,
+      label: status,
+      pulse: false
+    }),
+    tuttidClient: {
+      async listWorkspaceAgentSessions(workspaceId: string) {
+        return {
+          hasMore: false,
+          workspaceId,
+          sessions: [
+            {
+              activeTurn: null,
+              activeTurnId: null,
+              agentTargetId: "extension:gemini",
+              createdAtUnixMs: 1780272000000,
+              cwd: null,
+              id: "gemini-session",
+              latestTurn: null,
+              latestTurnInteractions: [],
+              pendingInteractions: [],
+              provider: "acp:gemini",
+              providerSessionId: "gemini-provider-session",
+              title: "hi",
+              updatedAtUnixMs: 1780272000000
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    userAvatarPlaceholderUrl: "tutti-asset://user/placeholder.png"
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["agent-session"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "",
+    maxResults: 5,
+    trigger: "@"
+  });
+  assert.equal(items.length, 1);
+  assert.equal(
+    provider.getItemIconUrl?.(items[0]),
+    "data:image/svg+xml;base64,gemini"
+  );
+  const insertResult = provider.toInsertResult(items[0]);
+  assert.equal(insertResult.kind, "mention");
+  if (insertResult.kind !== "mention") {
+    return;
+  }
+  assert.equal(insertResult.mention.presentation?.subtitle, "Gemini CLI");
+  assert.equal(
+    insertResult.mention.presentation?.participant,
+    "local & Gemini CLI"
+  );
+  assert.equal(
+    insertResult.mention.presentation?.agentIconUrl,
+    "data:image/svg+xml;base64,gemini"
+  );
+});
+
 test("desktop rich text @ service assembles workspace app providers from mention candidates", async () => {
   const listCalls: string[] = [];
   const service = new DesktopRichTextAtService({
@@ -661,6 +743,60 @@ test("desktop rich text @ service assembles agent target mentions", async () => 
   });
 });
 
+test("desktop rich text @ service includes ready open-provider extension targets", async () => {
+  const targets = [
+    createAgentTarget({
+      iconUrl: "data:image/svg+xml;base64,gemini",
+      id: "extension:gemini",
+      launchRef: {
+        type: "agent_extension",
+        extensionInstallationId: "gemini@1.0.0"
+      },
+      name: "Gemini CLI",
+      provider: "acp:gemini",
+      sortOrder: 700
+    })
+  ];
+  const service = new DesktopRichTextAtService({
+    agentsService: createAgentsService(targets),
+    tuttidClient: {} as unknown as TuttidClient
+  });
+
+  const [provider] = service.getProviders({
+    capabilities: ["agent-target"],
+    surface: "agent-composer",
+    target: "agent-gui",
+    workspaceId: "workspace-1"
+  });
+  assert.ok(provider);
+  const items = await provider.query({
+    context: {},
+    keyword: "gemini",
+    maxResults: 5,
+    trigger: "@"
+  });
+
+  assert.equal(items.length, 1);
+  assert.equal(provider.getItemKey(items[0]), "extension:gemini");
+  assert.equal(provider.getItemLabel(items[0]), "Gemini CLI");
+  assert.equal(
+    provider.getItemIconUrl?.(items[0]),
+    "data:image/svg+xml;base64,gemini"
+  );
+  assert.deepEqual(provider.toInsertResult(items[0]), {
+    kind: "mention",
+    mention: {
+      entityId: "extension:gemini",
+      label: "Gemini CLI",
+      presentation: {
+        agentProviderId: "acp:gemini",
+        iconUrl: "data:image/svg+xml;base64,gemini"
+      },
+      scope: { workspaceId: "workspace-1" }
+    }
+  });
+});
+
 test("desktop rich text @ service hides agent target mentions using cached provider readiness", async () => {
   const targets = [
     createAgentTarget({
@@ -786,7 +922,7 @@ test("desktop rich text @ service uses task icon fallback for issue manager app 
   assert.ok(provider);
   const items = await provider.query({
     context: {},
-    keyword: "tasks",
+    keyword: "task",
     maxResults: 5,
     trigger: "@"
   });
@@ -931,19 +1067,22 @@ function createWorkspaceAppMentionCandidate(input: {
 
 function createAgentTarget(input: {
   enabled?: boolean;
+  iconUrl?: string;
   id: string;
+  launchRef?: AgentTarget["launchRef"];
   name: string;
-  provider: "codex" | "claude-code";
+  provider: string;
   sortOrder: number;
 }): AgentTarget {
   return {
     createdAtUnixMs: 1780272000000,
     enabled: input.enabled ?? true,
     iconKey: "",
+    iconUrl: input.iconUrl ?? null,
     id: input.id,
-    launchRef: {
+    launchRef: input.launchRef ?? {
       provider: input.provider,
-      type: "local_cli"
+      type: "builtin_local"
     },
     name: input.name,
     provider: input.provider,
@@ -1039,7 +1178,7 @@ test("desktop rich text @ service uses mention candidate description for workspa
   assert.ok(provider);
   const items = await provider.query({
     context: {},
-    keyword: "recurring",
+    keyword: "automation",
     maxResults: 5,
     trigger: "@"
   });
@@ -1059,7 +1198,7 @@ test("desktop rich text @ service uses mention candidate description for workspa
   );
 });
 
-test("desktop rich text @ service searches workspace app command metadata from mention candidates", async () => {
+test("desktop rich text @ service only matches workspace app display names", async () => {
   const service = new DesktopRichTextAtService({
     tuttidClient: {
       async listWorkspaceAppMentionCandidates(workspaceId: string) {
@@ -1067,14 +1206,14 @@ test("desktop rich text @ service searches workspace app command metadata from m
           workspaceId,
           apps: [
             createWorkspaceAppMentionCandidate({
-              appId: "automation",
+              appId: "scheduler-core",
               commandCount: 1,
               commandDescriptions: ["List automation definitions."],
               commandPaths: ["automation list"],
               commandSummaries: ["List automations"],
-              description: "Manage automations.",
+              description: "Review recurring schedules.",
               displayName: "Automation",
-              scopes: ["automation"]
+              scopes: ["schedule"]
             })
           ]
         };
@@ -1089,20 +1228,24 @@ test("desktop rich text @ service searches workspace app command metadata from m
     workspaceId: "workspace-1"
   });
   assert.ok(provider);
+  for (const keyword of ["scheduler", "recurring", "automations", "schedule"]) {
+    const items = await provider.query({
+      context: {},
+      keyword,
+      maxResults: 5,
+      trigger: "@"
+    });
+    assert.deepEqual(items, []);
+  }
+
   const items = await provider.query({
     context: {},
-    keyword: "automations",
+    keyword: "automation",
     maxResults: 5,
     trigger: "@"
   });
-
-  const item = items[0] as
-    | { description: string; displayName: string }
-    | undefined;
-  assert.ok(item);
-  assert.equal(item.displayName, "Automation");
-  assert.equal(item.description, "Manage automations.");
-  assert.equal(provider.getItemSubtitle?.(item), "Manage automations.");
+  assert.equal(items.length, 1);
+  assert.equal((items[0] as { displayName: string }).displayName, "Automation");
 });
 
 test("desktop rich text @ service emits enriched app + session meta when enrichment deps supplied", async () => {

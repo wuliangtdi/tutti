@@ -65,6 +65,17 @@ func (s *Service) ensureRuntimeSessionResult(
 	session, err := func() (ProviderRuntimeSession, error) {
 		defer releaseStartup()
 		runtimeContext := persistedSessionRuntimeContext(persisted)
+		var providerTargetRef map[string]any
+		if strings.TrimSpace(persisted.AgentTargetID) != "" {
+			launch, launchErr := s.resolveCreateSessionLaunch(ctx, CreateSessionInput{
+				AgentTargetID: persisted.AgentTargetID,
+				Provider:      persisted.Provider,
+			})
+			if launchErr != nil {
+				return ProviderRuntimeSession{}, launchErr
+			}
+			providerTargetRef = launch.ProviderTargetRef
+		}
 		return s.controller().Resume(ctx, RuntimeResumeInput{
 			WorkspaceID:       strings.TrimSpace(persisted.WorkspaceID),
 			AgentSessionID:    strings.TrimSpace(persisted.ID),
@@ -79,6 +90,7 @@ func (s *Service) ensureRuntimeSessionResult(
 			UpdatedAtUnixMS:   persisted.UpdatedAtUnixMS,
 			Visible:           boolPointer(persisted.Metadata.Visible),
 			RuntimeContext:    runtimeContext,
+			ProviderTargetRef: providerTargetRef,
 			RecreateIfMissing: imported,
 		})
 	}()

@@ -341,6 +341,13 @@ func (p *ActivityProjection) GetSession(workspaceID string, agentSessionID strin
 	return p.projectPersistedSession(context.Background(), persistedSessionFromActivity(session)), true
 }
 
+func (p *ActivityProjection) SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
+	if p == nil || p.repo == nil {
+		return false, nil
+	}
+	return p.repo.SessionDeleted(ctx, workspaceID, agentSessionID)
+}
+
 func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSession, bool) {
 	if p == nil || p.repo == nil {
 		return nil, false

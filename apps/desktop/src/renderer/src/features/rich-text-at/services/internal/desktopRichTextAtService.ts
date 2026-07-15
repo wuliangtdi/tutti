@@ -134,7 +134,10 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
         agentProviderStatuses: dependencies.agentProviderStatuses,
         isTuttiAgentSwitchEnabled: dependencies.isTuttiAgentSwitchEnabled
       }),
-      createAgentSessionAtContributor(dependencies.tuttidClient),
+      createAgentSessionAtContributor({
+        agentsService: dependencies.agentsService,
+        tuttidClient: dependencies.tuttidClient
+      }),
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
         getLocale: dependencies.getLocale
@@ -410,18 +413,7 @@ function workspaceAppMatchesKeyword(
   if (!keyword) {
     return true;
   }
-  const haystack = [
-    item.appId,
-    item.displayName,
-    item.description,
-    ...item.scopes,
-    ...item.commandPaths,
-    ...item.commandSummaries,
-    ...item.commandDescriptions
-  ]
-    .join("\n")
-    .toLowerCase();
-  return haystack.includes(keyword);
+  return item.displayName.toLowerCase().includes(keyword);
 }
 
 function findWorkspaceAppMentionLocalization(

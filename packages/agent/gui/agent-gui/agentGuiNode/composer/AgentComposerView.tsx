@@ -76,6 +76,7 @@ interface Props {
     | AgentHostApi["workspace"]["getReferenceForFile"]
     | undefined;
   promptFilesSupported: boolean;
+  onDismissProjectMenuAutoFocus?: (event: Event) => void;
   paletteDraftPrompt: string;
   showFileMentionPalette: boolean;
   showSlashPalette: boolean;
@@ -102,6 +103,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     draftContent,
     availableSkills = EMPTY_PROVIDER_SKILLS,
     composerSettings,
+    queueStatus = "active",
     queuedPrompts,
     drainingQueuedPromptId,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
@@ -262,10 +264,12 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           data-testid="agent-gui-composer-queued-prompts"
         >
           <AgentQueuedPromptPanel
+            queueStatus={queueStatus}
             queuedPrompts={queuedPrompts}
             drainingQueuedPromptId={drainingQueuedPromptId}
             labels={{
               queuedLabel: labels.queuedLabel,
+              queuePausedByUserLabel: labels.queuePausedByUserLabel,
               sendQueuedPromptNext: labels.sendQueuedPromptNext,
               editQueuedPrompt: labels.editQueuedPrompt,
               deleteQueuedPrompt: labels.deleteQueuedPrompt,
@@ -581,6 +585,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                   projectMissingDescription: labels.projectMissingDescription
                 }}
                 selectProjectDirectory={selectProjectDirectory}
+                onDismissAutoFocus={input.onDismissProjectMenuAutoFocus}
                 onProjectMissingChange={input.setIsSelectedProjectMissing}
                 onProjectPathChange={onProjectPathChange}
               />

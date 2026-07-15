@@ -1,4 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from "react";
+import type { PendingActivationIntentRecord } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentHostAccountUserProfile } from "../../../shared/contracts/dto";
@@ -13,6 +14,7 @@ import {
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { buildContinueInNewConversationPrompt } from "./agentGuiController.conversationHelpers";
 import { reportAgentGUIActiveConversationCleared } from "./agentGuiController.reporting";
+import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -27,6 +29,7 @@ interface UseAgentGUIContinueConversationInput {
     Record<string, AgentHostAccountUserProfile>
   >;
   activeConversationIdRef: CurrentValue<string | null>;
+  activePendingActivation: PendingActivationIntentRecord | null;
   agentActivityRuntime: AgentActivityRuntime;
   conversations: readonly AgentGUIConversationSummary[];
   createConversation(): void;
@@ -35,7 +38,6 @@ interface UseAgentGUIContinueConversationInput {
   isComposerHomeRef: CurrentValue<boolean>;
   loadDraftComposerOptions(): void;
   persistActiveConversation(agentSessionId: string | null): void;
-  selectedProjectPathRef: CurrentValue<string | null>;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
   setDraftByScopeKey: Dispatch<
@@ -99,7 +101,14 @@ export function useAgentGUIContinueConversation(
       runtime: current.agentActivityRuntime,
       workspaceId: current.workspaceId
     });
-    void current.unactivate(currentConversationId);
+    if (
+      !isPendingNewConversationActivationForSession(
+        current.activePendingActivation,
+        currentConversationId
+      )
+    ) {
+      void current.unactivate(currentConversationId);
+    }
     current.setIntent({ tag: "home" });
     current.isComposerHomeRef.current = true;
     current.setIsComposerHome(true);
@@ -109,12 +118,11 @@ export function useAgentGUIContinueConversation(
     current.setDetailError(null);
     current.setDraftByScopeKey((drafts) => ({
       ...drafts,
-      [resolveAgentComposerDraftScopeKey({
-        projectPath: current.selectedProjectPathRef.current
-      })]: buildContinueInNewConversationDraft({
-        sourceDraft,
-        prompt: nextDraftPrompt
-      })
+      [resolveAgentComposerDraftScopeKey({})]:
+        buildContinueInNewConversationDraft({
+          sourceDraft,
+          prompt: nextDraftPrompt
+        })
     }));
     current.persistActiveConversation(null);
     current.loadDraftComposerOptions();

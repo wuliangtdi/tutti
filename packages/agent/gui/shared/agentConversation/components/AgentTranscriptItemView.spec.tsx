@@ -129,6 +129,36 @@ describe("AgentTranscriptItemView render stability", () => {
     );
   });
 
+  it("routes a clicked app artifact reference from a sent user message to the owning app", () => {
+    const onLinkAction = vi.fn();
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-app-reference-1",
+          turnId: "turn-1",
+          body: "[@AI Canvas](mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1)",
+          occurredAtUnixMs: 1
+        })}
+        onLinkAction={onLinkAction}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    mockState.markdownOnLinkClicks.at(-1)?.(
+      "mention://workspace-reference/ai-canvas?source=app&workspaceId=workspace-1"
+    );
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-app",
+      workspaceId: "workspace-1",
+      appId: "ai-canvas",
+      source: "agent-markdown"
+    });
+  });
+
   it("enables streaming markdown only for working assistant messages", () => {
     render(
       <AgentMessageBlock

@@ -353,7 +353,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     if (isExternalDraftReplacement && draftPrompt) {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          editorHandleRef.current?.focusAtStart();
+          // Prefer end so continued typing (and shared home drafts after a
+          // project switch) keep the caret after the text, not at the start.
+          editorHandleRef.current?.focusAtEnd();
         });
       });
     }
@@ -505,6 +507,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     defaultHandoffMenuLabel: labels.handoffConversationMenu
   });
   const { inputDisabled, isHeroLayout } = providerState;
+  const restoreComposerCaretAfterProjectMenu = (event: Event): void => {
+    event.preventDefault();
+    if (inputDisabled) {
+      return;
+    }
+    editorHandleRef.current?.focusAtEnd();
+  };
   const focusAndDrop = useComposerFocusAndDrop({
     composerControlsHardDisabled,
     inputDisabled,
@@ -601,6 +610,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       mentionControllerRef={mentionControllerRef}
       getReferenceForFile={getReferenceForFile}
       promptFilesSupported={promptFilesSupported}
+      onDismissProjectMenuAutoFocus={restoreComposerCaretAfterProjectMenu}
       paletteDraftPrompt={paletteDraftPrompt}
       showFileMentionPalette={showFileMentionPalette}
       showSlashPalette={showSlashPalette}

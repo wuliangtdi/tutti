@@ -26,6 +26,10 @@ import {
   useOptionalAgentHostApi
 } from "../../../agentActivityHost";
 import { resolveAgentGuiSessionProviderFlatIconUrl } from "../../../agentGuiSessionProviderIconUrls";
+import {
+  resolveAgentTargetPresentation,
+  useAgentTargetPresentations
+} from "../../../shared/AgentTargetPresentationContext";
 import { ConversationMeta } from "../agentGuiNodeViewConversation";
 import { createAgentSessionMarkdownLink } from "../agentRichText/agentFileMentionExtension";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
@@ -34,10 +38,22 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
 
-function agentGUIConversationProviderIconUrl(
-  provider: string | undefined
+function agentGUIConversationIconUrl(
+  provider: string | undefined,
+  agentTargetId: string | null | undefined,
+  workspaceId: string,
+  agentTargets: ReturnType<typeof useAgentTargetPresentations>
 ): string | null {
-  return resolveAgentGuiSessionProviderFlatIconUrl(provider);
+  const targetPresentation = resolveAgentTargetPresentation({
+    agentTargetId: agentTargetId ?? "",
+    agentTargets,
+    workspaceId
+  });
+  return (
+    resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
+    targetPresentation?.iconUrl?.trim() ||
+    null
+  );
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -56,7 +72,9 @@ interface AgentGUIConversationRailItemProps {
   onMarkConversationUnread: (agentSessionId: string) => void;
   onOpenConversationWindow?: (agentSessionId: string) => void;
   onRequestDeleteConversation: (agentSessionId: string) => void;
-  onRequestRenameConversation: (agentSessionId: string) => void;
+  onRequestRenameConversation: (
+    conversation: AgentGUINodeViewModel["rail"]["conversations"][number]
+  ) => void;
   onCancelDeleteConversation: () => void;
   onConfirmDeleteConversation: () => void;
 }
@@ -84,7 +102,13 @@ export const AgentGUIConversationRailItem = memo(
   }: AgentGUIConversationRailItemProps): React.JSX.Element {
     "use memo";
     const pinned = (item.pinnedAtUnixMs ?? 0) > 0;
-    const providerIconUrl = agentGUIConversationProviderIconUrl(item.provider);
+    const agentTargets = useAgentTargetPresentations();
+    const conversationIconUrl = agentGUIConversationIconUrl(
+      item.provider,
+      item.agentTargetId,
+      workspaceId,
+      agentTargets
+    );
     const setItemElement = useCallback(
       (element: HTMLDivElement | null) => {
         registerItemElement(item.id, element);
@@ -128,8 +152,8 @@ export const AgentGUIConversationRailItem = memo(
       onRequestDeleteConversation(item.id);
     }, [item.id, onRequestDeleteConversation]);
     const handleRequestRename = useCallback(() => {
-      onRequestRenameConversation(item.id);
-    }, [item.id, onRequestRenameConversation]);
+      onRequestRenameConversation(item);
+    }, [item, onRequestRenameConversation]);
     const handleContextMenuRename = useCallback(() => {
       if (contextMenuRenameRequestedRef.current) {
         return;
@@ -202,13 +226,13 @@ export const AgentGUIConversationRailItem = memo(
           }}
         >
           <span className={styles.conversationTitleRow}>
-            {providerIconUrl ? (
+            {conversationIconUrl ? (
               <span
                 aria-hidden="true"
                 className={styles.conversationProviderIcon}
                 style={
                   {
-                    "--agent-gui-conversation-provider-icon-url": `url("${providerIconUrl}")`
+                    "--agent-gui-conversation-provider-icon-url": `url("${conversationIconUrl}")`
                   } as CSSProperties
                 }
               />

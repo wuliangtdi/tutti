@@ -178,6 +178,14 @@ func NormalizeProvider(value string) (Provider, bool) {
 	if resolved, ok := providerregistry.ResolveEventProvider(value); ok {
 		return Provider(resolved.ProviderID), true
 	}
+	// A registered alias excluded from the event projection must stay
+	// excluded. Only genuinely external identities may use the open path.
+	if _, registered := providerregistry.ResolveProviderID(value); registered {
+		return "", false
+	}
+	if providerID, ok := providerregistry.NormalizeOpenProviderID(value); ok {
+		return Provider(providerID), true
+	}
 	return "", false
 }
 

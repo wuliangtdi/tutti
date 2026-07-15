@@ -48,6 +48,7 @@ export function projectAgentConversationVM(
     if (shouldShowTurnSummaryForTurn(detail, index)) {
       rows.push(
         ...projectAgentTurnSummaryRowForTurn(turn, {
+          defaultCwd: detail.cwd,
           workspaceRoot: detail.workspaceRoot
         })
       );

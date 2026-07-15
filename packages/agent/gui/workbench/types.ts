@@ -1,12 +1,5 @@
-export type AgentGuiWorkbenchProvider =
-  | "claude-code"
-  | "codex"
-  | "tutti-agent"
-  | "cursor"
-  | "nexight"
-  | "hermes"
-  | "openclaw"
-  | "opencode";
+/** Open runtime metadata; agentTargetId remains the launch identity. */
+export type AgentGuiWorkbenchProvider = string;
 
 export const agentGuiWorkbenchOpenSessionActivationType =
   "agent-gui:open-session";

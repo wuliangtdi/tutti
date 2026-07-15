@@ -114,7 +114,8 @@ function normalizedActivityFilePath(
     !isIgnoredFilePath(path) &&
     resolveWorkspaceFilePathCandidate({
       path,
-      workspaceRoot: options.workspaceRoot
+      workspaceRoot: options.workspaceRoot,
+      basePath: options.defaultCwd
     })
     ? path
     : null;

@@ -360,6 +360,10 @@ export function providerItemToAgentMentionItem(input: {
       }),
       initiatorName: "",
       agentName,
+      agentIconUrl:
+        presentation.agentIconUrl?.trim() ||
+        presentation.iconUrl?.trim() ||
+        undefined,
       status: presentation.status?.trim() || undefined,
       inputPreview: description || undefined,
       summaryPreview

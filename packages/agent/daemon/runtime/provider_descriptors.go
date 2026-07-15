@@ -118,6 +118,53 @@ func newStandardACPAdapterFromProviderDescriptor(
 	}
 }
 
+type StandardACPAdapterConfig struct {
+	Provider          string
+	Name              string
+	DisplayName       string
+	Command           []string
+	AuthMessage       string
+	ToolAliases       map[string]string
+	PermissionModes   map[string]string
+	PlanModeRuntimeID string
+}
+
+// NewStandardACPAdapter creates the generic, data-driven ACP adapter used by
+// verified Agent Extension installations. It intentionally exposes no hooks
+// for loading extension code into the daemon.
+func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTransport, host HostMetadata) (Adapter, error) {
+	provider := strings.TrimSpace(config.Provider)
+	if provider == "" || len(config.Command) == 0 || strings.TrimSpace(config.Command[0]) == "" {
+		return nil, fmt.Errorf("standard ACP provider and command are required")
+	}
+	host = normalizeHostMetadata(host)
+	permissionModes := cloneStandardACPToolAliases(config.PermissionModes)
+	return &standardACPAdapter{
+		config: standardACPConfig{
+			provider:            provider,
+			adapterName:         strings.TrimSpace(config.Name),
+			command:             append([]string(nil), config.Command...),
+			defaultTitle:        strings.TrimSpace(config.DisplayName),
+			defaultTitleAliases: []string{strings.TrimSpace(config.DisplayName), provider},
+			authRequiredMessage: strings.TrimSpace(config.AuthMessage),
+			toolAliases:         cloneStandardACPToolAliases(config.ToolAliases),
+			permissionModeID:    func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },
+			planModeRuntimeID:   strings.TrimSpace(config.PlanModeRuntimeID),
+			initializeParams:    func() map[string]any { return defaultACPInitializeParams(host) },
+			env:                 func(session Session) []string { return standardACPEnv(session, host) },
+		},
+		transport: transport, host: host, sessions: make(map[string]*standardACPSession),
+	}, nil
+}
+
+func cloneStandardACPToolAliases(input map[string]string) map[string]string {
+	result := make(map[string]string, len(input))
+	for key, value := range input {
+		result[strings.ToLower(strings.TrimSpace(key))] = strings.TrimSpace(value)
+	}
+	return result
+}
+
 func runtimeSettingsEnvironmentValue(
 	descriptor providerregistry.RuntimeSettingsEnvironmentDescriptor,
 	session Session,

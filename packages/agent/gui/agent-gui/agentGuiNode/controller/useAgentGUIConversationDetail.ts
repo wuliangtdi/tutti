@@ -23,6 +23,7 @@ import {
 } from "../model/agentGuiConversationModel";
 import type {
   AgentComposerDraft,
+  AgentGUIQueueStatus,
   AgentGUIQueuedPromptVM
 } from "../model/agentGuiNodeTypes";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
@@ -58,6 +59,7 @@ interface UseAgentGUIConversationDetailInput {
   activePendingInteractions: readonly AgentActivityInteraction[];
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
+  activeQueueStatus: AgentGUIQueueStatus;
   activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
@@ -136,7 +138,6 @@ export function useAgentGUIConversationDetail(
         })
       ] ?? EMPTY_AGENT_COMPOSER_DRAFT)
     : readAgentComposerDraftContent({
-        projectPath: input.selectedProjectPath,
         drafts: input.draftByScopeKey
       });
   const engineAvailableCommands = useEngineSelector(
@@ -144,8 +145,12 @@ export function useAgentGUIConversationDetail(
     (state) => selectEngineAvailableCommands(state, input.activeConversationId)
   );
   const availableCommands = useMemo(
-    () => engineAvailableCommands.map((command) => ({ ...command })),
-    [engineAvailableCommands]
+    () =>
+      (engineAvailableCommands.length > 0
+        ? engineAvailableCommands
+        : (input.providerComposerOptions?.commands ?? [])
+      ).map((command) => ({ ...command })),
+    [engineAvailableCommands, input.providerComposerOptions]
   );
   const availableSkills = useStableProviderSkillOptions(
     useMemo(
@@ -298,6 +303,7 @@ export function useAgentGUIConversationDetail(
     pendingApproval: hasProviderSessionNotFoundError
       ? null
       : rawPendingApproval,
+    queueStatus: input.activeQueueStatus,
     queuedPrompts,
     serverInteractivePrompt: hasProviderSessionNotFoundError
       ? null

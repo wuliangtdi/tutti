@@ -280,6 +280,9 @@ export function useReferenceSourcePickerView({
     (activeTabState.searchQuery.trim() !== "" || activeFilters.length > 0);
 
   const currentChildren = activeTabState?.childrenByKey[currentKey];
+  const contentError = isQuery
+    ? (activeTabState?.searchError ?? null)
+    : (currentChildren?.error ?? null);
 
   // 浏览态内容区:当前选中二级节点(currentNode,本地根时为 null → 源根)的子节点,
   // 递归就地展开成文件树。搜索态:扁平搜索结果。
@@ -692,7 +695,6 @@ export function useReferenceSourcePickerView({
             mtimeMs: node.mtimeMs ?? null,
             sizeBytes: loadedSizeBytes
           },
-          renderHtml: true,
           target: {
             fileKind: preview.kind,
             name: node.displayName,
@@ -782,6 +784,7 @@ export function useReferenceSourcePickerView({
     currentEntries,
     // 搜索态:扁平搜索结果。
     searchResults,
+    contentError,
     expandedKeys: activeTabState?.expandedKeys ?? {},
     childrenByKey: activeTabState?.childrenByKey ?? {},
     toggleNode: (node: ReferenceNode) => controller.toggleNode(node),

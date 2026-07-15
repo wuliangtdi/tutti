@@ -229,6 +229,7 @@ function normalizeAgentGUIAgentTarget(
     badge,
     description,
     iconUrl,
+    heroImageUrl,
     ownerLabel,
     unavailableReason,
     ...rest
@@ -256,6 +257,7 @@ function normalizeAgentGUIAgentTarget(
     ...(normalizedBadge ? { badge: normalizedBadge } : {}),
     ...(description?.trim() ? { description: description.trim() } : {}),
     ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
+    ...(heroImageUrl?.trim() ? { heroImageUrl: heroImageUrl.trim() } : {}),
     ...(ownerLabel?.trim() ? { ownerLabel: ownerLabel.trim() } : {}),
     ...(unavailableReason?.trim()
       ? { unavailableReason: unavailableReason.trim() }

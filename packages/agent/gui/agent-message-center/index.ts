@@ -98,6 +98,7 @@ export type {
 } from "./workspaceAgentMessageCenterDigest";
 export type {
   BuildWorkspaceAgentMessageCenterOptions,
+  WorkspaceAgentMessageCenterAgentPresentation,
   WorkspaceAgentMessageCenterCounts,
   WorkspaceAgentMessageCenterIdentity,
   WorkspaceAgentMessageCenterItem,

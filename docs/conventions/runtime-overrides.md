@@ -92,6 +92,13 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Agent Runtime Diagnostics
 
+Agent Extension source feature gates use
+`TUTTI_AGENT_EXTENSION_<KEY>_ENABLED`. The configured Gemini source therefore
+uses `TUTTI_AGENT_EXTENSION_GEMINI_ENABLED`. Boolean values accepted by Go's
+`strconv.ParseBool` override the generated default; invalid values leave the
+generated default unchanged. A disabled source never downloads or registers
+its Agent Target.
+
 | Variable                               | Owner document                                                                        | Purpose                                                                                          |
 | -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `TUTTI_AGENT_CONTEXT_CONFIG`           | [Local State Storage](./local-state-storage.md)                                       | Overrides the migrated agent context config path for tests and diagnostics.                      |

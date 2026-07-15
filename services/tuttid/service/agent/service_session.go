@@ -19,7 +19,7 @@ func runtimeResumeInputFromRuntimeSession(session ProviderRuntimeSession) Runtim
 		Env:               append([]string(nil), session.Env...),
 		Title:             strings.TrimSpace(session.Title),
 		Status:            strings.TrimSpace(session.Status),
-		Settings:          normalizeComposerSettingsForProvider(session.Provider, cloneComposerSettingsPointerValue(session.Settings)),
+		Settings:          normalizeObservedComposerSettingsForProvider(session.Provider, cloneComposerSettingsPointerValue(session.Settings)),
 		CreatedAtUnixMS:   session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 		Visible:           boolPointer(session.Visible),
@@ -50,7 +50,7 @@ func runtimeResumeInputFromPersistedSession(session PersistedSession) RuntimeRes
 		Env:                    nil,
 		Title:                  strings.TrimSpace(session.Title),
 		Status:                 persistedRuntimeResumeStatus(session.ActiveTurnID),
-		Settings:               normalizeComposerSettingsForProvider(session.Provider, cloneComposerSettings(session.Settings)),
+		Settings:               normalizeObservedComposerSettingsForProvider(session.Provider, cloneComposerSettings(session.Settings)),
 		CreatedAtUnixMS:        session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:        session.UpdatedAtUnixMS,
 		Visible:                boolPointer(session.Metadata.Visible),
@@ -87,7 +87,7 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 	updatedAt := timeFromUnixMSPointer(session.UpdatedAtUnixMS)
 	title := stringPointer(strings.TrimSpace(session.Title))
 	normalizedProvider := strings.TrimSpace(session.Provider)
-	normalizedSettings := normalizeComposerSettingsForProvider(
+	normalizedSettings := normalizeObservedComposerSettingsForProvider(
 		normalizedProvider,
 		cloneComposerSettingsPointerValue(session.Settings),
 	)
@@ -226,11 +226,4 @@ func timeFromUnixMS(value int64) time.Time {
 func timeFromUnixMSPointer(value int64) *time.Time {
 	t := timeFromUnixMS(value)
 	return &t
-}
-
-func sessionUpdatedAtUnixMS(session Session) int64 {
-	if session.UpdatedAt != nil {
-		return session.UpdatedAt.UnixMilli()
-	}
-	return session.CreatedAt.UnixMilli()
 }

@@ -362,6 +362,18 @@ export function resolveWorkspaceMentionLinkAction({
     };
   }
 
+  if (
+    mention.providerId === "workspace-reference" &&
+    mention.scope?.source?.trim() === "app"
+  ) {
+    return {
+      type: "open-workspace-app",
+      workspaceId,
+      appId: targetId,
+      source
+    };
+  }
+
   return null;
 }
 

@@ -295,6 +295,7 @@ function normalizeAgentTarget(
       enabled: target.enabled,
       iconKey: readTrimmedString(target.iconKey),
       iconUrl: typeof target.iconUrl === "string" ? target.iconUrl : "",
+      availability: readAgentAvailability(target.availability),
       launchRefType:
         launchRefType as DesktopAgentTargetPresentation["launchRefType"],
       name,
@@ -304,6 +305,33 @@ function normalizeAgentTarget(
       updatedAtUnixMs: target.updatedAtUnixMs
     }
   ];
+}
+
+function readAgentAvailability(value: unknown): AgentGUIAgent["availability"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "unavailable" };
+  }
+  const availability = value as Partial<AgentGUIAgent["availability"]>;
+  const status = readTrimmedString(availability.status);
+  if (
+    status !== "ready" &&
+    status !== "coming_soon" &&
+    status !== "not_installed" &&
+    status !== "auth_required" &&
+    status !== "unavailable"
+  ) {
+    return { status: "unavailable" };
+  }
+  return {
+    status,
+    reason: readTrimmedString(availability.reason),
+    pendingAction:
+      availability.pendingAction === "install" ||
+      availability.pendingAction === "login" ||
+      availability.pendingAction === "refresh"
+        ? availability.pendingAction
+        : null
+  };
 }
 
 function isFiniteNumber(value: unknown): value is number {

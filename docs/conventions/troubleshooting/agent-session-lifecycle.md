@@ -328,7 +328,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   uses the previous model. Logs may show
   `agent.gui.composer_defaults.remembered` for the new model while
   `workspace_agent_sessions.settings_json`, `runtimeContext.model`, or
-  app-server `turn/start` still show the old model.
+  app-server `turn/start` still show the old model. For an Agent Extension, the
+  selected model may also change back to Auto as soon as a new session is
+  created, even though the durable session row contains the requested model.
 - Quick checks:
   Search desktop and daemon logs for the full settings chain:
   `agent.gui.composer_settings.default_only`,
@@ -339,7 +341,10 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   `agent_session.app_server.turn_start.params`. If only the defaults event is
   present, the UI changed the target default draft, not the active session. If
   daemon settings update completed but `turn_start.params.model` is old or
-  empty, inspect the app-server adapter path.
+  empty, inspect the app-server adapter path. If persistence and the provider
+  request both contain the selected model but the daemon session response omits
+  `settings.model`, inspect the service projection before debugging the
+  renderer selector.
 - Root cause:
   AgentGUI has two distinct composer surfaces. The target home composer writes
   remembered defaults and node drafts. An active conversation composer must
@@ -349,12 +354,19 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   response still reports the old model, check the service merge path:
   `serviceSessionWithPersistedFreshness` must not let a newer activity
   projection snapshot overwrite live runtime settings after an explicit
-  settings update.
+  settings update. For extension-owned open provider IDs, established runtime
+  and persisted sessions must use open-provider-aware normalization. Applying
+  the closed built-in composer registry to an ID such as `acp:<extension>`
+  produces an empty built-in provider, clamps the model, and makes the UI
+  correctly render Auto from an already-corrupted session projection.
 - Fix:
   Preserve the default-draft path, but make active-session model changes
   observable at every layer. Do not conclude that a provider ignored the model
   until the logs show the active session settings update reached the daemon and
-  the following `turn/start` carried the requested model.
+  the following `turn/start` carried the requested model. Keep closed
+  normalization for unverified composer requests, but preserve provider-owned
+  settings when projecting or resuming a session that was already authorized
+  through an Agent Target.
 - Validation:
   Reproduce by switching a model in a running session and sending a follow-up.
   Confirm the logs include the update chain above and that
@@ -362,7 +374,9 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   model and the next `turn/start` carries it. If the persisted
   `workspace_agent_sessions.settings_json.model` is older while the runtime is
   live, `Get` responses should still expose live runtime settings instead of
-  the stale projection value.
+  the stale projection value. Add a service regression with a generic open
+  provider ID and assert `serviceSession` retains its model; also assert an
+  invalid provider still loses stale settings.
 - References:
   [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
   [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
@@ -375,38 +389,48 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 
 - Symptom:
   Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
-  leaves the middle list and right detail panel out of sync. A provider tab can
-  still show other providers' sessions, or the right panel keeps the previous
-  agent after the middle list already changed.
+  makes the selected row disappear, collapses a loaded page, or briefly flashes
+  missing Show more controls. Five page rows plus one selected overlay may show
+  Show more/Show less even when only six sessions exist, or a nine-session
+  section may ignore the first Show more click. Restart can reproduce the same
+  selected-row loss.
 - Quick checks:
-  Inspect `workspace_agent_sessions.agent_target_id` for legacy Cursor rows. Old
-  Cursor imports may be missing `agent_target_id` while still carrying
-  `provider=cursor`. Confirm the active `conversationFilter` in the controller
-  and the per-query `agentGuiConversationListStore` projection for the selected
-  `local:<provider>` target.
+  Inspect `workspace_agent_sessions.agent_target_id` and `rail_section_key`.
+  Confirm section requests carry the selected `agentTargetId` before pagination
+  and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
+  renderer, distinguish daemon-owned section membership ids from engine-owned
+  session entities; activating or hydrating one session must not rewrite the
+  loaded membership page.
 - Root cause:
-  Conversation retention in `agentGuiConversationListStore` previously kept
-  every targetless session under any agent-target tab. The rail also merged
-  unfiltered store conversations into runtime sections, and filter switches did
-  not always re-project the shared list or clear an active conversation outside
-  the new filter.
+  A second React summary cache mixed entity data, section membership, active
+  selection, and visible-item limits. Effects manually patched section rows
+  from changing conversation summaries, so provider/detail reconciliation could
+  collapse pages or synthesize membership. Counting the active overlay as a
+  pageable row also corrupted Show more decisions. Bounded engine snapshots can
+  recreate the loss if omission is treated as deletion.
 - Fix:
-  Match agent-target tabs with `matchesAgentGUIConversationSummaryFilter`, using
-  `session.provider` as a fallback for legacy `local:<provider>` targets.
-  Backfill Cursor `agent_target_id` in daemon storage, re-project the list store
-  when `conversationFilter` changes, filter rail merges in `AgentGUINodeView`,
-  and open the selected target home composer when the active conversation no
-  longer matches the tab.
+  Keep page sessions in the workspace engine. Cache only ordered membership ids,
+  cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
+  engine entities with a pure model projection. Keep active and pending sessions
+  as display overlays outside pagination. Preserve old scope chrome and metadata
+  atomically while a provider refetch is pending. Engine snapshots merge
+  monotonically; only explicit `session/removed` owns deletion.
 - Validation:
-  Run
-  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-gui/agentGuiNode/model/agentGuiConversationFilter.spec.ts contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts agent-gui/agentGuiNode/controller/useAgentGUINodeController.spec.tsx -t "opens the selected target home composer when the active conversation is outside the new rail filter"`,
-  then `cd services/tuttid && go test ./data/workspace/...`.
+  Run `pnpm --filter @tutti-os/agent-gui test`,
+  `pnpm --filter @tutti-os/agent-activity-core test`, and
+  `pnpm check:agent-activity-runtime-boundaries`. Also run
+  `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
+  and
+  `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
+  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
+  client restart restore, active row outside first page, five-plus-active totals,
+  nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:
-  [agentGuiConversationFilter.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationFilter.ts)
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
-  [useAgentGUINodeController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUINodeController.ts)
-  [AgentGUINodeView.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINodeView.tsx)
-  [agent_store.go](../../../services/tuttid/data/workspace/agent_store.go)
+  [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
+  [agentGuiConversationRail.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRail.ts)
+  [AgentGUIConversationRailSection.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+  [service_session_sections.go](../../../services/tuttid/service/agent/service_session_sections.go)
 
 ### Agent GUI no-project sessions appear under a user project
 
@@ -637,6 +661,34 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - References:
   [desktopAgentActivityAdapter.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/desktopAgentActivityAdapter.ts)
   [createDesktopAgentActivityRuntime.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentActivityRuntime.ts)
+
+### AgentGUI @ Sessions tab is empty
+
+- Symptom:
+  Opening the composer `@` palette (default Sessions tab) shows no session
+  rows, even though the workspace has agent history.
+- Quick checks:
+  In `tuttid.log`, look for `event=workspace.agent_session.api.list_completed`
+  from `GET /v1/workspaces/{workspaceID}/agent-sessions` (the Sessions-tab
+  source). Check `session_count`. Do not confuse it with
+  `workspace.agent_session.messages.api.list_*` or
+  `workspace.agent_session.section.list_failed`.
+- Root cause:
+  The Sessions tab loads through `listWorkspaceAgentSessions`. Successful calls
+  previously left no durable log, so empty palettes could not be distinguished
+  from "API never ran" or "API returned zero sessions" in exported logs.
+- Fix:
+  Successful list responses now emit
+  `workspace.agent_session.api.list_completed` with `session_count`. If the
+  event is missing, the client never hit the endpoint; if `session_count=0`,
+  the daemon truly returned an empty list.
+- Validation:
+  Click the composer `@` button, confirm a
+  `workspace.agent_session.api.list_completed` line appears with a non-zero
+  `session_count` when sessions exist.
+- References:
+  [daemon_agent_session_list.go](../../../services/tuttid/api/daemon_agent_session_list.go)
+  [desktopRichTextAtAgentContributors.ts](../../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtAgentContributors.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### Agent diagnostics flood while a turn is streaming

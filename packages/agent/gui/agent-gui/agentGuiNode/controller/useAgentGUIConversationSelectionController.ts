@@ -1,36 +1,33 @@
-import type {
-  AgentActivitySnapshot,
-  AgentSessionEngine
+import {
+  selectLatestActivationForSession,
+  type AgentActivitySnapshot,
+  type AgentSessionEngine,
+  type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
-import { selectPendingActivations } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useEffect } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { translate } from "../../../i18n/index";
 import type { AgentGUINodeData } from "../../../types";
-import type {
-  AgentComposerDraft,
-  SubmittedDraftSnapshot
-} from "../model/agentGuiNodeTypes";
-import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
-import { clearSubmittedDraftIfUnchanged } from "./agentGuiController.draftMessageHelpers";
 import {
   reportAgentGUIActiveConversationCleared,
   reportAgentGUIConversationListProjectionSkipped
 } from "./agentGuiController.reporting";
 import { sessionHasRenderableMessages } from "./useAgentConversationMessagePaging";
-import type { useAgentGUIActivation } from "./useAgentGUIActivation";
+import {
+  isPendingNewConversationActivation,
+  isPendingNewConversationActivationForSession,
+  type useAgentGUIActivation
+} from "./useAgentGUIActivation";
 import {
   useAgentConversationSelection,
   type ConversationIntent
 } from "./useAgentConversationSelection";
 
-interface ActivationRecord {
-  agentSessionId: string;
-  errorMessage?: string | null;
-  mode: "existing" | "new";
-  status: string;
-}
+type ActivationRecord = Pick<
+  PendingActivationIntentRecord,
+  "agentSessionId" | "errorMessage" | "mode" | "status"
+>;
 
 interface UseAgentGUIConversationSelectionControllerInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
@@ -48,11 +45,9 @@ interface UseAgentGUIConversationSelectionControllerInput {
   currentUserId: string | null | undefined;
   data: AgentGUINodeData;
   dataRef: RefObject<AgentGUINodeData>;
-  draftByScopeKeyRef: RefObject<Record<string, AgentComposerDraft>>;
   intent: ConversationIntent;
   isComposerHomeRef: RefObject<boolean>;
   isMountedRef: RefObject<boolean>;
-  latestPendingNewActivation: ActivationRecord | null;
   loadDraftComposerOptions(): void;
   markSelectedConversationDetailPending(agentSessionId: string): string | null;
   onDataChangeRef: RefObject<
@@ -67,14 +62,20 @@ interface UseAgentGUIConversationSelectionControllerInput {
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
   setDetailError: Dispatch<SetStateAction<string | null>>;
-  setDraftByScopeKey: Dispatch<
-    SetStateAction<Record<string, AgentComposerDraft>>
-  >;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   setIsComposerHome: Dispatch<SetStateAction<boolean>>;
   setIsLoadingMessages: Dispatch<SetStateAction<boolean>>;
-  submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   workspaceId: string;
+}
+
+export function clearFailedAgentGUIActivationSelection(
+  current: AgentGUINodeData,
+  failedAgentSessionId: string
+): AgentGUINodeData {
+  return current.lastActiveAgentSessionId?.trim() ===
+    failedAgentSessionId.trim()
+    ? { ...current, lastActiveAgentSessionId: null }
+    : current;
 }
 
 export function useAgentGUIConversationSelectionController(
@@ -93,11 +94,9 @@ export function useAgentGUIConversationSelectionController(
     currentUserId,
     data,
     dataRef,
-    draftByScopeKeyRef,
     intent,
     isComposerHomeRef,
     isMountedRef,
-    latestPendingNewActivation,
     loadDraftComposerOptions,
     markSelectedConversationDetailPending,
     onDataChangeRef,
@@ -105,20 +104,11 @@ export function useAgentGUIConversationSelectionController(
     sessionEngine,
     setActiveConversationId,
     setDetailError,
-    setDraftByScopeKey,
     setIntent,
     setIsComposerHome,
     setIsLoadingMessages,
-    submittedDraftSnapshotsRef,
     workspaceId
   } = input;
-  const activationRecords = useEngineSelector(
-    sessionEngine,
-    selectPendingActivations,
-    (left, right) =>
-      left.length === right.length &&
-      left.every((record, index) => record === right[index])
-  );
 
   useEffect(() => {
     const userId = currentUserId?.trim() ?? "";
@@ -133,6 +123,28 @@ export function useAgentGUIConversationSelectionController(
   }, [currentUserId, sessionEngine, workspaceId]);
 
   useEffect(() => {
+    if (
+      activePendingActivation?.mode === "new" &&
+      activePendingActivation.status === "failed" &&
+      activeConversationIdRef.current === activePendingActivation.agentSessionId
+    ) {
+      activeConversationIdRef.current = null;
+      setActiveConversationId(null);
+      isComposerHomeRef.current = true;
+      setIsComposerHome(true);
+      setIntent({ tag: "home" });
+      onDataChangeRef.current((current) =>
+        clearFailedAgentGUIActivationSelection(
+          current,
+          activePendingActivation.agentSessionId
+        )
+      );
+      setDetailError(
+        activePendingActivation.errorMessage ||
+          translate("agentHost.agentGui.sessionActivationFailed")
+      );
+      return;
+    }
     if (!activeConversationId) return;
     if (attentionReadRecordsBySessionId[activeConversationId]?.isUnread) {
       sessionEngine.dispatch({
@@ -143,6 +155,7 @@ export function useAgentGUIConversationSelectionController(
     }
   }, [
     activeConversationId,
+    activePendingActivation,
     attentionReadRecordsBySessionId,
     currentUserId,
     sessionEngine
@@ -167,7 +180,15 @@ export function useAgentGUIConversationSelectionController(
         runtime: agentActivityRuntime,
         workspaceId
       });
-      if (previous) void activation.unactivate(previous);
+      if (
+        previous &&
+        !isPendingNewConversationActivationForSession(
+          activePendingActivation,
+          previous
+        )
+      ) {
+        void activation.unactivate(previous);
+      }
       setIntent({ tag: "home" });
       isComposerHomeRef.current = true;
       setIsComposerHome(true);
@@ -185,7 +206,7 @@ export function useAgentGUIConversationSelectionController(
       ) {
         return current;
       }
-      if (current.tag === "requested" || current.tag === "resolving") {
+      if (current.tag === "requested") {
         return current;
       }
       return { tag: "requested", id: externalId };
@@ -197,8 +218,13 @@ export function useAgentGUIConversationSelectionController(
   const selection = useAgentConversationSelection({
     activation: {
       forget: activation.clearFailure,
-      getPendingSessionId: () =>
-        latestPendingNewActivation?.agentSessionId ?? null
+      isPending: (agentSessionId) =>
+        isPendingNewConversationActivation(
+          selectLatestActivationForSession(
+            sessionEngine.getSnapshot(),
+            agentSessionId
+          )
+        )
     },
     conversations: {
       contains: (agentSessionId) =>
@@ -266,72 +292,6 @@ export function useAgentGUIConversationSelectionController(
       setIntent
     }
   });
-
-  useEffect(() => {
-    const pending = latestPendingNewActivation;
-    if (
-      !pending ||
-      activeConversationIdRef.current === pending.agentSessionId
-    ) {
-      return;
-    }
-    activeConversationIdRef.current = pending.agentSessionId;
-    setActiveConversationId(pending.agentSessionId);
-    isComposerHomeRef.current = false;
-    setIsComposerHome(false);
-    setIntent({ tag: "active", id: pending.agentSessionId });
-    selection.persistActiveConversation(pending.agentSessionId);
-  }, [latestPendingNewActivation, selection.persistActiveConversation]);
-
-  useEffect(() => {
-    for (const record of activationRecords) {
-      const clientSubmitId = record.clientSubmitId?.trim() ?? "";
-      if (
-        record.mode !== "new" ||
-        !clientSubmitId ||
-        (record.status !== "confirmed" && record.status !== "failed")
-      ) {
-        continue;
-      }
-      const snapshot = submittedDraftSnapshotsRef.current[clientSubmitId];
-      if (!snapshot) continue;
-      if (record.status === "confirmed") {
-        setDraftByScopeKey((current) => {
-          const next = clearSubmittedDraftIfUnchanged({
-            drafts: current,
-            snapshot
-          });
-          draftByScopeKeyRef.current = next;
-          return next;
-        });
-      }
-      delete submittedDraftSnapshotsRef.current[clientSubmitId];
-    }
-    if (
-      activePendingActivation?.mode !== "new" ||
-      activePendingActivation.status !== "failed" ||
-      activeConversationIdRef.current !== activePendingActivation.agentSessionId
-    ) {
-      return;
-    }
-    activeConversationIdRef.current = null;
-    setActiveConversationId(null);
-    isComposerHomeRef.current = true;
-    setIsComposerHome(true);
-    setIntent({ tag: "home" });
-    selection.persistActiveConversation(null);
-    setDetailError(
-      activePendingActivation.errorMessage ||
-        translate("agentHost.agentGui.sessionActivationFailed")
-    );
-  }, [
-    activationRecords,
-    activePendingActivation,
-    draftByScopeKeyRef,
-    selection.persistActiveConversation,
-    setDraftByScopeKey,
-    submittedDraftSnapshotsRef
-  ]);
 
   return selection;
 }

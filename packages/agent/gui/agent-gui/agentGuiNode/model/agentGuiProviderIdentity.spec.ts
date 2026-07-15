@@ -21,7 +21,7 @@ describe("agentGuiProviderIdentity", () => {
       "claude-code"
     );
     expect(normalizeAgentGUIProviderIdentity("tutti")).toBe("nexight");
-    expect(normalizeAgentGUIProviderIdentity("mystery")).toBe("unknown");
+    expect(normalizeAgentGUIProviderIdentity("mystery")).toBe("mystery");
   });
 
   it("prefers authoritative session provider inputs over conversation and timeline hints", () => {

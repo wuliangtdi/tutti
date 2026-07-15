@@ -291,9 +291,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const handleSelectHomeSuggestion = useCallback(
     (prompt: string) => {
-      // Don't request focus here: replacing the draft already makes the composer
-      // focus the filled prompt (focusAtStart). A second focus (focusAtEnd) would
-      // race it and make the cursor/scroll jump — a visible flicker on fill.
+      // Don't request focus here: replacing the draft already focuses the
+      // filled prompt at the end. A second focus request would race it.
       updateDraftContent(
         updateAgentComposerDraft(viewModel.composer.draftContent, { prompt })
       );
@@ -427,8 +426,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       usage: viewModel.detail.usage,
       draftContent: viewModel.composer.draftContent,
       draftScopeKey: resolveAgentComposerDraftScopeKey({
-        agentSessionId: viewModel.rail.activeConversationId,
-        projectPath: viewModel.composer.composerSettings.selectedProjectPath
+        agentSessionId: viewModel.rail.activeConversationId
       }),
       availableCommands: viewModel.composer.availableCommands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
@@ -449,6 +447,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       disabledReason: composerDisabledReason,
       submitDisabled,
       composerSettings: viewModel.composer.composerSettings,
+      queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
       drainingQueuedPromptId: viewModel.composer.drainingQueuedPromptId,
       workspaceAppIcons,
@@ -568,11 +567,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.rail.activeConversationId,
       viewModel.composer.availableCommands,
       viewModel.composer.availableSkills,
-      viewModel.rail.activeConversationId,
       viewModel.composer.compactSupported,
       viewModel.composer.composerSettings,
       viewModel.shell.currentUserId,
-      viewModel.rail.activeConversationId,
       viewModel.rail.activeConversation,
       composerProvider,
       viewModel.composer.draftContent,
@@ -582,6 +579,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isInterrupting,
       viewModel.interaction.isRespondingApproval,
       viewModel.composer.promptImagesSupported,
+      viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
       viewModel.detail.usage,
       viewModel.shell.workspaceId,
@@ -618,6 +616,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.recovery?.message ?? "",
     backgroundAgentStatusText ?? "",
     viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
+    viewModel.composer.queueStatus,
     viewModel.composer.drainingQueuedPromptId ?? "",
     viewModel.interaction.isRespondingApproval ? "1" : "0"
   ].join("|");

@@ -89,6 +89,10 @@ func (s factoryAgentSessionReaderStub) ListSessions(workspaceID string) ([]agent
 	return result, true
 }
 
+func (factoryAgentSessionReaderStub) SessionDeleted(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+
 func (s factoryAgentMessageReaderStub) ListSessionMessages(input agentactivitybiz.ListSessionMessagesInput) (agentservice.SessionMessagesPage, bool) {
 	page, ok := s.pages[appFactoryJobStoreKey(input.WorkspaceID, input.AgentSessionID)]
 	return page, ok
@@ -370,8 +374,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	for _, want := range []string{
 		"kit owns provider plugins",
+		"agents[].id",
 		"dynamic-agent-providers.md",
-		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentCatalog",
 		"loadTuttiAgentComposerOptions",
 		"loadTuttiAgentSkillContext",
 		"Do not pass a mode",
@@ -401,16 +406,17 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"loadTuttiAgentProviderCatalog",
+		"loadTuttiAgentCatalog",
 		"loadTuttiAgentComposerOptions",
 		"source: \"standalone\"",
 		"TuttiIntegrationError",
 		"availability.reasonCode",
 		"kit_runtime_unavailable",
 		"@tutti-os/agent-acp-kit/tutti/contracts",
-		"claude` to `claude-code",
-		"`tutti-agent` is the canonical Tutti Agent provider ID",
-		"stale `nexight` state is rejected",
+		"tutti --json agent list",
+		"agentTargetId",
+		"may be shared by several agents",
+		"do not reconstruct it from a provider name",
 	} {
 		if !strings.Contains(dynamicProviderReference, want) {
 			t.Fatalf("dynamic provider reference missing %q:\n%s", want, dynamicProviderReference)
@@ -431,7 +437,8 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	}
 	releaseReference := agentWorkspaceAppSkill.Files["references/github-actions-release.md"]
 	for _, want := range []string{
-		`min_tutti_version: "0.1.19"`,
+		"agent catalog schema version 1",
+		"agent-id composer and skill context",
 		"without publishing a new release",
 		"When `min_tutti_version` is greater than `0.0.0`",
 	} {
@@ -561,8 +568,9 @@ func TestAppFactoryServiceCreateUsesDraftDirAndReferenceContext(t *testing.T) {
 	for _, want := range []string{
 		"Default new apps to a Node server",
 		"@tutti-os/agent-acp-kit",
-		"TUTTI_CLI agent/codex/session polling",
-		"Tutti workspace-app scoped agent APIs",
+		"raw TUTTI_CLI agent commands or session polling",
+		"current Tutti Agent Target catalog",
+		"exact agent ids as selection identity",
 		"dynamic-agent-providers.md",
 	} {
 		if !strings.Contains(constraints, want) {

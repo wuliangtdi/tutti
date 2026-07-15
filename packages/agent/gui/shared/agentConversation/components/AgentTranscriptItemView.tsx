@@ -102,6 +102,7 @@ export const AgentTranscriptItemView = memo(function AgentTranscriptItemView({
         <AgentTurnSummaryRow
           row={row}
           workspaceRoot={workspaceRoot}
+          basePath={basePath}
           label={labels.turnSummary}
           onLinkAction={onLinkAction}
           previewMode={previewMode}

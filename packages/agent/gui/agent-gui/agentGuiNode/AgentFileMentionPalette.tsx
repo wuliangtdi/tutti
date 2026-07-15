@@ -454,9 +454,11 @@ function agentMentionItemToRowItem(
       summary: item.title,
       userAvatarUrl: isMySession ? null : (item.initiatorAvatarUrl ?? null),
       userAvatarPlaceholderUrl,
-      agentIconUrl: managedAgentRoundedIconUrl(
-        mentionSessionAgentProvider(item) ?? item.agentName
-      ),
+      agentIconUrl:
+        item.agentIconUrl?.trim() ||
+        managedAgentRoundedIconUrl(
+          mentionSessionAgentProvider(item) ?? item.agentName
+        ),
       showUserAvatar: !isMySession,
       statusTag: agentSessionStatusTag(item.status)
     };

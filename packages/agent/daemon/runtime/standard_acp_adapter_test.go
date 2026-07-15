@@ -18,6 +18,31 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
+func TestStandardACPAdapterStampsAuthoritativeTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	adapter := &standardACPAdapter{}
+	adapterSession := &standardACPSession{}
+	session := reportTestSession()
+	session.Provider = "acp:gemini"
+	events := adapter.stampTurnLifecycleSnapshots(adapterSession, []activityshared.Event{
+		newTurnActivityEvent(session, EventTurnStarted, "turn-1", SessionStatusWorking, "", "", nil),
+		newTurnActivityEvent(session, EventTurnFailed, "turn-1", SessionStatusFailed, "", "", map[string]any{"error": "quota exceeded"}),
+	})
+
+	if len(events) != 2 {
+		t.Fatalf("stamped event count = %d, want 2", len(events))
+	}
+	started, ok := activityshared.TurnLifecycleSnapshotFromEvent(events[0])
+	if !ok || started.Origin != activityshared.TurnLifecycleOriginAdapter || started.ActiveTurnID != "turn-1" || started.Phase != "running" || started.Seq != 1 {
+		t.Fatalf("started lifecycle snapshot = %#v, %v", started, ok)
+	}
+	failed, ok := activityshared.TurnLifecycleSnapshotFromEvent(events[1])
+	if !ok || failed.Origin != activityshared.TurnLifecycleOriginAdapter || failed.ActiveTurnID != "" || failed.Phase != "settled" || failed.Outcome != "failed" || failed.Seq != 2 {
+		t.Fatalf("failed lifecycle snapshot = %#v, %v", failed, ok)
+	}
+}
+
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
 
@@ -994,6 +1019,14 @@ func TestStandardACPToolCallEventInfersCompletedStatusFromRawOutput(t *testing.T
 	}
 }
 
+func TestStandardACPToolAliasOverridesProviderToolIDDeclaratively(t *testing.T) {
+	update := map[string]any{"title": "replace", "toolCallId": "call-1"}
+	applyStandardACPToolAlias(standardACPConfig{toolAliases: map[string]string{"replace": "Edit"}}, update)
+	if got := update["toolName"]; got != "Edit" {
+		t.Fatalf("toolName = %#v, want Edit", got)
+	}
+}
+
 func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	t.Parallel()
 
@@ -1910,6 +1943,11 @@ func TestHermesAdapterStartPreservesCommandsAdvertisedDuringNewSession(t *testin
 		snapshot.Commands[0].Description != "Search the web" ||
 		snapshot.Commands[0].InputHint != "query" {
 		t.Fatalf("command snapshot = %#v ok=%v, want command update preserved from session/new", snapshot, ok)
+	}
+	state := adapter.SessionState(session)
+	commands, ok := state.RuntimeContext["availableCommands"].([]map[string]any)
+	if !ok || len(commands) != 1 || commands[0]["name"] != "web" || commands[0]["description"] != "Search the web" || commands[0]["inputHint"] != "query" {
+		t.Fatalf("runtime availableCommands = %#v", state.RuntimeContext["availableCommands"])
 	}
 }
 

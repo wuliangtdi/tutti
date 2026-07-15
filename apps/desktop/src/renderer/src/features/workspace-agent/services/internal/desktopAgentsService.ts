@@ -213,10 +213,24 @@ export function mapAgentTargetsToPresentations(
     enabled: target.enabled === true,
     iconKey: target.iconKey ?? null,
     iconUrl:
-      options.resolveAgentTargetIconUrl?.({
+      target.iconUrl?.trim() ||
+      (options.resolveAgentTargetIconUrl?.({
         iconKey: target.iconKey?.trim() || null,
         provider: target.provider
-      }) ?? "",
+      }) ??
+        ""),
+    heroImageUrl: target.heroImageUrl?.trim() || null,
+    availability: {
+      status:
+        target.availability?.status === "not_installed"
+          ? "not_installed"
+          : target.availability?.status === "auth_required"
+            ? "auth_required"
+            : target.availability?.status === "unsupported" ||
+                target.availability?.status === "unknown"
+              ? "unavailable"
+              : "ready"
+    },
     launchRefType: target.launchRef.type,
     name: target.name,
     provider: target.provider,
@@ -235,7 +249,8 @@ export function mapAgentTargetPresentationsToAgents(
       agentTargetId: target.agentTargetId,
       name: target.name,
       iconUrl: target.iconUrl,
-      availability: { status: "ready" },
+      ...(target.heroImageUrl ? { heroImageUrl: target.heroImageUrl } : {}),
+      availability: target.availability,
       provider: target.provider as AgentGUIProvider
     }));
 }

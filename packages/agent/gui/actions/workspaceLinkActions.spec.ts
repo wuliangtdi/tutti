@@ -408,6 +408,29 @@ describe("resolveWorkspaceMentionLinkAction", () => {
     });
   });
 
+  it("opens the owning app for an app artifact reference", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-reference/ai-canvas?groupId=outputs&source=app&workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toEqual({
+      type: "open-workspace-app",
+      workspaceId: "workspace-1",
+      appId: "ai-canvas",
+      source: "agent-markdown"
+    });
+  });
+
+  it("keeps task artifact references out of workspace app routing", () => {
+    expect(
+      resolveWorkspaceMentionLinkAction({
+        href: "mention://workspace-reference/topic-1?groupId=issue-1&source=task&workspaceId=workspace-1",
+        source: "agent-markdown"
+      })
+    ).toBeNull();
+  });
+
   it("rejects legacy query-only workspace mention context", () => {
     expect(
       resolveWorkspaceMentionLinkAction({

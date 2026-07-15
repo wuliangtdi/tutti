@@ -333,6 +333,7 @@ export const WorkspaceAgentMessageCenterStack = memo(
               <div className="flex min-w-0 items-center justify-between gap-2 px-0.5 pb-1.5">
                 <span className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold leading-4 text-[var(--text-tertiary)]">
                   <MessageCenterIdentityAvatarMark
+                    agentAvatarUrl={items[0]?.agentAvatarUrl}
                     identity={items[0]?.identity ?? null}
                     provider={items[0]?.provider ?? ""}
                     userId={items[0]?.userId ?? null}
@@ -518,6 +519,7 @@ function MessageCenterStackSummary({
         <span className="flex min-w-0 items-center justify-between gap-2.5">
           <span className="flex min-w-0 items-center gap-2">
             <MessageCenterIdentityAvatarMark
+              agentAvatarUrl={firstItem.agentAvatarUrl}
               identity={firstItem.identity}
               provider={firstItem.provider}
               userId={firstItem.userId}

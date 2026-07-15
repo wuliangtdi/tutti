@@ -46,6 +46,8 @@ export interface WorkspaceAgentMessageCenterItem {
   id: string;
   agentSessionId: string;
   agentTargetId?: string | null;
+  agentName?: string | null;
+  agentAvatarUrl?: string | null;
   provider: string;
   userId: string | null;
   title: string;
@@ -70,11 +72,18 @@ export interface WorkspaceAgentMessageCenterTurnOutcome {
 }
 
 export interface BuildWorkspaceAgentMessageCenterOptions {
+  agentPresentations?: readonly WorkspaceAgentMessageCenterAgentPresentation[];
   avoidGroupingEdits?: boolean;
   identityBySessionId?: Record<string, WorkspaceAgentMessageCenterIdentity>;
   itemCutoffUnixMs?: number | null;
   promptFallbackLabels?: WorkspaceAgentMessageCenterPromptFallbackLabels;
   workspaceRoot?: string | null;
+}
+
+export interface WorkspaceAgentMessageCenterAgentPresentation {
+  agentTargetId: string;
+  iconUrl?: string | null;
+  name: string;
 }
 
 export interface WorkspaceAgentMessageCenterIdentity {
@@ -133,10 +142,16 @@ export function buildWorkspaceAgentMessageCenterItem({
     pendingPrompt,
     status
   });
+  const agentPresentation = resolveMessageCenterAgentPresentation(
+    session.agentTargetId,
+    options.agentPresentations
+  );
   return {
     id: `message-center-${session.agentSessionId}`,
     agentSessionId: session.agentSessionId,
     agentTargetId: session.agentTargetId?.trim() || null,
+    agentName: agentPresentation?.name ?? null,
+    agentAvatarUrl: agentPresentation?.iconUrl ?? null,
     provider: session.provider,
     userId: session.userId?.trim() || null,
     title,
@@ -159,6 +174,29 @@ export function buildWorkspaceAgentMessageCenterItem({
       ...session,
       latestTurn
     })
+  };
+}
+
+function resolveMessageCenterAgentPresentation(
+  agentTargetId: string | null | undefined,
+  presentations:
+    | readonly WorkspaceAgentMessageCenterAgentPresentation[]
+    | undefined
+): { iconUrl: string | null; name: string } | null {
+  const targetId = agentTargetId?.trim() ?? "";
+  if (!targetId) {
+    return null;
+  }
+  const presentation = presentations?.find(
+    (candidate) => candidate.agentTargetId.trim() === targetId
+  );
+  const name = presentation?.name.trim() ?? "";
+  if (!presentation || !name) {
+    return null;
+  }
+  return {
+    iconUrl: presentation.iconUrl?.trim() || null,
+    name
   };
 }
 

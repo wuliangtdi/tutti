@@ -41,6 +41,7 @@ export function AgentProjectDropdown({
   i18n,
   previewMode = false,
   selectProjectDirectory,
+  onDismissAutoFocus,
   onProjectMissingChange,
   onProjectPathChange
 }: {
@@ -52,6 +53,7 @@ export function AgentProjectDropdown({
   labels: AgentProjectDropdownLabels;
   previewMode?: boolean;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  onDismissAutoFocus?: (event: Event) => void;
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
     path: string | null,
@@ -149,6 +151,7 @@ export function AgentProjectDropdown({
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
       service={agentHostApi.userProjects?.service ?? null}
+      onDismissAutoFocus={onDismissAutoFocus}
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}
     />

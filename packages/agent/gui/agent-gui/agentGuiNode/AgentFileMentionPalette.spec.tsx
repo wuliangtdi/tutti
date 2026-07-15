@@ -497,6 +497,61 @@ describe("AgentFileMentionPalette", () => {
     );
   });
 
+  it("uses the target-projected icon for extension sessions", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "",
+      mode: "browse",
+      filter: "session",
+      categories: [],
+      groups: [
+        {
+          id: "my_sessions",
+          items: [
+            {
+              kind: "session",
+              href: "mention://agent-session/session-1?workspaceId=room-1",
+              workspaceId: "room-1",
+              targetId: "session-1",
+              name: "Gemini CLI hi",
+              title: "hi",
+              scope: "my_sessions",
+              initiatorName: "local",
+              agentName: "Gemini CLI",
+              agentIconUrl: "data:image/svg+xml;base64,gemini"
+            }
+          ],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey="my_sessions:session:session-1"
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(
+      document.querySelector('[data-agent-mention-agent-avatar="true"] img')
+    ).toHaveAttribute("src", "data:image/svg+xml;base64,gemini");
+  });
+
   it("keeps long issue titles truncated inside the palette row", () => {
     const longTitle =
       "很久很久以前，在一个遥远的王国里，住着一位美丽善良的公主。她的皮肤像雪一样白皙，嘴唇像鲜血一样红润。";

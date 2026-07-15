@@ -42,6 +42,7 @@ export interface AgentMentionSessionItem {
   initiatorName: string;
   initiatorAvatarUrl?: string;
   agentName: string;
+  agentIconUrl?: string;
   status?: string;
   inputPreview?: string;
   summaryPreview?: string;

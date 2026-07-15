@@ -17,6 +17,8 @@ export interface DesktopAgentTargetPresentation {
   enabled: boolean;
   iconKey?: string | null;
   iconUrl: string;
+  heroImageUrl?: string | null;
+  availability: AgentGUIAgent["availability"];
   launchRefType: AgentTarget["launchRef"]["type"];
   name: string;
   provider: AgentTargetProvider;

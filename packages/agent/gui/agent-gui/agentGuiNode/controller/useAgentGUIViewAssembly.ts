@@ -60,6 +60,9 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
     updateSelectedProjectPath: Parameters<
       typeof useAgentGUIControllerActions
     >[0]["updateSelectedProjectPath"];
+    selectConversation: Parameters<
+      typeof useAgentGUIControllerActions
+    >[0]["selectConversation"];
     providerRailMode: AgentGUIProviderRailMode | undefined;
   };
 
@@ -161,6 +164,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       goalPauseSupported: input.goalPauseSupported,
       canSubmit: session.canSubmit,
       composerSettings: stableComposerSettings,
+      queueStatus: detail.queueStatus,
       queuedPrompts: detail.queuedPrompts,
       drainingQueuedPromptId: detail.drainingQueuedPromptId,
       canQueueWhileBusy: session.canQueueWhileBusy

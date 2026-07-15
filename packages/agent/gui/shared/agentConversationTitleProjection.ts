@@ -35,11 +35,19 @@ export interface AgentGUIConversationTitleMessage {
 export function normalizeAgentGUIProviderIdentity(
   provider: string | null | undefined
 ): AgentGUIResolvedProvider {
-  const providerId =
-    resolveAgentGUIProviderCatalogIdentity(provider)?.providerId;
-  return providerId && Object.hasOwn(AGENT_PROVIDER_LABEL, providerId)
-    ? (providerId as AgentGUIProvider)
-    : "unknown";
+  const normalized = provider?.trim().toLowerCase() ?? "";
+  const catalogIdentity = resolveAgentGUIProviderCatalogIdentity(normalized);
+  if (catalogIdentity) {
+    return catalogIdentity.providerId as AgentGUIProvider;
+  }
+  if (!/^[a-z][a-z0-9._:-]{0,127}$/.test(normalized)) {
+    return "unknown";
+  }
+  return normalized as AgentGUIProvider;
+}
+
+function providerLabel(provider: AgentGUIProvider): string {
+  return (AGENT_PROVIDER_LABEL as Record<string, string>)[provider] ?? provider;
 }
 
 export function resolveAgentGUIProviderIdentity(input: {
@@ -84,7 +92,7 @@ export function resolveAgentGUIConversationTitle(
     };
   }
   return {
-    title: AGENT_PROVIDER_LABEL[provider],
+    title: providerLabel(provider),
     titleFallback: null
   };
 }
@@ -130,10 +138,7 @@ export function resolveAgentGUIExplicitConversationTitle(input: {
     return null;
   }
 
-  if (
-    input.provider !== "unknown" &&
-    title === AGENT_PROVIDER_LABEL[input.provider]
-  ) {
+  if (input.provider !== "unknown" && title === providerLabel(input.provider)) {
     return null;
   }
 
@@ -148,7 +153,7 @@ export function resolveAgentGUIProviderDisplayLabel(
   if (resolvedProvider === "unknown") {
     return fallbackAgentLabel;
   }
-  return AGENT_PROVIDER_LABEL[resolvedProvider];
+  return providerLabel(resolvedProvider);
 }
 
 export function firstAgentGUIUserMessageTitle(

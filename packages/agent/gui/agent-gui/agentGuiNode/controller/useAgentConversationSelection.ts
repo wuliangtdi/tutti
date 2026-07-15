@@ -5,7 +5,6 @@ import type { AgentGUIConversationSummary } from "../model/agentGuiConversationM
 export type ConversationIntent =
   | { tag: "home" }
   | { tag: "requested"; id: string }
-  | { tag: "resolving"; id: string }
   | { tag: "active"; id: string };
 
 export function resolveConversationSummaryById(
@@ -24,7 +23,7 @@ export function resolveConversationSummaryById(
 interface AgentConversationSelectionInput {
   activation: {
     forget(agentSessionId: string): void;
-    getPendingSessionId(): string | null;
+    isPending(agentSessionId: string): boolean;
   };
   conversations: { contains(agentSessionId: string): boolean };
   detail: {
@@ -78,19 +77,16 @@ export function useAgentConversationSelection(
       const previous = current.selection.getActiveSessionId();
       const hasRenderableMessages =
         current.detail.hasRenderableMessages(normalized);
+      const activationPending = current.activation.isPending(normalized);
       current.selection.setComposerHome(false);
-      const pendingSessionId = current.activation.getPendingSessionId();
       if (previous && previous !== normalized)
         current.activation.forget(previous);
       if (previous !== normalized) {
-        if (hasRenderableMessages) {
+        if (hasRenderableMessages || activationPending) {
           current.detail.setLoading(false);
         } else {
           current.detail.markPending(normalized);
         }
-      }
-      if (pendingSessionId && pendingSessionId !== normalized) {
-        current.activation.forget(pendingSessionId);
       }
       const reloadConversations =
         options?.reloadConversations !== false &&
@@ -98,10 +94,12 @@ export function useAgentConversationSelection(
       current.selection.setIntent({ tag: "active", id: normalized });
       current.selection.setActiveSessionId(normalized);
       current.selection.clearDetailError();
-      current.detail.reload(normalized, {
-        reloadConversations,
-        reloadDetail: previous === normalized || !hasRenderableMessages
-      });
+      if (!activationPending) {
+        current.detail.reload(normalized, {
+          reloadConversations,
+          reloadDetail: previous === normalized || !hasRenderableMessages
+        });
+      }
       persistActiveConversation(normalized);
     },
     [persistActiveConversation]

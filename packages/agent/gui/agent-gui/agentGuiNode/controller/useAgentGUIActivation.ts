@@ -2,6 +2,7 @@ import {
   selectSessionActivationPresentations,
   sessionActivationPresentationMapsEqual,
   type AgentActivitySubmitDiagnostics,
+  type PendingActivationIntentRecord,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { useCallback, useMemo, useRef } from "react";
@@ -19,6 +20,7 @@ interface AgentGUIActivateInputBase {
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
+  runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   settings?: AgentSessionComposerSettings;
   title?: string;
@@ -45,6 +47,33 @@ interface UseAgentGUIActivationInput {
 }
 
 const ACTIVATION_EXPIRY_MS = 45_000;
+
+export function isPendingNewConversationActivation(
+  activation:
+    | Pick<PendingActivationIntentRecord, "mode" | "status">
+    | null
+    | undefined
+): boolean {
+  return (
+    activation?.mode === "new" &&
+    (activation.status === "requested" || activation.status === "uncertain")
+  );
+}
+
+export function isPendingNewConversationActivationForSession(
+  activation:
+    | Pick<PendingActivationIntentRecord, "agentSessionId" | "mode" | "status">
+    | null
+    | undefined,
+  agentSessionId: string | null | undefined
+): boolean {
+  const normalizedSessionId = agentSessionId?.trim() ?? "";
+  return Boolean(
+    normalizedSessionId &&
+    activation?.agentSessionId.trim() === normalizedSessionId &&
+    isPendingNewConversationActivation(activation)
+  );
+}
 
 export function useAgentGUIActivation({
   engine,
@@ -89,6 +118,9 @@ export function useAgentGUIActivation({
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
+          : {}),
+        ...(input.runtimeContent
+          ? { runtimeContent: input.runtimeContent }
           : {}),
         ...(input.submitDiagnostics
           ? { submitDiagnostics: input.submitDiagnostics }

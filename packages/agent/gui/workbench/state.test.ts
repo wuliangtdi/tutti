@@ -20,7 +20,7 @@ describe("agent gui workbench state", () => {
       normalizeAgentGuiWorkbenchNodeState({
         provider: "unsupported"
       } as never).provider
-    ).toBe("codex");
+    ).toBe("unsupported");
     expect(
       normalizeAgentGuiWorkbenchNodeState({
         composerOverrides: { model: "gpt-5" },
@@ -155,9 +155,9 @@ describe("agent gui workbench state", () => {
     expect(
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:hermes:panel:abc")
     ).toBe("hermes");
-    expect(() =>
+    expect(
       agentGuiWorkbenchProviderFromInstanceId("agent-gui:unsupported")
-    ).toThrow("agent_gui_workbench.instance_provider_required");
+    ).toBe("unsupported");
   });
 
   it("returns null instead of defaulting when the provider is unresolved", () => {
@@ -168,7 +168,7 @@ describe("agent gui workbench state", () => {
     expect(agentGuiWorkbenchProviderFromInstanceIdOrNull(undefined)).toBeNull();
     expect(
       agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:unsupported")
-    ).toBeNull();
+    ).toBe("unsupported");
     expect(
       agentGuiWorkbenchProviderFromInstanceIdOrNull("agent-gui:tutti-agent")
     ).toBe("tutti-agent");

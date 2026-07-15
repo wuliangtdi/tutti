@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -20,33 +21,44 @@ const (
 	IDLocalCursor     = providerregistry.CursorTargetID
 	IDLocalOpenCode   = providerregistry.OpenCodeTargetID
 
-	LaunchRefTypeLocalCLI = "local_cli"
+	LaunchRefTypeBuiltinLocal   = "builtin_local"
+	LaunchRefTypeAgentExtension = "agent_extension"
+	// LaunchRefTypeLocalCLI is retained as a source compatibility name while
+	// persisted and API output normalize to builtin_local.
+	LaunchRefTypeLocalCLI       = LaunchRefTypeBuiltinLocal
+	launchRefTypeLegacyLocalCLI = "local_cli"
 
 	SourceSystem = "system"
 	SourceUser   = "user"
 )
 
 var (
-	ErrInvalidTarget    = errors.New("invalid agent target")
-	ErrInvalidLaunchRef = errors.New("invalid agent target launch ref")
+	ErrInvalidTarget     = errors.New("invalid agent target")
+	ErrInvalidLaunchRef  = errors.New("invalid agent target launch ref")
+	agentTargetIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,127}$`)
 )
 
 type Target struct {
-	ID              string
-	Provider        string
-	LaunchRefJSON   string
-	Name            string
-	IconKey         string
-	Enabled         bool
-	Source          string
-	SortOrder       int
-	CreatedAtUnixMS int64
-	UpdatedAtUnixMS int64
+	ID                 string
+	Provider           string
+	LaunchRefJSON      string
+	Name               string
+	IconKey            string
+	IconURL            string
+	HeroImageURL       string
+	Enabled            bool
+	Source             string
+	SortOrder          int
+	CreatedAtUnixMS    int64
+	UpdatedAtUnixMS    int64
+	AvailabilityStatus string
+	AvailabilityReason string
 }
 
 type LaunchRef struct {
-	Type     string `json:"type"`
-	Provider string `json:"provider"`
+	Type                    string `json:"type"`
+	Provider                string `json:"provider,omitempty"`
+	ExtensionInstallationID string `json:"extensionInstallationId,omitempty"`
 }
 
 func DefaultSystemTargets(nowUnixMS int64) []Target {
@@ -67,7 +79,7 @@ func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDesc
 	if err := providerregistry.Validate(descriptor); err != nil {
 		panic(fmt.Sprintf("invalid migrated provider target descriptor: %v", err))
 	}
-	if descriptor.Target.LaunchRefType != LaunchRefTypeLocalCLI {
+	if descriptor.Target.LaunchRefType != launchRefTypeLegacyLocalCLI {
 		panic(fmt.Sprintf("provider %q has unsupported target launch ref type %q", descriptor.Identity.ID, descriptor.Target.LaunchRefType))
 	}
 	return Target{
@@ -91,15 +103,26 @@ func systemTargetFromProviderDescriptor(descriptor providerregistry.ProviderDesc
 func EnabledTargetsByProvider(targets []Target) []Target {
 	result := make([]Target, 0, len(targets))
 	seen := make(map[string]struct{}, len(targets))
+	for _, normalized := range EnabledTargets(targets) {
+		if _, ok := seen[normalized.Provider]; ok {
+			continue
+		}
+		seen[normalized.Provider] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// EnabledTargets returns every valid enabled agent target in catalog order.
+// Agent-first launch surfaces use this instead of collapsing targets by
+// provider because multiple agents may intentionally share one runtime.
+func EnabledTargets(targets []Target) []Target {
+	result := make([]Target, 0, len(targets))
 	for _, target := range targets {
 		normalized, err := NormalizeTarget(target)
 		if err != nil || !normalized.Enabled {
 			continue
 		}
-		if _, ok := seen[normalized.Provider]; ok {
-			continue
-		}
-		seen[normalized.Provider] = struct{}{}
 		result = append(result, normalized)
 	}
 	return result
@@ -122,7 +145,7 @@ func EnabledTargetForProvider(targets []Target, provider string) (Target, bool) 
 
 func MustLocalCLILaunchRefJSON(provider string) string {
 	raw, err := CanonicalLaunchRefJSON(provider, LaunchRef{
-		Type:     LaunchRefTypeLocalCLI,
+		Type:     LaunchRefTypeBuiltinLocal,
 		Provider: provider,
 	})
 	if err != nil {
@@ -143,21 +166,29 @@ func RuntimeProviderTargetRef(target Target) (map[string]any, error) {
 	if _, err := CanonicalLaunchRefJSON(normalized.Provider, launchRef); err != nil {
 		return nil, err
 	}
-	return map[string]any{
+	result := map[string]any{
 		"kind":     launchRef.Type,
-		"provider": launchRef.Provider,
+		"provider": normalized.Provider,
 		"targetId": normalized.ID,
-	}, nil
+	}
+	if launchRef.Type == LaunchRefTypeAgentExtension {
+		result["extensionInstallationId"] = launchRef.ExtensionInstallationID
+	}
+	return result, nil
 }
 
 func NormalizeTarget(value Target) (Target, error) {
 	value.ID = strings.TrimSpace(value.ID)
-	value.Provider = normalizeFirstIterationProvider(value.Provider)
+	value.Provider = agentproviderbiz.NormalizeOpen(value.Provider)
 	value.Name = strings.TrimSpace(value.Name)
 	value.IconKey = strings.TrimSpace(value.IconKey)
+	value.IconURL = strings.TrimSpace(value.IconURL)
+	value.HeroImageURL = strings.TrimSpace(value.HeroImageURL)
 	value.Source = normalizeSource(value.Source)
-	if value.ID == "" {
-		return Target{}, fmt.Errorf("%w: id is required", ErrInvalidTarget)
+	value.AvailabilityStatus = strings.TrimSpace(value.AvailabilityStatus)
+	value.AvailabilityReason = strings.TrimSpace(value.AvailabilityReason)
+	if !agentTargetIDPattern.MatchString(value.ID) {
+		return Target{}, fmt.Errorf("%w: id must match %s", ErrInvalidTarget, agentTargetIDPattern.String())
 	}
 	if value.Provider == "" {
 		return Target{}, fmt.Errorf("%w: provider is unsupported", ErrInvalidTarget)
@@ -195,25 +226,41 @@ func CanonicalLaunchRefJSONString(tableProvider string, raw string) (string, err
 }
 
 func CanonicalLaunchRefJSON(tableProvider string, ref LaunchRef) (string, error) {
-	tableProvider = normalizeFirstIterationProvider(tableProvider)
+	tableProvider = agentproviderbiz.NormalizeOpen(tableProvider)
 	ref.Type = strings.TrimSpace(ref.Type)
-	ref.Provider = normalizeFirstIterationProvider(ref.Provider)
-	if ref.Type != LaunchRefTypeLocalCLI {
-		return "", fmt.Errorf("%w: unsupported type", ErrInvalidLaunchRef)
-	}
-	if ref.Provider == "" {
-		return "", fmt.Errorf("%w: provider is unsupported", ErrInvalidLaunchRef)
+	if ref.Type == launchRefTypeLegacyLocalCLI {
+		ref.Type = LaunchRefTypeBuiltinLocal
 	}
 	if tableProvider == "" {
 		return "", fmt.Errorf("%w: table provider is unsupported", ErrInvalidLaunchRef)
 	}
-	if ref.Provider != tableProvider {
-		return "", fmt.Errorf("%w: provider mismatch", ErrInvalidLaunchRef)
+	var canonical LaunchRef
+	switch ref.Type {
+	case LaunchRefTypeBuiltinLocal:
+		ref.Provider = agentproviderbiz.NormalizeOpen(ref.Provider)
+		if ref.Provider == "" {
+			return "", fmt.Errorf("%w: provider is unsupported", ErrInvalidLaunchRef)
+		}
+		if ref.Provider != tableProvider {
+			return "", fmt.Errorf("%w: provider mismatch", ErrInvalidLaunchRef)
+		}
+		if strings.TrimSpace(ref.ExtensionInstallationID) != "" {
+			return "", fmt.Errorf("%w: builtin launch ref cannot name an extension installation", ErrInvalidLaunchRef)
+		}
+		canonical = LaunchRef{Type: LaunchRefTypeBuiltinLocal, Provider: ref.Provider}
+	case LaunchRefTypeAgentExtension:
+		installationID := strings.TrimSpace(ref.ExtensionInstallationID)
+		if installationID == "" {
+			return "", fmt.Errorf("%w: extension installation id is required", ErrInvalidLaunchRef)
+		}
+		if strings.TrimSpace(ref.Provider) != "" {
+			return "", fmt.Errorf("%w: extension launch ref cannot override provider", ErrInvalidLaunchRef)
+		}
+		canonical = LaunchRef{Type: LaunchRefTypeAgentExtension, ExtensionInstallationID: installationID}
+	default:
+		return "", fmt.Errorf("%w: unsupported type", ErrInvalidLaunchRef)
 	}
-	data, err := json.Marshal(LaunchRef{
-		Type:     LaunchRefTypeLocalCLI,
-		Provider: ref.Provider,
-	})
+	data, err := json.Marshal(canonical)
 	if err != nil {
 		return "", fmt.Errorf("%w: marshal canonical launch ref: %w", ErrInvalidLaunchRef, err)
 	}
@@ -233,12 +280,4 @@ func normalizeSource(value string) string {
 	default:
 		return ""
 	}
-}
-
-func normalizeFirstIterationProvider(value string) string {
-	normalized := agentproviderbiz.Normalize(value)
-	if _, ok := providerregistry.Find(normalized); ok {
-		return normalized
-	}
-	return ""
 }

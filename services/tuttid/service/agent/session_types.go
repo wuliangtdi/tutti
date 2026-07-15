@@ -37,6 +37,7 @@ type Service struct {
 	RuntimePreparer                runtimeprep.Preparer
 	ComputerUseAvailable           func() bool
 	CapabilityLister               ComposerCapabilityLister
+	ExtensionComposerProfiles      ExtensionComposerProfileResolver
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
@@ -94,6 +95,25 @@ type ComposerCapabilityLister interface {
 	ListComposerCapabilityOptions(context.Context, string, string, []ComposerSkillOption) ([]ComposerCapabilityOption, []string)
 }
 
+type ExtensionComposerProfileResolver interface {
+	ResolveExtensionComposerProfile(context.Context, string) (ExtensionComposerProfile, error)
+}
+
+type ExtensionComposerProfile struct {
+	Skills *ExtensionComposerSkillProfile
+}
+
+type ExtensionComposerSkillProfile struct {
+	Invocation    string
+	TriggerPrefix string
+	Roots         []ExtensionComposerSkillRoot
+}
+
+type ExtensionComposerSkillRoot struct {
+	Scope string
+	Path  string
+}
+
 type Session struct {
 	ID                string
 	UserID            string
@@ -121,8 +141,10 @@ type Session struct {
 }
 
 type ListSessionsInput struct {
-	SearchQuery string
-	Limit       int
+	AgentTargetID string
+	Cursor        string
+	SearchQuery   string
+	Limit         int
 }
 
 type SessionListPage struct {
@@ -182,6 +204,7 @@ type SessionSectionsPage struct {
 type SessionPage struct {
 	Sessions   []Session
 	HasMore    bool
+	TotalCount int
 	NextCursor string
 }
 
@@ -191,6 +214,7 @@ type SessionSection struct {
 	UserProject *userprojectbiz.Project
 	Sessions    []Session
 	HasMore     bool
+	TotalCount  int
 	NextCursor  string
 }
 
@@ -236,6 +260,7 @@ type SessionMessage struct {
 type SessionReader interface {
 	GetSession(workspaceID string, agentSessionID string) (PersistedSession, bool)
 	ListSessions(workspaceID string) ([]PersistedSession, bool)
+	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
 type SessionSectionReader interface {
@@ -339,6 +364,7 @@ type RuntimeResumeInput struct {
 	UpdatedAtUnixMS        int64
 	Visible                *bool
 	RuntimeContext         map[string]any
+	ProviderTargetRef      map[string]any
 	Metadata               agentactivitybiz.SessionMetadata
 	InternalRuntimeContext map[string]any
 	// RecreateIfMissing lets the runtime start a fresh provider session in place

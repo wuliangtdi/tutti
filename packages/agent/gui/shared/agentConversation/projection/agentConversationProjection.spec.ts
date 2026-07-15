@@ -622,6 +622,25 @@ describe("projectAgentConversationVM", () => {
     expect(conversation.rows.map((row) => row.kind)).toContain("turn-summary");
   });
 
+  it("uses the session cwd for turn summaries when no workspace root is selected", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        workspaceRoot: null,
+        showProcessingIndicator: false
+      })
+    );
+
+    const summary = conversation.rows.find(
+      (row) => row.kind === "turn-summary"
+    );
+    expect(summary).toMatchObject({
+      kind: "turn-summary",
+      files: expect.arrayContaining([
+        expect.objectContaining({ path: "/workspace/demo/src/App.tsx" })
+      ])
+    });
+  });
+
   it("derives pending approval and ask-user prompts from typed tool rows", () => {
     const detail = detailViewModel({
       turns: [
