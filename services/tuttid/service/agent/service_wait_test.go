@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 type waitRuntime struct {
 	*fakeRuntime
 	events            chan RuntimeStreamEvent
+	mu                sync.RWMutex
 	subscribeStarted  chan struct{}
 	unsubscribeCalled bool
 }
@@ -28,11 +30,38 @@ func (r *waitRuntime) Subscribe(string, string) (<-chan RuntimeStreamEvent, func
 	case r.subscribeStarted <- struct{}{}:
 	default:
 	}
-	return r.events, func() { r.unsubscribeCalled = true }, true
+	return r.events, func() {
+		r.mu.Lock()
+		r.unsubscribeCalled = true
+		r.mu.Unlock()
+	}, true
+}
+
+func (r *waitRuntime) setSession(session ProviderRuntimeSession) {
+	r.mu.Lock()
+	r.sessions[session.WorkspaceID+":"+session.ID] = session
+	r.mu.Unlock()
+}
+
+func (r *waitRuntime) runtimeSession(workspaceID string, sessionID string) (ProviderRuntimeSession, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	session, ok := r.sessions[workspaceID+":"+sessionID]
+	return session, ok
+}
+
+func (r *waitRuntime) Session(workspaceID string, sessionID string) (ProviderRuntimeSession, bool) {
+	return r.runtimeSession(workspaceID, sessionID)
+}
+
+func (r *waitRuntime) didUnsubscribe() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.unsubscribeCalled
 }
 
 func (r *waitRuntime) persistedTurn(workspaceID string, sessionID string) (agentactivitybiz.Turn, bool) {
-	session, ok := r.sessions[workspaceID+":"+sessionID]
+	session, ok := r.runtimeSession(workspaceID, sessionID)
 	if !ok || session.TurnLifecycle == nil || session.TurnLifecycle.ActiveTurnID == nil {
 		return agentactivitybiz.Turn{}, false
 	}
@@ -57,7 +86,7 @@ func (r *waitRuntime) pendingInteractions(workspaceID string, sessionID string) 
 	if !ok || turn.Phase != agentactivitybiz.TurnPhaseWaiting {
 		return nil
 	}
-	session := r.sessions[workspaceID+":"+sessionID]
+	session, _ := r.runtimeSession(workspaceID, sessionID)
 	kind := agentactivitybiz.InteractionKindQuestion
 	if session.TurnLifecycle.Phase == "waiting_approval" {
 		kind = agentactivitybiz.InteractionKindApproval
@@ -84,7 +113,7 @@ func (r *waitRuntime) GetTurn(_ context.Context, workspaceID string, sessionID s
 
 func (r *waitRuntime) GetSession(_ context.Context, workspaceID string, sessionID string) (agentactivitybiz.Session, bool, error) {
 	turn, hasTurn := r.persistedTurn(workspaceID, sessionID)
-	_, found := r.sessions[workspaceID+":"+sessionID]
+	_, found := r.runtimeSession(workspaceID, sessionID)
 	result := agentactivitybiz.Session{WorkspaceID: workspaceID, ID: sessionID}
 	if hasTurn {
 		result.ActiveTurnID = turn.TurnID
@@ -275,7 +304,7 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 	case <-time.After(30 * time.Millisecond):
 	}
 
-	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+	runtime.setSession(ProviderRuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "codex",
@@ -287,10 +316,10 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 		Visible:         true,
 		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
 		UpdatedAtUnixMS: time.Now().UnixMilli(),
-	}
+	})
 	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
 
-	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+	runtime.setSession(ProviderRuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "codex",
@@ -302,7 +331,7 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 		Visible:         true,
 		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
 		UpdatedAtUnixMS: time.Now().Add(10 * time.Millisecond).UnixMilli(),
-	}
+	})
 	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
 	close(runtime.events)
 
@@ -325,7 +354,7 @@ func TestWaitIgnoresStaleStopUntilNewProgressArrives(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatalf("Wait() did not return after new stop point")
 	}
-	if !runtime.unsubscribeCalled {
+	if !runtime.didUnsubscribe() {
 		t.Fatalf("unsubscribe not called")
 	}
 }
@@ -443,7 +472,7 @@ func TestWaitHasMoreTracksFilteredExecutionMessages(t *testing.T) {
 	}()
 
 	<-runtime.subscribeStarted
-	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+	runtime.setSession(ProviderRuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "codex",
@@ -455,7 +484,7 @@ func TestWaitHasMoreTracksFilteredExecutionMessages(t *testing.T) {
 		Visible:         true,
 		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
 		UpdatedAtUnixMS: time.Now().UnixMilli(),
-	}
+	})
 	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
 	close(runtime.events)
 
@@ -535,7 +564,7 @@ func TestWaitStopsScanningOlderPagesAfterCrossingAfterVersion(t *testing.T) {
 	}()
 
 	<-runtime.subscribeStarted
-	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+	runtime.setSession(ProviderRuntimeSession{
 		ID:          "session-1",
 		WorkspaceID: "ws-1",
 		Provider:    "codex",
@@ -547,7 +576,7 @@ func TestWaitStopsScanningOlderPagesAfterCrossingAfterVersion(t *testing.T) {
 		Visible:         true,
 		CreatedAtUnixMS: time.Now().Add(-time.Minute).UnixMilli(),
 		UpdatedAtUnixMS: time.Now().UnixMilli(),
-	}
+	})
 	runtime.events <- RuntimeStreamEvent{EventType: "state_patch"}
 	close(runtime.events)
 
@@ -690,7 +719,7 @@ func TestWaitPreservesExplicitZeroAfterVersion(t *testing.T) {
 	if len(result.Messages) != 1 || result.Messages[0].MessageID != "assistant-1" {
 		t.Fatalf("messages = %#v", result.Messages)
 	}
-	if !runtime.unsubscribeCalled {
+	if !runtime.didUnsubscribe() {
 		t.Fatalf("unsubscribe not called")
 	}
 }
