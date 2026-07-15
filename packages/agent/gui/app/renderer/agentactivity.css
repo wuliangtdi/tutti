@@ -4241,7 +4241,7 @@ aside.workspace-agents-status-panel
   .tsh-agent-object-token__main {
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--tutti-purple-bg);
+  background: transparent;
 }
 
 [data-agent-mention-kind="skill"].tsh-agent-object-token--entity.ProseMirror-selectednode
@@ -4340,7 +4340,7 @@ aside.workspace-agents-status-panel
   border-radius: 4px;
   font-size: 13px;
   line-height: 24px;
-  transform: translateY(1px);
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
