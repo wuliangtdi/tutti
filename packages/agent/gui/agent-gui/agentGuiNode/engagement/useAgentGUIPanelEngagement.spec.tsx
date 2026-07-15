@@ -5,6 +5,8 @@ import {
   AGENT_GUI_PANEL_EXPOSURE_DWELL_MS,
   useAgentGUIPanelEngagement
 } from "./useAgentGUIPanelEngagement";
+import { AgentGUIPanelEngagementController } from "./AgentGUIPanelEngagementController";
+import { createAgentGUIEngagementContextKey } from "./projectAgentGUIEngagementContext";
 import type {
   AgentGUIEngagementContext,
   AgentGUIEngagementEvent
@@ -69,6 +71,28 @@ afterEach(() => {
 });
 
 describe("useAgentGUIPanelEngagement", () => {
+  it("keys visits by session, provider, and target without delimiter collisions", () => {
+    const keys = [
+      createAgentGUIEngagementContextKey({
+        agentSessionId: "session-1",
+        agentTargetId: "target:one",
+        provider: "provider"
+      }),
+      createAgentGUIEngagementContextKey({
+        agentSessionId: "session-1",
+        agentTargetId: "one",
+        provider: "provider:target"
+      }),
+      createAgentGUIEngagementContextKey({
+        agentSessionId: "session-1",
+        agentTargetId: "target:one",
+        provider: "other-provider"
+      })
+    ];
+
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it("buffers interaction until exposure and deduplicates a visit", () => {
     const { events } = renderHarness();
 
@@ -164,15 +188,82 @@ describe("useAgentGUIPanelEngagement", () => {
     act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
     expect(events).toEqual([]);
   });
+
+  it("does not approximate exposure when IntersectionObserver is unavailable", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      bottom: 100,
+      height: 100,
+      left: 0,
+      right: 100,
+      top: 0,
+      width: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    });
+    const { events } = renderHarness({ installIntersectionObserver: false });
+
+    act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
+
+    expect(events).toEqual([]);
+  });
+
+  it("rejects stale interactions after the visit context changes", () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
+    const events: AgentGUIEngagementEvent[] = [];
+    let input = {
+      context: contextFor("session-a"),
+      contextKey: "session:session-a",
+      isActive: true,
+      isVisible: true,
+      onEvent: (event: AgentGUIEngagementEvent) => {
+        events.push(event);
+      },
+      previewMode: false
+    };
+    const controller = new AgentGUIPanelEngagementController({
+      element: document.createElement("div"),
+      getInput: () => input,
+      initialIntersectionRatio: 0,
+      visitContextKey: input.contextKey
+    });
+    controller.attach();
+    act(() => TestIntersectionObserver.current?.emit(1));
+    act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
+
+    input = {
+      ...input,
+      context: contextFor("session-b"),
+      contextKey: "session:session-b"
+    };
+    controller.focused("pointer");
+    controller.contentEntered({ contentType: "text", hadPrefill: false });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        agentSessionId: "session-a",
+        type: "panel_exposed"
+      })
+    ]);
+    controller.dispose();
+  });
 });
 
 function renderHarness(input?: {
   context?: AgentGUIEngagementContext;
   contextKey?: string;
+  installIntersectionObserver?: boolean;
 }) {
   vi.useFakeTimers();
   vi.spyOn(document, "hasFocus").mockReturnValue(true);
-  vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
+  vi.stubGlobal(
+    "IntersectionObserver",
+    input?.installIntersectionObserver === false
+      ? undefined
+      : TestIntersectionObserver
+  );
   const events: AgentGUIEngagementEvent[] = [];
   const rendered = render(
     <EngagementHarness

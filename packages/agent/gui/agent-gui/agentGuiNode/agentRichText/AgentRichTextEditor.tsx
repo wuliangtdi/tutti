@@ -52,12 +52,13 @@ import {
   writePlainTextToClipboard
 } from "./agentRichTextEditorSupport";
 export { isAgentRichTextLargeTextPaste } from "./agentRichTextEditorSupport";
-import {
-  AGENT_RICH_TEXT_SKIP_USER_CONTENT_EVENT_META,
-  useAgentRichTextEditorHandle
-} from "./useAgentRichTextEditorHandle";
+import { useAgentRichTextEditorHandle } from "./useAgentRichTextEditorHandle";
 import { AgentRichTextEditorSurface } from "./AgentRichTextEditorSurface";
 import { handleAgentRichTextKeyDownCapture } from "./agentRichTextKeyboard";
+import {
+  isAgentRichTextUserContentInsertion,
+  markAgentRichTextPointerFocus
+} from "./agentRichTextEngagement";
 
 export type {
   AgentRichTextEditorHandle,
@@ -658,10 +659,7 @@ export const AgentRichTextEditor = forwardRef<
         return;
       }
       lastEmittedPromptRef.current = nextPrompt;
-      if (
-        transaction.getMeta(AGENT_RICH_TEXT_SKIP_USER_CONTENT_EVENT_META) !==
-        true
-      ) {
+      if (isAgentRichTextUserContentInsertion(transaction)) {
         onUserContentChangeRef.current?.(nextPrompt);
       }
       onChangeRef.current(nextPrompt);
@@ -781,9 +779,9 @@ export const AgentRichTextEditor = forwardRef<
       disabled={disabled}
       editor={editor}
       handleKeyDownCapture={handleKeyDownCapture}
-      handlePointerDownCapture={() => {
-        pendingFocusMethodRef.current = "pointer";
-      }}
+      handlePointerDownCapture={() =>
+        markAgentRichTextPointerFocus(pendingFocusMethodRef)
+      }
       pasteClipboardText={pasteClipboardText}
       placeholder={placeholder}
       t={t}

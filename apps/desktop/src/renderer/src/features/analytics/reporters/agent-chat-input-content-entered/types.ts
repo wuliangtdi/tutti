@@ -1,13 +1,6 @@
-import type { AnalyticsReporterParams } from "../baseReporter.ts";
+import type { AgentChatEngagementBaseParams } from "../agent-chat-engagement-params.ts";
 
-export interface AgentChatInputContentEnteredParams extends AnalyticsReporterParams {
-  agentSessionId: string | null;
-  agentTargetId: string | null;
-  composerReady: boolean;
+export interface AgentChatInputContentEnteredParams extends AgentChatEngagementBaseParams {
   contentType: "image" | "large_text" | "text";
-  conversationState: "existing" | "new";
   hadPrefill: boolean;
-  panelVisitId: string;
-  provider: string;
-  surface: "standalone_agent" | "workspace";
 }

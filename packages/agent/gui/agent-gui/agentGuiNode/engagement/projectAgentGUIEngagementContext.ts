@@ -23,8 +23,23 @@ export function projectAgentGUIEngagementContext(
       conversationState: agentSessionId ? "existing" : "new",
       provider
     },
-    contextKey: agentSessionId
-      ? `session:${agentSessionId}`
-      : `home:${provider}:${agentTargetId ?? "default"}`
+    contextKey: createAgentGUIEngagementContextKey({
+      agentSessionId,
+      agentTargetId,
+      provider
+    })
   };
+}
+
+export function createAgentGUIEngagementContextKey(input: {
+  agentSessionId: string | null;
+  agentTargetId: string | null;
+  provider: string;
+}): string {
+  return JSON.stringify([
+    input.agentSessionId ? "session" : "home",
+    input.agentSessionId,
+    input.provider,
+    input.agentTargetId
+  ]);
 }

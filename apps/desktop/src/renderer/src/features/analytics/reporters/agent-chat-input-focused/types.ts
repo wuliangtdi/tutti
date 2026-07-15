@@ -1,12 +1,5 @@
-import type { AnalyticsReporterParams } from "../baseReporter.ts";
+import type { AgentChatEngagementBaseParams } from "../agent-chat-engagement-params.ts";
 
-export interface AgentChatInputFocusedParams extends AnalyticsReporterParams {
-  agentSessionId: string | null;
-  agentTargetId: string | null;
-  composerReady: boolean;
-  conversationState: "existing" | "new";
+export interface AgentChatInputFocusedParams extends AgentChatEngagementBaseParams {
   focusMethod: "keyboard" | "pointer" | "programmatic";
-  panelVisitId: string;
-  provider: string;
-  surface: "standalone_agent" | "workspace";
 }

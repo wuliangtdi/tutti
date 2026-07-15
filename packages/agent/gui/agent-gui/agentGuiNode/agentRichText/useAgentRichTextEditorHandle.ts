@@ -15,9 +15,7 @@ import {
   isMentionTriggerBoundaryBeforeSelection,
   isPromptVisualLineStart
 } from "./agentRichTextEditorSupport";
-
-export const AGENT_RICH_TEXT_SKIP_USER_CONTENT_EVENT_META =
-  "agentRichTextSkipUserContentEvent";
+import { AGENT_RICH_TEXT_SKIP_USER_CONTENT_EVENT_META } from "./agentRichTextEngagement";
 
 export function useAgentRichTextEditorHandle(input: {
   availableCapabilitiesRef: RefObject<readonly AgentCapabilityTokenOption[]>;

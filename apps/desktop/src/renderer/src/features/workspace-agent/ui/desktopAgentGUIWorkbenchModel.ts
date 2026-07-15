@@ -188,7 +188,9 @@ export function areDesktopAgentGUIWorkbenchBodyContextsEqual(
       previous.instanceId === next.instanceId &&
       previous.instanceKey === next.instanceKey &&
       previous.isFocused === next.isFocused &&
+      previous.presentationMode === next.presentationMode &&
       previous.node.id === next.node.id &&
+      previous.node.isMinimized === next.node.isMinimized &&
       previous.node.title === next.node.title &&
       previous.node.frame.width === next.node.frame.width &&
       previous.node.frame.height === next.node.frame.height &&

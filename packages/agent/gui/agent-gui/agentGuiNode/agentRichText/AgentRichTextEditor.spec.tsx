@@ -683,6 +683,7 @@ describe("AgentRichTextEditor", () => {
 
   it("cuts selected text from the composer context menu on pointer down", async () => {
     const onChange = vi.fn();
+    const onUserContentChange = vi.fn();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
       clipboard: {
@@ -696,6 +697,7 @@ describe("AgentRichTextEditor", () => {
         disabled={false}
         placeholder="Prompt"
         onChange={onChange}
+        onUserContentChange={onUserContentChange}
         onSubmit={vi.fn()}
       />
     );
@@ -713,6 +715,7 @@ describe("AgentRichTextEditor", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("hello world"));
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));
+    expect(onUserContentChange).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("menu", { name: "Composer text actions" })
     ).not.toBeInTheDocument();
@@ -1042,6 +1045,12 @@ describe("AgentRichTextEditor", () => {
     await waitFor(() => expect(onFocus).toHaveBeenLastCalledWith("pointer"));
 
     fireEvent.blur(editor);
+    fireEvent.focus(editor);
+    await waitFor(() => expect(onFocus).toHaveBeenLastCalledWith("keyboard"));
+
+    fireEvent.blur(editor);
+    fireEvent.pointerDown(editor);
+    await act(async () => Promise.resolve());
     fireEvent.focus(editor);
     await waitFor(() => expect(onFocus).toHaveBeenLastCalledWith("keyboard"));
   });

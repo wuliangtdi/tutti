@@ -36,7 +36,6 @@ export class AgentGUIPanelEngagementController {
   private documentVisible = documentIsVisible();
   private intersectionObserver: IntersectionObserver | null = null;
   private intersectionRatio: number;
-  private resizeFallbackAttached = false;
   private visit: AgentGUIPanelVisit | null = null;
 
   constructor(
@@ -55,9 +54,8 @@ export class AgentGUIPanelEngagementController {
     window.addEventListener("blur", this.updateDocumentState);
     window.addEventListener("focus", this.updateDocumentState);
     if (typeof IntersectionObserver === "undefined") {
-      this.resizeFallbackAttached = true;
-      window.addEventListener("resize", this.updateFallbackIntersection);
-      this.updateFallbackIntersection();
+      // Under-count rather than weaken the 50% exposure guarantee.
+      this.intersectionRatio = 0;
     } else {
       this.intersectionObserver = new IntersectionObserver(
         this.updateIntersection,
@@ -74,15 +72,13 @@ export class AgentGUIPanelEngagementController {
     document.removeEventListener("visibilitychange", this.updateDocumentState);
     window.removeEventListener("blur", this.updateDocumentState);
     window.removeEventListener("focus", this.updateDocumentState);
-    if (this.resizeFallbackAttached) {
-      window.removeEventListener("resize", this.updateFallbackIntersection);
-    }
     this.intersectionObserver?.disconnect();
     this.endVisit();
     return this.intersectionRatio;
   }
 
   focused(focusMethod: AgentGUIComposerFocusMethod): void {
+    this.reconcileVisit();
     const visit = this.visit;
     if (!visit || visit.pendingFocusMethod) return;
     visit.pendingFocusMethod = focusMethod;
@@ -94,6 +90,7 @@ export class AgentGUIPanelEngagementController {
   }
 
   contentEntered(content: PendingContentEntered): void {
+    this.reconcileVisit();
     const visit = this.visit;
     if (!visit || visit.pendingContentEntered) return;
     visit.pendingContentEntered = content;
@@ -107,13 +104,6 @@ export class AgentGUIPanelEngagementController {
   private readonly updateDocumentState = (): void => {
     this.documentFocused = documentHasFocus();
     this.documentVisible = documentIsVisible();
-    this.reconcileVisit();
-  };
-
-  private readonly updateFallbackIntersection = (): void => {
-    this.intersectionRatio = elementViewportIntersectionRatio(
-      this.options.element
-    );
     this.reconcileVisit();
   };
 
@@ -230,18 +220,4 @@ function documentIsVisible(): boolean {
   return (
     typeof document !== "undefined" && document.visibilityState === "visible"
   );
-}
-
-function elementViewportIntersectionRatio(element: HTMLElement): number {
-  const rect = element.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return 0;
-  const visibleWidth = Math.max(
-    0,
-    Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0)
-  );
-  const visibleHeight = Math.max(
-    0,
-    Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0)
-  );
-  return (visibleWidth * visibleHeight) / (rect.width * rect.height);
 }

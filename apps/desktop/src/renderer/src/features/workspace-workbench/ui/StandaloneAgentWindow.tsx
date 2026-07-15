@@ -483,7 +483,8 @@ export function StandaloneAgentWindow({
       host,
       instanceId,
       instanceKey: standaloneAgentInstanceKey,
-      isFocused: document.hasFocus(),
+      // Standalone has one node; document focus is tracked live by engagement.
+      isFocused: true,
       node: {
         data: {
           activation,
