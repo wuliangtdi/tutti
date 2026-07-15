@@ -113,6 +113,21 @@ describe("getPromptToolDetails", () => {
     ]);
   });
 
+  it("does not duplicate a command description as a separate reason", () => {
+    expect(
+      getPromptToolDetails({
+        command: "pnpm test --run renderer",
+        description: "Verify the renderer parity fixes."
+      })
+    ).toEqual([
+      {
+        kind: "command",
+        value: "pnpm test --run renderer",
+        meta: "Verify the renderer parity fixes."
+      }
+    ]);
+  });
+
   it("surfaces approval details from nested toolCall inputs", () => {
     expect(
       getPromptToolDetails({

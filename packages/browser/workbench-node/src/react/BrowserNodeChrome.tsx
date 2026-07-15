@@ -9,6 +9,9 @@ import {
   LaunchIcon,
   LoadingIcon,
   RefreshIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   WebIcon,
   cn
 } from "@tutti-os/ui-system";
@@ -41,6 +44,7 @@ export interface BrowserNodeChromeProps {
   displayMode?: WorkbenchDisplayMode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   feature: BrowserNodeFeature;
+  navigationActions?: ReactNode;
   onCloseRequest?: () => void;
   onFocusRequest?: () => void;
   surfaceNodeId: string;
@@ -54,6 +58,7 @@ export interface BrowserNodeWorkbenchHeaderProps {
   displayMode?: WorkbenchDisplayMode;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
   feature: BrowserNodeFeature;
+  navigationActions?: ReactNode;
   nodeId: string;
   onCloseRequest?: () => void;
   onFocusRequest?: () => void;
@@ -66,6 +71,7 @@ export function BrowserNodeWorkbenchHeader({
   displayMode,
   dragHandleProps,
   feature,
+  navigationActions,
   nodeId,
   onCloseRequest,
   onFocusRequest
@@ -78,6 +84,7 @@ export function BrowserNodeWorkbenchHeader({
       displayMode={displayMode}
       dragHandleProps={dragHandleProps}
       feature={feature}
+      navigationActions={navigationActions}
       onCloseRequest={onCloseRequest}
       onFocusRequest={onFocusRequest}
       surfaceNodeId={nodeId}
@@ -93,6 +100,7 @@ export function BrowserNodeChrome({
   displayMode,
   dragHandleProps,
   feature,
+  navigationActions,
   onCloseRequest,
   onFocusRequest,
   surfaceNodeId,
@@ -208,6 +216,7 @@ export function BrowserNodeChrome({
       <BrowserNodeHeader
         defaultUrl={activeTab.defaultUrl}
         feature={feature}
+        navigationActions={navigationActions}
         nodeId={activeTab.nodeId}
         onFocusRequest={onFocusRequest}
       />
@@ -218,11 +227,13 @@ export function BrowserNodeChrome({
 export function BrowserNodeHeader({
   defaultUrl,
   feature,
+  navigationActions,
   nodeId,
   onFocusRequest
 }: {
   defaultUrl: string;
   feature: BrowserNodeFeature;
+  navigationActions?: ReactNode;
   nodeId: string;
   onFocusRequest?: () => void;
 }): JSX.Element {
@@ -301,6 +312,7 @@ export function BrowserNodeHeader({
           <LaunchIcon className="size-[15px]" />
         </BrowserNodeHeaderButton>
       ) : null}
+      {navigationActions}
       <BrowserNodeActionsMenu
         feature={feature}
         nodeId={nodeId}
@@ -399,18 +411,22 @@ function BrowserNodeHeaderButton({
   onClick: () => void;
 }): JSX.Element {
   return (
-    <Button
-      aria-label={label}
-      className="rounded-md"
-      disabled={disabled}
-      size="icon-sm"
-      title={label}
-      type="button"
-      variant="chrome"
-      onClick={onClick}
-    >
-      {children}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          className="rounded-md"
+          disabled={disabled}
+          size="icon-sm"
+          type="button"
+          variant="chrome"
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

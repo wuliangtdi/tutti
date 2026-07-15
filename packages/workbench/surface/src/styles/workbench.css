@@ -729,6 +729,10 @@
   --desktop-dock-gap: 16px;
   --desktop-dock-items-padding: 6.3px;
   --desktop-dock-left-items-padding-block: 8px;
+  --desktop-dock-left-axis-offset: 24px;
+  --desktop-dock-left-items-padding-inline-end: calc(
+    var(--desktop-dock-left-axis-offset) * 2
+  );
   --desktop-dock-items-padding-block-end: 8px;
   --desktop-dock-icon-center-block-end: calc(
     var(--desktop-dock-items-padding-block-end) +
@@ -789,7 +793,7 @@
   --desktop-dock-scroll-button-gap: 32px;
   --desktop-dock-scroll-button-z-index: 120;
   --desktop-dock-scroll-fade-size: 48px;
-  --desktop-dock-tooltip-gap: 32px;
+  --desktop-dock-tooltip-gap: 12px;
   --desktop-dock-hover-panel-gap: 12px;
   position: relative;
   z-index: 1;
@@ -936,7 +940,9 @@
   height: 100%;
   align-items: center;
   flex-direction: column;
-  padding: var(--desktop-dock-left-items-padding-block) 0;
+  padding: var(--desktop-dock-left-items-padding-block)
+    var(--desktop-dock-left-items-padding-inline-end)
+    var(--desktop-dock-left-items-padding-block) 0;
 }
 
 .desktop-dock[data-dock-placement="left"][data-scroll-overflow="true"]
@@ -1067,7 +1073,7 @@
 }
 
 .desktop-dock[data-dock-placement="left"] .desktop-dock__scroll-button {
-  left: 50%;
+  left: calc(50% - var(--desktop-dock-left-axis-offset));
   transform: translateX(-50%) scale(0.94);
 }
 
@@ -1362,9 +1368,15 @@
   box-shadow: 0 0 0 0.5px rgb(255 255 255 / 58%);
 }
 
-.desktop-dock[data-dock-placement="left"] .desktop-dock__slot::before {
-  content: none !important;
-  display: none !important;
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot[data-node-state="open"]::before,
+.desktop-dock[data-dock-placement="left"]
+  .desktop-dock__slot[data-node-state="minimized"]::before {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: calc(var(--desktop-dock-indicator-offset) - 2px);
+  transform: translateY(-50%);
 }
 
 .desktop-dock__btn {

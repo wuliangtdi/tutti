@@ -22,6 +22,10 @@ import type {
 import { resolveAgentGUIAgentTarget } from "../../../agentTargets";
 import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPresentation";
 import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
+import {
+  resolveAgentGUIComposerAppendRequest,
+  type AgentGUIComposerAppendRequest
+} from "./useAgentGUIComposerAppendRequest";
 
 export interface AgentGUIPrefillPromptRequest {
   agentTargetId?: string | null;
@@ -42,10 +46,12 @@ export interface UseAgentGUIConversationHomeInput {
     isExplicit: boolean;
     target: AgentGUIAgentTarget;
   }) => AgentGUIComposerTargetData;
+  composerAppendRequest: AgentGUIComposerAppendRequest | null;
   conversationFilterRef: RefObject<AgentGUIConversationFilter>;
   dataRef: RefObject<AgentGUINodeData>;
   defaultAgentTargetId: string | null;
   handledPrefillPromptSequenceRef: RefObject<number | null>;
+  handledComposerAppendSequenceRef: RefObject<number | null>;
   isComposerHomeRef: RefObject<boolean>;
   isExplicitAgentGUIAgentTarget: (
     target: AgentGUIAgentTarget,
@@ -95,11 +101,13 @@ export function useAgentGUIConversationHome({
   activePendingActivation,
   agentActivityRuntime,
   composerTargetDataFromProviderTarget,
+  composerAppendRequest,
   conversationFilterRef,
   currentProvider,
   dataRef,
   defaultAgentTargetId,
   handledPrefillPromptSequenceRef,
+  handledComposerAppendSequenceRef,
   isComposerHomeRef,
   isExplicitAgentGUIAgentTarget,
   loadDraftComposerOptions,
@@ -229,8 +237,27 @@ export function useAgentGUIConversationHome({
   );
 
   useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    const resolvedAppendRequest = resolveAgentGUIComposerAppendRequest({
+      activeConversationId: activeConversationIdRef.current,
+      draftByScopeKey: draftByScopeKeyRef.current,
+      handledSequence: handledComposerAppendSequenceRef.current,
+      request: composerAppendRequest
+    });
+    if (resolvedAppendRequest) {
+      handledComposerAppendSequenceRef.current = resolvedAppendRequest.sequence;
+      draftByScopeKeyRef.current = {
+        ...draftByScopeKeyRef.current,
+        [resolvedAppendRequest.draftKey]: resolvedAppendRequest.nextDraft
+      };
+      setDraftByScopeKey((current) => ({
+        ...current,
+        [resolvedAppendRequest.draftKey]: resolvedAppendRequest.nextDraft
+      }));
+    }
     if (
-      previewMode ||
       !prefillPromptRequest ||
       handledPrefillPromptSequenceRef.current === prefillPromptRequest.sequence
     ) {
@@ -312,9 +339,11 @@ export function useAgentGUIConversationHome({
   }, [
     dataRef,
     draftByScopeKeyRef,
+    composerAppendRequest,
     defaultAgentTargetId,
     enterHome,
     handledPrefillPromptSequenceRef,
+    handledComposerAppendSequenceRef,
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,

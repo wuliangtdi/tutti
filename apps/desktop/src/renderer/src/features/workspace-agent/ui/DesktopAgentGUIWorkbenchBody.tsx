@@ -66,6 +66,10 @@ import { useDesktopAgentGUIContextMentions } from "./useDesktopAgentGUIContextMe
 import { useDesktopAgentGUIReadiness } from "./useDesktopAgentGUIReadiness.ts";
 import { preloadDesktopAgentGuiMentionBrowse } from "../services/preloadDesktopAgentGuiMentionBrowse.ts";
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "../services/desktopAgentGuiIdentity.ts";
+import {
+  AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
+  isFeatureEnabled
+} from "../../../../../shared/featureFlags/catalog.ts";
 
 function DesktopAgentGUIWorkbenchBodyImpl({
   agentActivityRuntime,
@@ -74,6 +78,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   agentProviderStatusService,
   context,
   computerUseApi,
+  composerAppendRequest = null,
   conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
@@ -109,7 +114,6 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     useDesktopPreferencesService();
   const {
     computerUseStatus,
-    effectiveManagedAgentsState,
     handleAgentProviderLogin,
     provider,
     providerReadinessGates,
@@ -659,10 +663,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     [frame.height, frame.width, frame.x, frame.y]
   );
   const composerFocusRequestSequence =
-    context.activation?.type === workbenchFocusInputActivationType ||
+    composerAppendRequest?.sequence ??
+    (context.activation?.type === workbenchFocusInputActivationType ||
     context.activation?.type === desktopAgentGUIPrefillPromptActivationType
       ? context.activation.sequence
-      : (prefillPromptRequest?.sequence ?? null);
+      : (prefillPromptRequest?.sequence ?? null));
   const capabilityMenuState = useMemo<
     AgentGUIProps["hostCapabilities"]["capabilityMenuState"]
   >(
@@ -677,6 +682,12 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }),
     [computerUseStatus, desktopPreferencesState.browserUseConnectionMode]
   );
+  const referenceProvenanceFilterEnabled =
+    !previewMode &&
+    isFeatureEnabled(
+      desktopPreferencesState.featureFlags,
+      AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
+    );
   const providerAuthAccountLabels = useMemo(() => {
     const labels: Partial<Record<WorkspaceAgentProvider, string>> = {};
     for (const status of providerStatusSnapshot.statuses) {
@@ -687,6 +698,21 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     }
     return labels;
   }, [providerStatusSnapshot.statuses]);
+  const handleHandoffConversation = useCallback<
+    NonNullable<AgentGUIProps["hostActions"]["onHandoffConversation"]>
+  >(
+    async (request) => {
+      await requestWorkspaceAgentGuiLaunch({
+        agentTargetId: request.agentTargetId,
+        draftPrompt: request.draftPrompt,
+        openInNewWindow: true,
+        provider: normalizeDesktopAgentGUIProvider(request.provider),
+        userProjectPath: request.userProjectPath,
+        workspaceId
+      });
+    },
+    [workspaceId]
+  );
 
   return (
     <>
@@ -746,6 +772,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         }}
         state={nodeState}
         runtimeRequests={{
+          composerAppend: composerAppendRequest,
           composerFocusSequence: composerFocusRequestSequence,
           newConversationSequence: newConversationRequestSequence,
           openSession: openSessionRequest,
@@ -759,13 +786,13 @@ function DesktopAgentGUIWorkbenchBodyImpl({
             : handleAgentProbeRefreshRequest
         }}
         hostCapabilities={{
+          referenceProvenanceFilterEnabled,
           capabilityMenuState,
           accountMenuState: null,
           comingSoonProviders: comingSoonAgentProviders,
           providerReadinessGates,
           defaultAgentTargetId,
           providerAuthAccountLabels,
-          managedAgentsState: effectiveManagedAgentsState,
           contextMentionProviders: previewMode
             ? []
             : effectiveContextMentionProviders,
@@ -783,16 +810,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
           onLinkAction: previewMode ? undefined : onLinkAction,
           onHandoffConversation: previewMode
             ? undefined
-            : async (request) => {
-                await requestWorkspaceAgentGuiLaunch({
-                  agentTargetId: request.agentTargetId,
-                  draftPrompt: request.draftPrompt,
-                  openInNewWindow: true,
-                  provider: normalizeDesktopAgentGUIProvider(request.provider),
-                  userProjectPath: request.userProjectPath,
-                  workspaceId
-                });
-              },
+            : handleHandoffConversation,
           onResize: DESKTOP_AGENT_GUI_NOOP,
           onShowMessage: handleDesktopAgentGUIShowMessage,
           onUpdateNode: handleUpdateNode,

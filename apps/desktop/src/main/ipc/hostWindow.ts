@@ -197,7 +197,10 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
       });
       ownerWindow.setContentBounds(
         nextBounds,
-        shouldAnimateStandaloneAgentWindowResize(process.platform)
+        shouldAnimateStandaloneAgentWindowResize(
+          process.platform,
+          input.animate === true
+        )
       );
       return { width: ownerWindow.getContentBounds().width };
     }

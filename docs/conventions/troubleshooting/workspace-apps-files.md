@@ -121,6 +121,40 @@
   [workspaceAppCenterLaunchRequest.ts](../../../apps/desktop/src/renderer/src/features/workspace-app-center/services/internal/workspaceAppCenterLaunchRequest.ts)
   [dockEntries.ts](../../../packages/workbench/surface/src/host/dockEntries.ts)
 
+### Agent inline app opening leaks into the OS App Center
+
+- Symptom:
+  Opening an app from the OS App Center replaces the catalog inline instead of
+  creating or focusing the app-specific Workbench Node and Dock entry. The same
+  inline behavior is expected in the standalone Agent Apps sidebar.
+- Quick checks:
+  Confirm `WorkspaceAppCenterPane` calls the shell-aware App Center service
+  command. Then confirm the renderer window registered exactly one workspace
+  App surface presenter: Workbench for the OS shell or standalone Agent for the
+  Agent shell.
+- Root cause:
+  App placement is Shell presentation policy. Calling an inline helper directly
+  from the shared App Center pane bypasses the OS presenter and writes the Agent
+  `openAppId` selection into state consumed by both shells.
+- Fix:
+  Keep runtime preparation in `WorkspaceAppCenterService`, route presentation
+  through the feature-owned workspace App surface host, and implement separate
+  Workbench and standalone Agent presenters. Bind Workbench presenter
+  registration only to the actual host and workspace lifecycle, never App
+  Center snapshots. Presenter replacement and disposal must roll back their
+  pending attempts and use identity-checked cleanup so stale Shell cleanup
+  cannot unregister a newer presenter.
+- Validation:
+  Run the App surface host, Workbench presenter, standalone Agent presenter, App
+  Center service, and App Center pane tests. Verify OS presentation calls
+  `host.launchNode` while Agent presentation selects the inline app before
+  runtime preparation and rolls it back on failure. Cover an App Center revision
+  update during OS preparation and presenter disposal during Agent preparation.
+- References:
+  [workspaceAppSurfaceHost.interface.ts](../../../apps/desktop/src/renderer/src/features/workspace-app-center/services/workspaceAppSurfaceHost.interface.ts)
+  [workbenchWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceAppSurfacePresenter.ts)
+  [standaloneAgentWorkspaceAppSurfacePresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/standaloneAgentWorkspaceAppSurfacePresenter.ts)
+
 ### Load unpacked project roots with source manifests
 
 - Symptom:

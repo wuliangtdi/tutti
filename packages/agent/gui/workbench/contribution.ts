@@ -1,4 +1,5 @@
 import { createElement, type ReactNode } from "react";
+import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
 import {
   type WorkbenchContribution,
   type WorkbenchFrame,
@@ -10,10 +11,14 @@ import {
   shouldAutoCollapseAgentGUIConversationRail
 } from "../agent-gui/agentGuiNode/model/agentGuiRailLayout.ts";
 import { resolveAgentGuiSessionProviderIconUrl } from "../agentGuiSessionProviderIconUrls.ts";
+import { AgentGuiWorkbenchReactiveHeader } from "./AgentGuiWorkbenchReactiveHeader.tsx";
 import { setAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
-import { AgentGuiWorkbenchHeader } from "./header.ts";
 import {
-  agentGuiWorkbenchProviderFromIdentifier,
+  AgentGuiWorkbenchHeader,
+  type AgentGuiWorkbenchHeaderProps
+} from "./header.ts";
+import type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
+import {
   agentGuiWorkbenchTypeId,
   createAgentGuiWorkbenchLaunchDescriptor
 } from "./launch.ts";
@@ -55,11 +60,7 @@ export interface AgentGuiWorkbenchNewConversationDetail {
   instanceId: string;
 }
 
-export interface AgentGuiWorkbenchConversationIdentity {
-  agentTitle?: string | null;
-  iconUrl?: string | null;
-  title: string | null;
-}
+export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
 
 export interface AgentGuiWorkbenchContributionCopy {
   collapseConversationRail: string;
@@ -72,6 +73,7 @@ export interface AgentGuiWorkbenchContributionCopy {
   nodeTitle: string;
   openDetachedWindow: string;
   restore: string;
+  untitledConversation: string;
 }
 
 export type AgentGuiWorkbenchContributionCopyOverrides =
@@ -120,6 +122,7 @@ export interface CreateAgentGuiWorkbenchContributionInput {
   resolveDockPopupIdentity?: (
     state: AgentGuiWorkbenchState | null
   ) => AgentGuiWorkbenchConversationIdentity | null;
+  sessionEngine?: AgentSessionEngine;
   onOpenDetachedWindow?: (input: {
     agentSessionId?: string | null;
     agentTargetId?: string | null;
@@ -220,27 +223,32 @@ export function createAgentGuiWorkbenchContribution(
             nodeState.conversationRailWidthPx,
             node.frame.width
           );
-          const conversationIdentity =
-            input.resolveDockPopupIdentity?.(workbenchState) ?? null;
-          const conversationTitle =
-            conversationIdentity?.title ??
-            input.resolveDockPopupTitle?.(workbenchState) ??
-            null;
-          // Resolve the icon from a *known* provider only. During a freshly
-          // created session the provider is not encoded yet; falling back to
-          // `provider` (which defaults to "codex") would flash the wrong icon,
-          // so we leave the URL empty and let the header render a neutral
-          // placeholder until the real provider resolves.
+          const conversationIdentity = input.sessionEngine
+            ? null
+            : (input.resolveDockPopupIdentity?.(workbenchState) ?? null);
+          const conversationTitle = input.sessionEngine
+            ? null
+            : (conversationIdentity?.title ??
+              input.resolveDockPopupTitle?.(workbenchState) ??
+              null);
+          // The empty new-conversation home has no session identity, so it
+          // must not inherit the provider icon from the workbench instance.
+          // Once a local session id exists, keep the provider icon available
+          // while the canonical conversation title is still being persisted.
           const iconProvider =
             providerFromActivation(activation) ??
             agentGuiWorkbenchProviderFromInstanceIdOrNull(instanceId);
-          const conversationIconFallbackUrl = iconProvider
-            ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
-              resolveAgentGuiWorkbenchProviderIconUrl({
-                dockIconUrls: input.dockIconUrls,
-                provider: iconProvider
-              }))
-            : null;
+          const hasConversation = Boolean(
+            workbenchState.lastActiveAgentSessionId?.trim()
+          );
+          const conversationIconFallbackUrl =
+            hasConversation && iconProvider
+              ? (resolveAgentGuiSessionProviderIconUrl(iconProvider) ??
+                resolveAgentGuiWorkbenchProviderIconUrl({
+                  dockIconUrls: input.dockIconUrls,
+                  provider: iconProvider
+                }))
+              : null;
           const conversationIconUrl =
             conversationIdentity?.iconUrl ?? conversationIconFallbackUrl;
           const persistConversationRailCollapsed = (collapsed: boolean) => {
@@ -280,12 +288,9 @@ export function createAgentGuiWorkbenchContribution(
             );
           };
 
-          return createElement(AgentGuiWorkbenchHeader, {
-            agentTitle: conversationIdentity?.agentTitle,
+          const headerProps = {
             copy,
-            conversationIconUrl,
             conversationIconFallbackUrl,
-            conversationTitle,
             conversationRailWidthPx,
             displayMode,
             isConversationRailAutoCollapsed,
@@ -345,7 +350,22 @@ export function createAgentGuiWorkbenchContribution(
 
               persistConversationRailCollapsed(nextCollapsed);
             }
-          });
+          } satisfies AgentGuiWorkbenchHeaderProps;
+          return input.sessionEngine
+            ? createElement(AgentGuiWorkbenchReactiveHeader, {
+                ...headerProps,
+                agentDirectory: input.agentDirectory,
+                dockIconUrls: input.dockIconUrls,
+                sessionEngine: input.sessionEngine,
+                workbenchState
+              })
+            : createElement(AgentGuiWorkbenchHeader, {
+                ...headerProps,
+                agentTitle: conversationIdentity?.agentTitle,
+                conversationIconUrl,
+                conversationTitle,
+                hasConversation
+              });
         },
         title: copy.nodeTitle,
         typeId: agentGuiWorkbenchTypeId,
@@ -385,10 +405,7 @@ export function createAgentGuiWorkbenchContribution(
       ) {
         return null;
       }
-      if (
-        !providerFromState(launchPayload) &&
-        !agentGuiWorkbenchProviderFromIdentifier(request.dockEntryId)
-      ) {
+      if (!providerFromState(launchPayload)) {
         return null;
       }
       const {

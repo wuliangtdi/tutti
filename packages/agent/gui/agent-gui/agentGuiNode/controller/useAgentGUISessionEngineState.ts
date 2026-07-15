@@ -10,6 +10,8 @@ import {
   selectEnginePromptQueueError,
   selectEngineSession,
   selectEngineSessionDeleted,
+  selectEngineSessionDetailHydrated,
+  selectEngineSessionDetailLoading,
   selectEngineSessionError,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionReconcile,
@@ -20,7 +22,8 @@ import {
   selectPendingSubmitsForSession,
   selectSessionHasUnconfirmedSubmit,
   selectSessionIsSubmitting,
-  type AgentSessionEngine
+  type AgentSessionEngine,
+  type EngineQueuedPrompt
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
 import type {
@@ -43,13 +46,16 @@ export function useAgentGUISessionEngineState(input: {
   const activeQueuedPromptSnapshot = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueue(state, activeConversationId)
   );
-  const activeQueuedPrompts =
-    activeQueuedPromptSnapshot?.prompts.filter(
-      (prompt) =>
-        prompt.visibleInQueue !== false &&
-        prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
-        prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
-    ) ?? EMPTY_QUEUED_PROMPTS;
+  const activeQueuedPrompts = useMemo<readonly EngineQueuedPrompt[]>(
+    () =>
+      activeQueuedPromptSnapshot?.prompts.filter(
+        (prompt) =>
+          prompt.visibleInQueue !== false &&
+          prompt.id !== activeQueuedPromptSnapshot.inFlight?.promptId &&
+          prompt.id !== activeQueuedPromptSnapshot.sendNextPromptId
+      ) ?? EMPTY_QUEUED_PROMPTS,
+    [activeQueuedPromptSnapshot]
+  );
   const activePendingSubmits = useEngineSelector(
     sessionEngine,
     (state) => selectPendingSubmitsForSession(state, activeConversationId),
@@ -79,10 +85,12 @@ export function useAgentGUISessionEngineState(input: {
   const activeSessionReconcile = useEngineSelector(sessionEngine, (state) =>
     selectEngineSessionReconcile(state, activeConversationId)
   );
-  const activeSessionReconcilePending = Boolean(
-    activeSessionReconcile?.inFlightCommandId ||
-    activeSessionReconcile?.pendingMessages ||
-    activeSessionReconcile?.pendingState
+  const activeSessionDetailLoading = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionDetailLoading(state, activeConversationId)
+  );
+  const activeSessionDetailHydrated = useEngineSelector(
+    sessionEngine,
+    (state) => selectEngineSessionDetailHydrated(state, activeConversationId)
   );
   const activeEngineSessionDeleted = useEngineSelector(sessionEngine, (state) =>
     selectEngineSessionDeleted(state, activeConversationId)
@@ -200,8 +208,10 @@ export function useAgentGUISessionEngineState(input: {
       activeQueuedPromptSnapshot
     ),
     activeSessionState,
-    activeSessionReconcilePending,
-    activeSessionReconcileError: activeSessionReconcile?.errorMessage ?? null,
+    activeSessionDetailLoading,
+    activeSessionReconcileError: activeSessionDetailHydrated
+      ? null
+      : (activeSessionReconcile?.errorMessage ?? null),
     isCreatingConversation,
     hasUnconfirmedSubmit,
     isRespondingToInteraction,

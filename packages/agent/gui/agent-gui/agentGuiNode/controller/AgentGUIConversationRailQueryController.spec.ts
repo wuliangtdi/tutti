@@ -2,10 +2,114 @@ import { describe, expect, it, vi } from "vitest";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import {
   AgentGUIConversationRailQueryController,
+  CONVERSATION_SEARCH_DEBOUNCE_MS,
   type ConversationRailQueryRuntime
 } from "./AgentGUIConversationRailQueryController";
 
 describe("AgentGUIConversationRailQueryController", () => {
+  it("debounces conversation searches and immediately clears an active query", async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = createTestAgentSessionEngine();
+      const listSessionsPage = vi.fn<
+        NonNullable<ConversationRailQueryRuntime["listSessionsPage"]>
+      >(async (input) => ({
+        hasMore: false,
+        sessions: [],
+        workspaceId: input.workspaceId
+      }));
+      const controller = new AgentGUIConversationRailQueryController({
+        engine,
+        getActiveConversationId: () => null,
+        runtime: { listSessionsPage },
+        workspaceId: "test-workspace"
+      });
+      controller.configure({
+        conversationFilter: { kind: "all" },
+        previewMode: false,
+        sectionAgentTargetFallbackId: null,
+        userProjects: []
+      });
+
+      const detach = controller.attach();
+      controller.setSearchQuery("first");
+      expect(controller.getSnapshot().railSearch.pending).toBe(true);
+      expect(listSessionsPage).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(CONVERSATION_SEARCH_DEBOUNCE_MS - 1);
+      expect(listSessionsPage).not.toHaveBeenCalled();
+
+      controller.setSearchQuery("second");
+      await vi.advanceTimersByTimeAsync(CONVERSATION_SEARCH_DEBOUNCE_MS);
+      expect(listSessionsPage).toHaveBeenCalledTimes(1);
+      expect(listSessionsPage).toHaveBeenCalledWith(
+        expect.objectContaining({ searchQuery: "second" })
+      );
+      expect(controller.getSnapshot().railSearch.pending).toBe(false);
+
+      controller.setSearchQuery("transient");
+      controller.setSearchQuery("second");
+      expect(controller.getSnapshot().railSearch.pending).toBe(true);
+      expect(listSessionsPage).toHaveBeenCalledTimes(1);
+
+      controller.setSearchQuery("");
+      expect(controller.getSnapshot().railSearch.pending).toBe(false);
+
+      detach();
+      engine.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("owns the latest rail interaction lock instead of mirroring it in view refs", async () => {
+    const engine = createTestAgentSessionEngine();
+    let resolveSections!: () => void;
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSections: (input) =>
+          new Promise((resolve) => {
+            resolveSections = () =>
+              resolve({ sections: [], workspaceId: input.workspaceId });
+          }),
+        listSessionSectionPage: async (input) => ({
+          hasMore: false,
+          kind: "conversations",
+          sectionKey: input.sectionKey,
+          sessions: [],
+          totalCount: 0
+        }),
+        listSessionsPage: async (input) => ({
+          hasMore: false,
+          sessions: [],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      previewMode: false,
+      sectionAgentTargetFallbackId: null,
+      userProjects: []
+    });
+
+    const detach = controller.attach();
+    expect(controller.isInteractionLocked()).toBe(true);
+
+    controller.setSearchQuery("active search");
+    expect(controller.isInteractionLocked()).toBe(false);
+
+    resolveSections();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+    detach();
+    engine.dispose();
+  });
+
   it("reattaches cleanly and follows preview-mode scope changes", async () => {
     const engine = createTestAgentSessionEngine();
     const listSessionSections = vi.fn<

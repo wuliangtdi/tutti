@@ -19,6 +19,11 @@ export type {
   CreateAgentGuiWorkbenchContributionInput
 } from "./contribution.ts";
 export {
+  agentGuiWorkbenchConversationIdentitiesEqual,
+  resolveAgentGuiWorkbenchConversationIdentity
+} from "./conversationIdentity.ts";
+export type { AgentGuiWorkbenchConversationIdentity } from "./conversationIdentity.ts";
+export {
   agentGuiWorkbenchComingSoonProviders,
   agentGuiWorkbenchDefaultDockProviders,
   agentGuiWorkbenchDockSuppressedProviders,
@@ -42,7 +47,8 @@ export {
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
-  createAgentGuiWorkbenchSessionLaunchRequest
+  createAgentGuiWorkbenchSessionLaunchRequest,
+  resolveAgentGuiWorkbenchLaunchDockEntryId
 } from "./launch.ts";
 export type { AgentGuiWorkbenchLaunchDescriptor } from "./launch.ts";
 export {

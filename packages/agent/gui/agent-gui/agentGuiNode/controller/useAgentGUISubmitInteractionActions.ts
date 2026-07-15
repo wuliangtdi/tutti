@@ -26,6 +26,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -78,6 +79,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
       displayPrompt?: string,
       options?: {
         immediate?: boolean;
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -107,10 +109,15 @@ interface UseAgentGUISubmitInteractionActionsInput {
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   startConversation(
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => void
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => void
   >;
   transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
@@ -178,6 +185,7 @@ export function useAgentGUISubmitInteractionActions(
       displayPrompt?: string,
       options?: {
         immediate?: boolean;
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -242,6 +250,13 @@ export function useAgentGUISubmitInteractionActions(
         ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         requestedAtUnixMs: submittedAtUnixMs,
+        ...(options?.requiredSettingsPatch
+          ? {
+              requiredSettingsPatch: {
+                ...options.requiredSettingsPatch
+              }
+            }
+          : {}),
         ...(options?.immediate === true
           ? { routing: "immediate" as const }
           : options?.sendNow === true
@@ -333,6 +348,7 @@ export function useAgentGUISubmitInteractionActions(
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
       options?: {
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -360,6 +376,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        requiredSettingsPatch: options?.requiredSettingsPatch,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
@@ -413,7 +430,11 @@ export function useAgentGUISubmitInteractionActions(
   );
 
   const submitPrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => {
       if (previewMode) {
         return;
       }
@@ -469,6 +490,7 @@ export function useAgentGUISubmitInteractionActions(
               normalizedContent,
               displayPromptText,
               {
+                requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
               }
@@ -482,7 +504,8 @@ export function useAgentGUISubmitInteractionActions(
         );
         const activationResult = startConversation(
           normalizedContent,
-          displayPromptText
+          displayPromptText,
+          options
         );
         if (activationResult) {
           draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
@@ -504,7 +527,10 @@ export function useAgentGUISubmitInteractionActions(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { trackDraft: true }
+        {
+          requiredSettingsPatch: options?.requiredSettingsPatch,
+          trackDraft: true
+        }
       );
     },
     [

@@ -133,23 +133,25 @@ test("desktop agent GUI workbench host input reuses workspace runtime services",
   );
 });
 
-test("desktop agent GUI resolves dropped system files as host-local references", async () => {
+test("desktop agent GUI preserves dropped system file and folder references", async () => {
   const droppedFileA = new File(["a"], "report.pdf", {
     type: "application/pdf"
   });
   const droppedFileB = new File(["b"], "notes.txt", {
     type: "text/plain"
   });
+  const droppedFolder = new File([], "assets");
   const resolvedFiles: File[][] = [];
   const hostInput = createDesktopAgentGUIWorkbenchHostInput({
     hostFilesApi: createHostFilesApi(),
     tuttidClient: createTuttidClient(),
     platformApi: createPlatformApi({
-      resolveDroppedPaths(files) {
+      resolveDroppedEntries(files) {
         resolvedFiles.push([...files]);
         return [
-          "/Users/local/Downloads/report.pdf",
-          "/Users/local/Downloads/notes.txt"
+          { kind: "file", path: "/Users/local/Downloads/report.pdf" },
+          { kind: "file", path: "/Users/local/Downloads/notes.txt" },
+          { kind: "folder", path: "/Users/local/Downloads/assets" }
         ];
       }
     }),
@@ -160,7 +162,11 @@ test("desktop agent GUI resolves dropped system files as host-local references",
   });
 
   assert.deepEqual(
-    await hostInput.resolveDroppedFileReferences([droppedFileA, droppedFileB]),
+    await hostInput.resolveDroppedFileReferences([
+      droppedFileA,
+      droppedFileB,
+      droppedFolder
+    ]),
     [
       {
         displayName: "report.pdf",
@@ -175,10 +181,18 @@ test("desktop agent GUI resolves dropped system files as host-local references",
         kind: "file",
         path: "/Users/local/Downloads/notes.txt",
         sourceId: "host-local-file"
+      },
+      {
+        displayName: "assets",
+        kind: "folder",
+        path: "/Users/local/Downloads/assets",
+        sourceId: "host-local-file"
       }
     ]
   );
-  assert.deepEqual(resolvedFiles, [[droppedFileA, droppedFileB]]);
+  assert.deepEqual(resolvedFiles, [
+    [droppedFileA, droppedFileB, droppedFolder]
+  ]);
 });
 
 test("desktop agent GUI workbench host input creates the default agent host api", async () => {
@@ -305,6 +319,56 @@ test("desktop agent GUI workbench host input wires project references first", as
       }
     }
   );
+});
+
+test("desktop provenance search sends agent filters to tuttid without deriving a session cwd", async () => {
+  const generatedFileInputs: unknown[] = [];
+  const workspaceAgentActivityService = createWorkspaceAgentActivityService([]);
+  workspaceAgentActivityService.listAgentGeneratedFiles = async (input) => {
+    generatedFileInputs.push(input);
+    return {
+      entries: [{ label: "report.md", path: "/outside/project/report.md" }],
+      workspaceId
+    };
+  };
+  const hostInput = createDesktopAgentGUIWorkbenchHostInput({
+    hostFilesApi: createHostFilesApi(),
+    tuttidClient: createTuttidClient(),
+    platformApi: createPlatformApi(),
+    richTextAtService: createRichTextAtService(),
+    runtimeApi: createRuntimeApi(),
+    workspaceAgentActivityService,
+    workspaceUserProjectService: createWorkspaceUserProjectService([
+      userProject("project-1", "/Users/local/repo", "Repo")
+    ]),
+    workspaceId
+  });
+
+  await hostInput.referenceSourceAggregator.listSources({ workspaceId });
+  const result = await hostInput.referenceSourceAggregator.search(
+    { workspaceId },
+    USER_PROJECT_REFERENCE_SOURCE_ID,
+    {
+      query: "report",
+      provenanceFilter: {
+        agentTargetIds: ["local:codex"],
+        memberIds: null
+      },
+      withinNodeId: "/Users/local/repo"
+    }
+  );
+
+  assert.deepEqual(generatedFileInputs, [
+    {
+      agentTargetIds: ["local:codex"],
+      limit: undefined,
+      query: "report",
+      sessionCwd: undefined,
+      signal: undefined,
+      workspaceId
+    }
+  ]);
+  assert.equal(result.entries[0]?.ref.nodeId, "/outside/project/report.md");
 });
 
 test("desktop agent GUI workbench host input prefers active conversation project for reference target", () => {

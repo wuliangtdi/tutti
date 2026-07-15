@@ -1,8 +1,8 @@
 import { selectLatestActivationForSession } from "@tutti-os/agent-activity-core";
 import { useCallback } from "react";
-import { AGENT_PROVIDER_LABEL } from "../../../contexts/settings/domain/agentSettings";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import { deriveAgentGUIOptimisticConversationTitle } from "../../../shared/agentConversationTitleProjection";
 import {
   agentPromptContentDisplayText,
   emptyAgentComposerDraft,
@@ -36,6 +36,7 @@ import {
 } from "./agentGuiNewConversationActivation.types";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 export function useAgentGUINewConversationActivation(
   input: UseAgentGUINewConversationActivationInput
@@ -81,7 +82,8 @@ export function useAgentGUINewConversationActivation(
   const startConversation = useCallback(
     (
       initialContentInput?: unknown,
-      displayPrompt?: string
+      displayPrompt?: string,
+      submitOptions?: AgentComposerSubmitOptions
     ): AgentGUINewConversationActivationResult | null => {
       const target = selectedAgentTargetRef.current;
       const targetData = selectedComposerTargetDataRef.current;
@@ -108,10 +110,6 @@ export function useAgentGUINewConversationActivation(
       const normalizedInitialPrompt =
         initialDisplayPrompt ??
         agentPromptContentDisplayText(normalizedInitialContent);
-      const initialConversationTitle =
-        normalizedInitialPrompt ||
-        (AGENT_PROVIDER_LABEL as Record<string, string>)[targetData.provider] ||
-        targetData.provider;
       isCreatingConversationRef.current = true;
       setDetailError(null);
       const provider = targetData.provider;
@@ -166,8 +164,15 @@ export function useAgentGUINewConversationActivation(
       const settings = sanitizeComposerSettingsForTarget({
         settings:
           inheritedModel === null
-            ? initialSettings
-            : { ...initialSettings, model: inheritedModel },
+            ? {
+                ...initialSettings,
+                ...submitOptions?.requiredSettingsPatch
+              }
+            : {
+                ...initialSettings,
+                model: inheritedModel,
+                ...submitOptions?.requiredSettingsPatch
+              },
         target: targetData,
         options: snapshotComposerOptions
       });
@@ -216,8 +221,10 @@ export function useAgentGUINewConversationActivation(
         initialDisplayPrompt,
         runtimeContent: toRuntimeSendContent(normalizedInitialContent),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
-        title: initialConversationTitle,
-        settings
+        settings,
+        optimisticTitle: deriveAgentGUIOptimisticConversationTitle(
+          normalizedInitialPrompt
+        )
       });
       if (requestId === null) return null;
       activeConversationIdRef.current = agentSessionId;

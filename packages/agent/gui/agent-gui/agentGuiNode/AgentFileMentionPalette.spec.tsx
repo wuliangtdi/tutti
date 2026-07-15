@@ -412,6 +412,17 @@ describe("AgentFileMentionPalette", () => {
       "rich-text-at-mention-row",
       "rich-text-at-mention-row--session"
     );
+    const sessionParticipant = sessionRow?.querySelector(
+      ".rich-text-at-mention-row__session-participant"
+    );
+    expect(sessionParticipant?.parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
+      "rich-text-at-mention-row__session-title"
+    );
+    expect(sessionParticipant).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
+      "rich-text-at-mention-row__session-participant"
+    );
     expect(statusTags[0]).toHaveClass("rich-text-at-mention-status");
     const userAvatarImage = selectedOption.querySelector(
       '[data-agent-mention-user-avatar="true"] img'
@@ -926,9 +937,11 @@ describe("AgentFileMentionPalette", () => {
       />
     );
 
-    expect(screen.getByRole("listbox")).toHaveClass(
-      "rich-text-at-mention-palette__shell"
-    );
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toHaveClass("rich-text-at-mention-palette__scroll-body");
+    expect(
+      listbox.closest(".rich-text-at-mention-palette__shell")
+    ).not.toBeNull();
     expect(
       screen.queryByTestId("agent-gui-mention-palette-scrollbar")
     ).toBeNull();
@@ -1162,11 +1175,22 @@ describe("AgentFileMentionPalette", () => {
       .getByText("agentGuiNode")
       .closest('[data-agent-file-mention="true"]');
     const enterButton = screen.getByRole("button", { name: "进入文件夹" });
+    const fileCount = folderRow?.querySelector(
+      ".rich-text-at-mention-row__file-count"
+    );
 
     expect(folderRow).toHaveAttribute(
       "data-agent-mention-navigation",
       "agent-generated-folder"
     );
+    expect(fileCount).not.toBeNull();
+    if (!fileCount) {
+      throw new Error("Expected the generated-folder file count");
+    }
+    expect(
+      fileCount.compareDocumentPosition(enterButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
     expect(enterButton).toHaveAttribute(
       "data-agent-mention-navigate-into",
       "true"
@@ -1368,9 +1392,11 @@ describe("AgentFileMentionPalette", () => {
       )
     ).toBeVisible();
     expect(screen.getByText("Automation").parentElement).toHaveClass(
+      "rich-text-at-mention-row__entity-text",
       "rich-text-at-mention-row__app-text"
     );
     expect(screen.getByText("Automation")).toHaveClass(
+      "rich-text-at-mention-row__entity-name",
       "rich-text-at-mention-row__app-name"
     );
     expect(
@@ -1378,6 +1404,11 @@ describe("AgentFileMentionPalette", () => {
         "Schedule and review recurring automation runs for this workspace."
       )
     ).toHaveClass("rich-text-at-mention-row__app-description");
+    expect(
+      screen.getByText(
+        "Schedule and review recurring automation runs for this workspace."
+      )
+    ).toHaveClass("rich-text-at-mention-row__entity-description");
     expect(screen.queryByText("automation")).toBeNull();
     expect(
       document.querySelector("section")?.textContent?.match(/\bApps\b/g) ?? []
@@ -1489,6 +1520,10 @@ describe("AgentFileMentionPalette", () => {
     );
 
     const hint = screen.getByTestId("agent-gui-mention-palette-hint");
+    expect(within(hint).getByText("切换分类").parentElement).toHaveAttribute(
+      "data-tooltip",
+      "切换分类"
+    );
 
     fireEvent.click(within(hint).getByRole("button", { name: "Tab 切换分类" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));

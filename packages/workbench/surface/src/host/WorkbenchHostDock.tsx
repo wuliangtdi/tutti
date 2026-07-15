@@ -32,10 +32,10 @@ import {
   type ResolvedWorkbenchHostDockEntry
 } from "./dockEntries.ts";
 import {
-  DOCK_ICON_BASE_SIZE,
   DOCK_ICON_PEAK_SIZE,
   useDockMagnification
 } from "./dockMagnification.ts";
+import { resolveDockLabelTooltipAnchorRect } from "./dockLabelTooltipAnchor.ts";
 import {
   resolveWorkbenchHostDockScrollState,
   type WorkbenchHostDockScrollState
@@ -620,10 +620,7 @@ export function WorkbenchHostDock({
       }
 
       const dockRect = dockElement.getBoundingClientRect();
-      const anchorRect = resolveDockLabelTooltipAnchorRect({
-        dockPlacement,
-        slotElement: anchorElement
-      });
+      const anchorRect = resolveDockLabelTooltipAnchorRect(anchorElement);
       clearLabelTooltipOpenTimer();
       const nextTooltip = {
         anchorKey,
@@ -639,7 +636,7 @@ export function WorkbenchHostDock({
       activeLabelTooltipRef.current = nextTooltip;
       setActiveLabelTooltip(nextTooltip);
     },
-    [clearLabelTooltipOpenTimer, dockPlacement]
+    [clearLabelTooltipOpenTimer]
   );
 
   const scheduleLabelTooltipAfterRest = useCallback(
@@ -2838,36 +2835,6 @@ function dockLabelTooltipTarget(
   label: string
 ): WorkbenchHostDockLabelTooltipTarget {
   return { key, label: label.trim() };
-}
-
-function resolveDockLabelTooltipAnchorRect({
-  dockPlacement,
-  slotElement
-}: {
-  dockPlacement: WorkbenchHostProps["dockPlacement"];
-  slotElement: HTMLElement;
-}): {
-  height: number;
-  left: number;
-  top: number;
-  width: number;
-} {
-  const slotRect = slotElement.getBoundingClientRect();
-  if (dockPlacement === "left") {
-    return {
-      height: DOCK_ICON_BASE_SIZE,
-      left: slotRect.left,
-      top: slotRect.top + (slotRect.height - DOCK_ICON_BASE_SIZE) / 2,
-      width: DOCK_ICON_BASE_SIZE
-    };
-  }
-
-  return {
-    height: DOCK_ICON_BASE_SIZE,
-    left: slotRect.left + (slotRect.width - DOCK_ICON_BASE_SIZE) / 2,
-    top: slotRect.bottom - DOCK_ICON_BASE_SIZE,
-    width: DOCK_ICON_BASE_SIZE
-  };
 }
 
 function renderDockBadge(

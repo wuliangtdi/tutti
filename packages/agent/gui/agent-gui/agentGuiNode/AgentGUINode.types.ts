@@ -5,7 +5,6 @@ import type {
   WorkspaceFileReference
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
-import type { AgentHostManagedAgentsState } from "../../shared/contracts/dto";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
 import type {
@@ -47,6 +46,7 @@ import type {
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
+import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -94,6 +94,7 @@ export interface AgentGUINodeFrameLayout {
 }
 
 export interface AgentGUINodeRuntimeRequests {
+  composerAppend?: AgentGUIComposerAppendRequest | null;
   composerFocusSequence?: number | null;
   newConversationSequence?: number | null;
   openSession?: AgentGUIOpenSessionRequest | null;
@@ -104,6 +105,7 @@ export interface AgentGUINodeRuntimeRequests {
 }
 
 export interface AgentGUINodeHostCapabilities {
+  referenceProvenanceFilterEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   accountMenuState?: AgentGUIAccountMenuState | null;
   agentTargets?: readonly AgentGUIAgentTarget[];
@@ -116,7 +118,6 @@ export interface AgentGUINodeHostCapabilities {
   > | null;
   defaultAgentTargetId?: string | null;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
-  managedAgentsState?: AgentHostManagedAgentsState | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   disabledHomeSuggestions?: readonly AgentGUIHomeSuggestionId[];
@@ -288,6 +289,8 @@ export function areAgentGUINodePropsEqual(
     pw.onFileReferencesAdded === nw.onFileReferencesAdded &&
     pw.agentSettings.avoidGroupingEdits ===
       nw.agentSettings.avoidGroupingEdits &&
+    pc.referenceProvenanceFilterEnabled ===
+      nc.referenceProvenanceFilterEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&
@@ -303,6 +306,7 @@ export function areAgentGUINodePropsEqual(
     pf.conversationRailAutoCollapseWidthPx ===
       nf.conversationRailAutoCollapseWidthPx &&
     pr.composerFocusSequence === nr.composerFocusSequence &&
+    pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&
@@ -320,7 +324,6 @@ export function areAgentGUINodePropsEqual(
     pc.providerReadinessGates === nc.providerReadinessGates &&
     pc.defaultAgentTargetId === nc.defaultAgentTargetId &&
     pc.providerAuthAccountLabels === nc.providerAuthAccountLabels &&
-    pc.managedAgentsState === nc.managedAgentsState &&
     pc.contextMentionProviders === nc.contextMentionProviders &&
     pc.workspaceAppIcons === nc.workspaceAppIcons &&
     pc.disabledHomeSuggestions === nc.disabledHomeSuggestions &&

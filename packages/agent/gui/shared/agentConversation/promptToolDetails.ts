@@ -76,8 +76,7 @@ export function getPromptToolDetails(
       value: query
     });
   }
-  const reason =
-    stringValue(detailInput.reason) ?? stringValue(detailInput.description);
+  const reason = stringValue(detailInput.reason);
   if (reason) {
     details.push({
       kind: "reason",

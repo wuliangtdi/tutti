@@ -60,9 +60,10 @@ export function resolveStandaloneAgentWindowWorkArea({
 }
 
 export function shouldAnimateStandaloneAgentWindowResize(
-  _platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  requested = false
 ): boolean {
-  return false;
+  return requested && platform === "darwin";
 }
 
 export function resolveStandaloneAgentWindowBounds({

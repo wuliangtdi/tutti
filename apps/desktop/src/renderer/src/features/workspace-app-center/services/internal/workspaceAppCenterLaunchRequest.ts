@@ -12,12 +12,17 @@ import type { IWorkspaceAppCenterService } from "../workspaceAppCenterService.in
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
   workspaceAppCenterNodeID,
+  workspaceAppWebviewInstanceId,
   workspaceAppWebviewTypeID
 } from "../workspaceAppCenterLaunchIds.ts";
 import { workspaceAppWebviewFrame } from "./workspaceAppWebviewFrame.ts";
 import type { WorkspaceAppOpenRouteIntent } from "./workspaceAppCenterWebviewUrl.ts";
 
-export { workspaceAppCenterNodeID, workspaceAppWebviewTypeID };
+export {
+  workspaceAppCenterNodeID,
+  workspaceAppWebviewInstanceId,
+  workspaceAppWebviewTypeID
+};
 
 const workspaceAppInlineBrowserNodeIdPrefix = "workspace-app:inline:";
 
@@ -129,10 +134,6 @@ export function workspaceAppDockEntryId(appId: string): string {
 
 export function workspaceAppInlineBrowserNodeId(appId: string): string {
   return `${workspaceAppInlineBrowserNodeIdPrefix}${encodeURIComponent(appId)}`;
-}
-
-export function workspaceAppWebviewInstanceId(appId: string): string {
-  return `app:${encodeURIComponent(appId)}`;
 }
 
 export function readWorkspaceAppIdFromDockEntryId(

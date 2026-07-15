@@ -3,6 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore
 } from "react";
 import type { AgentGUIProvider } from "@tutti-os/agent-gui";
@@ -22,6 +23,7 @@ import type {
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceAppCenterApp } from "@tutti-os/workspace-app-center";
 import {
+  IWorkspaceAppSurfaceHost,
   resolveWorkspaceAppDisplayName,
   useWorkspaceAppCenterService,
   workspaceAppWebviewInstanceId,
@@ -64,7 +66,7 @@ import type {
 import { renderWorkspaceFilesNodeBody } from "./WorkspaceFilesNodeBody";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
-import { workspaceOnboardingAppId } from "../services/workspaceOnboarding.ts";
+import { createWorkbenchWorkspaceAppSurfacePresenter } from "../services/workbenchWorkspaceAppSurfacePresenter.ts";
 
 export interface WorkspaceWorkbenchShellRuntime {
   appI18n: I18nRuntime<string>;
@@ -135,11 +137,11 @@ export function useWorkspaceWorkbenchShellRuntime({
   };
 }): WorkspaceWorkbenchShellRuntime {
   const { i18n: appI18n, locale } = useTranslation();
-  const { service: appCenterService, state: appCenterState } =
-    useWorkspaceAppCenterService();
+  const { state: appCenterState } = useWorkspaceAppCenterService();
   const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const agentsService = useService(IAgentsService);
+  const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
@@ -179,6 +181,8 @@ export function useWorkspaceWorkbenchShellRuntime({
   const shellRuntimeControllerRef =
     useRef<WorkspaceWorkbenchShellRuntimeController | null>(null);
   const workbenchHostRef = useRef<WorkbenchHostHandle | null>(null);
+  const [workbenchHost, setWorkbenchHost] =
+    useState<WorkbenchHostHandle | null>(null);
   if (!shellRuntimeControllerRef.current) {
     shellRuntimeControllerRef.current =
       createWorkspaceWorkbenchShellRuntimeController({
@@ -344,7 +348,7 @@ export function useWorkspaceWorkbenchShellRuntime({
       canCloseUnavailableApps:
         appCenterState.loadStatus === "ready" &&
         appCenterState.workspaceId === state.workspace.id,
-      host: workbenchHostRef.current,
+      host: workbenchHost,
       locale
     });
   }, [
@@ -352,7 +356,8 @@ export function useWorkspaceWorkbenchShellRuntime({
     appCenterState.loadStatus,
     appCenterState.workspaceId,
     locale,
-    state.workspace.id
+    state.workspace.id,
+    workbenchHost
   ]);
 
   useEffect(() => {
@@ -360,13 +365,34 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [shellRuntimeController.dispose]);
 
   useEffect(() => {
+    workspaceFileManagerService.setCanvasFilePreviewLauncher(
+      state.workspace.id,
+      workbenchHost
+        ? async (target) =>
+            (await workbenchHost.launchNode(
+              createWorkspaceFilePreviewLaunchRequest(target)
+            )) !== null
+        : null
+    );
     return () => {
       workspaceFileManagerService.setCanvasFilePreviewLauncher(
         state.workspace.id,
         null
       );
     };
-  }, [state.workspace.id, workspaceFileManagerService]);
+  }, [state.workspace.id, workbenchHost, workspaceFileManagerService]);
+
+  useEffect(() => {
+    if (!workbenchHost) {
+      return;
+    }
+    return workspaceAppSurfaceHost.registerPresenter(
+      createWorkbenchWorkspaceAppSurfacePresenter({
+        host: workbenchHost,
+        workspaceId: state.workspace.id
+      })
+    );
+  }, [workbenchHost, state.workspace.id, workspaceAppSurfaceHost]);
 
   useEffect(() => {
     if (!enableWindowCloseGuard) {
@@ -392,69 +418,11 @@ export function useWorkspaceWorkbenchShellRuntime({
   const handleWorkbenchHostReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
       workbenchHostRef.current = host;
+      setWorkbenchHost(host);
       hostSession.attachSurface(host);
       shellRuntimeController.setWorkbenchHost(host);
-      syncWorkspaceAppWebviewNodes({
-        apps: appCenterState.apps,
-        canCloseUnavailableApps:
-          appCenterState.loadStatus === "ready" &&
-          appCenterState.workspaceId === state.workspace.id,
-        host,
-        locale
-      });
-      workspaceFileManagerService.setCanvasFilePreviewLauncher(
-        state.workspace.id,
-        host
-          ? async (target) =>
-              (await host.launchNode(
-                createWorkspaceFilePreviewLaunchRequest(target)
-              )) !== null
-          : null
-      );
-      appCenterService.setWorkspaceAppLauncher(
-        host
-          ? async ({ appId, intent, prepared, prevStatus }) => {
-              return (
-                (await host.launchNode({
-                  payload: {
-                    appId,
-                    ...(intent ? { intent } : {}),
-                    prepared,
-                    prevStatus
-                  },
-                  reason: "host",
-                  typeId: workspaceAppWebviewTypeID,
-                  // 让 onboarding 应用打开时播放“从底部进入并展开”的动画。
-                  ...(appId === workspaceOnboardingAppId
-                    ? { launchSource: "onboarding-auto" }
-                    : {})
-                })) !== null
-              );
-            }
-          : null
-      );
-      appCenterService.setWorkspaceAppViewCloser(
-        host ? (input) => closeWorkspaceAppWebviews(host, input.appId) : null
-      );
-      appCenterService.setWorkspaceAppViewOpenChecker(
-        host
-          ? (input) =>
-              input.workspaceId === state.workspace.id &&
-              isWorkspaceAppWebviewOpen(host, input.appId)
-          : null
-      );
     },
-    [
-      appCenterService,
-      appCenterState.apps,
-      appCenterState.loadStatus,
-      appCenterState.workspaceId,
-      hostSession,
-      locale,
-      shellRuntimeController,
-      state.workspace.id,
-      workspaceFileManagerService
-    ]
+    [hostSession, shellRuntimeController]
   );
   const handleWorkbenchCloseGuardHostReady = useCallback(
     (host: WorkbenchHostHandle | null) => {
@@ -510,35 +478,6 @@ export function useWorkspaceWorkbenchShellRuntime({
     workbenchWindowSnapping: desktopPreferencesState.workbenchWindowSnapping,
     workbenchHostService
   };
-}
-
-function closeWorkspaceAppWebviews(
-  host: WorkbenchHostHandle,
-  appId: string
-): void {
-  const instanceId = workspaceAppWebviewInstanceId(appId);
-  for (const node of host.getSnapshot().nodes) {
-    if (
-      node.data.typeId === workspaceAppWebviewTypeID &&
-      node.data.instanceId === instanceId
-    ) {
-      host.closeNode(node.id);
-    }
-  }
-}
-
-function isWorkspaceAppWebviewOpen(
-  host: WorkbenchHostHandle,
-  appId: string
-): boolean {
-  const instanceId = workspaceAppWebviewInstanceId(appId);
-  return host
-    .getSnapshot()
-    .nodes.some(
-      (node) =>
-        node.data.typeId === workspaceAppWebviewTypeID &&
-        node.data.instanceId === instanceId
-    );
 }
 
 function syncWorkspaceAppWebviewNodes(input: {
