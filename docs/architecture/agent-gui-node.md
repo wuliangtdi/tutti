@@ -715,6 +715,15 @@ so back, forward, reload, address entry, external-open, and overflow actions use
 the same controller and runtime state as the webview. The Terminal tray's close
 control only collapses the tray; it
 must not terminate or unmount the active terminal session.
+
+The standalone Agent renderer is not a durable Workbench snapshot writer. Its
+`view=agent` composition root may read the workspace snapshot once to seed
+product chrome such as wallpaper, but its repository is window-local after
+that read: layout, stack, wallpaper, and onboarding saves update only that
+window's memory and never call the workspace Workbench PUT endpoint. The OS
+workspace renderer remains the single durable snapshot writer for a workspace.
+This keeps the synthetic close-coordination host from accidentally becoming a
+second layout owner while standalone windows coexist with the main workspace.
 Electron main may create one of two native workspace shells. `OS` mode keeps
 the existing workspace window and its `ReadyWorkspaceWorkbench`
 desktop/window/dock surface, while `Agent` mode creates the frameless Agent
@@ -1061,10 +1070,19 @@ not transcript tool rows. For `AskUserQuestion`, renderer payloads may keep
 `answersByQuestionId` keyed by stable UI question ids, but the Claude SDK
 permission callback must return `updatedInput.answers` keyed by the full
 question text because current Claude SDK result rendering looks up answers by
-question text. Legacy Claude ACP `AskUserQuestion` failures may be hidden only
-when the recorded failure says the tool is unavailable; waiting or completed
-Claude SDK `AskUserQuestion` calls may remain in the Agent GUI detail projection
-as display-only history without becoming an actionable prompt source.
+question text. Completed transcript rows must also normalize the provider
+response envelope: persisted answers may live under
+`output.payload.answersByQuestionId` / `output.payload.answers` rather than on
+`output` directly. The AskUserQuestion detail projection must read that
+envelope before deciding that no answer exists, so a completed tool row cannot
+remain visually stuck on its waiting state. Its specialized detail renderer
+must show both the structured selected answer and a persisted provider
+`output.text` result when present; specializing the question presentation must
+not discard the tool result. Legacy Claude ACP `AskUserQuestion` failures may
+be hidden only when the recorded failure says the tool is unavailable; waiting
+or completed Claude SDK `AskUserQuestion` calls may remain in the Agent GUI
+detail projection as display-only history without becoming an actionable prompt
+source.
 
 Runtime interactive prompts also travel through session state. Provider
 adapters expose them as `SessionStateSnapshot.pendingInteractive`; runtime
@@ -2106,6 +2124,25 @@ made while a request is pending are retained as one new message. Terminal
 results, immediate engine rejection, and conversation deletion discard
 snapshots that can no longer resolve. Non-composer control sends must not
 participate in this draft cleanup.
+
+Goal set, pause, resume, and clear operations must use the runtime goal-control
+API rather than `executePrompt`. A goal control is thread metadata, not a user
+turn: it must not create a transcript message, pending submit, or pseudo turn.
+When a provider adapter must carry clear through a native command turn, it must
+retain that internally generated turn identity and suppress the turn's native
+assistant/thinking acknowledgement before durable transcript projection. This
+filter is semantic and turn-correlated: do not match provider copy such as
+`Goal cleared:`, hide it only in the renderer, or reparent it into the turn
+that clear interrupted. Goal/session updates and internal terminal handling
+still flow normally.
+Clearing a goal may leave the current turn running; the composer stop control
+and transcript processing row therefore continue to derive from that canonical
+active turn. Successful clear feedback is a transient localized toast, not a
+durable timeline item. AgentGUI-scoped feedback must use a viewport positioned
+relative to the detail content container, so conversation-rail width does not
+shift its visual center. Its colors must use the UI System themed surface,
+foreground, and border tokens rather than the intentionally inverted neutral
+toast tokens, so light mode stays light and dark mode stays dark.
 
 User-visible rules:
 
