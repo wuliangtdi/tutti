@@ -6,7 +6,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode
+  type ReactNode,
+  type TransitionEvent
 } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
@@ -17,6 +18,8 @@ import type {
 import { CloseIcon, cn } from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
+import type { DesktopHostFilesApi } from "@preload/types";
+import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
 import { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
@@ -45,7 +48,6 @@ import { StandaloneAgentToolSidebarPicker } from "./StandaloneAgentToolSidebarPi
 
 export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 const standaloneAgentToolPanelContentMountDelayMs = 80;
-const standaloneAgentToolPanelLayoutTransitionMs = 260;
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
@@ -55,6 +57,7 @@ interface StandaloneAgentToolSidebarProps {
   children: ReactNode;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest?: StandaloneAgentFileOpenRequest | null;
+  hostFilesApi: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
   issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
   renderHeader: (toolActions: ReactNode) => ReactNode;
@@ -63,8 +66,13 @@ interface StandaloneAgentToolSidebarProps {
     provider: string;
   }) => void;
   onAppsOpen: () => void;
+  onAppendBrowserElementFile: (file: AgentComposerDraftFile) => void;
+  onBrowserElementError: (message: string) => void;
   onToolHostReady: (host: WorkbenchHostHandle | null) => void;
-  resizeWindowContentWidth: (width: number) => Promise<{ width: number }>;
+  resizeWindowContentWidth: (
+    width: number,
+    animate?: boolean
+  ) => Promise<{ width: number }>;
   workspaceId: string;
 }
 
@@ -76,11 +84,14 @@ export function StandaloneAgentToolSidebar({
   children,
   contributions,
   fileOpenRequest = null,
+  hostFilesApi,
   issueManagerOpenRequest = null,
   mainContentMinWidthPx,
   renderHeader,
   onOpenMessageCenterChat,
   onAppsOpen,
+  onAppendBrowserElementFile,
+  onBrowserElementError,
   onToolHostReady,
   resizeWindowContentWidth,
   workspaceId
@@ -138,7 +149,6 @@ export function StandaloneAgentToolSidebar({
   const activeTabId = state.activeTabId;
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isEmptySidebarClosing, setIsEmptySidebarClosing] = useState(false);
-  const emptySidebarCloseTimerRef = useRef<number | null>(null);
   const isEmptySidebar = isSidebarOpen && state.mountedTabs.length === 0;
   const isEmptySidebarSurface =
     (isSidebarOpen || isEmptySidebarClosing) && state.mountedTabs.length === 0;
@@ -158,6 +168,7 @@ export function StandaloneAgentToolSidebar({
     handleResizePointerMove,
     isActivePanelExpanded,
     resizeForPanel,
+    resetWindowResizeBaseline,
     stopResizing,
     togglePanelExpansion
   } = useStandaloneAgentToolSidebarLayout({
@@ -170,13 +181,20 @@ export function StandaloneAgentToolSidebar({
   });
   const resizeAnimationFrameRef = useRef<number | null>(null);
   const scheduleResizeForPanel = useCallback(
-    (panel: StandaloneAgentToolPanelId | null, preferredWidth?: number) => {
+    (
+      panel: StandaloneAgentToolPanelId | null,
+      preferredWidth?: number,
+      options?: {
+        animateWindow?: boolean;
+        preserveBaseline?: boolean;
+      }
+    ) => {
       if (resizeAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeAnimationFrameRef.current);
       }
       resizeAnimationFrameRef.current = window.requestAnimationFrame(() => {
         resizeAnimationFrameRef.current = null;
-        void resizeForPanel(panel, preferredWidth);
+        void resizeForPanel(panel, preferredWidth, options);
       });
     },
     [resizeForPanel]
@@ -189,24 +207,10 @@ export function StandaloneAgentToolSidebar({
     },
     []
   );
-  const clearEmptySidebarCloseTimer = useCallback(() => {
-    if (emptySidebarCloseTimerRef.current === null) {
-      return;
-    }
-    window.clearTimeout(emptySidebarCloseTimerRef.current);
-    emptySidebarCloseTimerRef.current = null;
-  }, []);
-  useEffect(
-    () => () => {
-      clearEmptySidebarCloseTimer();
-    },
-    [clearEmptySidebarCloseTimer]
-  );
   const showSidebar = useCallback(() => {
-    clearEmptySidebarCloseTimer();
     setIsEmptySidebarClosing(false);
     setIsSidebarOpen(true);
-  }, [clearEmptySidebarCloseTimer]);
+  }, []);
   useEffect(() => {
     if (!activeTabId || contentReadyTabIds.includes(activeTabId)) {
       return;
@@ -290,7 +294,6 @@ export function StandaloneAgentToolSidebar({
   const closePanel = useCallback(() => {
     setIsSidebarOpen(false);
     dispatch({ type: "close" });
-    clearEmptySidebarCloseTimer();
     if (state.mountedTabs.length > 0) {
       setIsEmptySidebarClosing(false);
       scheduleResizeForPanel(null);
@@ -307,16 +310,26 @@ export function StandaloneAgentToolSidebar({
     }
 
     setIsEmptySidebarClosing(true);
-    emptySidebarCloseTimerRef.current = window.setTimeout(() => {
-      emptySidebarCloseTimerRef.current = null;
+    scheduleResizeForPanel(null, undefined, {
+      animateWindow: true,
+      preserveBaseline: true
+    });
+  }, [scheduleResizeForPanel, state.mountedTabs.length]);
+  const handleSidebarTransitionEnd = useCallback(
+    (event: TransitionEvent<HTMLElement>) => {
+      if (
+        event.currentTarget !== event.target ||
+        event.propertyName !== "width" ||
+        isSidebarOpen ||
+        !isEmptySidebarClosing
+      ) {
+        return;
+      }
       setIsEmptySidebarClosing(false);
-      scheduleResizeForPanel(null);
-    }, standaloneAgentToolPanelLayoutTransitionMs);
-  }, [
-    clearEmptySidebarCloseTimer,
-    scheduleResizeForPanel,
-    state.mountedTabs.length
-  ]);
+      resetWindowResizeBaseline();
+    },
+    [isEmptySidebarClosing, isSidebarOpen, resetWindowResizeBaseline]
+  );
   const openPanel = useCallback(
     (panel: StandaloneAgentToolPanelId) => {
       showSidebar();
@@ -351,7 +364,12 @@ export function StandaloneAgentToolSidebar({
     }
     showSidebar();
     if (state.mountedTabs.length === 0) {
-      scheduleResizeForPanel("files", standaloneAgentEmptyToolSidebarWidth);
+      const reducedMotion = window.matchMedia?.(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      scheduleResizeForPanel("files", standaloneAgentEmptyToolSidebarWidth, {
+        animateWindow: !reducedMotion
+      });
       return;
     }
     dispatch({
@@ -476,6 +494,7 @@ export function StandaloneAgentToolSidebar({
               width: isSidebarOpen ? `${activePanelLayoutWidth}px` : "0px",
               zIndex: "var(--z-panel)"
             }}
+            onTransitionEnd={handleSidebarTransitionEnd}
           >
             <div
               className={cn(
@@ -571,11 +590,16 @@ export function StandaloneAgentToolSidebar({
                               : null
                           }
                           i18n={i18n}
+                          hostFilesApi={hostFilesApi}
                           locale={locale}
                           messageCenterOpen={
                             activeTabId === tab.id && tab.panel === "messages"
                           }
                           onCloseMessageCenter={closePanel}
+                          onAppendBrowserElementFile={
+                            onAppendBrowserElementFile
+                          }
+                          onBrowserElementError={onBrowserElementError}
                           onOpenMessageCenterChat={onOpenMessageCenterChat}
                           setToolHost={toolHostGroup.setHost}
                           tab={tab}

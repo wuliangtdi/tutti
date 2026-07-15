@@ -146,6 +146,11 @@ export const zhCN = {
       untitledConversation: "未命名对话",
       openSessionUnavailableDescription: "这个 Agent 会话已不存在或无法打开。",
       openSessionUnavailableTitle: "会话不可用",
+      browserElementContext: {
+        cancel: "取消选择元素",
+        failed: "无法将这个页面元素添加到 Agent 输入框",
+        select: "选择页面元素"
+      },
       toolSidebar: {
         apps: "应用",
         browser: "浏览器",

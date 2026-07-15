@@ -78,6 +78,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
   agentProviderStatusService,
   context,
   computerUseApi,
+  composerAppendRequest = null,
   conversationRailAutoCollapseWidthPx = null,
   dockPreviewCache,
   onLinkAction,
@@ -663,10 +664,11 @@ function DesktopAgentGUIWorkbenchBodyImpl({
     [frame.height, frame.width, frame.x, frame.y]
   );
   const composerFocusRequestSequence =
-    context.activation?.type === workbenchFocusInputActivationType ||
+    composerAppendRequest?.sequence ??
+    (context.activation?.type === workbenchFocusInputActivationType ||
     context.activation?.type === desktopAgentGUIPrefillPromptActivationType
       ? context.activation.sequence
-      : (prefillPromptRequest?.sequence ?? null);
+      : (prefillPromptRequest?.sequence ?? null));
   const capabilityMenuState = useMemo<
     AgentGUIProps["hostCapabilities"]["capabilityMenuState"]
   >(
@@ -771,6 +773,7 @@ function DesktopAgentGUIWorkbenchBodyImpl({
         }}
         state={nodeState}
         runtimeRequests={{
+          composerAppend: composerAppendRequest,
           composerFocusSequence: composerFocusRequestSequence,
           newConversationSequence: newConversationRequestSequence,
           openSession: openSessionRequest,

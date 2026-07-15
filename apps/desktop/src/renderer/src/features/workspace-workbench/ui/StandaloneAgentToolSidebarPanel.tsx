@@ -5,7 +5,8 @@ import type {
   WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
-import type { DesktopBrowserApi } from "@preload/types";
+import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
+import type { DesktopBrowserApi, DesktopHostFilesApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import type { StandaloneAgentToolTab } from "./standaloneAgentToolSidebarModel.ts";
@@ -64,6 +65,9 @@ export function StandaloneAgentToolSidebarPanel({
   i18n,
   locale,
   messageCenterOpen,
+  hostFilesApi,
+  onAppendBrowserElementFile,
+  onBrowserElementError,
   onCloseMessageCenter,
   onOpenMessageCenterChat,
   tab,
@@ -81,6 +85,9 @@ export function StandaloneAgentToolSidebarPanel({
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
   messageCenterOpen: boolean;
+  hostFilesApi: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
+  onAppendBrowserElementFile: (file: AgentComposerDraftFile) => void;
+  onBrowserElementError: (message: string) => void;
   onCloseMessageCenter: () => void;
   onOpenMessageCenterChat: (input: {
     agentSessionId: string;
@@ -172,8 +179,17 @@ export function StandaloneAgentToolSidebarPanel({
       <StandaloneAgentBrowserToolPanel
         appI18n={appI18n}
         browserApi={browserApi}
+        elementContextCopy={{
+          cancel: i18n.t("workspace.agentGui.browserElementContext.cancel"),
+          failed: i18n.t("workspace.agentGui.browserElementContext.failed"),
+          select: i18n.t("workspace.agentGui.browserElementContext.select")
+        }}
         hidden={!active}
+        hostFilesApi={hostFilesApi}
         loadingLabel={i18n.t("common.loading")}
+        workspaceId={workspaceId}
+        onAppendBrowserElementFile={onAppendBrowserElementFile}
+        onBrowserElementError={onBrowserElementError}
       />
     ) : null;
   }

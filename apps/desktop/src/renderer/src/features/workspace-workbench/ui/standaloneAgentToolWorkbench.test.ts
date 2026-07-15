@@ -382,10 +382,6 @@ test("standalone Agent hides internal open-with actions without changing the OS 
 test("standalone Agent right sidebar reserves layout animation for empty or ready content", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /const standaloneAgentToolPanelLayoutTransitionMs = 260/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
     /const shouldAnimateSidebarLayout =\s*state\.mountedTabs\.length === 0 \|\| isActivePanelContentReady/
   );
   assert.match(
@@ -394,7 +390,7 @@ test("standalone Agent right sidebar reserves layout animation for empty or read
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /isSidebarOpen && !shouldAnimateSidebarLayout &&\s+"motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-\[160ms\] motion-safe:ease-out motion-reduce:animate-none"/
+    /isSidebarOpen &&\s+!shouldAnimateSidebarLayout &&\s+"motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-\[160ms\] motion-safe:ease-out motion-reduce:animate-none"/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -406,7 +402,7 @@ test("standalone Agent right sidebar reserves layout animation for empty or read
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?void resizeForPanel\(panel, preferredWidth\)/
+    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?void resizeForPanel\(panel, preferredWidth, options\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -429,11 +425,15 @@ test("standalone Agent empty sidebar uses its compact width until a tool opens",
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth\)/
+    /scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth, \{[\s\S]*?animateWindow: !reducedMotion/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /setIsEmptySidebarClosing\(true\)[\s\S]*?window\.setTimeout\(\(\) => \{[\s\S]*?scheduleResizeForPanel\(null\)[\s\S]*?standaloneAgentToolPanelLayoutTransitionMs/
+    /setIsEmptySidebarClosing\(true\)[\s\S]*?scheduleResizeForPanel\(null, undefined, \{[\s\S]*?animateWindow: true,[\s\S]*?preserveBaseline: true/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /event\.propertyName !== "width"[\s\S]*?resetWindowResizeBaseline\(\)[\s\S]*?onTransitionEnd=\{handleSidebarTransitionEnd\}/
   );
   assert.match(
     standaloneAgentToolSidebarSource,

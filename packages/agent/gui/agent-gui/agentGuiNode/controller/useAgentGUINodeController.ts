@@ -59,6 +59,7 @@ import { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderCatalo
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
 import { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { useAgentGUILocalState } from "./useAgentGUILocalState";
+import type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
 export {
   normalizePermissionModeSemantic,
   permissionConfigFromComposerOptions,
@@ -119,6 +120,7 @@ interface UseAgentGUINodeControllerInput {
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
   defaultAgentTargetId?: string | null;
+  composerAppendRequest?: AgentGUIComposerAppendRequest | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
@@ -136,6 +138,7 @@ interface UseAgentGUINodeControllerInput {
 
 export type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
 export type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
+export type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
 
 export function useAgentGUINodeController({
   workspaceId,
@@ -149,6 +152,7 @@ export function useAgentGUINodeController({
   comingSoonProviders,
   providerReadinessGates = null,
   defaultAgentTargetId = null,
+  composerAppendRequest = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
   previewMode = false,
@@ -625,6 +629,7 @@ export function useAgentGUINodeController({
     agentActivityRuntime,
     agentHostApi,
     composerTargetDataFromProviderTarget,
+    composerAppendRequest,
     composerSupportPermissionModeChangeDeferred:
       composerSupport.permissionModeChangeDeferred,
     currentProvider: data.provider,

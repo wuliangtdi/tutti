@@ -519,7 +519,15 @@ Standalone-window tools are desktop host chrome, not AgentGUI state.
 The desktop host owns tool identity, toolbar buttons and reminder badges,
 Browser/Terminal grouping, panel placement, lazy mounting, and tool content
 adapters. Browser, Files, Apps, and Message Center use the right sidebar; the
-Terminal opens as a bottom tray below the conversation, matching the Codex
+standalone Browser may lazily load a desktop-owned element-context module after
+the Browser tool mounts. That module runs a bounded selector inside only the
+active BrowserNode webview, strips executable content, form values, and
+secret-looking attributes or URL parameters, then archives the structured DOM
+snapshot as a local prompt asset. The host sends a sequenced, host-neutral
+composer append request to AgentGUI so the file card is merged into the current
+home or session draft without replacing existing text, changing conversation,
+or submitting. Workspace/OS Browser nodes do not load or expose this module.
+The Terminal opens as a bottom tray below the conversation, matching the Codex
 layout and preserving enough height for a usable shell. File panels start wide
 enough for their embedded location, list, and detail columns. Browser and Apps
 share the same roomy default width so switching between them does not move the

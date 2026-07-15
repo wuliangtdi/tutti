@@ -165,14 +165,16 @@ The renderer commits the panel shell's final layout width before issuing the
 native resize IPC on the next frame, so host latency cannot block visual
 feedback. The shell must not animate layout width before a heavy first-use tool
 body mounts. The lightweight empty picker and width changes for an already
-mounted tool use the same 260ms ease-in-out transition; an empty-picker close
-restores the native window width only after that transition so the shell is not
-clipped early. Other optional first-use entrances stay inside the fixed-size
-panel and use only compositor-friendly transform and opacity. Heavy first-use
-tool bodies mount after that brief entrance and remain mounted for later opens.
-Native content bounds otherwise change without a parallel bounds animation,
-while reduced-motion preferences disable transitions, the inner entrance, and
-the mount delay.
+mounted tool use the same 260ms ease-in-out transition. On macOS, empty-picker
+open and close start the matching native content-bounds animation in the same
+frame; the close transition only clears its retained layout baseline after the
+panel width reaches zero, so it never triggers a second terminal window resize.
+Other optional first-use entrances stay inside the fixed-size panel and use
+only compositor-friendly transform and opacity. Heavy first-use tool bodies
+mount after that brief entrance and remain mounted for later opens. Native
+content bounds otherwise change without a parallel bounds animation, while
+reduced-motion preferences disable transitions, the inner entrance, and the
+mount delay.
 Its Apps panel renders the App Center contribution body instead of mounting a
 catalog-only copy. The shared `openAppId` view state selects which surface is
 visible in both OS and Agent-only shells, but it does not own Browser Node

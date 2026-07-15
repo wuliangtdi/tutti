@@ -31,7 +31,15 @@ interface UseStandaloneAgentToolSidebarLayoutInput {
   activePanel: StandaloneAgentToolPanelId | null;
   activePanelPreferredWidth?: number;
   mainContentMinWidthPx?: number;
-  resizeWindowContentWidth(width: number): Promise<{ width: number }>;
+  resizeWindowContentWidth(
+    width: number,
+    animate?: boolean
+  ): Promise<{ width: number }>;
+}
+
+interface ResizeForPanelOptions {
+  animateWindow?: boolean;
+  preserveBaseline?: boolean;
 }
 
 export function useStandaloneAgentToolSidebarLayout({
@@ -156,7 +164,8 @@ export function useStandaloneAgentToolSidebarLayout({
   const resizeForPanel = useCallback(
     async (
       nextPanel: StandaloneAgentToolPanelId | null,
-      preferredWidth?: number
+      preferredWidth?: number,
+      options?: ResizeForPanelOptions
     ): Promise<boolean> => {
       const requestId = ++resizeRequestRef.current;
       const expansionTransition = resetPanelExpansion(nextPanel);
@@ -178,7 +187,10 @@ export function useStandaloneAgentToolSidebarLayout({
 
       if (requestedWidth !== null) {
         try {
-          const result = await resizeWindowContentWidth(requestedWidth);
+          const result = await resizeWindowContentWidth(
+            requestedWidth,
+            options?.animateWindow
+          );
           if (requestId !== resizeRequestRef.current) {
             return false;
           }
@@ -192,13 +204,17 @@ export function useStandaloneAgentToolSidebarLayout({
         }
       }
 
-      if (nextPanel === null) {
+      if (nextPanel === null && options?.preserveBaseline !== true) {
         baselineViewportWidthRef.current = null;
       }
       return true;
     },
     [panelWidths, resetPanelExpansion, resizeWindowContentWidth]
   );
+
+  const resetWindowResizeBaseline = useCallback(() => {
+    baselineViewportWidthRef.current = null;
+  }, []);
 
   const updatePanelWidth = useCallback(
     (panel: StandaloneAgentToolPanelId, width: number) => {
@@ -319,6 +335,7 @@ export function useStandaloneAgentToolSidebarLayout({
     handleResizePointerMove,
     isActivePanelExpanded,
     resizeForPanel,
+    resetWindowResizeBaseline,
     stopResizing,
     togglePanelExpansion
   };

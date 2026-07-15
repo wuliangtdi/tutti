@@ -47,6 +47,7 @@ import type {
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../shared/AgentMessageMarkdown";
 import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagement.types";
+import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -94,6 +95,7 @@ export interface AgentGUINodeFrameLayout {
 }
 
 export interface AgentGUINodeRuntimeRequests {
+  composerAppend?: AgentGUIComposerAppendRequest | null;
   composerFocusSequence?: number | null;
   newConversationSequence?: number | null;
   openSession?: AgentGUIOpenSessionRequest | null;
@@ -306,6 +308,7 @@ export function areAgentGUINodePropsEqual(
     pf.conversationRailAutoCollapseWidthPx ===
       nf.conversationRailAutoCollapseWidthPx &&
     pr.composerFocusSequence === nr.composerFocusSequence &&
+    pr.composerAppend === nr.composerAppend &&
     pr.newConversationSequence === nr.newConversationSequence &&
     pr.openSession === nr.openSession &&
     pr.prefillPrompt === nr.prefillPrompt &&

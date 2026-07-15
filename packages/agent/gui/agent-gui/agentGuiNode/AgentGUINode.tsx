@@ -93,6 +93,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const railAutoCollapseWidthPx =
     conversationRailAutoCollapseWidthPx ?? undefined;
   const {
+    composerAppend: composerAppendRequest = null,
     composerFocusSequence: composerFocusRequestSequence = null,
     newConversationSequence: newConversationRequestSequence = null,
     openSession: openSessionRequest = null,
@@ -297,6 +298,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     workspacePath,
     avoidGroupingEdits: agentSettings.avoidGroupingEdits,
     data: state,
+    composerAppendRequest,
     openSessionRequest,
     prefillPromptRequest,
     agentTargets,

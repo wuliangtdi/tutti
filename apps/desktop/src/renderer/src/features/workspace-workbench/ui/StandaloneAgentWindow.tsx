@@ -15,6 +15,10 @@ import {
   AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   shouldAutoCollapseAgentGUIConversationRail
 } from "@tutti-os/agent-gui";
+import type {
+  AgentComposerDraftFile,
+  AgentGUIComposerAppendRequest
+} from "@tutti-os/agent-gui";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
@@ -76,6 +80,7 @@ import {
 } from "./StandaloneAgentWindowHeader.tsx";
 import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowContentReady.tsx";
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
+import { Toast } from "@renderer/lib/toast";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -293,6 +298,19 @@ export function StandaloneAgentWindow({
   );
   const [fileOpenRequest, setFileOpenRequest] =
     useState<StandaloneAgentFileOpenRequest | null>(null);
+  const [composerAppendRequest, setComposerAppendRequest] =
+    useState<AgentGUIComposerAppendRequest | null>(null);
+  const composerAppendSequenceRef = useRef(0);
+  const appendBrowserElementFile = useCallback(
+    (file: AgentComposerDraftFile): void => {
+      setComposerAppendRequest({
+        files: [file],
+        sequence:
+          Date.now() * 1_000 + (++composerAppendSequenceRef.current % 1_000)
+      });
+    },
+    []
+  );
   const fileOpenRequestSequenceRef = useRef(0);
   const openFileInSidebar = useCallback(
     async (file: string, validateExists = false): Promise<boolean> => {
@@ -593,7 +611,8 @@ export function StandaloneAgentWindow({
     workspaceId
   });
   const resizeStandaloneAgentWindowContentWidth = useCallback(
-    (width: number) => hostWindowApi.resizeContentWidth({ width }),
+    (width: number, animate = false) =>
+      hostWindowApi.resizeContentWidth({ animate, width }),
     [hostWindowApi]
   );
   const handleCapabilitySettingsRequest = useCallback(
@@ -653,6 +672,7 @@ export function StandaloneAgentWindow({
         browserApi={desktopApi.browser}
         contributions={toolWorkbench.contributions}
         fileOpenRequest={fileOpenRequest}
+        hostFilesApi={desktopApi.host.files}
         issueManagerOpenRequest={issueManagerOpenRequest}
         mainContentMinWidthPx={
           isConversationRailCollapsed
@@ -712,6 +732,8 @@ export function StandaloneAgentWindow({
         )}
         onOpenMessageCenterChat={handleOpenMessageCenterChat}
         onAppsOpen={ensureWorkspaceAppPolling}
+        onAppendBrowserElementFile={appendBrowserElementFile}
+        onBrowserElementError={Toast.Error}
         onToolHostReady={toolWorkbench.onHostReady}
         resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
         workspaceId={workspaceId}
@@ -724,6 +746,7 @@ export function StandaloneAgentWindow({
             agentProviderStatusService={agentProviderStatusService}
             context={context}
             computerUseApi={desktopApi.computerUse}
+            composerAppendRequest={composerAppendRequest}
             conversationRailAutoCollapseWidthPx={
               AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX
             }

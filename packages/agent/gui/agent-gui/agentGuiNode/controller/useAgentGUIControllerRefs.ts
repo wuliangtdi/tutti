@@ -70,6 +70,7 @@ export function useAgentGUIControllerRefs(
   );
   const onShowMessageRef = useRef(input.onShowMessage);
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
+  const handledComposerAppendSequenceRef = useRef<number | null>(null);
   const loadDraftComposerOptionsRef = useRef<() => void>(() => {});
   const lastActiveModelByProviderRef = useRef<Record<string, string>>({});
   const conversationIdsRef = useRef(
@@ -146,6 +147,7 @@ export function useAgentGUIControllerRefs(
     draftByScopeKeyRef,
     draftSettingsBySessionIdRef,
     executePromptRef,
+    handledComposerAppendSequenceRef,
     handledOpenSessionSequenceRef,
     handledPrefillPromptSequenceRef,
     isComposerHomeRef,

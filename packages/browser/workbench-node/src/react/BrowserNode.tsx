@@ -13,7 +13,7 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
   BrowserNodeNavigationPolicy,
@@ -73,6 +73,7 @@ export interface BrowserNodeProps {
   feature: BrowserNodeFeature;
   hidden?: boolean;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
+  navigationActions?: ReactNode;
   nodeId: string;
   onFocusRequest?: () => void;
   onNavigated?: (url: string) => void;
@@ -89,6 +90,7 @@ export function BrowserNode({
   feature,
   hidden = false,
   navigationPolicy = null,
+  navigationActions,
   nodeId,
   onFocusRequest,
   onNavigated,
@@ -106,6 +108,7 @@ export function BrowserNode({
         feature={feature}
         hidden={hidden}
         navigationPolicy={navigationPolicy}
+        navigationActions={navigationActions}
         nodeId={nodeId}
         onFocusRequest={onFocusRequest}
         onNavigated={onNavigated}
@@ -124,6 +127,7 @@ export function BrowserNode({
       feature={feature}
       hidden={hidden}
       navigationPolicy={navigationPolicy}
+      navigationActions={navigationActions}
       nodeId={nodeId}
       onFocusRequest={onFocusRequest}
       onNavigated={onNavigated}
@@ -141,6 +145,7 @@ function TabbedBrowserNode({
   feature,
   hidden,
   navigationPolicy,
+  navigationActions,
   nodeId,
   onFocusRequest,
   onNavigated,
@@ -158,6 +163,7 @@ function TabbedBrowserNode({
         <BrowserNodeChrome
           defaultUrl={defaultUrl}
           feature={feature}
+          navigationActions={navigationActions}
           onFocusRequest={onFocusRequest}
           surfaceNodeId={nodeId}
         />
@@ -201,6 +207,7 @@ function BrowserNodeContent({
   feature,
   hidden = false,
   navigationPolicy = null,
+  navigationActions,
   nodeId,
   onFocusRequest,
   onNavigated,
@@ -283,6 +290,7 @@ function BrowserNodeContent({
         <BrowserNodeHeader
           defaultUrl={defaultUrl}
           feature={feature}
+          navigationActions={navigationActions}
           nodeId={nodeId}
           onFocusRequest={onFocusRequest}
         />

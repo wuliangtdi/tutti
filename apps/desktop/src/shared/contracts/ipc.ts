@@ -255,6 +255,7 @@ export interface DesktopHostWindowCapturePreviewInput {
 }
 
 export interface DesktopHostWindowResizeContentWidthInput {
+  animate?: boolean;
   width: number;
 }
 
