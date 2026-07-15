@@ -223,6 +223,42 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
 
+### Browser Node action finds a webview but page injection does nothing
+
+- Symptom:
+  A Browser Node toolbar action is visible and clickable, but moving the pointer
+  over the loaded page produces no expected guest-page behavior. Desktop logs
+  may report `The WebView must be attached to the DOM and the dom-ready event
+emitted before this method can be called`, especially after HMR, navigation,
+  or panel remount.
+- Quick checks:
+  Do not treat a matching `<webview>` DOM element or a visibly rendered page as
+  proof that Electron methods are callable. Call `getWebContentsId()` inside a
+  `try` block and confirm it returns a finite id. Check whether the action found
+  a detached element, ran before `dom-ready`, or retained a stale element while
+  React cleanup and BrowserNode guest teardown raced.
+- Root cause:
+  Electron exposes the webview element before its guest method bridge is ready,
+  and detaches that bridge before React passive cleanup necessarily runs. Direct
+  DOM lookup followed immediately by `executeJavaScript()` therefore races the
+  BrowserNode lifecycle. The method can also throw synchronously before it
+  returns a Promise, so appending `.catch()` alone does not protect cleanup.
+- Fix:
+  Reuse BrowserNode's guest lifecycle rather than creating a second owner. Before
+  guest script execution, require a connected webview with a readable finite
+  web contents id; otherwise wait for its `dom-ready` event with a bounded
+  timeout. Treat cancellation during navigation or unmount as best-effort and
+  guard the full method call with `try`/`catch`, including synchronous throws.
+- Validation:
+  Test delayed `dom-ready`, detached webviews, and unmount cancellation. Run the
+  desktop typecheck, changed-aware checks, and production build. Confirm the
+  guest action remains in its lazy renderer chunk, then reload the standalone
+  Agent window before a manual page-selection smoke test.
+- References:
+  [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
+  [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)
+  [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
+
 ### Hidden Browser Node webview covers another panel
 
 - Symptom:

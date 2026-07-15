@@ -21,6 +21,10 @@ import {
   browserElementSelectorScript,
   cancelBrowserElementSelectorScript
 } from "./browserElementSelectorScript";
+import {
+  cancelBrowserElementWebviewSelection,
+  executeBrowserElementWebviewScript
+} from "./browserElementWebview";
 
 export interface BrowserElementContextCopy {
   cancel: string;
@@ -53,16 +57,20 @@ export function BrowserElementContextAction({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      void selectingWebviewRef.current
-        ?.executeJavaScript?.(cancelBrowserElementSelectorScript)
-        .catch(() => undefined);
+      const webview = selectingWebviewRef.current;
+      selectingWebviewRef.current = null;
+      void cancelBrowserElementWebviewSelection(
+        webview,
+        cancelBrowserElementSelectorScript
+      );
     };
   }, []);
 
   const cancelSelection = useCallback(() => {
-    void selectingWebviewRef.current
-      ?.executeJavaScript?.(cancelBrowserElementSelectorScript)
-      .catch(() => undefined);
+    void cancelBrowserElementWebviewSelection(
+      selectingWebviewRef.current,
+      cancelBrowserElementSelectorScript
+    );
   }, []);
 
   const startSelection = useCallback(async () => {
@@ -79,7 +87,8 @@ export function BrowserElementContextAction({
     selectingWebviewRef.current = webview;
     setState("selecting");
     try {
-      const rawResult = await webview.executeJavaScript(
+      const rawResult = await executeBrowserElementWebviewScript(
+        webview,
         browserElementSelectorScript,
         true
       );

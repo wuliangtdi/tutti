@@ -77,6 +77,7 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [Malformed user skill frontmatter breaks skill discovery](./toolchain-browser-terminal.md#malformed-user-skill-frontmatter-breaks-skill-discovery)
 - [Browser Node failed navigation renders a blank panel](./toolchain-browser-terminal.md#browser-node-failed-navigation-renders-a-blank-panel)
 - [Standalone Agent Browser Node is blank and never attaches a guest](./toolchain-browser-terminal.md#standalone-agent-browser-node-is-blank-and-never-attaches-a-guest)
+- [Browser Node action finds a webview but page injection does nothing](./toolchain-browser-terminal.md#browser-node-action-finds-a-webview-but-page-injection-does-nothing)
 - [Hidden Browser Node webview covers another panel](./toolchain-browser-terminal.md#hidden-browser-node-webview-covers-another-panel)
 - [IME composition leaks native input into xterm terminals](./toolchain-browser-terminal.md#ime-composition-leaks-native-input-into-xterm-terminals)
 - [Post-composition suppression window swallows real terminal input](./toolchain-browser-terminal.md#post-composition-suppression-window-swallows-real-terminal-input)
