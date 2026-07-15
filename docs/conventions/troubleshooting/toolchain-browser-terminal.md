@@ -252,8 +252,8 @@ emitted before this method can be called`, especially after HMR, navigation,
 - Validation:
   Test delayed `dom-ready`, detached webviews, and unmount cancellation. Run the
   desktop typecheck, changed-aware checks, and production build. Confirm the
-  guest action remains in its lazy renderer chunk, then reload the standalone
-  Agent window before a manual page-selection smoke test.
+  guest action is bundled with the standalone Agent browser adapter, then reload
+  the standalone Agent window before a manual page-selection smoke test.
 - References:
   [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
   [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)

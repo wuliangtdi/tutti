@@ -2936,6 +2936,20 @@
       "iconVariant": "lined"
     },
     {
+      "id": "inspect-lined-icon",
+      "layer": "base",
+      "name": "InspectIcon",
+      "export": "InspectIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "System icon for selecting and inspecting interface elements.",
+      "useCases": ["Element selection", "Interface inspection"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "web-scrape-lined-icon",
       "layer": "base",
       "name": "WebScrapeIcon",

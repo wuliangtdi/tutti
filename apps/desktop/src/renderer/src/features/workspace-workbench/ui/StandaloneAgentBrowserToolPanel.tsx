@@ -8,20 +8,13 @@ import {
   standaloneAgentBrowserDefaultUrl
 } from "./standaloneAgentToolWorkbench.ts";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
+import { BrowserElementContextAction } from "../browser-element-context/BrowserElementContextAction.tsx";
 
 const LazyBrowserNode = lazy(() =>
   import("@tutti-os/browser-node/react").then(({ BrowserNode }) => ({
     default: BrowserNode
   }))
 );
-const LazyBrowserElementContextAction = lazy(() =>
-  import("../browser-element-context/BrowserElementContextAction.tsx").then(
-    ({ BrowserElementContextAction }) => ({
-      default: BrowserElementContextAction
-    })
-  )
-);
-
 export function StandaloneAgentBrowserToolPanel({
   appI18n,
   browserApi,
@@ -71,16 +64,14 @@ export function StandaloneAgentBrowserToolPanel({
           feature={feature}
           hidden={hidden}
           navigationActions={
-            <Suspense fallback={null}>
-              <LazyBrowserElementContextAction
-                copy={elementContextCopy}
-                hostFilesApi={hostFilesApi}
-                surfaceId={nodeId}
-                workspaceId={workspaceId}
-                onAppendFile={onAppendBrowserElementFile}
-                onError={onBrowserElementError}
-              />
-            </Suspense>
+            <BrowserElementContextAction
+              copy={elementContextCopy}
+              hostFilesApi={hostFilesApi}
+              surfaceId={nodeId}
+              workspaceId={workspaceId}
+              onAppendFile={onAppendBrowserElementFile}
+              onError={onBrowserElementError}
+            />
           }
           nodeId={nodeId}
           syncDefaultUrl

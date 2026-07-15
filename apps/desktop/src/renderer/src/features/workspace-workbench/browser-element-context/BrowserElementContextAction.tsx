@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Button,
+  InspectIcon,
   LoadingIcon,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-  WebScrapeIcon,
   cn
 } from "@tutti-os/ui-system";
 import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
@@ -147,7 +147,7 @@ export function BrowserElementContextAction({
           {state === "archiving" ? (
             <LoadingIcon className="size-[15px] animate-spin" />
           ) : (
-            <WebScrapeIcon className="size-[15px]" />
+            <InspectIcon className="size-[15px]" />
           )}
         </Button>
       </TooltipTrigger>

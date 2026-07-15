@@ -519,8 +519,8 @@ Standalone-window tools are desktop host chrome, not AgentGUI state.
 The desktop host owns tool identity, toolbar buttons and reminder badges,
 Browser/Terminal grouping, panel placement, lazy mounting, and tool content
 adapters. Browser, Files, Apps, and Message Center use the right sidebar; the
-standalone Browser may lazily load a desktop-owned element-context module after
-the Browser tool mounts. That module runs a bounded selector inside only the
+standalone Browser statically owns a desktop element-context module alongside
+its panel adapter. That module runs a bounded selector inside only the
 active BrowserNode webview, strips executable content, form values, and
 secret-looking attributes or URL parameters, then archives the structured DOM
 snapshot as a local prompt asset. The host sends a sequenced, host-neutral
