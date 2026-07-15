@@ -1697,10 +1697,6 @@ aside.workspace-agents-status-panel
   font-weight: 600;
 }
 
-.workspace-agents-status-panel__detail-tool-count-status {
-  font-weight: 400;
-}
-
 .workspace-agents-status-panel__detail-tool-count svg {
   flex: 0 0 auto;
 }

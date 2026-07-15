@@ -138,6 +138,18 @@ Timeline-specific parsing may produce display-only card content, while request
 identity, options, and response commands come only from canonical pending
 Interaction projections.
 
+Ordinary consecutive tool calls project into one stable transcript disclosure
+starting with the first call. Working, waiting, completed, and failed updates
+change the calls and accumulated count inside that disclosure; they must not
+split, finalize, replace, expand, or collapse it. The disclosure identity is
+scoped by session, turn, and first call so incremental calls preserve the same
+UI state without leaking it across conversations. It starts collapsed, and
+only an explicit user toggle changes whether it is expanded. The group header
+reports the accumulated call count without claiming a lifecycle state; each
+call row owns its working, completed, or failed presentation. Interactive
+approval, question, plan-mode, task, and delegated-agent surfaces remain
+independent boundaries rather than ordinary grouped tool calls.
+
 Protocol-v2 host adapters must require `activeTurnId`,
 `latestTurnInteractions`, and `pendingInteractions`. Missing fields are a
 contract error at the desktop boundary, not an empty-list/default-value case.
