@@ -2801,7 +2801,7 @@ corepack pnpm --filter @tutti-os/agent-gui exec vitest run shared/AgentRichTextR
 
 ```text
 Agent activity messages
-  -> generated-file collector in tuttid or AgentGUI fallback
+  -> target-filtered generated-file collector in tuttid or AgentGUI fallback
   -> desktop mention provider
   -> mention palette grouping/count presentation
   -> composer file mention insertion
@@ -2812,6 +2812,47 @@ rendering state. The collector owns the semantic filter: only successful
 file-change tool messages should contribute paths, and failed, canceled,
 running, or read-only tool calls must be ignored even when their payloads carry
 `path`, `filePath`, `fileChanges`, or `changes` fields.
+
+### Reference Source Filtering
+
+The desktop product may enable Agent provenance filtering through the
+default-off `agent.referenceProvenanceFilter` developer feature flag. The flag
+is projected into AgentGUI as a host capability; AgentGUI does not read desktop
+preferences directly. Preview mode keeps the capability disabled.
+
+AgentGUI creates one controlled provenance controller for both the composer
+`@` palette and the `+` reference picker. The desktop host injects the current
+Agent target catalog, while the query providers apply selected
+`agentTargetId` values before pagination. Session search merges target-scoped
+queries, and the generated-file fallback filters sessions before collecting
+file changes. Tutti's daemon-backed generated-file query accepts multiple
+`agentTargetIds` and filters persisted sessions in SQLite before applying its
+message scan limit; the renderer must not filter a capped session snapshot.
+In the `+` picker, desktop project/local sources switch to that same
+generated-file provider for an active Agent constraint, then apply file type
+filters and the result limit. This provenance constraint does not imply a file
+path constraint, so picker location ids must not be mapped to session working
+directories. Ordinary opened-file and issue-summary records do not currently
+carry durable Agent provenance and therefore fail closed when an Agent
+constraint is active. Existing result groups remain unchanged; the filter
+narrows their contents and does not introduce a second grouping layer.
+
+Only catalog entries with a durable `agentTargetId` participate in filtering;
+host target ids are not substitutes. Catalogs and filters are normalized at the
+shared boundary, and cache identity uses collision-free semantic serialization.
+Provider replacement must reapply the current filter. Idle preload captures the
+filter value used to build its cache key, and an interactive filter change
+aborts or invalidates the active request before the replacement debounce is
+scheduled. Typed `@` queries in the File category continue to query the
+Agent-generated-file provider whenever an Agent constraint is active.
+
+The filter popover is portal-mounted and must mark its content as `nodrag`.
+Portal content is not a DOM descendant of the Agent window trigger, so the
+window's click-capture guard otherwise treats the option click as a draggable
+window interaction and stops it before the filter row receives the event.
+
+The shared contracts reserve a separate member dimension for collaboration
+hosts. Tutti personal edition must not enable member or group-chat filtering.
 
 ### Approval Or Ask-User Prompt
 

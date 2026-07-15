@@ -1523,6 +1523,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       sessions: [
         {
           agentSessionId: "session-20",
+          agentTargetId: "agent-a",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1531,6 +1532,7 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
         },
         {
           agentSessionId: "session-21",
+          agentTargetId: "agent-b",
           cwd: "/Users/demo/project",
           provider: "codex",
           status: "completed",
@@ -1593,6 +1595,74 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
       {
         path: "/workspace/output/image.png",
         label: "image.png"
+      }
+    ]);
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"],
+        workspaceRoot: "/Users/demo/project"
+      })
+    ).toEqual([
+      {
+        path: "/workspace/output/image.png",
+        label: "image.png"
+      }
+    ]);
+  });
+
+  it("derives the fallback root after applying the agent provenance filter", () => {
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-a",
+          agentTargetId: "agent-a",
+          cwd: "/Users/demo/project-a",
+          provider: "codex",
+          status: "completed",
+          title: "Project A",
+          workspaceId: "workspace-1"
+        },
+        {
+          agentSessionId: "session-b",
+          agentTargetId: "agent-b",
+          cwd: "/Users/demo/project-b",
+          provider: "codex",
+          status: "completed",
+          title: "Project B",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-b": [
+          {
+            agentSessionId: "session-b",
+            kind: "tool_call",
+            messageId: "message-b",
+            payload: {
+              toolName: "Write",
+              status: "completed",
+              fileChanges: { files: [{ path: "output/report.md" }] }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-b",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        agentTargetIds: ["agent-b"]
+      })
+    ).toEqual([
+      {
+        path: "/Users/demo/project-b/output/report.md",
+        label: "report.md"
       }
     ]);
   });
