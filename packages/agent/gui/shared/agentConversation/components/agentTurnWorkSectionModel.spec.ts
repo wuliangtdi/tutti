@@ -1,0 +1,262 @@
+import { describe, expect, it } from "vitest";
+import type { AgentActivityTurn } from "@tutti-os/agent-activity-core";
+import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
+import type { AgentTranscriptTurnGroup } from "./agentTranscriptModel";
+import {
+  buildAgentTurnWorkSectionModel,
+  formatAgentTurnDuration,
+  resolveAgentTurnTiming
+} from "./agentTurnWorkSectionModel";
+
+describe("agentTurnWorkSectionModel", () => {
+  it("uses canonical turn timestamps for live and settled elapsed time", () => {
+    expect(
+      resolveAgentTurnTiming(canonicalTurn({ phase: "running" }), 66_999)
+    ).toEqual({ kind: "live", elapsedSeconds: 61 });
+
+    expect(
+      resolveAgentTurnTiming(
+        canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 127_999
+        }),
+        999_999
+      )
+    ).toEqual({ kind: "settled", elapsedSeconds: 122 });
+
+    expect(
+      resolveAgentTurnTiming(
+        canonicalTurn({ startedAtUnixMs: Number.NaN }),
+        66_999
+      )
+    ).toBeNull();
+  });
+
+  it("formats seconds and minute boundaries without a zero-second suffix", () => {
+    expect(formatAgentTurnDuration(45)).toEqual({
+      kind: "seconds",
+      seconds: 45
+    });
+    expect(formatAgentTurnDuration(60)).toEqual({
+      kind: "minutes",
+      minutes: 1
+    });
+    expect(formatAgentTurnDuration(127)).toEqual({
+      kind: "minutes-seconds",
+      minutes: 2,
+      seconds: 7
+    });
+  });
+
+  it("keeps the final assistant copy target visible and moves work around it", () => {
+    const model = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow(),
+        assistantRow({
+          id: "assistant-row",
+          messages: [message("draft", null), message("final", "Final answer")],
+          thinking: [thinking("Inspecting files")]
+        }),
+        toolRow(),
+        summaryRow()
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        settledAtUnixMs: 15_000
+      })
+    );
+
+    expect(model.userRows).toHaveLength(1);
+    expect(model.workRowsBeforeFinal).toHaveLength(1);
+    expect(model.finalRows).toHaveLength(1);
+    expect(model.workRowsAfterFinal).toHaveLength(2);
+    expect(model.collapseEligible).toBe(true);
+
+    const finalRow = model.finalRows[0]?.row;
+    expect(finalRow?.kind).toBe("message");
+    if (finalRow?.kind === "message") {
+      expect(finalRow.messages.map((item) => item.body)).toEqual(["final"]);
+      expect(finalRow.thinking).toEqual([]);
+    }
+  });
+
+  it("does not offer auto-collapse for abnormal or artifact-first turns", () => {
+    const rows = [userRow(), toolRow(), assistantRow(), summaryRow()];
+
+    expect(
+      buildAgentTurnWorkSectionModel(
+        turnGroup(rows),
+        canonicalTurn({
+          phase: "settled",
+          outcome: "failed",
+          settledAtUnixMs: 15_000
+        })
+      ).collapseEligible
+    ).toBe(false);
+
+    expect(
+      buildAgentTurnWorkSectionModel(
+        turnGroup([...rows, generatedImageRow()]),
+        canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })
+      ).collapseEligible
+    ).toBe(false);
+
+    expect(
+      buildAgentTurnWorkSectionModel(
+        turnGroup([
+          userRow(),
+          assistantRow({
+            messages: [
+              {
+                ...message("Config invalid", null),
+                visibleError: {
+                  code: "invalid_config",
+                  phase: null,
+                  provider: "codex",
+                  detail: "Config invalid",
+                  retryable: false
+                }
+              },
+              message("final", "Final answer")
+            ]
+          })
+        ]),
+        canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })
+      ).collapseEligible
+    ).toBe(false);
+  });
+
+  it("shows timing without a disclosure when a completed turn has only a final answer", () => {
+    const model = buildAgentTurnWorkSectionModel(
+      turnGroup([userRow(), assistantRow()]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        settledAtUnixMs: 15_000
+      })
+    );
+
+    expect(model.timing).toEqual({ kind: "settled", elapsedSeconds: 10 });
+    expect(model.collapseEligible).toBe(false);
+    expect(model.finalRows).toHaveLength(1);
+  });
+});
+
+function canonicalTurn(
+  overrides: Partial<AgentActivityTurn> = {}
+): AgentActivityTurn {
+  return {
+    agentSessionId: "session-1",
+    origin: "user_prompt",
+    phase: "running",
+    startedAtUnixMs: 5_000,
+    turnId: "turn-1",
+    updatedAtUnixMs: 6_000,
+    ...overrides
+  };
+}
+
+function turnGroup(rows: AgentTranscriptRowVM[]): AgentTranscriptTurnGroup {
+  return {
+    key: "turn-1",
+    turnId: "turn-1",
+    rows: rows.map((row, rowIndex) => ({ row, rowIndex }))
+  };
+}
+
+function userRow(): AgentTranscriptRowVM {
+  return {
+    kind: "message",
+    id: "user-row",
+    turnId: "turn-1",
+    speaker: "user",
+    messages: [message("Please fix it", null)],
+    thinking: [],
+    occurredAtUnixMs: 5_000
+  };
+}
+
+function assistantRow(
+  overrides: Partial<Extract<AgentTranscriptRowVM, { kind: "message" }>> = {}
+): AgentTranscriptRowVM {
+  return {
+    kind: "message",
+    id: "assistant-row",
+    turnId: "turn-1",
+    speaker: "assistant",
+    messages: [message("Final answer", "Final answer")],
+    thinking: [],
+    occurredAtUnixMs: 14_000,
+    ...overrides
+  };
+}
+
+function message(body: string, copyText: string | null) {
+  return {
+    kind: "message-content" as const,
+    id: `message:${body}`,
+    turnId: "turn-1",
+    body,
+    presentationKind: "content" as const,
+    copyText,
+    occurredAtUnixMs: 14_000
+  };
+}
+
+function thinking(body: string) {
+  return {
+    kind: "thinking-content" as const,
+    id: `thinking:${body}`,
+    turnId: "turn-1",
+    body,
+    occurredAtUnixMs: 7_000
+  };
+}
+
+function toolRow(): AgentTranscriptRowVM {
+  return {
+    kind: "tool-group",
+    id: "tools",
+    turnId: "turn-1",
+    grouped: true,
+    calls: [],
+    entries: [],
+    occurredAtUnixMs: 8_000
+  };
+}
+
+function summaryRow(): AgentTranscriptRowVM {
+  return {
+    kind: "turn-summary",
+    id: "summary",
+    turnId: "turn-1",
+    files: [],
+    fileCount: 0,
+    modifiedCount: 0,
+    createdCount: 0,
+    occurredAtUnixMs: 15_000
+  };
+}
+
+function generatedImageRow(): AgentTranscriptRowVM {
+  return {
+    kind: "generated-image",
+    id: "image",
+    turnId: "turn-1",
+    sourceCallId: "image-call",
+    uri: "file:///tmp/image.png",
+    mimeType: "image/png",
+    prompt: "A test image",
+    occurredAtUnixMs: 12_000
+  };
+}
