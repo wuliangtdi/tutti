@@ -3,6 +3,7 @@ import type {
   PendingActivationIntentRecord,
   PendingSubmitIntentRecord
 } from "./pendingIntents.types.ts";
+import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 
 export function selectPendingActivations(
   state: AgentSessionEngineState
@@ -77,8 +78,20 @@ export function selectSessionHasUnconfirmedSubmit(
   state: AgentSessionEngineState,
   agentSessionId: string | null | undefined
 ): boolean {
+  const id = agentSessionId?.trim() ?? "";
+  const session = id ? state.sessionLifecycle.sessionsById[id] : undefined;
   return selectPendingSubmitsForSession(state, agentSessionId).some(
-    (pending) => pending.status === "accepted"
+    (pending) => {
+      if (pending.status !== "accepted") return false;
+      const turnId = pending.turnId?.trim() ?? "";
+      if (!turnId) return true;
+      const turn =
+        state.sessionLifecycle.turnsById[
+          canonicalTurnKey(pending.agentSessionId, turnId)
+        ];
+      if (turn?.phase === "settled") return false;
+      return session?.activeTurnId === turnId;
+    }
   );
 }
 

@@ -25,7 +25,7 @@ func cursorDescriptor() ProviderDescriptor {
 			AuthRequiredMessage: "Cursor ACP requires authentication; run `cursor-agent login` (or set CURSOR_API_KEY) on the host, then retry this session.",
 			StandardACP: StandardACPRuntimeDescriptor{
 				AdapterStrategy:    StandardACPAdapterStrategyCursor,
-				PermissionModes:    []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "plan"}, {InputID: "agent", RuntimeID: "agent"}, {InputID: "full-access", RuntimeID: "agent"}, {InputID: "plan", RuntimeID: "plan"}, {InputID: "ask", RuntimeID: "ask"}},
+				PermissionModes:    []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "ask"}, {InputID: "agent", RuntimeID: "agent"}, {InputID: "full-access", RuntimeID: "agent"}, {InputID: "plan", RuntimeID: "plan"}, {InputID: "ask", RuntimeID: "ask"}},
 				PlanModeRuntimeID:  "plan",
 				ProjectCurrentMode: true,
 			},

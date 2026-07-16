@@ -18,6 +18,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Codex provider install fails with missing npm](./agent-provider-setup.md#codex-provider-install-fails-with-missing-npm)
 - [Codex ACP warns about user-level config as project-local config](./agent-provider-setup.md#codex-acp-warns-about-user-level-config-as-project-local-config)
 - [Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes](./agent-provider-setup.md#cursor-sessions-create-project-cursorskills-or-agentsmd-changes)
+- [Cursor read-only mode still creates files without approval](./agent-provider-setup.md#cursor-read-only-mode-still-creates-files-without-approval)
 - [Codex provider shows login required when global service tier is legacy](./agent-provider-setup.md#codex-provider-shows-login-required-when-global-service-tier-is-legacy)
 - [Codex provider shows login required when only an API key is configured](./agent-provider-setup.md#codex-provider-shows-login-required-when-only-an-api-key-is-configured)
 - [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)

@@ -8,6 +8,7 @@ import {
   createInitialAgentSessionEngineState,
   rootEngineReducer
 } from "./rootReducer.ts";
+import { selectSessionHasUnconfirmedSubmit } from "./pendingIntents.selectors.ts";
 import type { EngineIntent, EngineRuntimeState } from "./types.ts";
 import type { AgentActivitySessionCapabilities } from "../types.ts";
 
@@ -444,6 +445,76 @@ test("submit acceptance rejects unknown and cross-workspace canonical sessions a
     undefined
   );
   assert.deepEqual(crossWorkspace.commands, []);
+});
+
+test("accepted submit stops blocking once its turn is no longer active", () => {
+  let state = createInitialAgentSessionEngineState();
+  const runningTurn = {
+    agentSessionId: "session-1",
+    phase: "running" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const session = {
+    activeTurn: runningTurn,
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "workspace-1"
+  };
+  state = rootEngineReducer(state, {
+    sessions: [session],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "retry" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 2,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    commandId: "submit:send:submit-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      session,
+      turn: runningTurn,
+      turnId: "turn-1"
+    }
+  }).state;
+  assert.equal(selectSessionHasUnconfirmedSubmit(state, "session-1"), true);
+
+  const laterTurn = {
+    agentSessionId: "session-1",
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 4,
+    startedAtUnixMs: 3,
+    turnId: "turn-2",
+    updatedAtUnixMs: 4
+  };
+  state = rootEngineReducer(state, {
+    session: {
+      ...session,
+      activeTurn: null,
+      activeTurnId: null,
+      latestTurn: laterTurn,
+      updatedAtUnixMs: 4
+    },
+    type: "session/upserted"
+  }).state;
+  assert.equal(selectSessionHasUnconfirmedSubmit(state, "session-1"), false);
 });
 
 test("an uncertain queued submit cannot be half-canceled", () => {
