@@ -237,6 +237,10 @@ func (s *SQLiteStore) PrepareGoalControlOperation(ctx context.Context, input age
 	return s.agentStore().PrepareGoalControlOperation(ctx, input)
 }
 
+func (s *SQLiteStore) GetGoalControlAudit(ctx context.Context, workspaceID string, agentSessionID string, operationID string) (agentactivitybiz.Message, bool, error) {
+	return s.agentStore().GetGoalControlAudit(ctx, workspaceID, agentSessionID, operationID)
+}
+
 func (s *SQLiteStore) MarkGoalControlOperationDispatched(ctx context.Context, workspaceID, operationID string, occurredAtUnixMS int64) (agentactivitybiz.GoalControlOperation, bool, error) {
 	return s.agentStore().MarkGoalControlOperationDispatched(ctx, workspaceID, operationID, occurredAtUnixMS)
 }

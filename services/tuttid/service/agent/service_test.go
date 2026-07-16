@@ -5124,7 +5124,7 @@ func (s *recordingGoalStateStore) PrepareGoalControlOperation(_ context.Context,
 	s.prepared = append(s.prepared, input)
 	return agentactivitybiz.GoalControlOperation{
 			OperationID: input.OperationID, WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
-			GoalRevision: 1, Action: input.Action, Objective: input.Objective,
+			GoalRevision: 1, Action: input.Action, Objective: input.Objective, ClientSubmitID: input.ClientSubmitID,
 		}, agentactivitybiz.SessionGoalState{
 			WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Revision: 1,
 			PendingOperationID: input.OperationID, SyncStatus: agentactivitybiz.GoalSyncStatusPending,
@@ -5141,6 +5141,43 @@ func (s *recordingGoalStateStore) AcknowledgeGoalControlOperation(_ context.Cont
 	return agentactivitybiz.GoalControlOperation{OperationID: input.OperationID, GoalRevision: 1}, agentactivitybiz.SessionGoalState{
 		Revision: 1, PendingOperationID: input.OperationID, SyncStatus: agentactivitybiz.GoalSyncStatusApplying,
 	}, true, nil
+}
+
+func (s *recordingGoalStateStore) GetGoalControlAudit(_ context.Context, workspaceID string, agentSessionID string, operationID string) (agentactivitybiz.Message, bool, error) {
+	for index := len(s.prepared) - 1; index >= 0; index-- {
+		prepared := s.prepared[index]
+		if prepared.WorkspaceID != workspaceID || prepared.AgentSessionID != agentSessionID || prepared.OperationID != operationID {
+			continue
+		}
+		content := "/goal " + prepared.Action
+		if prepared.Action == "set" {
+			content = "/goal " + prepared.Objective
+		}
+		return agentactivitybiz.Message{
+			AgentSessionID: agentSessionID,
+			MessageID:      "goal-control:" + operationID,
+			Version:        1,
+			Role:           "user",
+			Kind:           "session_audit",
+			Status:         "completed",
+			Payload: map[string]any{
+				"action":      prepared.Action,
+				"goalControl": true,
+				"operationId": operationID,
+				"text":        content,
+			},
+			OccurredAtUnixMS: prepared.OccurredAtUnixMS,
+		}, true, nil
+	}
+	return agentactivitybiz.Message{}, false, nil
+}
+
+type recordingGoalAuditPublisher struct {
+	audits []agentactivitybiz.Message
+}
+
+func (p *recordingGoalAuditPublisher) PublishGoalControlAudit(_ context.Context, _ string, _ string, audit agentactivitybiz.Message) {
+	p.audits = append(p.audits, audit)
 }
 
 func (*recordingGoalStateStore) CompleteGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationComplete) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error) {
@@ -5208,8 +5245,20 @@ func TestServiceTypedGoalUsesDurableSagaBeforeTurnSubmit(t *testing.T) {
 		ID: "session-typed", Provider: "claude-code", ProviderSessionID: "provider-typed", Status: "ready",
 	}
 	store := &recordingGoalStateStore{}
+	publisher := &recordingGoalAuditPublisher{}
+	runtime.goalControlHook = func(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalControlResult, error) {
+		if len(publisher.audits) != 1 {
+			t.Fatalf("goal audit count before provider dispatch = %d, want 1", len(publisher.audits))
+		}
+		return RuntimeGoalControlResult{
+			Goal:          map[string]any{"objective": input.Objective, "status": "active"},
+			ProviderPhase: "accepted",
+			Evidence:      map[string]any{"phase": "accepted"},
+		}, nil
+	}
 	service := newIsolatedAgentService(runtime)
 	service.GoalStateStore = store
+	service.GoalAuditPublisher = publisher
 
 	result, err := service.SendInput(context.Background(), "ws-typed", "session-typed", SendInput{
 		Content:  TextPromptContent("/goal ship it"),
@@ -5230,8 +5279,14 @@ func TestServiceTypedGoalUsesDurableSagaBeforeTurnSubmit(t *testing.T) {
 	if len(runtime.goalControlCalls) != 1 || runtime.goalControlCalls[0].OperationID == "" || runtime.goalControlCalls[0].GoalRevision != 1 {
 		t.Fatalf("runtime goal calls=%#v", runtime.goalControlCalls)
 	}
+	if runtime.goalControlCalls[0].SubmissionMetadata["clientSubmitId"] != "submit-goal-1" {
+		t.Fatalf("runtime goal submission metadata=%#v", runtime.goalControlCalls[0].SubmissionMetadata)
+	}
 	if len(store.acknowledged) != 1 || store.acknowledged[0].OperationID != runtime.goalControlCalls[0].OperationID {
 		t.Fatalf("acknowledgements=%#v", store.acknowledged)
+	}
+	if len(publisher.audits) != 1 || publisher.audits[0].MessageID != "goal-control:"+runtime.goalControlCalls[0].OperationID {
+		t.Fatalf("published goal audits=%#v", publisher.audits)
 	}
 }
 
@@ -5634,7 +5689,7 @@ func TestGoalRuntimeUnavailableKeepsPreparedUntilFirstProviderDispatch(t *testin
 	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{WorkspaceID: "ws-runtime-late", AgentSessionID: "s", Provider: "claude-code", OccurredAtUnixMS: 10}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := store.PrepareGoalControlOperation(ctx, agentactivitybiz.GoalControlOperationPrepare{OperationID: "late", WorkspaceID: "ws-runtime-late", AgentSessionID: "s", Action: "clear", OccurredAtUnixMS: 20}); err != nil {
+	if _, _, _, err := store.PrepareGoalControlOperation(ctx, agentactivitybiz.GoalControlOperationPrepare{OperationID: "late", WorkspaceID: "ws-runtime-late", AgentSessionID: "s", Action: "clear", ClientSubmitID: "submit-late-goal", OccurredAtUnixMS: 20}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := newFakeRuntime()
@@ -5663,6 +5718,9 @@ func TestGoalRuntimeUnavailableKeepsPreparedUntilFirstProviderDispatch(t *testin
 	op, _, _ = store.GetGoalControlOperation(ctx, "ws-runtime-late", "late")
 	if op.Status != agentactivitybiz.GoalOperationStatusDispatched || op.FirstDispatchedAtUnixMS != now || len(runtime.goalControlCalls) != 1 {
 		t.Fatalf("first dispatch=%#v calls=%#v", op, runtime.goalControlCalls)
+	}
+	if runtime.goalControlCalls[0].SubmissionMetadata["clientSubmitId"] != "submit-late-goal" {
+		t.Fatalf("recovered submission metadata=%#v", runtime.goalControlCalls[0].SubmissionMetadata)
 	}
 	now = op.NextAttemptAtMS
 	if err := service.StepGoalOperationWorker(ctx, false); err != nil {
@@ -5964,6 +6022,9 @@ func TestServiceCreateWithTypedGoalCreatesNoInitialTurn(t *testing.T) {
 	}
 	if len(runtime.goalControlCalls) != 1 || runtime.goalControlCalls[0].OperationID == "" {
 		t.Fatalf("goal control calls=%#v", runtime.goalControlCalls)
+	}
+	if runtime.goalControlCalls[0].SubmissionMetadata["clientSubmitId"] != "submit-new-goal" {
+		t.Fatalf("goal control submission metadata=%#v", runtime.goalControlCalls[0].SubmissionMetadata)
 	}
 	if len(store.prepared) != 1 || store.prepared[0].AgentSessionID != "session-new-goal" {
 		t.Fatalf("prepared operations=%#v", store.prepared)

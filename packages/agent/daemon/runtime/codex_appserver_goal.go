@@ -137,7 +137,7 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 			}
 		}
 	}
-	events := []activityshared.Event{goalControlSessionAuditEvent(session, input)}
+	var events []activityshared.Event
 	if event, ok := normalizedGoalUpdatedEvent(session, goalUpdateType); ok {
 		events = append(events, event)
 	}

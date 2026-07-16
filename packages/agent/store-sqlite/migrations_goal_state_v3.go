@@ -79,8 +79,5 @@ CREATE INDEX idx_workspace_agent_goal_operations_session
 	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentGoalStateV3); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+	return tx.Commit()
 }

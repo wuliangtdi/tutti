@@ -69,6 +69,7 @@ type GoalControlOperation struct {
 	AcceptedAttempt         int
 	FirstDispatchedAtUnixMS int64
 	DispatchedAttempt       int
+	ClientSubmitID          string
 }
 
 type GoalControlOperationPrepare struct {
@@ -77,6 +78,7 @@ type GoalControlOperationPrepare struct {
 	AgentSessionID   string
 	Action           string
 	Objective        string
+	ClientSubmitID   string
 	OccurredAtUnixMS int64
 }
 

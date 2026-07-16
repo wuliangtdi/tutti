@@ -240,7 +240,7 @@ func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event
 
 func turnLifecyclePhaseFromEvent(event activityshared.Event) string {
 	switch event.Type {
-	case activityshared.EventTurnStarted:
+	case activityshared.EventTurnStarted, activityshared.EventRootProviderTurnStarted:
 		return "running"
 	case activityshared.EventTurnUpdated:
 		switch strings.TrimSpace(event.Payload.TurnPhase) {

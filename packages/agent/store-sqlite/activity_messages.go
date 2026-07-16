@@ -33,7 +33,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 	return version, nil
 }
 
-func (s *Store) upsertAgentMessageTx(
+func (*Store) upsertAgentMessageTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	workspaceID string,

@@ -172,13 +172,14 @@ func (c *Controller) guideActiveTurn(
 }
 
 type GoalControlInput struct {
-	RoomID         string
-	AgentSessionID string
-	Action         GoalControlAction
-	Objective      string
-	OperationID    string
-	GoalRevision   int64
-	RepairEpoch    int64
+	RoomID             string
+	AgentSessionID     string
+	Action             GoalControlAction
+	Objective          string
+	OperationID        string
+	GoalRevision       int64
+	RepairEpoch        int64
+	SubmissionMetadata map[string]any
 }
 
 type GoalControlResult struct {
@@ -207,6 +208,7 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 	adapterResult, err := goalAdapter.ApplyGoal(ctx, session, GoalApplyInput{
 		Action: input.Action, Objective: input.Objective,
 		OperationID: input.OperationID, Revision: input.GoalRevision, RepairEpoch: input.RepairEpoch,
+		SubmissionMetadata: cloneExecMetadata(input.SubmissionMetadata),
 	})
 	if err != nil {
 		slog.Warn("agent session goal control failed",

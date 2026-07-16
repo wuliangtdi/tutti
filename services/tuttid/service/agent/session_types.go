@@ -29,6 +29,7 @@ type Service struct {
 	TurnStore                      TurnStore
 	RuntimeOperationStore          RuntimeOperationStore
 	GoalStateStore                 GoalStateStore
+	GoalAuditPublisher             GoalAuditPublisher
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
@@ -68,6 +69,10 @@ type Service struct {
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
 	liveModelPersistedScanMissAtUnixMS map[string]int64
+}
+
+type GoalAuditPublisher interface {
+	PublishGoalControlAudit(context.Context, string, string, agentactivitybiz.Message)
 }
 
 type GoalReconcileInboxStore interface {
@@ -490,6 +495,11 @@ type RuntimeGoalControlInput struct {
 	OperationID    string
 	GoalRevision   int64
 	RepairEpoch    int64
+	// SubmissionMetadata is present only when a typed /goal command entered
+	// through the composer. It preserves the client submit identity for the
+	// turnless transcript audit message; direct goal controls and recovery
+	// operations leave it empty.
+	SubmissionMetadata map[string]any
 }
 
 type RuntimeGoalControlResult struct {

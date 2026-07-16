@@ -80,7 +80,7 @@ func codexGoalGenerationFingerprint(goal map[string]any) string {
 // It never rewrites an existing generation association. If the provider
 // reuses the same observable generation for two durable operations, that
 // generation becomes permanently ambiguous instead of choosing the latest.
-func (a *CodexAppServerAdapter) bindGoalGeneration(ctx context.Context, session Session, goal map[string]any, identity goalOperationIdentity) error {
+func (a *CodexAppServerAdapter) bindGoalGeneration(_ context.Context, session Session, goal map[string]any, identity goalOperationIdentity) error {
 	if a == nil {
 		return errors.New("goal provenance adapter is unavailable")
 	}
@@ -225,15 +225,15 @@ func (a *CodexAppServerAdapter) observeGoalTurnGeneration(session Session, provi
 		appSession.goalTurnEvidence[providerTurnID] = evidence
 	}
 	if !evidence.bound && !evidence.ambiguous {
-		if _, exists := evidence.fingerprints[fingerprint]; !exists && len(evidence.fingerprints) >= maxGoalTurnFingerprints {
+		_, exists := evidence.fingerprints[fingerprint]
+		if !exists && len(evidence.fingerprints) >= maxGoalTurnFingerprints {
 			evidence.ambiguous = true
 			pending := a.degradeGoalProvenanceLocked(appSession)
 			a.mu.Unlock()
 			a.quiesceDegradedGoalTurns(pending, "goal turn provenance ambiguity exceeded")
 			return
-		} else {
-			evidence.fingerprints[fingerprint] = struct{}{}
 		}
+		evidence.fingerprints[fingerprint] = struct{}{}
 	}
 	sink := a.goalProvenanceSink
 	threadID := appSession.threadID
@@ -279,7 +279,7 @@ func (a *CodexAppServerAdapter) observeGoalTurnGeneration(session Session, provi
 	a.tryResolvePendingGoalTurn(agentSessionID, providerTurnID)
 }
 
-func (a *CodexAppServerAdapter) resolveGoalTurnEvidenceLocked(appSession *codexAppServerSession, evidence *codexGoalTurnEvidence) {
+func (*CodexAppServerAdapter) resolveGoalTurnEvidenceLocked(appSession *codexAppServerSession, evidence *codexGoalTurnEvidence) {
 	if appSession == nil || evidence == nil || evidence.bound || evidence.ambiguous {
 		return
 	}
@@ -360,7 +360,7 @@ func (a *CodexAppServerAdapter) queueGoalTurnForProvenance(session Session, prov
 // generation/evidence still needed by a pending or active provider Turn.
 // Eviction is conservative: losing old evidence only causes a future delayed
 // turn to be quiesced; it can never make that turn inherit a newer identity.
-func (a *CodexAppServerAdapter) pruneGoalProvenanceLocked(appSession *codexAppServerSession) {
+func (*CodexAppServerAdapter) pruneGoalProvenanceLocked(appSession *codexAppServerSession) {
 	if appSession == nil {
 		return
 	}
@@ -416,7 +416,7 @@ func (a *CodexAppServerAdapter) failGoalProvenanceSession(session Session, cause
 	}
 }
 
-func (a *CodexAppServerAdapter) degradeGoalProvenanceLocked(appSession *codexAppServerSession) []codexPendingGoalTurn {
+func (*CodexAppServerAdapter) degradeGoalProvenanceLocked(appSession *codexAppServerSession) []codexPendingGoalTurn {
 	if appSession == nil || appSession.provenanceDegraded {
 		return nil
 	}

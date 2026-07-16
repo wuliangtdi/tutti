@@ -176,7 +176,7 @@ func (s *Service) recoverGoalOperation(ctx context.Context, operation agentactiv
 		WorkspaceID: leased.WorkspaceID, AgentSessionID: leased.AgentSessionID,
 		Action: leased.Action, Objective: leased.Objective,
 		OperationID: leased.OperationID, GoalRevision: leased.GoalRevision,
-		RepairEpoch: leased.RepairEpoch,
+		RepairEpoch: leased.RepairEpoch, SubmissionMetadata: goalControlSubmissionMetadata(leased.ClientSubmitID),
 	})
 	if err != nil {
 		return s.retryRecoveredGoalOperation(ctx, leased, err)

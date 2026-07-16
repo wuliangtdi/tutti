@@ -174,7 +174,7 @@ func (a *ClaudeCodeSDKAdapter) ApplyGoal(
 		return GoalAdapterResult{}, fmt.Errorf("unsupported goal control action %q", action)
 	}
 	return GoalAdapterResult{
-		Events: append([]activityshared.Event{goalControlSessionAuditEvent(session, input)}, events...), Observation: a.localGoal(adapterSession),
+		Events: events, Observation: a.localGoal(adapterSession),
 		Evidence:      map[string]any{"source": "claude_command_ack", "confidence": "accepted_only", "phase": "accepted", "repairEpoch": input.RepairEpoch},
 		ProviderPhase: "accepted",
 	}, nil
@@ -342,7 +342,7 @@ func (a *ClaudeCodeSDKAdapter) interruptLiveTurnsForGoalClear(
 // cancelClaudeSDKGoalTurn asks the sidecar to interrupt one exact active Goal
 // arm. The sidecar validates the provider turn ID before touching the query;
 // terminal lifecycle remains provider-owned and is not fabricated here.
-func (a *ClaudeCodeSDKAdapter) cancelClaudeSDKGoalTurn(adapterSession *claudeSDKAdapterSession, session Session, turnID string, revision int64) {
+func (*ClaudeCodeSDKAdapter) cancelClaudeSDKGoalTurn(adapterSession *claudeSDKAdapterSession, session Session, turnID string, revision int64) {
 	turnID = strings.TrimSpace(turnID)
 	if adapterSession == nil || turnID == "" {
 		return

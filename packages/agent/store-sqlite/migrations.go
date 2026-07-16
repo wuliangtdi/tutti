@@ -58,6 +58,7 @@ const schemaMigrationWorkspaceAgentGoalStateV3 = "workspace_agent_goal_state_v3"
 const schemaMigrationWorkspaceAgentGoalStateV4 = "workspace_agent_goal_state_v4"
 const schemaMigrationWorkspaceAgentGoalStateV5 = "workspace_agent_goal_state_v5"
 const schemaMigrationWorkspaceAgentGoalStateV6 = "workspace_agent_goal_state_v6"
+const schemaMigrationWorkspaceAgentGoalStateV7 = "workspace_agent_goal_state_v7"
 const schemaMigrationWorkspaceAgentGoalProvenanceLedgerV1 = "workspace_agent_goal_provenance_ledger_v1"
 
 // claimableMigrationIDs are the migration IDs that may already be recorded
@@ -206,6 +207,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentGoalStateV6(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentGoalStateV7(ctx); err != nil {
 		return err
 	}
 	return s.applyWorkspaceAgentGoalProvenanceLedgerV1(ctx)

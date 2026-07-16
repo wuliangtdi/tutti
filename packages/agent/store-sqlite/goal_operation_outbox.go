@@ -45,7 +45,7 @@ ORDER BY created_at_unix_ms, operation_id LIMIT ?`, GoalOperationStatusPrepared,
 			&op.CreatedAtUnixMS, &op.UpdatedAtUnixMS, &op.CompletedAtUnixMS, &op.ProviderPhase,
 			&op.LeaseOwner, &op.LeaseExpiresAtMS, &op.NextAttemptAtMS, &op.Attempt,
 			&repairRequired, &op.RepairEpoch, &op.AcceptedAtUnixMS, &op.AcceptedAttempt,
-			&op.FirstDispatchedAtUnixMS, &op.DispatchedAttempt); err != nil {
+			&op.FirstDispatchedAtUnixMS, &op.DispatchedAttempt, &op.ClientSubmitID); err != nil {
 			return nil, err
 		}
 		op.RepairRequired = repairRequired != 0

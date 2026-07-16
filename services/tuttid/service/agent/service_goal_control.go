@@ -82,6 +82,7 @@ func parseTypedGoalControl(content []PromptContentBlock, _ string, guidance bool
 
 type GoalStateStore interface {
 	PrepareGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationPrepare) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
+	GetGoalControlAudit(context.Context, string, string, string) (agentactivitybiz.Message, bool, error)
 	MarkGoalControlOperationDispatched(context.Context, string, string, int64) (agentactivitybiz.GoalControlOperation, bool, error)
 	AcknowledgeGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationAcknowledge) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
 	CompleteGoalControlOperation(context.Context, agentactivitybiz.GoalControlOperationComplete) (agentactivitybiz.GoalControlOperation, agentactivitybiz.SessionGoalState, bool, error)
@@ -110,6 +111,17 @@ type GoalControlSessionResult struct {
 // session's thread. Like Cancel it is a control operation: it never opens a
 // turn, so it works while a turn is running.
 func (s *Service) GoalControl(ctx context.Context, workspaceID string, agentSessionID string, action string, objective string) (GoalControlSessionResult, error) {
+	return s.goalControl(ctx, workspaceID, agentSessionID, action, objective, nil)
+}
+
+func (s *Service) goalControl(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	action string,
+	objective string,
+	submissionMetadata map[string]any,
+) (GoalControlSessionResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	slog.Info("workspace agent session goal control requested",
@@ -129,20 +141,32 @@ func (s *Service) GoalControl(ctx context.Context, workspaceID string, agentSess
 	}
 	operationID := ""
 	goalRevision := int64(0)
+	clientSubmitID := metadataString(submissionMetadata, "clientSubmitId")
 	var persistedState *agentactivitybiz.SessionGoalState
 	if s.GoalStateStore != nil {
 		operationID = uuid.NewString()
 		err := s.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
 			now := s.goalOperationNow()
-			op, state, _, err := s.GoalStateStore.PrepareGoalControlOperation(actorCtx, agentactivitybiz.GoalControlOperationPrepare{
+			op, state, created, err := s.GoalStateStore.PrepareGoalControlOperation(actorCtx, agentactivitybiz.GoalControlOperationPrepare{
 				OperationID: operationID, WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-				Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective), OccurredAtUnixMS: now.UnixMilli(),
+				Action: strings.TrimSpace(action), Objective: strings.TrimSpace(objective), ClientSubmitID: clientSubmitID,
+				OccurredAtUnixMS: now.UnixMilli(),
 			})
 			if err != nil {
 				return err
 			}
 			goalRevision = op.GoalRevision
 			persistedState = &state
+			if created && s.GoalAuditPublisher != nil {
+				audit, found, auditErr := s.GoalStateStore.GetGoalControlAudit(actorCtx, workspaceID, agentSessionID, operationID)
+				if auditErr != nil {
+					return auditErr
+				}
+				if !found {
+					return errors.New("durable goal control audit disappeared after prepare")
+				}
+				s.GoalAuditPublisher.PublishGoalControlAudit(actorCtx, workspaceID, agentSessionID, audit)
+			}
 			owner := s.goalOperationOwner()
 			if _, claimed, err := s.GoalStateStore.ClaimGoalControlOperation(actorCtx, agentactivitybiz.ClaimGoalControlOperationInput{
 				WorkspaceID: workspaceID, OperationID: operationID, LeaseOwner: owner,
@@ -168,13 +192,14 @@ func (s *Service) GoalControl(ctx context.Context, workspaceID string, agentSess
 		}
 	}
 	controlResult, err := s.controller().GoalControl(ctx, RuntimeGoalControlInput{
-		WorkspaceID:    workspaceID,
-		AgentSessionID: agentSessionID,
-		Action:         action,
-		Objective:      objective,
-		OperationID:    operationID,
-		GoalRevision:   goalRevision,
-		RepairEpoch:    0,
+		WorkspaceID:        workspaceID,
+		AgentSessionID:     agentSessionID,
+		Action:             action,
+		Objective:          objective,
+		OperationID:        operationID,
+		GoalRevision:       goalRevision,
+		RepairEpoch:        0,
+		SubmissionMetadata: goalControlSubmissionMetadata(clientSubmitID),
 	})
 	if err != nil {
 		normalizedErr := normalizeRuntimeError(err)
@@ -276,6 +301,14 @@ func (s *Service) GoalControl(ctx context.Context, workspaceID string, agentSess
 		"action", action,
 	)
 	return GoalControlSessionResult{Session: session, Goal: responseGoal, OperationID: operationID, GoalState: persistedState}, nil
+}
+
+func goalControlSubmissionMetadata(clientSubmitID string) map[string]any {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	if clientSubmitID == "" {
+		return nil
+	}
+	return map[string]any{"clientSubmitId": clientSubmitID}
 }
 
 func (s *Service) ensureStaleGoalRepair(ctx context.Context, current agentactivitybiz.SessionGoalState,

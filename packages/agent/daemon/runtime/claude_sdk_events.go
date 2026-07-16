@@ -66,13 +66,20 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 	case "session_state":
 		return []activityshared.Event{newSessionActivityEvent(session, EventSessionUpdated, firstNonEmpty(session.Status, SessionStatusReady), claudeSDKRuntimeContext(session, adapterSession))}, false, nil
 	case "turn_started":
-		a.rememberClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		metadata := map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}
+		providerCreatedGoalTurn := false
 		if origin := payloadString(event.Payload, "turnOrigin"); origin != "" {
 			metadata["turnOrigin"] = origin
-			if origin == "goal_arm" {
+			if origin == "goal_arm" || origin == "goal_continuation" {
+				providerCreatedGoalTurn = true
+				// Goal control does not pre-allocate a canonical Turn. The provider's
+				// turn_started event is the first authoritative Turn fact, so it also
+				// starts a fresh root mapping instead of inheriting the preceding user
+				// Turn from this long-lived SDK session.
+				rootTurnID = providerTurnID
+				a.beginClaudeSDKRootTurn(adapterSession, rootTurnID, providerTurnID)
 				operationID := payloadString(event.Payload, "sourceGoalOperationId")
 				revision := payloadInt64(event.Payload, "sourceGoalRevision")
 				metadata["sourceGoalOperationId"] = operationID
@@ -88,6 +95,9 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 					a.cancelClaudeSDKGoalTurn(adapterSession, session, turnID, revision)
 				}
 			}
+		}
+		if !providerCreatedGoalTurn {
+			a.rememberClaudeSDKRootProviderTurn(adapterSession, providerTurnID)
 		}
 		if payloadBoolValue(event.Payload, "synthetic") {
 			metadata["synthetic"] = true

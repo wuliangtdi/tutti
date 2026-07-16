@@ -213,7 +213,7 @@ func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSe
 		"provider_runtime_status": session.Status,
 	})
 	if isTypedGoal {
-		result, goalErr := s.GoalControl(ctx, workspaceID, session.ID, typedGoal.Action, typedGoal.Objective)
+		result, goalErr := s.goalControl(ctx, workspaceID, session.ID, typedGoal.Action, typedGoal.Objective, input.Metadata)
 		if goalErr != nil {
 			closeErr := s.controller().Close(ctx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: session.ID})
 			return Session{}, cleanupPrepared(errors.Join(goalErr, closeErr))

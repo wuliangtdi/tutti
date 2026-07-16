@@ -25,7 +25,8 @@ SELECT operation_id, workspace_id, agent_session_id, goal_revision, action,
        COALESCE(lease_owner, ''), COALESCE(lease_expires_at_unix_ms, 0),
        COALESCE(next_attempt_at_unix_ms, 0), attempt, repair_required, repair_epoch,
        COALESCE(accepted_at_unix_ms, 0), accepted_attempt,
-       COALESCE(first_dispatched_at_unix_ms, 0), dispatched_attempt
+       COALESCE(first_dispatched_at_unix_ms, 0), dispatched_attempt,
+       COALESCE(client_submit_id, '')
 FROM workspace_agent_goal_control_operations`
 
 func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalControlOperationPrepare) (GoalControlOperation, SessionGoalState, bool, error) {
@@ -37,6 +38,7 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
 	input.Action = strings.TrimSpace(input.Action)
 	input.Objective = strings.TrimSpace(input.Objective)
+	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
 	if input.OperationID == "" || input.WorkspaceID == "" || input.AgentSessionID == "" || input.OccurredAtUnixMS <= 0 {
 		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("goal operation identity, scope, and occurred time are required")
 	}
@@ -64,7 +66,7 @@ func (s *Store) PrepareGoalControlOperation(ctx context.Context, input GoalContr
 		if stateErr != nil {
 			return GoalControlOperation{}, SessionGoalState{}, false, stateErr
 		}
-		if existing.AgentSessionID != input.AgentSessionID || existing.Action != input.Action || existing.Objective != input.Objective {
+		if existing.AgentSessionID != input.AgentSessionID || existing.Action != input.Action || existing.Objective != input.Objective || existing.ClientSubmitID != input.ClientSubmitID {
 			return GoalControlOperation{}, SessionGoalState{}, false, ErrGoalOperationConflict
 		}
 		if err := tx.Commit(); err != nil {
@@ -143,12 +145,25 @@ ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
 INSERT INTO workspace_agent_goal_control_operations (
   operation_id, workspace_id, agent_session_id, goal_revision, action,
   objective, status, provider_phase, next_attempt_at_unix_ms,
-  created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  created_at_unix_ms, updated_at_unix_ms, client_submit_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `, input.OperationID, input.WorkspaceID, input.AgentSessionID, revision, input.Action,
 		input.Objective, GoalOperationStatusPrepared, GoalProviderPhasePrepared, input.OccurredAtUnixMS,
-		input.OccurredAtUnixMS, input.OccurredAtUnixMS); err != nil {
+		input.OccurredAtUnixMS, input.OccurredAtUnixMS, input.ClientSubmitID); err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control operation: %w", err)
+	}
+	if _, accepted, err := s.upsertAgentMessageTx(
+		ctx,
+		tx,
+		input.WorkspaceID,
+		input.AgentSessionID,
+		goalControlAuditMessageUpdate(input, revision),
+		input.OccurredAtUnixMS,
+		false,
+	); err != nil {
+		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control audit: %w", err)
+	} else if !accepted {
+		return GoalControlOperation{}, SessionGoalState{}, false, errors.New("goal control audit was not accepted")
 	}
 	op, _, err := getGoalControlOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
 	if err != nil {
@@ -163,6 +178,38 @@ INSERT INTO workspace_agent_goal_control_operations (
 	}
 	committed = true
 	return op, state, true, nil
+}
+
+func (s *Store) GetGoalControlAudit(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	operationID string,
+) (Message, bool, error) {
+	if s == nil || s.db == nil {
+		return Message{}, false, errors.New("workspace database is not initialized")
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	operationID = strings.TrimSpace(operationID)
+	if workspaceID == "" || agentSessionID == "" || operationID == "" {
+		return Message{}, false, nil
+	}
+	row := s.db.QueryRowContext(ctx, `
+SELECT id, agent_session_id, message_id, version, turn_id, role, kind, status,
+       payload_json, occurred_at_unix_ms, started_at_unix_ms, completed_at_unix_ms,
+       created_at_unix_ms, updated_at_unix_ms
+FROM workspace_agent_messages
+WHERE workspace_id = ? AND agent_session_id = ? AND message_id = ? AND deleted_at_unix_ms = 0
+`, workspaceID, agentSessionID, "goal-control:"+operationID)
+	message, err := scanAgentMessage(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, false, nil
+	}
+	if err != nil {
+		return Message{}, false, fmt.Errorf("get goal control audit: %w", err)
+	}
+	return message, true, nil
 }
 
 func (s *Store) MarkGoalControlOperationDispatched(ctx context.Context, workspaceID, operationID string, occurredAt int64) (GoalControlOperation, bool, error) {
@@ -405,23 +452,23 @@ func (s *Store) ReconcileSessionGoalObservation(ctx context.Context, input GoalO
 		converged := goalStateConverged(state.Desired, input.Observed, state.Tombstoned)
 		syncStatus := GoalSyncStatusUnknown
 		completePending := false
-		if forceUnknown {
-			converged = false
-		} else if state.PendingOperationID != "" {
-			syncStatus = GoalSyncStatusApplying
-			pending, pendingFound, pendingErr := getGoalControlOperationTx(ctx, tx, input.WorkspaceID, state.PendingOperationID)
-			if pendingErr != nil {
-				_ = tx.Rollback()
-				return SessionGoalState{}, pendingErr
-			}
-			completePending = converged && pendingFound && goalEvidenceAuthoritativeForPending(input.Evidence, state, pending)
-			if completePending {
+		if !forceUnknown {
+			if state.PendingOperationID != "" {
+				syncStatus = GoalSyncStatusApplying
+				pending, pendingFound, pendingErr := getGoalControlOperationTx(ctx, tx, input.WorkspaceID, state.PendingOperationID)
+				if pendingErr != nil {
+					_ = tx.Rollback()
+					return SessionGoalState{}, pendingErr
+				}
+				completePending = converged && pendingFound && goalEvidenceAuthoritativeForPending(input.Evidence, state, pending)
+				if completePending {
+					syncStatus = GoalSyncStatusSynced
+				}
+			} else if converged {
 				syncStatus = GoalSyncStatusSynced
+			} else if state.Revision > 0 {
+				syncStatus = GoalSyncStatusDiverged
 			}
-		} else if converged {
-			syncStatus = GoalSyncStatusSynced
-		} else if state.Revision > 0 {
-			syncStatus = GoalSyncStatusDiverged
 		}
 		syncStatus, lastError = terminalGoalSyncState(state, syncStatus, lastError, terminalFence)
 		expectedPending := state.PendingOperationID
@@ -599,7 +646,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND revision = ? AND pending_ope
 	if state.ObservedAtUnixMS > occurredAt {
 		return nil
 	}
-	syncStatus := state.SyncStatus
+	var syncStatus string
 	if state.PendingOperationID != "" {
 		syncStatus = GoalSyncStatusApplying
 	} else if goalStateConverged(state.Desired, observed, state.Tombstoned) {
@@ -696,7 +743,7 @@ func scanGoalControlOperation(row *sql.Row) (GoalControlOperation, bool, error) 
 		&op.CreatedAtUnixMS, &op.UpdatedAtUnixMS, &op.CompletedAtUnixMS, &op.ProviderPhase,
 		&op.LeaseOwner, &op.LeaseExpiresAtMS, &op.NextAttemptAtMS, &op.Attempt,
 		&repairRequired, &op.RepairEpoch, &op.AcceptedAtUnixMS, &op.AcceptedAttempt,
-		&op.FirstDispatchedAtUnixMS, &op.DispatchedAttempt); err != nil {
+		&op.FirstDispatchedAtUnixMS, &op.DispatchedAttempt, &op.ClientSubmitID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return GoalControlOperation{}, false, nil
 		}

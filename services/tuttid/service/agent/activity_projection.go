@@ -463,6 +463,24 @@ func activitySessionAuditEventPayload(workspaceID, agentSessionID string, audit 
 	}
 }
 
+func (p *ActivityProjection) PublishGoalControlAudit(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	audit agentactivitybiz.Message,
+) {
+	if strings.TrimSpace(audit.Kind) != "session_audit" || strings.TrimSpace(audit.TurnID) != "" {
+		return
+	}
+	p.publishActivityUpdated(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		"session_audit",
+		activitySessionAuditEventPayload(workspaceID, agentSessionID, audit),
+	)
+}
+
 func canonicalMessageUpdateSessionID(fallback string, messages []agentactivitybiz.Message) string {
 	for _, message := range messages {
 		if agentSessionID := strings.TrimSpace(message.AgentSessionID); agentSessionID != "" {

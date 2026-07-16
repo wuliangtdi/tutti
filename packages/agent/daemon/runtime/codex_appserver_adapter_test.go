@@ -4121,17 +4121,6 @@ func TestControllerGoalControl(t *testing.T) {
 	if asString(result.Goal["status"]) != "paused" {
 		t.Fatalf("pause result goal = %#v, want paused", result.Goal)
 	}
-	reporter.waitForReports(t, "turnless Goal session audit", func(calls []reportCall) bool {
-		for _, call := range calls {
-			for _, audit := range call.report.SessionAudits {
-				if audit.Payload["goalControl"] == true && audit.Payload["action"] == "pause" {
-					return true
-				}
-			}
-		}
-		return false
-	})
-
 	// Resume and edit the objective while a turn is running.
 	if _, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
@@ -4405,7 +4394,7 @@ func TestCodexGoalHandoffReplaysBufferedContentInOrderExactlyOnce(t *testing.T) 
 			t.Fatalf("adapter emitted canonical terminal for provider completion: %#v", event)
 		}
 	}
-	if !(started >= 0 && started < thinking && thinking < assistant && assistant < callStarted && callStarted < callCompleted && callCompleted < providerTerminal) {
+	if started < 0 || started >= thinking || thinking >= assistant || assistant >= callStarted || callStarted >= callCompleted || callCompleted >= providerTerminal {
 		t.Fatalf("replay order start=%d thinking=%d assistant=%d callStart=%d callComplete=%d providerTerminal=%d events=%#v", started, thinking, assistant, callStarted, callCompleted, providerTerminal, got)
 	}
 }

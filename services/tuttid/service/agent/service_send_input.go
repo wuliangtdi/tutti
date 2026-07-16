@@ -19,7 +19,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
 	visiblePrompt := firstNonEmptyString(strings.TrimSpace(input.DisplayPrompt), normalizedPromptText)
 	if goal, ok := parseTypedGoalControl(normalizedContent, visiblePrompt, input.Guidance); ok {
-		result, err := s.GoalControl(ctx, workspaceID, agentSessionID, goal.Action, goal.Objective)
+		result, err := s.goalControl(ctx, workspaceID, agentSessionID, goal.Action, goal.Objective, input.Metadata)
 		if err != nil {
 			return SendInputResult{}, err
 		}

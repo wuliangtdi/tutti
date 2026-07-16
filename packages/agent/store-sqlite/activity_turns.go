@@ -461,7 +461,7 @@ WHERE status = ?
 	return settlements, nil
 }
 
-func (s *Store) upsertInteractionTx(
+func (*Store) upsertInteractionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	upsert InteractionUpsert,

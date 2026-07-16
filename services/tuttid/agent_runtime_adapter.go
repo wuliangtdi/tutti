@@ -61,13 +61,14 @@ func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.Runt
 
 func (a agentRuntimeAdapter) GoalControl(ctx context.Context, input agentservice.RuntimeGoalControlInput) (agentservice.RuntimeGoalControlResult, error) {
 	result, err := a.controller.GoalControl(ctx, agentruntime.GoalControlInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		Action:         agentruntime.GoalControlAction(input.Action),
-		Objective:      input.Objective,
-		OperationID:    input.OperationID,
-		GoalRevision:   input.GoalRevision,
-		RepairEpoch:    input.RepairEpoch,
+		RoomID:             input.WorkspaceID,
+		AgentSessionID:     input.AgentSessionID,
+		Action:             agentruntime.GoalControlAction(input.Action),
+		Objective:          input.Objective,
+		OperationID:        input.OperationID,
+		GoalRevision:       input.GoalRevision,
+		RepairEpoch:        input.RepairEpoch,
+		SubmissionMetadata: input.SubmissionMetadata,
 	})
 	if err != nil {
 		return agentservice.RuntimeGoalControlResult{}, mapAgentRuntimeError(err)

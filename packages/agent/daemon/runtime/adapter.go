@@ -244,6 +244,9 @@ type GoalApplyInput struct {
 	OperationID string
 	Revision    int64
 	RepairEpoch int64
+	// SubmissionMetadata links a composer-originated control to its turnless
+	// audit message. It is intentionally independent of Turn identity.
+	SubmissionMetadata map[string]any
 }
 
 // GoalAdapter is the semantic provider boundary for goal state. Providers

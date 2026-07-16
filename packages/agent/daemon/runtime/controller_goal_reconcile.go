@@ -17,7 +17,7 @@ type GoalReconcileResult struct {
 	Capabilities   GoalAdapterCapabilities
 }
 
-func (c *Controller) GoalCapabilities(ctx context.Context, input GoalReconcileInput) (GoalAdapterCapabilities, error) {
+func (c *Controller) GoalCapabilities(_ context.Context, input GoalReconcileInput) (GoalAdapterCapabilities, error) {
 	release := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
 	defer release()
 	_, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)

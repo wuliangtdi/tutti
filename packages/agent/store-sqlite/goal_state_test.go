@@ -20,13 +20,27 @@ func TestGoalControlOperationPersistsWithoutTurn(t *testing.T) {
 
 	op, state, created, err := store.PrepareGoalControlOperation(ctx, GoalControlOperationPrepare{
 		OperationID: "goal-op-1", WorkspaceID: "ws-1", AgentSessionID: "session-1",
-		Action: "set", Objective: "ship it", OccurredAtUnixMS: 20,
+		Action: "set", Objective: "ship it", ClientSubmitID: "submit-goal-1", OccurredAtUnixMS: 20,
 	})
 	if err != nil || !created || op.GoalRevision != 1 || state.Revision != 1 || state.SyncStatus != GoalSyncStatusPending {
 		t.Fatalf("prepare op=%#v state=%#v created=%v error=%v", op, state, created, err)
 	}
 	if state.Desired["objective"] != "ship it" || state.PendingOperationID != "goal-op-1" {
 		t.Fatalf("desired state=%#v", state)
+	}
+	if op.ClientSubmitID != "submit-goal-1" {
+		t.Fatalf("client submit id=%q", op.ClientSubmitID)
+	}
+	audit, found, err := store.GetGoalControlAudit(ctx, "ws-1", "session-1", "goal-op-1")
+	if err != nil || !found {
+		t.Fatalf("goal audit found=%v error=%v", found, err)
+	}
+	if audit.TurnID != "" || audit.Kind != "session_audit" || audit.Role != "user" || audit.OccurredAtUnixMS != 20 {
+		t.Fatalf("goal audit=%#v", audit)
+	}
+	if audit.Payload["text"] != "/goal ship it" || audit.Payload["clientSubmitId"] != "submit-goal-1" ||
+		audit.Payload["messageId"] != "client-submit:user:submit-goal-1" || audit.Payload["goalRevision"] != float64(1) {
+		t.Fatalf("goal audit payload=%#v", audit.Payload)
 	}
 	turns, err := store.ListSessionTurns(ctx, "ws-1", "session-1")
 	if err != nil || len(turns) != 0 {
@@ -488,6 +502,9 @@ INSERT INTO workspace_agent_goal_control_operations (
 	if err := store.applyWorkspaceAgentGoalStateV5(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.applyWorkspaceAgentGoalStateV7(ctx); err != nil {
+		t.Fatal(err)
+	}
 	op, found, err := store.GetGoalControlOperation(ctx, "ws-v2", "v2-original")
 	if err != nil || !found || op.Attempt != 2 || op.RepairRequired || op.RepairEpoch != 0 || op.Evidence["source"] != "v2" {
 		t.Fatalf("migrated operation=%#v found=%v err=%v", op, found, err)
@@ -500,6 +517,30 @@ INSERT INTO workspace_agent_goal_control_operations (
 	}
 	if err := store.applyWorkspaceAgentGoalStateV3(ctx); err != nil {
 		t.Fatalf("idempotent V3 migration: %v", err)
+	}
+}
+
+func TestGoalStateV7PersistsClientSubmitIdentityAcrossRecoveryReads(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	db := openTestDB(t)
+	store := New(db, testOptions(&staticProjectPaths{}))
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE agent_store_schema_migrations(id TEXT PRIMARY KEY,applied_at_unix_ms INTEGER NOT NULL);
+CREATE TABLE workspace_agent_goal_control_operations(operation_id TEXT PRIMARY KEY);
+INSERT INTO workspace_agent_goal_control_operations VALUES('legacy');
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentGoalStateV7(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var clientSubmitID string
+	if err := db.QueryRowContext(ctx, `SELECT client_submit_id FROM workspace_agent_goal_control_operations WHERE operation_id='legacy'`).Scan(&clientSubmitID); err != nil || clientSubmitID != "" {
+		t.Fatalf("legacy client submit id=%q err=%v", clientSubmitID, err)
+	}
+	if err := store.applyWorkspaceAgentGoalStateV7(ctx); err != nil {
+		t.Fatalf("idempotent V7: %v", err)
 	}
 }
 
