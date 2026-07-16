@@ -28,7 +28,7 @@ func (s *SQLiteStore) applyWorkspaceWorkbenchAgentGUIUnifiedDockV1(ctx context.C
 		return nil
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin AgentGUI workbench dock migration: %w", err)
 	}

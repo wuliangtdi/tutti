@@ -50,14 +50,14 @@ func TestSQLiteStoreMigrationUnifiesAgentGUIDockIdentity(t *testing.T) {
 	}
 
 	var originalUpdatedAt int64
-	if err := store.db.QueryRowContext(ctx, `
+	if err := store.writeDB.QueryRowContext(ctx, `
 SELECT updated_at_unix_ms
 FROM workspace_workbench_snapshots
 WHERE workspace_id = ?
 `, workspaceID).Scan(&originalUpdatedAt); err != nil {
 		t.Fatalf("read original snapshot timestamp: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations
 WHERE id = ?
 `, schemaMigrationWorkspaceWorkbenchAgentGUIUnifiedDockV1); err != nil {
@@ -87,7 +87,7 @@ WHERE id = ?
 	}
 
 	var migratedUpdatedAt int64
-	if err := store.db.QueryRowContext(ctx, `
+	if err := store.writeDB.QueryRowContext(ctx, `
 SELECT updated_at_unix_ms
 FROM workspace_workbench_snapshots
 WHERE workspace_id = ?
@@ -123,7 +123,7 @@ func TestSQLiteStoreAgentGUIDockMigrationRollsBackInvalidSnapshotJSON(t *testing
 	}); err != nil {
 		t.Fatalf("PutWorkbenchSnapshot() error = %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
+	if _, err := store.writeDB.ExecContext(ctx, `
 DELETE FROM tuttid_schema_migrations
 WHERE id = ?
 `, schemaMigrationWorkspaceWorkbenchAgentGUIUnifiedDockV1); err != nil {
@@ -283,7 +283,7 @@ func readTestWorkbenchSnapshotJSON(t *testing.T, store *SQLiteStore, workspaceID
 	t.Helper()
 
 	var snapshotJSON string
-	if err := store.db.QueryRowContext(context.Background(), `
+	if err := store.writeDB.QueryRowContext(context.Background(), `
 SELECT snapshot_json
 FROM workspace_workbench_snapshots
 WHERE workspace_id = ?

@@ -1445,6 +1445,12 @@ current rail. Count, sort, and first-page trimming operate on narrow session-id
 rows; load full session entities only after that trimming. The query shape must
 not add one compound-select arm per requested section or inherit SQLite's
 compound-select term limit as a Rail project-count limit.
+Daemon rail reads use the shared SQLite read-only pool rather than the daemon's
+single write connection. Section pages and their turn/interaction hydration may
+therefore read committed WAL snapshots while an unrelated write transaction is
+in progress. Do not route these independent reads back through the write pool;
+queries that require read-after-write atomicity must instead remain inside the
+owning write transaction.
 When `agentTargetId` narrows the provider rail, use an exact target predicate
 and target-scoped ordinary/pinned composite indexes. An optional
 `(? = '' OR agent_target_id = ?)` predicate on an unscoped index only filters
