@@ -29,10 +29,19 @@ type Service struct {
 	ExternalImportStore            agentactivitybiz.Repository
 	TurnStore                      TurnStore
 	RuntimeOperationStore          RuntimeOperationStore
+	GoalStateStore                 GoalStateStore
+	GoalAuditPublisher             GoalAuditPublisher
+	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
+	GoalOperationOwner             string
+	GoalOperationClock             func() time.Time
+	GoalOperationAttemptTimeout    time.Duration
+	GoalOperationRecoveryBudget    time.Duration
+	GoalOperationMaxAttempts       int
+	GoalOperationDispatchDeadline  time.Duration
 	SessionDirectoryAllocator      SessionDirectoryAllocator
 	PromptAttachmentStore          PromptAttachmentStore
 	RuntimePreparer                runtimeprep.Preparer
@@ -55,10 +64,24 @@ type Service struct {
 	liveModelDiscoveryGroup        singleflight.Group
 	sessionSettingsMu              sync.Mutex
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
+	goalActorsMu                   sync.Mutex
+	goalActors                     map[string]*goalActorEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
 	liveModelPersistedScanMissAtUnixMS map[string]int64
+}
+
+type GoalAuditPublisher interface {
+	PublishGoalControlAudit(context.Context, string, string, agentactivitybiz.Message)
+}
+
+type GoalReconcileInboxStore interface {
+	ListClaimableGoalReconcileInbox(context.Context, int64, int) ([]agentactivitybiz.GoalReconcileInboxItem, error)
+	ClaimGoalReconcileInbox(context.Context, agentactivitybiz.ClaimGoalReconcileInboxInput) (agentactivitybiz.GoalReconcileInboxItem, bool, error)
+	CompleteGoalReconcileInbox(context.Context, string, string, int64) (bool, error)
+	ReleaseGoalReconcileInbox(context.Context, agentactivitybiz.ReleaseGoalReconcileInboxInput) (bool, error)
+	RequeueLeasedGoalReconcileInboxOnStartup(context.Context, int64) (int64, error)
 }
 
 type SubmitClaimStore interface {
@@ -265,6 +288,7 @@ type SessionMessage struct {
 	Role              string
 	Kind              string
 	Status            string
+	Semantics         *agentactivitybiz.MessageSemantics
 	Payload           map[string]any
 	OccurredAtUnixMS  int64
 	StartedAtUnixMS   int64
@@ -479,11 +503,39 @@ type RuntimeGoalControlInput struct {
 	AgentSessionID string
 	Action         string
 	Objective      string
+	OperationID    string
+	GoalRevision   int64
+	RepairEpoch    int64
+	// SubmissionMetadata is present only when a typed /goal command entered
+	// through the composer. It preserves the client submit identity for the
+	// turnless transcript audit message; direct goal controls and recovery
+	// operations leave it empty.
+	SubmissionMetadata map[string]any
 }
 
 type RuntimeGoalControlResult struct {
 	AgentSessionID string
 	Goal           map[string]any
+	Evidence       map[string]any
+	ProviderPhase  string
+}
+
+type RuntimeGoalReconcileResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+	Evidence       map[string]any
+}
+
+type RuntimeGoalRecoveryPolicy struct {
+	QuerySupported        bool
+	ReplaySetAfterRestart bool
+}
+type RuntimeGoalRecoveryPolicyResolver interface {
+	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
+}
+
+type RuntimeGoalReconciler interface {
+	ReconcileGoal(context.Context, RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error)
 }
 
 type RuntimeCloseInput struct {
@@ -593,9 +645,11 @@ type SendInput struct {
 
 type SendInputResult struct {
 	Session            Session
+	Kind               string
 	TurnID             string
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+	GoalControl        *GoalControlSessionResult
 }
 
 type PromptContentBlock struct {

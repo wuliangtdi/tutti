@@ -434,6 +434,7 @@ const RAIL_PROJECT_I18N = createDefaultWorkspaceUserProjectI18nRuntime();
 function runningTurn(updatedAtUnixMs: number): AgentActivityTurn {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt",
     phase: "running",
     startedAtUnixMs: 1,
     turnId: "turn-1",

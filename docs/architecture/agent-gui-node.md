@@ -73,6 +73,16 @@ OpenAPI contracts change before daemon HTTP request or response code. Generated
 clients and event contracts are projections of that schema, not independent
 models.
 
+Goal control follows the same ownership rule but is not a Turn command. Goal is
+a durable session-level entity with desired/observed state, a monotonic
+revision, and independent control-operation records. A Goal operation may cause
+zero or more provider-created Turns; it never reserves a Turn ID. Real Turns
+carry immutable origin plus optional source Goal operation/revision. Provider
+observations update only observed state, so a late snapshot cannot erase a
+newer desired state or clear tombstone. Provider differences are normalized by
+the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
+than sending goal banner actions through the prompt pipeline.
+
 ## Workspace Engine Ownership
 
 One `AgentSessionEngine` instance owns agent state for one workspace and runtime
@@ -3181,9 +3191,12 @@ directories. Ordinary opened-file and issue-summary records do not currently
 carry durable provenance and therefore fail closed when either an Agent or
 Member constraint is active. A typed File query must route to the
 provenance-aware generated-file provider for either active dimension, even when
-the ordinary generated-files group is otherwise disabled. Existing result
-groups remain unchanged; the filter narrows their contents and does not
-introduce a second grouping layer.
+the ordinary generated-files group is otherwise disabled. Generated-file and
+picker result groups remain source-owned. The Agent Session `@` list is the
+exception: when a host injects an Agent provenance catalog, it groups returned
+sessions by exact `agentTargetId` in catalog order and uses the catalog option
+label as the group heading. This grouping is presentation only; the provider
+still applies the selected provenance constraint before pagination.
 
 Only catalog entries with a durable `agentTargetId` participate in filtering;
 host target ids are not substitutes. Catalogs and filters are normalized at the

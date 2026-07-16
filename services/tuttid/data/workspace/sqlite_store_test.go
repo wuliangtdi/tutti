@@ -317,6 +317,7 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 	if !state.Accepted || state.LastEventUnixMS != 100 {
 		t.Fatalf("state result = %#v", state)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-activity", "session-1", "turn-1", "codex", 105)
 
 	first, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-activity",
@@ -397,6 +398,7 @@ func TestSQLiteStoreReportAndListAgentActivityMessages(t *testing.T) {
 	}); err != nil || !accepted {
 		t.Fatalf("settle first turn accepted=%v error=%v", accepted, err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-activity", "session-1", "turn-2", "codex", 126)
 
 	third, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-activity",
@@ -754,6 +756,13 @@ func TestSQLiteStoreAgentSessionRailMessageOnlySessionUsesConversations(t *testi
 	}); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
+	if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+		WorkspaceID: "ws-agent-rail-message-only", AgentSessionID: "session-message-only",
+		Origin: agentsessionstore.WorkspaceAgentSessionOriginRuntime, Provider: "codex", OccurredAtUnixMS: 90,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-rail-message-only", "session-message-only", "turn-1", "codex", 95)
 
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-rail-message-only",
@@ -762,6 +771,7 @@ func TestSQLiteStoreAgentSessionRailMessageOnlySessionUsesConversations(t *testi
 		Provider:       "codex",
 		Messages: []agentactivitybiz.MessageUpdate{{
 			MessageID:        "message-1",
+			TurnID:           "turn-1",
 			Role:             "user",
 			Kind:             "text",
 			Status:           "completed",
@@ -1102,6 +1112,8 @@ func TestSQLiteStoreListsWorkspaceGeneratedFiles(t *testing.T) {
 			t.Fatalf("ReportSessionState(%s) error = %v", session.id, err)
 		}
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-generated-files", "session-1", "turn-1", "codex", 105)
+	seedTestAgentTurn(t, store, ctx, "ws-agent-generated-files", "session-2", "turn-2", "codex", 105)
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-generated-files",
 		AgentSessionID: "session-1",
@@ -1237,6 +1249,7 @@ func TestSQLiteStoreListWorkspaceGeneratedFilesIgnoresFailedAndReadTools(t *test
 	}); err != nil {
 		t.Fatalf("ReportSessionState() error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-generated-files-failed", "session-1", "turn-1", "codex", 105)
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-generated-files-failed",
 		AgentSessionID: "session-1",
@@ -1363,6 +1376,7 @@ func TestSQLiteStoreReportsProviderSessionMessagesToCanonicalAgentSession(t *tes
 	}); err != nil {
 		t.Fatalf("ReportSessionState() error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-provider-message", "session-1", "turn-approval-1", "codex", 105)
 
 	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-provider-message",
@@ -1443,6 +1457,7 @@ func TestSQLiteStoreReportsProviderSessionMessagesToSameOriginSession(t *testing
 	}); err != nil {
 		t.Fatalf("ReportSessionState(runtime-2) error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-provider-origin-message", "shared-provider-session", "turn-runtime-1", "codex", 105)
 
 	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-provider-origin-message",
@@ -1513,6 +1528,7 @@ func TestSQLiteStoreDoesNotResolveProviderSessionMessagesAcrossProviders(t *test
 	}); err != nil {
 		t.Fatalf("ReportSessionState(codex) error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-provider-collision-message", "shared-provider-session", "turn-claude-1", "claude", 105)
 
 	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-provider-collision-message",
@@ -1562,6 +1578,7 @@ func TestSQLiteStorePersistsLargeAgentActivityMessagePayload(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-large-message", "session-large", "turn-large", "codex", 105)
 
 	result, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-large-message",
@@ -2007,6 +2024,7 @@ func TestSQLiteStoreDeleteSessionsBatchUsesExactIdempotentSnapshot(t *testing.T)
 	}); err != nil {
 		t.Fatalf("ReportSessionState(other) error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-batch-delete", "snapshot", "turn-snapshot", "codex", 105)
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID: "ws-agent-batch-delete", AgentSessionID: "snapshot",
 		Origin:   agentsessionstore.WorkspaceAgentSessionOriginRuntime,
@@ -2063,6 +2081,7 @@ func TestSQLiteStoreDeleteAgentActivitySessionSoftDeletesMessages(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("ReportSessionState() error = %v", err)
 	}
+	seedTestAgentTurn(t, store, ctx, "ws-agent-delete", "session-1", "turn-1", "codex", 105)
 	if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    "ws-agent-delete",
 		AgentSessionID: "session-1",
@@ -2142,6 +2161,7 @@ func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T
 		}); err != nil {
 			t.Fatalf("ReportSessionState(%s) error = %v", sessionID, err)
 		}
+		seedTestAgentTurn(t, store, ctx, workspaceID, sessionID, "turn-"+sessionID, "codex", 105)
 		if _, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 			WorkspaceID:    workspaceID,
 			AgentSessionID: sessionID,
@@ -2192,6 +2212,7 @@ func TestSQLiteStoreClearAgentActivitySessionsHardDeletesTombstones(t *testing.T
 	if !recreated.Accepted {
 		t.Fatal("ReportSessionState() after clear accepted = false, want true")
 	}
+	seedTestAgentTurn(t, store, ctx, workspaceID, "session-1", "turn-reimported", "codex", 205)
 	messageResult, err := store.ReportSessionMessages(ctx, agentactivitybiz.SessionMessageReport{
 		WorkspaceID:    workspaceID,
 		AgentSessionID: "session-1",
@@ -2385,6 +2406,28 @@ func TestSQLiteStoreDeleteAgentActivitySessionIgnoresLateReports(t *testing.T) {
 	}
 	if _, ok, err := store.GetSession(ctx, "ws-agent-delete-late", "session-1"); err != nil || ok {
 		t.Fatalf("GetSession() after late reports ok=%v error=%v, want ok=false", ok, err)
+	}
+}
+
+func seedTestAgentTurn(t *testing.T, store *SQLiteStore, ctx context.Context, workspaceID, agentSessionID, turnID, provider string, occurredAtUnixMS int64) {
+	t.Helper()
+	if _, ok, err := store.GetSession(ctx, workspaceID, agentSessionID); err != nil {
+		t.Fatalf("GetSession(%s) before turn seed error = %v", agentSessionID, err)
+	} else if !ok {
+		if _, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+			Origin: agentsessionstore.WorkspaceAgentSessionOriginRuntime, Provider: provider,
+			Status: "running", OccurredAtUnixMS: occurredAtUnixMS - 1,
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) before turn seed error = %v", agentSessionID, err)
+		}
+	}
+	if _, accepted, err := store.agentStore().RecordTurnTransition(ctx, agentactivitybiz.TurnTransition{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
+		Phase: agentactivitybiz.TurnPhaseSubmitted, Origin: agentactivitybiz.TurnOriginLegacyUnknown,
+		OccurredAtUnixMS: occurredAtUnixMS,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition(%s) accepted=%v error=%v", turnID, accepted, err)
 	}
 }
 

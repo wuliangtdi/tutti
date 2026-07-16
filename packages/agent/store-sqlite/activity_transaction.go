@@ -88,6 +88,7 @@ func (s *Store) upsertAgentSessionTx(
 			OccurredAtUnixMS:     input.OccurredAtUnixMS,
 			StartedAtUnixMS:      input.StartedAtUnixMS,
 			EndedAtUnixMS:        input.EndedAtUnixMS,
+			CreatedAtUnixMS:      input.CreatedAtUnixMS,
 		},
 		now,
 	)
@@ -186,6 +187,11 @@ WHERE workspace_agent_sessions.deleted_at_unix_ms = 0
 	accepted, err := rowsWereAffected(result, "upsert workspace agent session")
 	if err != nil {
 		return false, false, 0, Session{}, err
+	}
+	if accepted && len(input.RuntimeContext) > 0 {
+		if err := reconcileObservedGoalFromSessionTx(ctx, tx, session, input.OccurredAtUnixMS); err != nil {
+			return false, false, 0, Session{}, err
+		}
 	}
 	dto, err := projectionSessionToDTO(projected.Session)
 	if err != nil {
