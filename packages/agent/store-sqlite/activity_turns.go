@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 // RecordTurnTransition upserts one turn phase transition and keeps the
@@ -673,49 +675,23 @@ func scanAgentInteraction(scanner rowScanner) (Interaction, error) {
 }
 
 func isKnownTurnPhase(phase string) bool {
-	switch phase {
-	case TurnPhaseSubmitted, TurnPhaseRunning, TurnPhaseWaiting, TurnPhaseSettling, TurnPhaseSettled:
-		return true
-	default:
-		return false
-	}
+	return canonical.IsKnownTurnPhase(phase)
 }
 
 func isKnownTurnOutcome(outcome string) bool {
-	switch outcome {
-	case TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted:
-		return true
-	default:
-		return false
-	}
+	return canonical.IsKnownTurnOutcome(outcome)
 }
 
 func isKnownTurnOrigin(origin string) bool {
-	switch origin {
-	case TurnOriginUserPrompt, TurnOriginGoalArm, TurnOriginGoalContinuation,
-		TurnOriginProviderInitiated, TurnOriginLegacyUnknown:
-		return true
-	default:
-		return false
-	}
+	return canonical.IsKnownTurnOrigin(origin)
 }
 
 func isKnownInteractionKind(kind string) bool {
-	switch kind {
-	case InteractionKindApproval, InteractionKindQuestion, InteractionKindPlan:
-		return true
-	default:
-		return false
-	}
+	return canonical.IsKnownInteractionKind(kind)
 }
 
 func isKnownInteractionStatus(status string) bool {
-	switch status {
-	case InteractionStatusPending, InteractionStatusAnswered, InteractionStatusSuperseded:
-		return true
-	default:
-		return false
-	}
+	return canonical.IsKnownInteractionStatus(status)
 }
 
 func encodeTurnErrorJSON(message string, code string) any {

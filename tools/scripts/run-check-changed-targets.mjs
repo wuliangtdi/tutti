@@ -3,6 +3,7 @@ import { dirname, join, relative } from "node:path";
 
 const GO_MODULE_ROOTS = [
   "apps/cli",
+  "packages/agent/activity-replication",
   "packages/agent/daemon",
   "packages/agent/runtimeprep",
   "packages/agent/store-sqlite",

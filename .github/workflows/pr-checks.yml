@@ -30,6 +30,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
@@ -221,6 +222,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
             packages/agent/runtimeprep/go.mod
@@ -272,6 +274,7 @@ jobs:
           cache-dependency-path: |
             go.work
             go.work.sum
+            packages/agent/activity-replication/go.mod
             packages/agent/runtimeprep/go.mod
             packages/appcli/core/go.mod
             packages/workbench/service/go.mod

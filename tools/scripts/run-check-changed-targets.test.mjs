@@ -34,6 +34,12 @@ describe("resolveGoModuleRoot", () => {
       "apps/cli"
     );
     assert.equal(
+      resolveGoModuleRoot(
+        "packages/agent/activity-replication/conformance/fixtures.go"
+      ),
+      "packages/agent/activity-replication"
+    );
+    assert.equal(
       resolveGoModuleRoot("packages/agent/runtimeprep/preparer.go"),
       "packages/agent/runtimeprep"
     );
