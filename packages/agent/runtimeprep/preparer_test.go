@@ -106,7 +106,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(codexAgents), "# Host App Context") ||
 		!strings.Contains(string(codexAgents), "Images/videos: use Markdown") ||
-		!strings.Contains(string(codexAgents), "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(string(codexAgents), "Native image generation results are rendered directly from `imageGeneration` tool output as generated-image artifacts.") ||
+		!strings.Contains(string(codexAgents), "do not repeat generated images as Markdown image tags") ||
+		strings.Contains(string(codexAgents), "Generated/edited image output: final response must include Markdown image tag.") ||
 		!strings.Contains(string(codexAgents), "Prefer `$CODEX_HOME/generated_images/`") ||
 		!strings.Contains(string(codexAgents), "never use unverified sandbox path") ||
 		!strings.Contains(string(codexAgents), "No inline base64.") ||

@@ -15,8 +15,36 @@ func tuttiCLIPolicy(input PrepareInput) string {
 	return tuttiRuntimePolicy(input)
 }
 
-func hostAppContextPolicy() string {
-	return strings.TrimSpace(renderProviderSkillTemplate("policy_templates/host-app-context.md", nil))
+func hostAppContextPolicy(input PrepareInput) string {
+	return strings.TrimSpace(renderProviderSkillTemplate(
+		"policy_templates/host-app-context.md",
+		map[string]string{
+			"{{GENERATED_IMAGE_OUTPUT_POLICY}}": generatedImageOutputPolicy(input.Provider),
+		},
+	))
+}
+
+func generatedImageOutputPolicy(provider string) string {
+	if providerSupportsNativeGeneratedImageArtifacts(provider) {
+		return strings.Join([]string{
+			"- Native image generation results are rendered directly from `imageGeneration` tool output as generated-image artifacts.",
+			"- After successful native image generation, do not repeat generated images as Markdown image tags, links, or plain-text paths in the final response.",
+			"- Use Markdown image tags only for images that were not already delivered as native generated-image artifacts.",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"- Generated/edited image output: final response must include Markdown image tag.",
+		"- Multiple final images: one Markdown image tag each.",
+	}, "\n")
+}
+
+func providerSupportsNativeGeneratedImageArtifacts(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex", "tutti-agent":
+		return true
+	default:
+		return false
+	}
 }
 
 func tuttiRuntimePolicy(input PrepareInput) string {

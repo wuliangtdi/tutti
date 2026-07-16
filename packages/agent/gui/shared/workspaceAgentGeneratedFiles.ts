@@ -8,6 +8,7 @@ import type {
   WorkspaceAgentChangedFile
 } from "./workspaceAgentActivityListTypes";
 import { workspaceAgentSessionMessageAliases } from "./workspaceAgentSessionMessageAliases.ts";
+import { isImageGenerationToolCall } from "./imageGenerationTool.ts";
 
 export interface WorkspaceAgentGeneratedFilesSource {
   sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>;
@@ -274,9 +275,23 @@ function imageGenerationPathsFromMessages(
       continue;
     }
     const output = objectValue(payload.output);
+    const legacySavedPath =
+      stringValue(output?.savedPath) ?? stringValue(output?.saved_path);
+    const legacyImagePaths =
+      legacySavedPath &&
+      isImageGenerationToolCall({
+        toolName: stringValue(payload.toolName),
+        displayName: stringValue(payload.name),
+        content: payload.content,
+        outputContent: output?.content,
+        outputSavedPath: legacySavedPath
+      })
+        ? [legacySavedPath]
+        : [];
     for (const uri of [
       ...imageGenerationUris(payload.content),
-      ...imageGenerationUris(output?.content)
+      ...imageGenerationUris(output?.content),
+      ...legacyImagePaths
     ]) {
       const normalized = normalizePath(uri);
       if (normalized) {
@@ -297,8 +312,9 @@ function imageGenerationUris(value: unknown): string[] {
     if (!record) {
       continue;
     }
-    const type = stringValue(record.type)?.toLowerCase();
-    const uri = stringValue(record.uri) ?? stringValue(record.path);
+    const content = objectValue(record.content) ?? record;
+    const type = stringValue(content.type)?.toLowerCase();
+    const uri = stringValue(content.uri) ?? stringValue(content.path);
     if (!uri) {
       continue;
     }

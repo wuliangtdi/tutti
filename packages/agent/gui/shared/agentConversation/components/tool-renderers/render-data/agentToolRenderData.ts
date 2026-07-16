@@ -398,6 +398,7 @@ export function getImageGenerationRenderData(
     displayName: call.name,
     content: call.content,
     outputContent: call.output?.content,
+    outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
     inputPrompt: call.input?.prompt,
     payloadInputPrompt: recordValue(call.payload?.input)?.prompt
   });

@@ -66,6 +66,7 @@ export function resolveAgentToolRendererKind(
       displayName: call.displayName,
       content: call.content,
       outputContent: call.output?.content,
+      outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
       inputPrompt: call.input?.prompt
     })
   ) {

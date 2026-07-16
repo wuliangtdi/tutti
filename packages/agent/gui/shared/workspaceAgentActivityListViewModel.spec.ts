@@ -1738,6 +1738,87 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("collects canonical and historical Codex image generation paths", () => {
+    const canonicalPath =
+      "/Users/demo/.tutti/agent/runs/session-20/codex-home/generated_images/thread/ig_canonical.webp";
+    const historicalPath =
+      "/Users/demo/.tutti/agent/runs/session-20/codex-home/generated_images/thread/ig_legacy.png";
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-20",
+          cwd: "/Users/demo/project",
+          provider: "codex",
+          status: "completed",
+          title: "Generate images",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-20": [
+          {
+            agentSessionId: "session-20",
+            kind: "tool_call",
+            messageId: "message-canonical",
+            payload: {
+              toolName: "ImageGeneration",
+              content: [
+                {
+                  type: "content",
+                  content: {
+                    type: "image",
+                    uri: canonicalPath,
+                    mimeType: "image/webp"
+                  }
+                }
+              ]
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-canonical",
+            occurredAtUnixMs: 1,
+            version: 1
+          },
+          {
+            agentSessionId: "session-20",
+            kind: "tool_call",
+            messageId: "message-historical",
+            payload: {
+              toolName: "ImageGeneration",
+              name: "Generate image",
+              output: {
+                savedPath: historicalPath,
+                result: "legacy-base64"
+              }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-historical",
+            occurredAtUnixMs: 2,
+            version: 2
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        workspaceRoot: "/Users/demo/project"
+      })
+    ).toEqual([
+      {
+        path: canonicalPath,
+        label: "ig_canonical.webp"
+      },
+      {
+        path: historicalPath,
+        label: "ig_legacy.png"
+      }
+    ]);
+  });
+
   it("collects agent-generated files from lightweight change maps", () => {
     const snapshot = {
       workspaceId: "workspace-1",

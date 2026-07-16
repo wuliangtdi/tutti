@@ -3,6 +3,7 @@ import type { AgentToolCallVM } from "../../../contracts/agentToolCallVM";
 import {
   getCommandRenderData,
   getFileChangeRenderData,
+  getImageGenerationRenderData,
   getSearchRenderData,
   getSkillRenderData,
   getTaskRenderData,
@@ -12,6 +13,54 @@ import {
 } from "./agentToolRenderData";
 
 describe("agentToolRenderData", () => {
+  it("uses the historical Codex savedPath as an image preview fallback", () => {
+    const data = getImageGenerationRenderData(
+      makeCall({
+        toolName: "ImageGeneration",
+        name: "Generate image",
+        output: {
+          savedPath:
+            "/Users/demo/.tutti/agent/runs/session/codex-home/generated_images/thread/ig_123.png",
+          result: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"
+        }
+      })
+    );
+
+    expect(data).toEqual({
+      prompt: null,
+      imageUri:
+        "/Users/demo/.tutti/agent/runs/session/codex-home/generated_images/thread/ig_123.png",
+      mimeType: null
+    });
+  });
+
+  it("prefers canonical image content over the historical savedPath fallback", () => {
+    const data = getImageGenerationRenderData(
+      makeCall({
+        toolName: "ImageGeneration",
+        content: [
+          {
+            type: "content",
+            content: {
+              type: "image",
+              uri: "/workspace/output/canonical.webp",
+              mimeType: "image/webp"
+            }
+          }
+        ],
+        output: {
+          savedPath: "/workspace/output/legacy.png"
+        }
+      })
+    );
+
+    expect(data).toEqual({
+      prompt: null,
+      imageUri: "/workspace/output/canonical.webp",
+      mimeType: "image/webp"
+    });
+  });
+
   it("extracts canonical command render data", () => {
     const data = getCommandRenderData(
       makeCall({

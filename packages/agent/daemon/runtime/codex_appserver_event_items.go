@@ -2,6 +2,8 @@ package agentruntime
 
 import (
 	"log/slog"
+	"mime"
+	"path/filepath"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -308,14 +310,35 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		update["kind"] = "other"
 		if completed {
 			output := map[string]any{}
+			content := make([]any, 0, 2)
+			if revisedPrompt := strings.TrimSpace(asStringRaw(item["revisedPrompt"])); revisedPrompt != "" {
+				if !strings.HasPrefix(strings.ToLower(revisedPrompt), "revised prompt:") {
+					revisedPrompt = "Revised prompt: " + revisedPrompt
+				}
+				content = append(content, map[string]any{
+					"type": "content",
+					"content": map[string]any{
+						"type": "text",
+						"text": revisedPrompt,
+					},
+				})
+			}
 			if savedPath := asString(item["savedPath"]); savedPath != "" {
 				output["savedPath"] = savedPath
-			}
-			if result := asStringRaw(item["result"]); result != "" {
-				output["result"] = result
+				content = append(content, map[string]any{
+					"type": "content",
+					"content": map[string]any{
+						"type":     "image",
+						"uri":      savedPath,
+						"mimeType": appServerImageMimeType(savedPath),
+					},
+				})
 			}
 			if len(output) > 0 {
 				update["rawOutput"] = output
+			}
+			if len(content) > 0 {
+				update["content"] = content
 			}
 		}
 	case "imageView":
@@ -328,6 +351,17 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 		return nil, false
 	}
 	return update, true
+}
+
+func appServerImageMimeType(path string) string {
+	mimeType := strings.TrimSpace(mime.TypeByExtension(filepath.Ext(path)))
+	if separator := strings.IndexByte(mimeType, ';'); separator >= 0 {
+		mimeType = strings.TrimSpace(mimeType[:separator])
+	}
+	if strings.HasPrefix(strings.ToLower(mimeType), "image/") {
+		return mimeType
+	}
+	return "image/png"
 }
 
 func appServerAgentControlToolName(tool string) string {

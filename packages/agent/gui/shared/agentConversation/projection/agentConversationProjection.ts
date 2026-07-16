@@ -2,11 +2,14 @@ import type {
   WorkspaceAgentSessionDetailTurn,
   WorkspaceAgentSessionDetailViewModel
 } from "../../workspaceAgentSessionDetailViewModel";
+import { extractImageGenerationPreview } from "../../imageGenerationTool";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import type { AgentGeneratedImageRowVM } from "../contracts/agentGeneratedImageRowVM";
 import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
+import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import type { AgentTranscriptRowVM } from "../contracts/agentTranscriptRowVM";
 import { computeAgentToolGroups } from "./agentToolGroupingProjection";
 import { buildAgentTurnSequenceItems } from "./agentTurnSequenceProjection";
@@ -23,6 +26,8 @@ const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT =
   "skill descriptions were shortened to fit the 2% skills context budget";
 const CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT =
   "defaulting to fallback metadata";
+const MARKDOWN_IMAGE_PATTERN =
+  /!\[[^\]]*]\(\s*(?:<([^>]+)>|([^)\s]+))(?:\s+["'][^"']*["'])?\s*\)/g;
 
 export function projectAgentConversationVM(
   detail: WorkspaceAgentSessionDetailViewModel,
@@ -604,11 +609,190 @@ function projectTurnConversationRows(
     options
   );
   const skippedIndices = new Set([...groupedIndices, ...suppressedIndices]);
-  return projectTurnRows(
-    sequence,
-    groups,
-    skippedIndices,
-    turn.id,
-    options.agentSessionId
+  return promoteGeneratedImageRows(
+    projectTurnRows(
+      sequence,
+      groups,
+      skippedIndices,
+      turn.id,
+      options.agentSessionId
+    )
   );
+}
+
+function promoteGeneratedImageRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const promoted: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    promoted.push(row);
+    if (row.kind !== "tool-group") {
+      continue;
+    }
+    for (const call of row.calls) {
+      const artifact = projectGeneratedImageRow(call, row.turnId);
+      if (artifact) {
+        promoted.push(artifact);
+      }
+    }
+  }
+  return dropDuplicateGeneratedImageMarkdown(promoted);
+}
+
+function dropDuplicateGeneratedImageMarkdown(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const generatedImagesByTurn = new Map<string, Set<string>>();
+  for (const row of rows) {
+    if (row.kind !== "generated-image") {
+      continue;
+    }
+    const reference = normalizeGeneratedImageReference(row.uri);
+    if (!reference) {
+      continue;
+    }
+    const references = generatedImagesByTurn.get(row.turnId) ?? new Set();
+    references.add(reference);
+    generatedImagesByTurn.set(row.turnId, references);
+  }
+  if (generatedImagesByTurn.size === 0) {
+    return [...rows];
+  }
+
+  const filtered: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    if (row.kind !== "message" || row.speaker !== "assistant") {
+      filtered.push(row);
+      continue;
+    }
+    const generatedImages = generatedImagesByTurn.get(row.turnId);
+    if (!generatedImages) {
+      filtered.push(row);
+      continue;
+    }
+    let changed = false;
+    const messages = row.messages.flatMap((message) => {
+      const body = removeGeneratedImageMarkdown(message.body, generatedImages);
+      if (body === message.body) {
+        return [message];
+      }
+      changed = true;
+      return body ? [{ ...message, body }] : [];
+    });
+    if (messages.length === 0 && row.thinking.length === 0) {
+      continue;
+    }
+    filtered.push(changed ? { ...row, messages } : row);
+  }
+  return filtered;
+}
+
+function removeGeneratedImageMarkdown(
+  body: string,
+  generatedImages: ReadonlySet<string>
+): string {
+  let removed = false;
+  const next = body.replace(
+    MARKDOWN_IMAGE_PATTERN,
+    (
+      match,
+      angleReference: string | undefined,
+      plainReference: string | undefined
+    ) => {
+      const reference = normalizeGeneratedImageReference(
+        angleReference ?? plainReference ?? ""
+      );
+      if (!reference || !generatedImages.has(reference)) {
+        return match;
+      }
+      removed = true;
+      return "";
+    }
+  );
+  return removed
+    ? next
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : body;
+}
+
+function normalizeGeneratedImageReference(reference: string): string | null {
+  let normalized = reference.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (/^file:\/\//i.test(normalized)) {
+    if (!URL.canParse(normalized)) {
+      return null;
+    }
+    normalized = new URL(normalized).pathname;
+  } else if (/^[a-z][a-z\d+.-]*:\/\//i.test(normalized)) {
+    return URL.canParse(normalized) ? new URL(normalized).href : normalized;
+  }
+  normalized = decodePercentEncodedReference(normalized);
+  normalized = normalized.replaceAll("\\", "/");
+  const prefix = normalized.startsWith("/") ? "/" : "";
+  const parts: string[] = [];
+  for (const part of normalized.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+    if (part === ".." && parts.length > 0) {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const collapsed = `${prefix}${parts.join("/")}`;
+  return /^[a-z]:\//i.test(collapsed) ? collapsed.toLowerCase() : collapsed;
+}
+
+function decodePercentEncodedReference(reference: string): string {
+  return reference.replace(/(?:%[a-f\d]{2})+/gi, (encodedRun) => {
+    const bytes = encodedRun
+      .slice(1)
+      .split("%")
+      .map((hex) => Number.parseInt(hex, 16));
+    return new TextDecoder().decode(Uint8Array.from(bytes));
+  });
+}
+
+function projectGeneratedImageRow(
+  call: AgentToolCallVM,
+  turnId: string
+): AgentGeneratedImageRowVM | null {
+  if (
+    call.rendererKind !== "image-generation" ||
+    call.statusKind !== "completed"
+  ) {
+    return null;
+  }
+  const image = extractImageGenerationPreview({
+    toolName: call.toolName,
+    displayName: call.name,
+    content: call.content,
+    outputContent: call.output?.content,
+    outputSavedPath: call.output?.savedPath ?? call.output?.saved_path,
+    inputPrompt: call.input?.prompt,
+    payloadInputPrompt:
+      call.payload?.input &&
+      typeof call.payload.input === "object" &&
+      !Array.isArray(call.payload.input)
+        ? (call.payload.input as Record<string, unknown>).prompt
+        : null
+  });
+  if (!image.imageUri) {
+    return null;
+  }
+  return {
+    kind: "generated-image",
+    id: `generated-image:${call.id}`,
+    turnId,
+    sourceCallId: call.id,
+    uri: image.imageUri,
+    mimeType: image.mimeType,
+    prompt: image.prompt,
+    occurredAtUnixMs: call.occurredAtUnixMs
+  };
 }

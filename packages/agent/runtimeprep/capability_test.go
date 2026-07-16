@@ -51,6 +51,22 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	}
 }
 
+func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProviders(t *testing.T) {
+	codexPolicy := hostAppContextPolicy(PrepareInput{Provider: "codex"})
+	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
+		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
+		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
+		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
+	}
+
+	claudePolicy := hostAppContextPolicy(PrepareInput{Provider: "claude-code"})
+	if !strings.Contains(claudePolicy, "Generated/edited image output: final response must include Markdown image tag.") ||
+		!strings.Contains(claudePolicy, "Multiple final images: one Markdown image tag each.") ||
+		strings.Contains(claudePolicy, "rendered directly from `imageGeneration` tool output") {
+		t.Fatalf("claude host policy = %q, want Markdown image fallback contract", claudePolicy)
+	}
+}
+
 func TestCustomDeploymentProfileDoesNotInheritTuttiDesktopHostPolicy(t *testing.T) {
 	t.Parallel()
 

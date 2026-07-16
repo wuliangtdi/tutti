@@ -532,6 +532,7 @@ function toolCallDetail(
     displayName: visibleRawToolName,
     content: item.payload?.content,
     outputContent: payloadOutput?.content,
+    outputSavedPath: payloadOutput?.savedPath ?? payloadOutput?.saved_path,
     inputPrompt: payloadInput?.prompt,
     payloadInputPrompt: metadataInput?.prompt
   });
