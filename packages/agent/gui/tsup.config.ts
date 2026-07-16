@@ -35,7 +35,8 @@ export default defineConfig({
   external: ["react", "react-dom"],
   format: ["esm"],
   loader: {
-    ".png": "dataurl"
+    ".png": "dataurl",
+    ".svg": "dataurl"
   },
   sourcemap: true
 });

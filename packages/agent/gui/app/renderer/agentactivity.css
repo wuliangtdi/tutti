@@ -9730,31 +9730,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   pointer-events: none;
 }
 
-/* "Beta" tag centered on the turntable's vertical centerline, just above it.
-   The player renders at 0.25 (root) × 0.8 (hero layer) = 0.2 on screen, so the
-   pill is counter-scaled ×5 to net 1.0 and hit true 13px text / 20px height;
+/* "Beta" wordmark SVG tucked into the turntable's bottom-right corner, tilted
+   30° to the left. The player renders at 0.25 (root) × 0.8 (hero layer) = 0.2
+   on screen, so the artwork is counter-scaled to net a readable on-screen size;
    position lengths stay in the 440px local space (× 0.2 on screen). */
 .agent-gui-vinyl-player__beta {
   position: absolute;
-  top: -90px;
-  left: 220px;
+  top: 380px;
+  left: 372px;
   z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 4px;
-  background: var(--tutti-purple-bg);
-  color: var(--tutti-purple);
-  font-family: var(--font-sans, inherit);
-  font-style: normal;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+  width: 113px;
+  height: auto;
   pointer-events: none;
-  transform: translate(-50%, -50%) scale(5);
+  transform: translate(-50%, -50%) rotate(-30deg) scale(1.9);
   transform-origin: center;
 }
 
