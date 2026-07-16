@@ -8,6 +8,7 @@ import type {
   AgentMentionFilterId,
   AgentMentionGroup,
   AgentMentionGroupId,
+  AgentMentionIssueTopicGroup,
   AgentMentionRawGroups,
   AgentMentionTotalCounts
 } from "./AgentMentionSearchContracts";
@@ -38,9 +39,21 @@ export function buildAgentMentionGroups(input: {
   currentFilter: AgentMentionFilterId;
   currentQuery: string;
   expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
+  issueTopicGroups: readonly AgentMentionIssueTopicGroup[] | null;
   rawGroups: AgentMentionRawGroups;
   totalCounts: AgentMentionTotalCounts;
 }): AgentMentionGroup[] {
+  if (input.currentFilter === "issue" && input.issueTopicGroups !== null) {
+    return input.issueTopicGroups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      items: group.items,
+      totalCount: group.totalCount,
+      visibleCount: group.items.length,
+      hasMore: group.nextPageToken !== null,
+      expandStatus: group.loadMoreStatus
+    }));
+  }
   const orderedGroupIds = groupIdsForFilter(input.currentFilter);
   return orderedGroupIds
     .map((groupId) => {
@@ -91,6 +104,14 @@ export function buildAgentMentionGroups(input: {
       } satisfies AgentMentionGroup;
     })
     .filter((group): group is AgentMentionGroup => group !== null);
+}
+
+export function cloneAgentMentionIssueTopicGroups(
+  groups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] | null {
+  return (
+    groups?.map((group) => ({ ...group, items: [...group.items] })) ?? null
+  );
 }
 
 export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {

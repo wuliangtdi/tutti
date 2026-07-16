@@ -473,10 +473,12 @@ export interface TuttidClient {
       searchQuery?: string;
       statusFilter?: IssueManagerStatus | "all";
       topicId: string;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerIssueListResponse>;
   listWorkspaceIssueTopics(
-    workspaceID: string
+    workspaceID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerTopicListResponse>;
   listWorkspaceIssueTaskRuns(
     workspaceID: string,

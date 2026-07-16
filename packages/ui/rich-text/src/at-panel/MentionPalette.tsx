@@ -464,6 +464,8 @@ function MentionPaletteGroups<TItem>({
                   }
                   type="button"
                   className={paletteStyles.expandButton}
+                  disabled={group.expandStatus === "loading"}
+                  aria-busy={group.expandStatus === "loading" || undefined}
                   data-highlighted={
                     `expand:${group.id}` === highlightedKey ? "" : undefined
                   }
@@ -473,10 +475,18 @@ function MentionPaletteGroups<TItem>({
                     }
                   }}
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => onExpandGroup(group.id)}
+                  onClick={() => {
+                    if (group.expandStatus !== "loading") {
+                      onExpandGroup(group.id);
+                    }
+                  }}
                 >
-                  {group.expandLabel ??
-                    `+${Math.max(0, group.totalCount - group.visibleCount)}`}
+                  {group.expandStatus === "loading"
+                    ? (group.expandLoadingLabel ?? group.expandLabel)
+                    : group.expandStatus === "error"
+                      ? (group.expandErrorLabel ?? group.expandLabel)
+                      : (group.expandLabel ??
+                        `+${Math.max(0, group.totalCount - group.visibleCount)}`)}
                 </button>
               ) : null}
             </div>

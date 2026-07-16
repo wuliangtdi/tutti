@@ -349,7 +349,11 @@ function decorateMentionGroup(
   });
   return {
     ...group,
-    label: showLabel ? agentMentionGroupLabel(groupId) : undefined,
+    label: showLabel
+      ? groupId.startsWith("issue-topic:")
+        ? group.label
+        : agentMentionGroupLabel(groupId)
+      : undefined,
     emptyLabel: suppressChrome
       ? undefined
       : agentMentionEmptyGroupLabel(groupId, query),
@@ -358,6 +362,12 @@ function decorateMentionGroup(
           count: mentionGroupExpandCount(group, filter)
         })
       : undefined,
+    expandLoadingLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreLoading"
+    ),
+    expandErrorLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreRetry"
+    ),
     sectionClassName: followsMySessions ? "mt-2" : undefined,
     hideTopDivider: suppressChrome
   };

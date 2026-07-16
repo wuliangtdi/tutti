@@ -1,6 +1,7 @@
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
 import type {
   AgentMentionFilterId,
+  AgentMentionIssueTopicGroup,
   AgentMentionLifecycleDiagnosticLog,
   AgentMentionRawGroups,
   AgentMentionTotalCounts
@@ -15,6 +16,7 @@ export interface AgentMentionBrowseFetchResult {
   providerDiagnostics: AgentMentionProviderQueryDiagnostic[];
   rawGroups: AgentMentionRawGroups;
   totalCounts: AgentMentionTotalCounts;
+  issueTopicGroups: AgentMentionIssueTopicGroup[] | null;
 }
 
 export interface AgentMentionBrowseCacheEntry extends AgentMentionBrowseFetchResult {
@@ -52,6 +54,60 @@ function writeBrowseCacheEntry(
     }
     sharedAgentMentionBrowseCache.delete(oldestKey);
   }
+}
+
+export function mergeAgentMentionBrowseIssueGroupPage(input: {
+  cacheKey: string;
+  group: AgentMentionIssueTopicGroup;
+  cachedAt: number;
+}): void {
+  const entry = sharedAgentMentionBrowseCache.get(input.cacheKey);
+  if (!entry?.issueTopicGroups) {
+    return;
+  }
+  const groupIndex = entry.issueTopicGroups.findIndex(
+    (group) => group.id === input.group.id
+  );
+  if (groupIndex < 0) {
+    return;
+  }
+  const previous = entry.issueTopicGroups[groupIndex];
+  if (!previous) {
+    return;
+  }
+  const seen = new Set(
+    previous.items
+      .filter((item) => item.kind === "workspace-issue")
+      .map((item) => item.targetId)
+  );
+  const appended = input.group.items.filter((item) => {
+    if (item.kind !== "workspace-issue") {
+      return true;
+    }
+    if (seen.has(item.targetId)) {
+      return false;
+    }
+    seen.add(item.targetId);
+    return true;
+  });
+  const mergedItems = [...previous.items, ...appended];
+  const groups = entry.issueTopicGroups.map((group, index) =>
+    index === groupIndex
+      ? {
+          ...previous,
+          items: mergedItems,
+          totalCount: Math.max(input.group.totalCount, mergedItems.length),
+          nextPageToken: input.group.nextPageToken,
+          loadMoreStatus: "idle" as const,
+          loadMoreError: null
+        }
+      : group
+  );
+  writeBrowseCacheEntry(input.cacheKey, {
+    ...entry,
+    issueTopicGroups: groups,
+    cachedAt: input.cachedAt
+  });
 }
 
 // Defer speculative warm-up to a browser idle slot so it never blocks the
