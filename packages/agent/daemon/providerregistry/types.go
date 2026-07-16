@@ -454,9 +454,7 @@ const (
 type DesktopVisibilityGate string
 
 const (
-	DesktopVisibilityGateCursorPreview   DesktopVisibilityGate = "cursor_preview"
-	DesktopVisibilityGateOpenCodePreview DesktopVisibilityGate = "opencode_preview"
-	DesktopVisibilityGateTuttiAgent      DesktopVisibilityGate = "tutti_agent"
+	DesktopVisibilityGateTuttiAgent DesktopVisibilityGate = "tutti_agent"
 )
 
 type DesktopRuntimeProbeFallback string

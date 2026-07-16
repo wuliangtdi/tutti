@@ -32,7 +32,6 @@ import {
   useWorkspaceAppCenterService,
   workspaceAppCenterNodeID
 } from "@renderer/features/workspace-app-center";
-import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation } from "@renderer/i18n";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService.ts";
 import {
@@ -85,26 +84,15 @@ export function WorkspaceLaunchpadOverlay({
     () => agentProviderStatusService.getSnapshot()
   );
   const { t } = useTranslation();
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
   const hiddenAgentProviders = useMemo<
     ReadonlySet<WorkspaceAgentProvider>
   >(() => {
     const hidden: WorkspaceAgentProvider[] = [];
-    if (!desktopPreferencesState.enableCursorAgent) {
-      hidden.push("cursor");
-    }
-    if (!desktopPreferencesState.enableOpenCodeAgent) {
-      hidden.push("opencode");
-    }
     if (workspaceSettingsState.tuttiAgentSwitchEnabled !== true) {
       hidden.push("tutti-agent");
     }
     return new Set<WorkspaceAgentProvider>(hidden);
-  }, [
-    desktopPreferencesState.enableCursorAgent,
-    desktopPreferencesState.enableOpenCodeAgent,
-    workspaceSettingsState.tuttiAgentSwitchEnabled
-  ]);
+  }, [workspaceSettingsState.tuttiAgentSwitchEnabled]);
   const wasOpenRef = useRef(false);
   const launchpadAnalytics = useMemo(
     () =>

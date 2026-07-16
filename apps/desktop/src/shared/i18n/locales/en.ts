@@ -809,18 +809,6 @@ export const en = {
           "We couldn't clear conversation history right now.",
         daemonLogLabel: "Daemon log",
         desktopLogLabel: "Desktop log",
-        enableCursorAgentDescription:
-          "Show the Cursor agent across the app. Off by default while Cursor support is in preview.",
-        // i18n-check-ignore: Provider brand name.
-        enableCursorAgentLabel: "Enable Cursor agent",
-        enableCursorAgentSaveFailed:
-          "We couldn't update the Cursor agent setting right now.",
-        enableOpenCodeAgentDescription:
-          "Show the OpenCode agent across the app. Off by default while OpenCode support is in preview.",
-        // i18n-check-ignore: Provider brand name.
-        enableOpenCodeAgentLabel: "Enable OpenCode agent",
-        enableOpenCodeAgentSaveFailed:
-          "We couldn't update the OpenCode agent setting right now.",
         exportLogs: "Export logs",
         exportLogsDialogTitle: "Export Logs",
         exportLogsFileType: "Zip Archive",

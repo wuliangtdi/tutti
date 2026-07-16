@@ -46,15 +46,6 @@ export const desktopAccountRefreshProviders: readonly WorkspaceAgentProvider[] =
     .filter((entry) => entry.desktop.refreshOnAccountChange)
     .map((entry) => entry.providerId as WorkspaceAgentProvider);
 
-export function desktopManagedAgentVisibilityGate(
-  provider: WorkspaceAgentProvider
-): string {
-  return (
-    desktopManagedAgentCatalog.find((entry) => entry.providerId === provider)
-      ?.desktop.visibilityGate ?? ""
-  );
-}
-
 export function ensureDesktopManagedAgentProviderStatuses(
   service: IAgentProviderStatusService,
   requiredProviders?: readonly WorkspaceAgentProvider[]

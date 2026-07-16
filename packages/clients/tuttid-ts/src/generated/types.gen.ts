@@ -334,8 +334,6 @@ export type DesktopPreferences = {
   defaultAgentProvider: DesktopDefaultAgentProvider;
   dockIconStyle: DesktopDockIconStyle;
   dockPlacement: DesktopDockPlacement;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
   fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
   featureFlags: DesktopFeatureFlags;
   workbenchShortcuts: DesktopWorkbenchShortcuts;
@@ -435,8 +433,6 @@ export type DesktopPreferencesStateResponse = {
 
 export type WorkspaceAppAgentPreferencesResponse = {
   defaultAgentProvider: DesktopDefaultAgentProvider;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
 };
 
 export type PutDesktopPreferencesRequest = {

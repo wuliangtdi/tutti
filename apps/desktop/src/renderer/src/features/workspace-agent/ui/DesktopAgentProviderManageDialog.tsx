@@ -21,7 +21,6 @@ import {
   TooltipTrigger
 } from "@tutti-os/ui-system";
 import type { DesktopI18nKey } from "@shared/i18n";
-import { useDesktopPreferencesService } from "@renderer/features/desktop-preferences";
 import { useTranslation, type TranslateFn } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { useAccountService } from "../../workspace-workbench/ui/useAccountService.ts";
@@ -38,7 +37,6 @@ import {
   type DesktopAgentProviderManageRowStatus
 } from "./desktopAgentProviderManageDialogModel.ts";
 import { isDesktopAgentAccountLoginAction } from "./desktopAgentAccountLoginAction.ts";
-import { desktopManagedAgentVisibilityGate } from "../services/internal/desktopManagedAgentProviders.ts";
 
 interface DesktopAgentProviderManageDialogProps {
   agentProviderStatusService: IAgentProviderStatusService;
@@ -95,26 +93,6 @@ export function DesktopAgentProviderManageDialog({
 }: DesktopAgentProviderManageDialogProps) {
   const { t } = useTranslation();
   const { service: accountService } = useAccountService();
-  const { state: desktopPreferencesState } = useDesktopPreferencesService();
-  const hiddenProviders = useMemo<ReadonlySet<WorkspaceAgentProvider>>(
-    () =>
-      new Set<WorkspaceAgentProvider>(
-        desktopAgentProviderManageDialogProviders.filter((provider) => {
-          switch (desktopManagedAgentVisibilityGate(provider)) {
-            case "cursor_preview":
-              return !desktopPreferencesState.enableCursorAgent;
-            case "opencode_preview":
-              return !desktopPreferencesState.enableOpenCodeAgent;
-            default:
-              return false;
-          }
-        })
-      ),
-    [
-      desktopPreferencesState.enableCursorAgent,
-      desktopPreferencesState.enableOpenCodeAgent
-    ]
-  );
   const rowElementsRef = useRef(
     new Map<WorkspaceAgentProvider, HTMLDivElement>()
   );
@@ -134,12 +112,11 @@ export function DesktopAgentProviderManageDialog({
   const rows = useMemo(
     () =>
       projectDesktopAgentProviderManageRows({
-        hiddenProviders,
         isLoading: snapshot.isLoading,
         pendingActions,
         statuses: snapshot.statuses
       }),
-    [hiddenProviders, pendingActions, snapshot.isLoading, snapshot.statuses]
+    [pendingActions, snapshot.isLoading, snapshot.statuses]
   );
 
   useEffect(() => {

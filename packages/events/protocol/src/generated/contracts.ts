@@ -130,8 +130,6 @@ export interface PreferencesDesktopPreferencesV1 {
   minimizeAnimation: "scale" | "genie" | "off";
   sleepPreventionMode: "never" | "whileAgentRunning" | "always";
   showAppDeveloperSources: boolean;
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
   themeSource: "system" | "dark" | "light";
   updateChannel: "stable" | "rc";
   updatePolicy: "off" | "prompt" | "auto";

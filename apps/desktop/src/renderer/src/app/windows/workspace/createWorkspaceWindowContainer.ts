@@ -10,7 +10,6 @@ import {
 } from "@renderer/features/analytics";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
-import { subscribe } from "valtio";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
@@ -128,49 +127,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     tuttidClient,
     tuttidEventStreamClient
   );
-  // Preview agents are feature-gated behind Developer-panel preferences
-  // preference: gated providers render as coming-soon placeholders in the
-  // AgentGUI rail (like hermes) and stay hidden from dock/mention/manage.
-  const isAgentProviderGated = (provider: string): boolean => {
-    const gate =
-      resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.visibilityGate;
-    switch (gate) {
-      case "cursor_preview":
-        return !desktopPreferencesService.store.enableCursorAgent;
-      case "opencode_preview":
-        return !desktopPreferencesService.store.enableOpenCodeAgent;
-      default:
-        return false;
-    }
-  };
-  const subscribeAgentProviderVisibility = (
-    listener: () => void
-  ): (() => void) => {
-    let enableCursorAgent = desktopPreferencesService.store.enableCursorAgent;
-    let enableOpenCodeAgent =
-      desktopPreferencesService.store.enableOpenCodeAgent;
-    return subscribe(desktopPreferencesService.store, () => {
-      const nextEnableCursorAgent =
-        desktopPreferencesService.store.enableCursorAgent;
-      const nextEnableOpenCodeAgent =
-        desktopPreferencesService.store.enableOpenCodeAgent;
-      if (
-        nextEnableCursorAgent === enableCursorAgent &&
-        nextEnableOpenCodeAgent === enableOpenCodeAgent
-      ) {
-        return;
-      }
-      enableCursorAgent = nextEnableCursorAgent;
-      enableOpenCodeAgent = nextEnableOpenCodeAgent;
-      listener();
-    });
-  };
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
     reporterService
   });
   let disposeAgentOutcomeNotificationController: (() => void) | null = null;
-  let disposeAgentProviderVisibilityRefresh: (() => void) | null = null;
   let releasedWindowAnalytics = false;
   const releaseWindowAnalytics = () => {
     if (releasedWindowAnalytics) {
@@ -180,8 +141,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     window.removeEventListener("beforeunload", releaseWindowAnalytics);
     disposeAgentOutcomeNotificationController?.();
     disposeAgentOutcomeNotificationController = null;
-    disposeAgentProviderVisibilityRefresh?.();
-    disposeAgentProviderVisibilityRefresh = null;
     predefinePageviewAnalytics?.dispose();
     daemonConnectionAnalytics.release();
   };
@@ -234,17 +193,11 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
     reporterService,
     runtimeApi: desktopApi.runtime,
     resolveAgentTargetIconUrl: resolveWorkspaceAgentTargetIconUrl,
-    isAgentTargetProviderGated: isAgentProviderGated,
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
     workspaceUserProjectService
   });
-  disposeAgentProviderVisibilityRefresh = subscribeAgentProviderVisibility(
-    () => {
-      void workspaceAgentServices.agentsService.refresh().catch(() => {});
-    }
-  );
   const agentOutcomeNotificationController =
     createWorkspaceAgentOutcomeNotificationController({
       foreground: createWorkspaceAgentOutcomeForegroundNotificationPresenter(),
@@ -275,8 +228,6 @@ export function createWorkspaceWindowContainer(): WorkspaceWindowContainerResult
   });
   registerWorkspaceWorkbenchServices(registry, {
     browserApi: desktopApi.browser,
-    isAgentProviderHidden: isAgentProviderGated,
-    subscribeAgentProviderVisibility,
     computerUseApi: desktopApi.computerUse,
     developerApi: desktopApi.developer,
     dockPreviewCacheApi: desktopApi.dockPreviewCache,

@@ -175,18 +175,9 @@ export function WorkspaceAppCenterPane({
     () =>
       resolveAppCenterReadyAgentProviderOptions(
         agentProviderSnapshot.statuses,
-        agentsSnapshot.agentTargets,
-        createHiddenFactoryProviderSet({
-          enableCursorAgent: desktopPreferencesState.enableCursorAgent,
-          enableOpenCodeAgent: desktopPreferencesState.enableOpenCodeAgent
-        })
+        agentsSnapshot.agentTargets
       ),
-    [
-      agentProviderSnapshot.statuses,
-      agentsSnapshot.agentTargets,
-      desktopPreferencesState.enableCursorAgent,
-      desktopPreferencesState.enableOpenCodeAgent
-    ]
+    [agentProviderSnapshot.statuses, agentsSnapshot.agentTargets]
   );
   const defaultFactoryAgentTargetId = useMemo(
     () =>
@@ -548,8 +539,7 @@ function resolveWorkspaceAppCategory(
 
 function resolveAppCenterReadyAgentProviderOptions(
   statuses: readonly AgentProviderStatus[],
-  agentTargets: readonly AgentTargetPresentation[],
-  hiddenProviders?: ReadonlySet<string>
+  agentTargets: readonly AgentTargetPresentation[]
 ): readonly AppCenterFactoryProviderOption[] {
   const readyProviders = new Set(
     statuses
@@ -562,7 +552,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       (target) =>
         target.enabled === true &&
         readyProviders.has(target.provider) &&
-        hiddenProviders?.has(target.provider) !== true &&
         !isWorkspaceAgentGuiComingSoonProvider(target.provider)
     )
     .map((target) => ({
@@ -571,17 +560,6 @@ function resolveAppCenterReadyAgentProviderOptions(
       label: target.name || resolveWorkspaceAgentGuiLabel(target.provider),
       provider: target.provider
     }));
-}
-
-function createHiddenFactoryProviderSet(input: {
-  enableCursorAgent: boolean;
-  enableOpenCodeAgent: boolean;
-}): ReadonlySet<string> | undefined {
-  const hidden = [
-    ...(input.enableCursorAgent ? [] : ["cursor"]),
-    ...(input.enableOpenCodeAgent ? [] : ["opencode"])
-  ];
-  return hidden.length > 0 ? new Set(hidden) : undefined;
 }
 
 function toWorkspaceAppRecord(

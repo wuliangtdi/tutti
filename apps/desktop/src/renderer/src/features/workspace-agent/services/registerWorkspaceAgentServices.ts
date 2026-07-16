@@ -36,7 +36,6 @@ export interface WorkspaceAgentServiceRegistrationInput {
     iconKey: string | null;
     provider: string;
   }) => string;
-  isAgentTargetProviderGated?: (provider: string) => boolean;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
 }
@@ -68,7 +67,6 @@ export function registerWorkspaceAgentServices(
   startManagedAgentInstallBootstraps(agentProviderStatusService);
   const agentsService = new DesktopAgentsService({
     resolveAgentTargetIconUrl: input.resolveAgentTargetIconUrl,
-    isAgentTargetProviderGated: input.isAgentTargetProviderGated,
     tuttidClient: input.tuttidClient
   });
   registry.registerInstance(IAgentsService, agentsService);

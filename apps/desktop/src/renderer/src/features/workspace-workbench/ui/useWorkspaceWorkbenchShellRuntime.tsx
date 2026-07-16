@@ -6,7 +6,6 @@ import {
   useState,
   useSyncExternalStore
 } from "react";
-import type { AgentGUIProvider } from "@tutti-os/agent-gui";
 import { useService } from "@tutti-os/infra/di";
 import type {
   WorkspaceAgentProvider,
@@ -149,18 +148,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   );
   const workspaceFileManagerService = useWorkspaceFileManagerService();
   const workbenchHostService = useWorkspaceWorkbenchHostService();
-  const comingSoonAgentProviders = useMemo<readonly AgentGUIProvider[]>(
-    () => [
-      ...(desktopPreferencesState.enableCursorAgent ? [] : ["cursor" as const]),
-      ...(desktopPreferencesState.enableOpenCodeAgent
-        ? []
-        : ["opencode" as const])
-    ],
-    [
-      desktopPreferencesState.enableCursorAgent,
-      desktopPreferencesState.enableOpenCodeAgent
-    ]
-  );
   const reporterService = useService(IReporterService);
   const wallpaperRevision = useSyncExternalStore(
     (listener) => workbenchHostService.subscribeWallpaperChanges(listener),
@@ -197,7 +184,6 @@ export function useWorkspaceWorkbenchShellRuntime({
           appCenterRevision: appCenterState.revision,
           createHostInput: hostSession.createHostInput,
           defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-          comingSoonAgentProviders,
           dockIconStyle: desktopPreferencesState.dockIconStyle,
           i18n: workbenchDesktopI18n,
           onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -268,9 +254,7 @@ export function useWorkspaceWorkbenchShellRuntime({
 
   useEffect(() => {
     void agentsService.load().catch(() => undefined);
-    // The Desktop projection applies provider gates while loading the daemon
-    // target list, so a gate flip must reload the snapshot.
-  }, [agentsService, comingSoonAgentProviders, state.workspace.id]);
+  }, [agentsService, state.workspace.id]);
 
   useEffect(() => {
     return workbenchHostService.onOpenFileRequest((request) => {
@@ -321,7 +305,6 @@ export function useWorkspaceWorkbenchShellRuntime({
       appCenterRevision: appCenterState.revision,
       createHostInput: hostSession.createHostInput,
       defaultAgentProvider: desktopPreferencesState.defaultAgentProvider,
-      comingSoonAgentProviders,
       dockIconStyle: desktopPreferencesState.dockIconStyle,
       i18n: workbenchDesktopI18n,
       onCapabilitySettingsRequest: handleCapabilitySettingsRequest,
@@ -334,7 +317,6 @@ export function useWorkspaceWorkbenchShellRuntime({
   }, [
     appI18n,
     appCenterState.revision,
-    comingSoonAgentProviders,
     desktopPreferencesState.defaultAgentProvider,
     desktopPreferencesState.dockIconStyle,
     desktopPreferencesState.theme.appearance,

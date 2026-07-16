@@ -104,8 +104,6 @@ import {
 } from "./workspaceWorkbenchHostInputResolver.ts";
 
 export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWorkbenchHostInputResolverDependencies {
-  isAgentProviderHidden?: (provider: string) => boolean;
-  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   hostNotificationsApi: Pick<DesktopHostNotificationsApi, "onNavigate">;
   hostWorkspaceApi: Pick<
     DesktopHostWorkspaceApi,
@@ -116,8 +114,6 @@ export interface WorkspaceWorkbenchHostServiceDependencies extends WorkspaceWork
 
 export interface WorkspaceWorkbenchHostExternalDependencies {
   browserApi?: DesktopBrowserApi;
-  isAgentProviderHidden?: (provider: string) => boolean;
-  subscribeAgentProviderVisibility?: (listener: () => void) => () => void;
   computerUseApi: DesktopComputerUseApi;
   dockPreviewCacheApi: DesktopDockPreviewCacheApi;
   eventStreamClient?: TuttidEventStreamClient;
@@ -188,9 +184,6 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     this.dependencies = {
       agentProviderStatusService,
       agentsService,
-      isAgentProviderHidden: externalDependencies.isAgentProviderHidden,
-      subscribeAgentProviderVisibility:
-        externalDependencies.subscribeAgentProviderVisibility,
       appCenterService,
       browserApi: externalDependencies.browserApi,
       browserService: createWorkspaceBrowserService({

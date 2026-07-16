@@ -110,8 +110,6 @@ export interface IWorkspaceSettingsService {
   changeLocale(nextLocale: DesktopLocale): Promise<void>;
   changeSleepPreventionMode(mode: DesktopSleepPreventionMode): Promise<void>;
   changeShowAppDeveloperSources(show: boolean): Promise<void>;
-  changeEnableCursorAgent(enable: boolean): Promise<void>;
-  changeEnableOpenCodeAgent(enable: boolean): Promise<void>;
   changeThemeSource(nextThemeSource: DesktopThemeSource): Promise<void>;
   changeUpdateChannel(channel: DesktopUpdateChannel): Promise<void>;
   changeUpdatePolicy(policy: DesktopUpdatePolicy): Promise<void>;

@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:6592bd5417ff1e49"
+	BusinessEventCatalogRevision = "sha256:d4a15eb1cb134ebe"
 )
 
 type Topic string
@@ -143,8 +143,6 @@ type PreferencesDesktopPreferences struct {
 	MinimizeAnimation       string `json:"minimizeAnimation"`
 	SleepPreventionMode     string `json:"sleepPreventionMode"`
 	ShowAppDeveloperSources bool   `json:"showAppDeveloperSources"`
-	EnableCursorAgent       bool   `json:"enableCursorAgent"`
-	EnableOpenCodeAgent     bool   `json:"enableOpenCodeAgent"`
 	ThemeSource             string `json:"themeSource"`
 	UpdateChannel           string `json:"updateChannel"`
 	UpdatePolicy            string `json:"updatePolicy"`

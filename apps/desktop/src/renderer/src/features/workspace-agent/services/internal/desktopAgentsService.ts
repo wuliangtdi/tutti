@@ -13,8 +13,6 @@ export interface DesktopAgentsServiceDependencies {
     iconKey: string | null;
     provider: string;
   }) => string;
-  /** Feature gate: gated providers keep their targets but are forced disabled (coming soon). */
-  isAgentTargetProviderGated?: (provider: string) => boolean;
   retryDelayMs?: number;
   setTimeout?: (
     callback: () => void,
@@ -127,18 +125,8 @@ export class DesktopAgentsService implements IAgentsService {
           resolveAgentTargetIconUrl: this.dependencies.resolveAgentTargetIconUrl
         }
       );
-      const agentTargets = daemonAgentTargets.map((target) =>
-        this.dependencies.isAgentTargetProviderGated?.(target.provider) === true
-          ? { ...target, enabled: false }
-          : target
-      );
-      const agents = mapAgentTargetPresentationsToAgents(
-        daemonAgentTargets
-      ).map((agent) =>
-        this.dependencies.isAgentTargetProviderGated?.(agent.provider) === true
-          ? { ...agent, availability: { status: "coming_soon" as const } }
-          : agent
-      );
+      const agentTargets = daemonAgentTargets;
+      const agents = mapAgentTargetPresentationsToAgents(daemonAgentTargets);
       const nextSnapshot: AgentsSnapshot = {
         agents,
         agentTargets,

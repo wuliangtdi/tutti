@@ -8,8 +8,6 @@ export {
   defaultDesktopFeatureFlags,
   defaultDesktopWorkspaceUiMode,
   defaultDesktopFileDefaultOpenersByExtension,
-  defaultDesktopEnableCursorAgent,
-  defaultDesktopEnableOpenCodeAgent,
   defaultDesktopMinimizeAnimation,
   defaultDesktopShowAppDeveloperSources,
   defaultDesktopSleepPreventionMode,

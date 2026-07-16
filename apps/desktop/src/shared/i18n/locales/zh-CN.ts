@@ -767,14 +767,6 @@ export const zhCN = {
         conversationHistoryClearFailed: "暂时无法清除对话历史",
         daemonLogLabel: "Daemon 日志",
         desktopLogLabel: "Desktop 日志",
-        enableCursorAgentDescription:
-          "在应用内展示 Cursor AgentCursor 支持处于预览阶段，默认关闭",
-        enableCursorAgentLabel: "启用 Cursor Agent",
-        enableCursorAgentSaveFailed: "暂时无法更新 Cursor Agent 设置",
-        enableOpenCodeAgentDescription:
-          "在应用内展示 OpenCode AgentOpenCode 支持处于预览阶段，默认关闭",
-        enableOpenCodeAgentLabel: "启用 OpenCode Agent",
-        enableOpenCodeAgentSaveFailed: "暂时无法更新 OpenCode Agent 设置",
         exportLogs: "导出日志",
         exportLogsDialogTitle: "导出日志",
         exportLogsFileType: "Zip 压缩包",

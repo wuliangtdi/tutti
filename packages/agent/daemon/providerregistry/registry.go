@@ -167,7 +167,7 @@ func Validate(descriptor ProviderDescriptor) error {
 		return fmt.Errorf("provider %q desktop usage probe kind %q is unsupported", providerID, descriptor.Desktop.UsageProbeKind)
 	}
 	switch descriptor.Desktop.VisibilityGate {
-	case "", DesktopVisibilityGateCursorPreview, DesktopVisibilityGateOpenCodePreview, DesktopVisibilityGateTuttiAgent:
+	case "", DesktopVisibilityGateTuttiAgent:
 	default:
 		return fmt.Errorf("provider %q desktop visibility gate %q is unsupported", providerID, descriptor.Desktop.VisibilityGate)
 	}

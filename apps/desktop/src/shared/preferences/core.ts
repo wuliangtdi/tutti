@@ -58,10 +58,6 @@ export const defaultDesktopAppCatalogChannel: DesktopAppCatalogChannel =
 
 export const defaultDesktopShowAppDeveloperSources = false;
 
-export const defaultDesktopEnableCursorAgent = false;
-
-export const defaultDesktopEnableOpenCodeAgent = false;
-
 export type DesktopFeatureFlags = Record<string, boolean>;
 
 export const defaultDesktopFeatureFlags: DesktopFeatureFlags = {};

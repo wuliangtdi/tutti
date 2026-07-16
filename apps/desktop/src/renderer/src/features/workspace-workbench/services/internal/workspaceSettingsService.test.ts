@@ -1378,8 +1378,6 @@ function createDesktopPreferencesService(input: {
     setMinimizeAnimation:
       input.onSetMinimizeAnimation ?? (async (animation) => animation),
     setShowAppDeveloperSources: async (show) => show,
-    setEnableCursorAgent: async (enable) => enable,
-    setEnableOpenCodeAgent: async (enable) => enable,
     setSleepPreventionMode:
       input.onSetSleepPreventionMode ?? (async (enabled) => enabled),
     setWorkbenchShortcuts:
@@ -1412,8 +1410,6 @@ function createPreferencesState(
     changingFeatureFlags: null,
     changingLocale: null,
     changingMinimizeAnimation: null,
-    changingEnableCursorAgent: null,
-    changingEnableOpenCodeAgent: null,
     changingShowAppDeveloperSources: null,
     changingSleepPreventionMode: null,
     changingThemeSource: null,
@@ -1426,8 +1422,6 @@ function createPreferencesState(
     featureFlags: {},
     fileDefaultOpenersByExtension: { html: "defaultBrowser" },
     locale: "en",
-    enableCursorAgent: false,
-    enableOpenCodeAgent: false,
     minimizeAnimation: "scale",
     showAppDeveloperSources: false,
     sleepPreventionMode: "never",
