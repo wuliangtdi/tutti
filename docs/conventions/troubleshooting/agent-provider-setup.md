@@ -899,6 +899,36 @@ invalid_grant`. Daemon logs may also show an extra `claude-code` process start
   [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [model_validation.go](../../../services/tuttid/service/agent/model_validation.go)
 
+### Claude Code `Not logged in` renders as a file link instead of sign-in guidance
+
+- Symptom:
+  A Claude Code turn renders the plain text
+  `Not logged in · Please run /login`. Clicking `/login` tries to open a local
+  file and may show a missing-file toast instead of the Agent login flow.
+- Quick checks:
+  Inspect the durable assistant message and owning Turn. If both are
+  `completed` even though the body is the standalone login notice, the Claude
+  SDK returned an authentication failure as successful assistant output. The
+  generic failed-message recovery path will not run for that shape.
+- Root cause:
+  The Claude SDK can pair its standalone login notice with a successful result.
+  AgentGUI previously recovered plain authentication errors only when the
+  message status was `failed`, so the completed notice fell through to Markdown
+  rendering, where `/login` also matched the local absolute-path link rule.
+- Fix:
+  Preserve provider-agnostic recovery for failed messages. Additionally, for
+  completed messages, recognize the short, whole-message standalone login
+  notice and recover it as `auth_required`. Match the provider-owned output
+  shape rather than branching on provider identity; keep the matcher
+  length-bounded and anchored so ordinary answers that discuss login text are
+  not reclassified.
+- Validation:
+  Cover the completed Claude notice rendering the authentication card and a
+  normal completed answer that quotes the notice remaining ordinary content.
+- References:
+  [agentErrorPresentation.ts](../../../packages/agent/gui/shared/agentEnv/agentErrorPresentation.ts)
+  [AgentMessageBlock.tsx](../../../packages/agent/gui/shared/agentConversation/components/AgentMessageBlock.tsx)
+
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 
 - Symptom:

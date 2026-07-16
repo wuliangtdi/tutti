@@ -988,7 +988,7 @@ describe("AgentTranscriptView", () => {
     expect(onLinkAction).not.toHaveBeenCalled();
   });
 
-  it("opens local absolute paths inside the current workspace root", () => {
+  it("opens explicit Markdown links to local absolute paths", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentTranscriptView
@@ -1002,7 +1002,7 @@ describe("AgentTranscriptView", () => {
                 agentMessages: [
                   {
                     id: "assistant-1",
-                    body: "工作区路径：`/Users/example/demo/output/imagegen/dancing-girl.png`"
+                    body: "工作区路径：[/Users/example/demo/output/imagegen/dancing-girl.png](/Users/example/demo/output/imagegen/dancing-girl.png)"
                   }
                 ],
                 agentItems: [
@@ -1010,7 +1010,7 @@ describe("AgentTranscriptView", () => {
                     kind: "message",
                     message: {
                       id: "assistant-1",
-                      body: "工作区路径：`/Users/example/demo/output/imagegen/dancing-girl.png`"
+                      body: "工作区路径：[/Users/example/demo/output/imagegen/dancing-girl.png](/Users/example/demo/output/imagegen/dancing-girl.png)"
                     }
                   }
                 ],
@@ -1046,7 +1046,7 @@ describe("AgentTranscriptView", () => {
     });
   });
 
-  it("opens generated HTML paths from no-project session directories", () => {
+  it("opens explicit Markdown links from no-project session directories", () => {
     const onLinkAction = vi.fn();
     render(
       <AgentTranscriptView
@@ -1076,7 +1076,7 @@ describe("AgentTranscriptView", () => {
                 agentMessages: [
                   {
                     id: "assistant-1",
-                    body: "打开 `/Users/example/Documents/tutti/session-1/index.html`"
+                    body: "打开 [/Users/example/Documents/tutti/session-1/index.html](/Users/example/Documents/tutti/session-1/index.html)"
                   }
                 ],
                 agentItems: [
@@ -1084,7 +1084,7 @@ describe("AgentTranscriptView", () => {
                     kind: "message",
                     message: {
                       id: "assistant-1",
-                      body: "打开 `/Users/example/Documents/tutti/session-1/index.html`"
+                      body: "打开 [/Users/example/Documents/tutti/session-1/index.html](/Users/example/Documents/tutti/session-1/index.html)"
                     }
                   }
                 ],
