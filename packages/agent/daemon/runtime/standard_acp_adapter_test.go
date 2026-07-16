@@ -365,7 +365,7 @@ func TestCursorAdapterStartMapsPermissionTiersToACPModes(t *testing.T) {
 	t.Parallel()
 
 	for tier, wantMode := range map[string]string{
-		"read-only":   "plan",
+		"read-only":   "ask",
 		"agent":       "agent",
 		"full-access": "agent",
 	} {
@@ -867,7 +867,7 @@ func TestCursorACPModeID(t *testing.T) {
 	t.Parallel()
 
 	for mode, want := range map[string]string{
-		"read-only":   "plan",
+		"read-only":   "ask",
 		"agent":       "agent",
 		"full-access": "agent",
 		" agent ":     "agent",
@@ -943,6 +943,48 @@ func TestCursorAdapterApplySessionSettingsTogglesPlanMode(t *testing.T) {
 	}
 	if transport.conn.lastModeID() != "agent" {
 		t.Fatalf("mode id = %q, want agent", transport.conn.lastModeID())
+	}
+}
+
+func TestCursorAdapterReadOnlyReturnsFromPlanModeToAsk(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-read-only-plan-toggle")
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	session.PermissionModeID = cursorPermissionReadOnly
+	session.Settings = &SessionSettings{
+		PermissionModeID: cursorPermissionReadOnly,
+		PlanMode:         false,
+	}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if transport.conn.lastModeID() != "ask" {
+		t.Fatalf("initial mode id = %q, want ask", transport.conn.lastModeID())
+	}
+
+	session.ProviderSessionID = "cursor-session-read-only-plan-toggle"
+	planMode := true
+	session.Settings.PlanMode = planMode
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan on: %v", err)
+	}
+	if transport.conn.lastModeID() != "plan" {
+		t.Fatalf("plan mode id = %q, want plan", transport.conn.lastModeID())
+	}
+
+	planMode = false
+	session.Settings.PlanMode = planMode
+	if err := adapter.ApplySessionSettings(context.Background(), session, SessionSettingsPatch{
+		PlanMode: &planMode,
+	}); err != nil {
+		t.Fatalf("ApplySessionSettings plan off: %v", err)
+	}
+	if transport.conn.lastModeID() != "ask" {
+		t.Fatalf("restored mode id = %q, want ask", transport.conn.lastModeID())
 	}
 }
 

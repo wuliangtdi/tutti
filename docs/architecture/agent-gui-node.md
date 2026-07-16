@@ -234,6 +234,12 @@ consumer status therefore bridges a new activation to `working` only when that
 activation submitted initial content, then derives status from its first
 canonical turn. Empty new sessions become `idle` after confirmation. GUI
 projections must not patch this confirmation gap locally.
+Accepted submit intents are optimistic correlation records, not an independent
+busy source after canonical turn ownership moves on. Composer send/loading
+projections may treat an accepted submit as unconfirmed only while its accepted
+turn is still the session's active turn; a settled, cleared, or superseded
+active turn must let canonical session and turn lifecycle unlock the composer
+even if the pending intent record is waiting for later cleanup.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the
@@ -312,6 +318,12 @@ immediately, including host-provided name/artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
 state and must be cleared when the selected agent changes; provider-
 or target-scoped defaults may still provide the next settings.
+Provider permission tiers and provider workflow modes are separate contracts.
+A provider's read-only tier must map to its actual non-writing execution mode,
+not to a planning workflow that can advance into implementation. For Cursor,
+the durable `read-only` tier maps to ACP `ask`, while the independent
+`planMode` flag maps to ACP `plan`; leaving plan mode restores the runtime mode
+derived from the durable permission tier.
 Host feature switches that disable an agent for new conversations should keep
 the entry present with a non-ready `availability.status` when another surface
 still needs to show it. Filter the entry out only for surfaces that should

@@ -14,7 +14,7 @@ package agentruntime
 // Permissions are exposed as approval tiers (matching the Codex/Claude Code
 // experience) rather than Cursor's raw agent/plan/ask execution modes:
 //
-//	read-only   -> ACP session mode "plan" (reads and proposes, no changes)
+//	read-only   -> ACP session mode "ask" (read/search tools only, no changes)
 //	agent       -> ACP session mode "agent"; Cursor sends
 //	               session/request_permission per risky action (default)
 //	full-access -> ACP session mode "agent"; the client auto-approves every
@@ -58,7 +58,7 @@ const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
 func cursorACPModeID(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case cursorPermissionReadOnly:
-		return "plan"
+		return "ask"
 	case cursorPermissionAgent, cursorPermissionFullAccess:
 		return "agent"
 	default:
