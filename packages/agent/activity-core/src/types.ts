@@ -6,9 +6,17 @@ export type AgentActivityDisplayStatus =
   | "canceled"
   | "failed";
 
+export type AgentActivitySessionKind = "root" | "child";
+
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
+  kind: AgentActivitySessionKind;
+  rootAgentSessionId: string | null;
+  rootTurnId: string | null;
+  parentAgentSessionId: string | null;
+  parentTurnId: string | null;
+  parentToolCallId: string | null;
   agentTargetId: string | null;
   provider: string;
   providerSessionId: string | null;
@@ -26,7 +34,6 @@ export interface AgentActivitySession {
   permissionConfig: AgentActivitySessionPermissionConfig;
   capabilities: AgentActivitySessionCapabilities | null;
   usage: AgentActivitySessionUsage | null;
-  backgroundAgents: AgentActivitySessionBackgroundAgents | null;
   goal: AgentActivitySessionGoal | null;
   imported: boolean;
   visible: boolean;
@@ -633,23 +640,6 @@ export interface AgentActivitySessionCapabilities {
   permissionModeChangeDeferred: boolean;
   review: boolean;
   resumeRunningTurn: boolean;
-}
-
-export interface AgentActivitySessionBackgroundAgentItem {
-  taskId: string;
-  description: string;
-  status: "running" | "completed" | "failed" | "canceled";
-  summary?: string;
-  lastToolName?: string;
-  taskType?: string;
-  startedAtUnixMs?: number;
-  updatedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-}
-
-export interface AgentActivitySessionBackgroundAgents {
-  count: number;
-  items: AgentActivitySessionBackgroundAgentItem[];
 }
 
 export interface AgentActivitySessionGoal {

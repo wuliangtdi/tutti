@@ -10904,7 +10904,7 @@ type GetWorkspaceAgentSessionResponseObject interface {
 	VisitGetWorkspaceAgentSessionResponse(w http.ResponseWriter) error
 }
 
-type GetWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionResponse
+type GetWorkspaceAgentSession200JSONResponse WorkspaceAgentSessionDetailResponse
 
 func (response GetWorkspaceAgentSession200JSONResponse) VisitGetWorkspaceAgentSessionResponse(w http.ResponseWriter) error {
 

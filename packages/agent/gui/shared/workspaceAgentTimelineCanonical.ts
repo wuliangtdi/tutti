@@ -22,7 +22,6 @@ import {
   thinkingStatusKind,
   userMessageProjectionKey
 } from "./workspaceAgentTimelineMessageHelpers";
-import { timelineItemOwnerThreadId } from "./agentConversation/projection/subAgentTimelinePartition";
 import {
   compareToolCallsAscending,
   delegatedToolStepFromCall,
@@ -60,13 +59,6 @@ export function buildCanonicalWorkspaceAgentDetailView({
     suppressedUnavailableAskUserQuestionCallIds(sortedTimelineItems);
 
   for (const item of sortedTimelineItems) {
-    // Sub-agent child-thread rows (payload.ownerThreadId) belong to the
-    // delegated thread, not the parent transcript. They surface through the
-    // parent's collab tool card lanes instead of interleaving here — even
-    // when no matching card has arrived yet.
-    if (timelineItemOwnerThreadId(item)) {
-      continue;
-    }
     const role = messageRole(item);
     const body = messageBody(item);
     const explicitTurnId = item.turnId?.trim();
@@ -166,7 +158,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     if (role === "agent" && body) {
       const payload = normalizedPayload(item.payload);
       const visibleError = visibleErrorFromPayload(payload);
-      const systemNotice = systemNoticeFromPayload(payload);
+      const systemNotice = systemNoticeFromPayload(payload, item);
       const status = firstPresentString(
         item.status,
         stringRecordValue(payload, "status")

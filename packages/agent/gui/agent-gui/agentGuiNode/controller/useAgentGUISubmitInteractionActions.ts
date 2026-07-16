@@ -55,6 +55,7 @@ import {
   reportAgentSubmitTraceDiagnostic,
   scheduleAgentSubmitTracePaint
 } from "./agentGuiController.reporting";
+import { resolveAgentGUIInteractionTarget } from "./agentGuiController.interactionHelpers";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -611,13 +612,14 @@ export function useAgentGUISubmitInteractionActions(
         planActionsRef.current.skip();
         return;
       }
-      const agentSessionId = activeConversationIdRef.current;
       const normalizedRequestId = input.requestId.trim();
       const normalizedOptionId = input.optionId?.trim() ?? "";
-      const turnId =
-        activeEnginePendingInteractions.find(
-          (interaction) => interaction.requestId === normalizedRequestId
-        )?.turnId ?? "";
+      const target = resolveAgentGUIInteractionTarget(
+        activeEnginePendingInteractions,
+        normalizedRequestId
+      );
+      const agentSessionId = target?.agentSessionId ?? "";
+      const turnId = target?.turnId ?? "";
       if (
         !agentSessionId ||
         !normalizedRequestId ||

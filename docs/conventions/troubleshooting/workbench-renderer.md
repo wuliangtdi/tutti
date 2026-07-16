@@ -455,6 +455,13 @@
   `engine -> selector -> projection -> controller -> section` chain. Separate
   real summary-field changes from reference-only array, object, or callback
   changes; a memoized leaf cannot contain churn created at the selector boundary.
+  When the stack starts in `setRef`, inspect Radix `asChild` composition before
+  changing business state. In particular, check whether Tooltip and Dropdown
+  triggers both clone the same DOM child and merge callback refs, or whether a
+  transient status row mounts a Tooltip trigger while its message changes.
+  Also reject Tooltip/Select nesting where `TooltipTrigger` directly wraps a
+  `SelectTrigger`; both primitives install a stateful Popper anchor on the same
+  button.
 - Root cause:
   React StrictMode can intentionally replay setup/cleanup in development, but a
   continuously increasing render count usually means a parent is passing a new
@@ -475,19 +482,32 @@
   selector/controller boundary; do not clone canonical arrays while assembling
   the view model. During Rail reconciliation, expose a stable lock reader so
   portaled menu actions can check current state without passing a changing
-  boolean through every section.
+  boolean through every section. For composed menu actions, attach the Tooltip
+  trigger to a stable wrapper and the Dropdown trigger to the actual
+  forwarded-ref button. Do not nest both `asChild` triggers onto the same
+  element: their ref callbacks can repeatedly detach and attach each other until
+  React aborts the renderer tree. For truncated, non-interactive status text,
+  prefer a native `title` on the text element; it preserves access to the full
+  message without introducing a stateful anchor ref during session transitions.
+  Select triggers should likewise keep their native `title` and must not be
+  wrapped by a second Tooltip trigger.
 - Validation:
   With why-did-you-render enabled, reproduce once and confirm the noisy
   component lists the expected prop or hook difference. Then disable the tool
   and run the affected renderer tests plus desktop typecheck. AgentGUI budget
   tests must dispatch a real engine update and assert the unrelated Rail subtree
   stays at zero renders; do not replace this with a manual view-model rerender
-  that reuses the Rail reference by construction.
+  that reuses the Rail reference by construction. Add a composition regression
+  test for shared Tooltip/Dropdown actions and manually create a new
+  conversation, since an empty-to-populated Rail transition can be the first
+  time the faulty trigger mounts.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
   [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
   [useAgentGUIConversationRailQuery.search.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.search.spec.tsx)
+  [AgentGUIConversationRailSection.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx)
+  [AgentSessionChrome.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentSessionChrome.tsx)
 
 ### Dense list panel stutters when mounted or resized
 

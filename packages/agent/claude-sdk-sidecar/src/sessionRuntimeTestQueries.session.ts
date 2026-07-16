@@ -166,6 +166,46 @@ export function fakeStatusOnlyCompactQuery(
   };
 }
 
+export function fakeFailedCompactQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      const firstPrompt = await prompt[Symbol.asyncIterator]().next();
+      const promptMessage = firstPrompt.value as SDKUserMessage & {
+        uuid?: string;
+      };
+      yield {
+        ...promptMessage,
+        uuid: promptMessage.uuid,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "status",
+        status: "compacting"
+      } as unknown as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "status",
+        status: null,
+        compact_result: "failed",
+        compact_error: "Not enough messages to compact."
+      } as unknown as SDKMessage;
+      yield consolidatedAssistant("assistant-compact-failed", "msg-compact", [
+        { type: "text", text: "Not enough messages to compact." }
+      ]);
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  } as AsyncIterable<SDKMessage>;
+}
+
 export function fakePermissionCheckQuery(
   prompt: AsyncIterable<SDKUserMessage>,
   options: ClaudeQueryOptions,

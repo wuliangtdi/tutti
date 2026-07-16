@@ -12,10 +12,9 @@ import {
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import {
-  attachSubAgentLanesToConversationVM,
-  buildSubAgentLanesByCallId,
-  partitionSubAgentTimelineItems
-} from "../../../shared/agentConversation/projection/subAgentTimelinePartition";
+  attachChildSessionLanesToConversationVM,
+  buildChildSessionLanesByParentToolCallId
+} from "../../../shared/agentConversation/projection/childSessionLanes";
 import {
   filterAgentGUIConversationSummaries,
   normalizeAgentGUIConversationFilter
@@ -33,7 +32,7 @@ import type {
   AgentActivitySnapshot,
   CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
-import { selectCanonicalAgentActivitySessions } from "@tutti-os/agent-activity-core";
+import { selectRootAgentActivitySessions } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/workspaceAgentSessionSortTime";
 import {
@@ -94,7 +93,7 @@ export function buildAgentGUIConversationSummaries({
 }: BuildAgentGUIConversationsInput): AgentGUIConversationSummary[] {
   const runtimeSnapshot = filterAgentGUIRuntimeSnapshot(snapshot);
   const sessionsById = new Map(
-    selectCanonicalAgentActivitySessions(runtimeSnapshot).map((session) => [
+    selectRootAgentActivitySessions(runtimeSnapshot).map((session) => [
       session.agentSessionId,
       session
     ])
@@ -230,11 +229,17 @@ export function buildAgentGUIConversationDetail({
 export function buildAgentGUIConversationModels({
   timelineItems,
   conversation,
+  childSessions = [],
+  childMessagesBySessionId = {},
   workspaceRoot = null,
   avoidGroupingEdits = false
 }: {
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
   conversation: AgentGUIConversationProjectionSource;
+  childSessions?: readonly AgentActivitySession[];
+  childMessagesBySessionId?: Readonly<
+    Record<string, readonly AgentActivityMessage[] | undefined>
+  >;
   workspaceRoot?: string | null;
   avoidGroupingEdits?: boolean;
 }): {
@@ -249,16 +254,17 @@ export function buildAgentGUIConversationModels({
   if (!detail) {
     return { conversation: null, detail: null };
   }
-  // Child-thread rows are excluded from the transcript by the canonical
-  // detail builder; here they are regrouped into live sub-agent lanes and
-  // attached to their collab spawn card so running sub-agents stay visible.
-  const subAgentLanesByCallId = buildSubAgentLanesByCallId(
-    partitionSubAgentTimelineItems(timelineItems)
-  );
+  const childSessionLanesByParentToolCallId =
+    buildChildSessionLanesByParentToolCallId({
+      rootSession: detail.session,
+      rootTimelineItems: timelineItems,
+      childSessions,
+      messagesBySessionId: childMessagesBySessionId
+    });
   return {
-    conversation: attachSubAgentLanesToConversationVM(
+    conversation: attachChildSessionLanesToConversationVM(
       projectAgentConversationVM(detail, { avoidGroupingEdits }),
-      subAgentLanesByCallId
+      childSessionLanesByParentToolCallId
     ),
     detail
   };
@@ -407,7 +413,7 @@ function filterAgentGUIRuntimeSnapshot(
 ): AgentActivitySnapshot {
   return {
     ...snapshot,
-    sessions: selectCanonicalAgentActivitySessions(snapshot).filter((session) =>
+    sessions: selectRootAgentActivitySessions(snapshot).filter((session) =>
       isAgentGUIRuntimeSession(session)
     )
   };

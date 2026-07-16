@@ -6,7 +6,9 @@ import { sidecarClaudeOptionsFromPayload } from "./options.ts";
 import {
   fakeDelegatedAssistantParentQuery,
   fakeDelegatedTaskQuery,
-  fakeRacedDelegatedTaskAliasQuery
+  fakeGuidedDelegatedContinuationQuery,
+  fakeRacedDelegatedTaskAliasQuery,
+  fakeTimedOutDelegatedTaskQuery
 } from "./sessionRuntimeTestQueries.delegated.ts";
 import {
   fakeConcurrentDelegatedTaskCreatedHookQuery,
@@ -275,6 +277,191 @@ test("delegated task continuation emits synthetic turn started", async () => {
         event.payload?.content === "Continuing after child agent."
     );
     assert.equal(continuation?.payload?.turnId, started?.payload?.turnId);
+
+    const taskNotificationObservedIndex = events.findIndex(
+      (event) =>
+        event.type === "sdk_lifecycle_observed" &&
+        event.payload?.sdkMessageType === "system" &&
+        event.payload?.sdkMessageSubtype === "task_notification"
+    );
+    const taskCompletedIndex = events.findIndex(
+      (event) => event.type === "task_completed"
+    );
+    const continuationObservedIndex = events.findIndex(
+      (event) =>
+        event.type === "sdk_lifecycle_observed" &&
+        event.payload?.sdkMessageType === "assistant" &&
+        event.payload?.rootContinuationCandidate === true
+    );
+    const syntheticStartedIndex = events.findIndex(
+      (event) => event.type === "turn_started"
+    );
+    assert.ok(taskNotificationObservedIndex >= 0);
+    assert.ok(taskCompletedIndex > taskNotificationObservedIndex);
+    assert.ok(syntheticStartedIndex > taskNotificationObservedIndex);
+    assert.ok(taskCompletedIndex > syntheticStartedIndex);
+    assert.ok(continuationObservedIndex > taskCompletedIndex);
+
+    const observed = events[taskNotificationObservedIndex]?.payload;
+    assert.equal(Object.hasOwn(observed ?? {}, "summary"), false);
+    assert.equal(Object.hasOwn(observed ?? {}, "content"), false);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("delegated continuation start timeout interrupts and closes its synthetic turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  let interrupts = 0;
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeTimedOutDelegatedTaskQuery(prompt, () => {
+          interrupts += 1;
+        }),
+      5
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const timedOut = events.find(
+      (event) =>
+        event.type === "turn_completed" &&
+        event.payload?.syntheticTimeout === true
+    );
+    assert.match(String(timedOut?.payload?.turnId ?? ""), /^synthetic-/);
+    assert.equal(
+      timedOut?.payload?.stopReason,
+      "background_agent_continuation_timeout"
+    );
+    assert.equal(interrupts, 1);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("cancel during delegated continuation wait disarms timeout", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  let interrupts = 0;
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) =>
+        fakeTimedOutDelegatedTaskQuery(prompt, () => {
+          interrupts += 1;
+        }),
+      100
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    await session.cancel();
+    await waitForEvent(events, "turn_canceled");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    const canceled = events.find(
+      (event) =>
+        event.type === "turn_canceled" &&
+        String(event.payload?.turnId ?? "").startsWith("synthetic-")
+    );
+    assert.ok(canceled);
+    assert.equal(
+      events.some((event) => event.payload?.syntheticTimeout === true),
+      false
+    );
+    assert.equal(interrupts, 1);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("guidance during delegated continuation wait stays on reserved synthetic turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeGuidedDelegatedContinuationQuery(prompt),
+      100
+    );
+
+    await session.start();
+    session.exec("turn-1", "delegate task");
+    await waitForEvent(events, "task_completed");
+    const reserved = events.find((event) => event.type === "turn_started");
+    session.guide("include the child result");
+    await waitForEvent(events, "assistant_completed");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.match(String(reserved?.payload?.turnId ?? ""), /^synthetic-/);
+    assert.equal(
+      events.filter((event) => event.type === "turn_started").length,
+      1
+    );
+    const assistant = events.find(
+      (event) =>
+        event.type === "assistant_completed" &&
+        event.payload?.content === "Guided continuation."
+    );
+    assert.equal(assistant?.payload?.turnId, reserved?.payload?.turnId);
+    const completed = events.find(
+      (event) =>
+        event.type === "turn_completed" &&
+        event.payload?.turnId === reserved?.payload?.turnId
+    );
+    assert.ok(completed);
   } finally {
     restoreSink();
   }

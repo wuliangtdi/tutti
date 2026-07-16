@@ -1,4 +1,7 @@
-import type { AgentActivitySession } from "@tutti-os/agent-activity-core";
+import type {
+  AgentActivityMessageSemantics,
+  AgentActivitySession
+} from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
 import type { WorkspaceAgentActivityCard } from "./workspaceAgentActivityListViewModel";
 import type { ToolCallStatusKind } from "./workspaceAgentToolCallDisplay";
@@ -23,6 +26,8 @@ export interface WorkspaceAgentSessionDetailMessage {
     noticeKind: string | null;
     severity: string | null;
     source?: string | null;
+    command?: AgentActivityMessageSemantics["noticeCommand"] | null;
+    commandStatus?: AgentActivityMessageSemantics["noticeCommandStatus"] | null;
     title: string | null;
     detail: string | null;
     retryable: boolean | null;

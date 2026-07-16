@@ -46,6 +46,14 @@ Current responsibilities:
 - load the selected workspace shell
 - receive the active `workspaceId`
 - provide the long-lived window that later feature work will build into
+- remain the only durable Workbench snapshot writer for that workspace
+
+The main process permits at most one OS workspace window per `workspaceId`.
+Repeated or concurrent open requests reuse the registered window and restore,
+show, and focus it instead of creating another renderer/repository. The window
+registry also rejects a second durable owner if a future caller bypasses the
+normal launch coordinator. Agent-only windows may still coexist because their
+Workbench snapshot repositories are read-seeded and window-local.
 
 The current renderer content is intentionally minimal. The shell exists so the startup and window model can stabilize before in-workspace features are added.
 
@@ -92,8 +100,8 @@ On macOS activation with no open windows, the app follows the same startup resol
 When a user opens a workspace from the dashboard:
 
 1. desktop asks `tuttid` to mark that workspace as opened
-2. desktop creates the preferred Agent-only or OS workspace window for that
-   workspace
+2. desktop creates the preferred Agent-only window, or reuses/creates the one
+   OS workspace window registered for that workspace
 3. desktop closes the dashboard window
 
 When a user creates a workspace from the dashboard:
@@ -129,6 +137,8 @@ window kind explicitly, so it does not depend on asynchronous preference-event
 delivery in the main process. Desktop waits until the replacement is ready
 before closing the source window. An absent preference resolves to OS mode;
 manual selections persist `true` for Agent mode and `false` for OS mode.
+If the requested OS window already exists, desktop reuses it and does not close
+that same window as the handoff owner.
 
 ## Current Renderer Shell Mapping
 
@@ -191,6 +201,23 @@ Agent-only shell, only the latest attempt whose App is still selected may report
 successful presentation; stale completions cannot claim success for a newer or
 cleared inline selection.
 
+Workspace file previews use the same ownership direction without sharing the
+App Center's attempt protocol. File Manager owns file activation, preview-kind
+resolution, system fallback, and opened-file reporting. A feature-owned file
+preview surface host routes the placement decision by workspace. The OS shell
+registers a presenter that launches the matching Workbench preview Node; the
+standalone Agent shell registers a presenter that opens the file through the
+desktop system host. Unsupported-preview notification policy belongs to that
+presenter registration, so disposing the Agent shell restores the default OS
+policy automatically. Registrations use identity-checked cleanup, preventing an
+old Shell effect cleanup from removing a newer presenter. A presentation started
+under one registration may still report success after that registration is
+replaced or disposed if its presenter eventually completes successfully. Unlike
+App Center preparation, it has no reversible pending attempt, and reporting
+failure would trigger a duplicate system fallback. When presentation fails, its
+fallback notification policy also comes from the registration that started the
+attempt, rather than a replacement registered while the attempt was in flight.
+
 The Agent-only contribution keeps the catalog and one app-specific Browser Node
 for every opened app mounted for the renderer lifetime. The back action clears
 only the selection, marks every retained Browser Node hidden, and reveals the
@@ -213,6 +240,19 @@ window with the draft bootstrap intent, while existing-session navigation
 reuses the current Agent-only window unless the caller explicitly requests a
 new one. Issue Manager launches open the Tasks sidebar and forward the standard
 issue activation so the embedded surface selects the requested issue and task.
+Issue Manager placement is selected through a workspace-scoped presenter
+coordinator rather than by mode checks in the request source. The OS shell
+registers a presenter that launches and activates the Workbench Node, while the
+standalone Agent shell registers a presenter that opens the Tasks sidebar
+inline. Presenter registrations use registration identity for cleanup, so an
+old shell disposer cannot remove a newer presenter, including when both
+registrations reuse the same presenter object.
+Other simple workspace launch coordinators keep their domain-specific request
+normalization and public handler APIs, but share the same private registration
+primitive for workspace key normalization, latest-registration routing, and
+identity-safe disposal. This applies to Browser, Files, Message Center,
+Workbench Node, and Group Chat routing without turning those distinct handlers
+into a generic Shell service.
 The OS Files floating window opens wide by default so its location, list, and
 detail columns begin at approximately 26%, 55%, and 19% of the content width;
 each splitter remains user-resizable within its minimum-content constraints.
@@ -262,4 +302,5 @@ The following are still intentionally deferred:
 - a dedicated settings window
 - dashboard search
 - keeping dashboard open after launching a workspace
-- multi-window coordination beyond dashboard -> workspace
+- advanced multi-window coordination beyond the enforced per-workspace durable
+  Workbench owner

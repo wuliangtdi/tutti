@@ -204,6 +204,7 @@ export function createAgentFileMentionExtension(
         groupId: { default: "" },
         fileCount: { default: "" },
         customKind: { default: "" },
+        sourceLabel: { default: "" },
         preview: { default: "" }
       };
     },

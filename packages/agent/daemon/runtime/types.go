@@ -114,10 +114,18 @@ type ExecInput struct {
 }
 
 type CancelInput struct {
-	RoomID         string
+	RoomID             string
+	RootAgentSessionID string
+	Targets            []CancelTarget
+	Reason             string
+}
+
+// CancelTarget identifies one canonical root or child turn. The root session
+// selects the live provider runtime; targets select the durable entities that
+// the provider operation must stop.
+type CancelTarget struct {
 	AgentSessionID string
 	TurnID         string
-	Reason         string
 }
 
 type PermissionOptionInput struct {
@@ -129,13 +137,14 @@ type PermissionOptionInput struct {
 }
 
 type SubmitInteractiveInput struct {
-	RoomID         string
-	AgentSessionID string
-	TurnID         string
-	RequestID      string
-	Action         string
-	OptionID       string
-	Payload        map[string]any
+	RoomID             string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
 }
 
 type InteractiveDisposition string
@@ -340,9 +349,10 @@ type TurnLifecycle struct {
 }
 
 type CancelResult struct {
-	AgentSessionID string `json:"agentSessionId"`
-	Canceled       bool   `json:"canceled"`
-	TargetAbsent   bool   `json:"targetAbsent,omitempty"`
+	AgentSessionID   string         `json:"agentSessionId"`
+	Canceled         bool           `json:"canceled"`
+	TargetAbsent     bool           `json:"targetAbsent,omitempty"`
+	ConfirmedTargets []CancelTarget `json:"confirmedTargets,omitempty"`
 }
 
 type SubmitInteractiveResult struct {

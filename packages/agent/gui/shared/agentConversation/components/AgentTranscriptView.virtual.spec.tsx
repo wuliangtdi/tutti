@@ -430,6 +430,7 @@ function messageRow(
         id: `${overrides.messagePrefix ?? "message"}-${index}`,
         turnId: `turn-${index}`,
         body: overrides.body ?? `virtual transcript row ${index}`,
+        presentationKind: "content",
         occurredAtUnixMs: index
       }
     ],

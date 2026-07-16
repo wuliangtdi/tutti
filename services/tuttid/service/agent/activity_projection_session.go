@@ -10,6 +10,12 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 	return PersistedSession{
 		ID:                     strings.TrimSpace(session.ID),
 		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
+		Kind:                   strings.TrimSpace(session.Kind),
+		RootAgentSessionID:     strings.TrimSpace(session.RootAgentSessionID),
+		RootTurnID:             strings.TrimSpace(session.RootTurnID),
+		ParentAgentSessionID:   strings.TrimSpace(session.ParentAgentSessionID),
+		ParentTurnID:           strings.TrimSpace(session.ParentTurnID),
+		ParentToolCallID:       strings.TrimSpace(session.ParentToolCallID),
 		Origin:                 strings.TrimSpace(session.Origin),
 		UserID:                 strings.TrimSpace(session.UserID),
 		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),

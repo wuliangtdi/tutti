@@ -1,9 +1,16 @@
 import {
   selectLatestActivationForSession,
+  selectSessionMessages,
   selectWorkspaceAgentConsumerSession,
+  type AgentActivityMessage,
+  type AgentPromptContentBlock,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
 import { resolveAgentGuiSessionProviderIconUrl } from "../agentGuiSessionProviderIconUrls.ts";
+import {
+  resolveAgentGUIConversationBrowserFreeTitle,
+  resolveAgentGUIConversationTitleDisplayPrompt
+} from "../shared/agentConversationTitleProjection.ts";
 import type { AgentGUIAgent } from "../types.ts";
 import { isAgentGuiWorkbenchProvider } from "./providerCatalog.ts";
 import {
@@ -19,6 +26,7 @@ export interface AgentGuiWorkbenchConversationIdentity {
   agentTitle?: string | null;
   iconUrl?: string | null;
   title: string | null;
+  titleDisplayPrompt?: string | null;
 }
 
 export function resolveAgentGuiWorkbenchConversationIdentity(input: {
@@ -53,12 +61,27 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
       ) ?? null)
     : null;
   const provider = session?.provider ?? agent?.provider ?? null;
-  const title = resolveAgentGuiWorkbenchSessionTitle({
+  const resolvedTitle = resolveAgentGuiWorkbenchSessionTitle({
     agentSessionId,
     fallbackTitle: null,
     optimisticTitle,
     session
-  }).title;
+  });
+  const canonicalTitle = resolvedTitle.title;
+  const messages = selectSessionMessages(input.engineState, agentSessionId);
+  const titleDisplayPrompt = resolveAgentGuiWorkbenchTitleDisplayPrompt({
+    activation,
+    allowEmptyTitle: resolvedTitle.source === "optimistic",
+    messages,
+    title: canonicalTitle
+  });
+  // Keep browser context canonical in the message while omitting its tag from the visible header title.
+  const title = resolveAgentGUIConversationBrowserFreeTitle({
+    activation,
+    allowEmptyTitle: resolvedTitle.source === "optimistic",
+    messages,
+    title: canonicalTitle
+  });
   const agentTitle = resolveAgentGuiWorkbenchHeaderTitle({
     agentName: agent?.name,
     conversationTitle: title,
@@ -74,8 +97,23 @@ export function resolveAgentGuiWorkbenchConversationIdentity(input: {
   return {
     agentTitle,
     iconUrl,
-    title
+    title,
+    titleDisplayPrompt
   };
+}
+
+export function resolveAgentGuiWorkbenchTitleDisplayPrompt(input: {
+  activation?: {
+    content: readonly AgentPromptContentBlock[];
+    displayPrompt?: string;
+    mode: "existing" | "new";
+    status: string;
+  } | null;
+  allowEmptyTitle?: boolean;
+  messages: readonly AgentActivityMessage[];
+  title: string | null;
+}): string | null {
+  return resolveAgentGUIConversationTitleDisplayPrompt(input);
 }
 
 export function agentGuiWorkbenchConversationIdentitiesEqual(
@@ -88,6 +126,7 @@ export function agentGuiWorkbenchConversationIdentitiesEqual(
       right !== null &&
       left.agentTitle === right.agentTitle &&
       left.iconUrl === right.iconUrl &&
-      left.title === right.title)
+      left.title === right.title &&
+      left.titleDisplayPrompt === right.titleDisplayPrompt)
   );
 }

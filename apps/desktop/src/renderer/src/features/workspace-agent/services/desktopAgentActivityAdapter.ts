@@ -467,6 +467,12 @@ export function agentActivitySessionFromTuttidSession(
   return {
     workspaceId,
     agentSessionId: session.id,
+    kind: session.kind,
+    rootAgentSessionId: session.rootAgentSessionId,
+    rootTurnId: session.rootTurnId,
+    parentAgentSessionId: session.parentAgentSessionId,
+    parentTurnId: session.parentTurnId,
+    parentToolCallId: session.parentToolCallId,
     agentTargetId: session.agentTargetId ?? null,
     provider: session.provider,
     providerSessionId: session.providerSessionId ?? session.id,
@@ -484,9 +490,6 @@ export function agentActivitySessionFromTuttidSession(
       ? structuredClone(session.capabilities)
       : null,
     usage: session.usage ? structuredClone(session.usage) : null,
-    backgroundAgents: session.backgroundAgents
-      ? structuredClone(session.backgroundAgents)
-      : null,
     goal: session.goal ? structuredClone(session.goal) : null,
     imported: session.imported ?? false,
     visible: session.visible ?? true,

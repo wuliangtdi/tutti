@@ -422,6 +422,32 @@ func (s *Service) Get(ctx context.Context, workspaceID string, agentSessionID st
 	return s.get(ctx, workspaceID, agentSessionID, true)
 }
 
+func (s *Service) GetDetail(ctx context.Context, workspaceID string, agentSessionID string) (SessionDetail, error) {
+	session, err := s.Get(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return SessionDetail{}, err
+	}
+	detail := SessionDetail{Session: session, ChildSessions: []Session{}}
+	reader, ok := s.SessionReader.(ChildSessionReader)
+	if !ok {
+		return detail, nil
+	}
+	persistedChildren, err := reader.ListChildSessions(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return SessionDetail{}, err
+	}
+	children := make([]Session, 0, len(persistedChildren))
+	for _, persisted := range persistedChildren {
+		children = append(children, sessionFromPersisted(persisted, false))
+	}
+	children, err = s.withProtocolV2TurnStates(ctx, strings.TrimSpace(workspaceID), children)
+	if err != nil {
+		return SessionDetail{}, err
+	}
+	detail.ChildSessions = children
+	return detail, nil
+}
+
 func (s *Service) ReadAttachment(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string) (PromptAttachment, error) {
 	_ = ctx
 	workspaceID = strings.TrimSpace(workspaceID)
@@ -599,7 +625,7 @@ func (s *Service) cleanupRuntime(ctx context.Context, workspaceID string, agentS
 }
 
 func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, agentSessionID string, requestID string, input SubmitInteractiveInput) (Session, error) {
-	_, err := s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
+	route, err := s.resolveRuntimeControlRoute(ctx, strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID))
 	if err != nil {
 		return Session{}, err
 	}
@@ -609,6 +635,7 @@ func (s *Service) SubmitInteractive(ctx context.Context, workspaceID string, age
 		strings.TrimSpace(agentSessionID),
 		strings.TrimSpace(requestID),
 		input,
+		route.RootAgentSessionID,
 	)
 	if err != nil {
 		return Session{}, err

@@ -1372,28 +1372,31 @@ test("desktop rich text @ service emits enriched app + session meta when enrichm
       },
       async getWorkspaceAgentSession(workspaceId: string, id: string) {
         return {
-          activeTurnId: "turn-1",
-          latestTurnInteractions: [],
-          pendingInteractions: [],
-          activeTurn: {
-            agentSessionId: id,
-            completedCommand: null,
-            error: null,
-            fileChanges: null,
-            outcome: null,
-            phase: "running",
-            settledAtUnixMs: null,
-            startedAtUnixMs: 1780272000000,
-            turnId: "turn-1",
-            updatedAtUnixMs: 1780272000000
+          session: {
+            activeTurnId: "turn-1",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            activeTurn: {
+              agentSessionId: id,
+              completedCommand: null,
+              error: null,
+              fileChanges: null,
+              outcome: null,
+              phase: "running",
+              settledAtUnixMs: null,
+              startedAtUnixMs: 1780272000000,
+              turnId: "turn-1",
+              updatedAtUnixMs: 1780272000000
+            },
+            createdAtUnixMs: 1780272000000,
+            cwd: null,
+            id,
+            provider: "codex",
+            title: "Codex run",
+            updatedAtUnixMs: 1780272000000,
+            workspaceId
           },
-          createdAtUnixMs: 1780272000000,
-          cwd: null,
-          id,
-          provider: "codex",
-          title: "Codex run",
-          updatedAtUnixMs: 1780272000000,
-          workspaceId
+          childSessions: []
         };
       }
     } as unknown as TuttidClient,

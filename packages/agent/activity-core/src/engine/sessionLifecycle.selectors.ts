@@ -290,6 +290,14 @@ export function selectEngineSessionError(
 export function selectWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
+  return selectAllWorkspaceAgentConsumerSessions(state).filter(
+    (item) => item.session.kind === "root"
+  );
+}
+
+export function selectAllWorkspaceAgentConsumerSessions(
+  state: AgentSessionEngineState
+): readonly WorkspaceAgentConsumerSession[] {
   return Object.values(state.sessionLifecycle.sessionsById).map((session) => {
     const activeTurn = selectEngineActiveTurn(state, session.agentSessionId);
     const latestTurn = selectEngineLatestTurn(state, session.agentSessionId);

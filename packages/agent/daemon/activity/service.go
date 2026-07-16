@@ -503,6 +503,12 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessionStateUpdate) WorkspaceAgentStatePatch {
 	patch := WorkspaceAgentStatePatch{
 		AgentSessionID:        strings.TrimSpace(agentSessionID),
+		Kind:                  strings.TrimSpace(state.Kind),
+		RootAgentSessionID:    strings.TrimSpace(state.RootAgentSessionID),
+		RootTurnID:            strings.TrimSpace(state.RootTurnID),
+		ParentAgentSessionID:  strings.TrimSpace(state.ParentAgentSessionID),
+		ParentTurnID:          strings.TrimSpace(state.ParentTurnID),
+		ParentToolCallID:      strings.TrimSpace(state.ParentToolCallID),
 		AgentTargetID:         strings.TrimSpace(state.AgentTargetID),
 		DeviceID:              strings.TrimSpace(state.DeviceID),
 		Provider:              strings.TrimSpace(state.Provider),
@@ -518,6 +524,7 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 		LifecycleStatus:       strings.TrimSpace(state.LifecycleStatus),
 		CurrentPhase:          strings.TrimSpace(state.CurrentPhase),
 		OccurredAtUnixMS:      state.OccurredAtUnixMS,
+		RootProviderTurn:      cloneRootProviderTurnTransition(state.RootProviderTurn),
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{

@@ -35,53 +35,19 @@ func (s *Store) DeleteSession(
 	}()
 
 	now := unixMs(time.Now().UTC())
-	result, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_sessions
-SET deleted_at_unix_ms = ?,
-    updated_at_unix_ms = ?,
-    active_turn_id = NULL
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, now, now, workspaceID, agentSessionID)
-	if err != nil {
-		return false, fmt.Errorf("delete workspace agent session: %w", err)
-	}
-	removed, err := rowsWereAffected(result, "delete workspace agent session")
+	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, []string{agentSessionID})
 	if err != nil {
 		return false, err
 	}
-	if removed {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_submit_claims WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-			return false, fmt.Errorf("delete workspace agent submit claims: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_messages
-SET deleted_at_unix_ms = ?,
-    updated_at_unix_ms = ?,
-    turn_id = NULL
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, now, now, workspaceID, agentSessionID); err != nil {
-			return false, fmt.Errorf("delete workspace agent session messages: %w", err)
-		}
-		// Turn and interaction rows are hard-deleted with the session so
-		// startup reconciliation never settles turns of deleted sessions.
-		if _, err := tx.ExecContext(ctx, `
-DELETE FROM workspace_agent_interactions
-WHERE workspace_id = ? AND agent_session_id = ?
-`, workspaceID, agentSessionID); err != nil {
-			return false, fmt.Errorf("delete workspace agent session interactions: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-DELETE FROM workspace_agent_turns
-WHERE workspace_id = ? AND agent_session_id = ?
-`, workspaceID, agentSessionID); err != nil {
-			return false, fmt.Errorf("delete workspace agent session turns: %w", err)
-		}
+	_, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	if err != nil {
+		return false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit delete workspace agent session: %w", err)
 	}
 	committed = true
-	return removed, nil
+	return removedSessions > 0, nil
 }
 
 func (s *Store) DeleteSessionsBatch(
@@ -120,70 +86,22 @@ func (s *Store) DeleteSessionsBatch(
 		}
 	}()
 
-	removedSessionIDs := make([]string, 0, len(sessionIDs))
-	for _, agentSessionID := range sessionIDs {
-		var exists bool
-		if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS(
-  SELECT 1
-  FROM workspace_agent_sessions
-  WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-)
-`, workspaceID, agentSessionID).Scan(&exists); err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("resolve workspace agent session batch member: %w", err)
-		}
-		if exists {
-			removedSessionIDs = append(removedSessionIDs, agentSessionID)
-		}
+	removedSessionIDs, err := expandSessionTreeIDsTx(ctx, tx, workspaceID, sessionIDs)
+	if err != nil {
+		return DeleteSessionsBatchResult{}, err
 	}
 	now := unixMs(time.Now().UTC())
-	removedMessages := int64(0)
-	for _, agentSessionID := range removedSessionIDs {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_submit_claims WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch submit claims: %w", err)
-		}
-		messageResult, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_messages
-SET deleted_at_unix_ms = ?,
-    updated_at_unix_ms = ?,
-    turn_id = NULL
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, now, now, workspaceID, agentSessionID)
-		if err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch messages: %w", err)
-		}
-		messageCount, err := messageResult.RowsAffected()
-		if err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch messages rows affected: %w", err)
-		}
-		removedMessages += messageCount
-		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_interactions WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch interactions: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM workspace_agent_turns WHERE workspace_id = ? AND agent_session_id = ?`, workspaceID, agentSessionID); err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch turns: %w", err)
-		}
-		sessionResult, err := tx.ExecContext(ctx, `
-UPDATE workspace_agent_sessions
-SET deleted_at_unix_ms = ?,
-    updated_at_unix_ms = ?,
-    active_turn_id = NULL
-WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
-`, now, now, workspaceID, agentSessionID)
-		if err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch member: %w", err)
-		}
-		if _, err := sessionResult.RowsAffected(); err != nil {
-			return DeleteSessionsBatchResult{}, fmt.Errorf("delete workspace agent sessions batch rows affected: %w", err)
-		}
+	removedMessages, removedSessions, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, removedSessionIDs, now)
+	if err != nil {
+		return DeleteSessionsBatchResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return DeleteSessionsBatchResult{}, fmt.Errorf("commit delete workspace agent sessions batch: %w", err)
 	}
 	committed = true
 	return DeleteSessionsBatchResult{
-		RemovedMessages:   int(removedMessages),
-		RemovedSessions:   len(removedSessionIDs),
+		RemovedMessages:   removedMessages,
+		RemovedSessions:   removedSessions,
 		RemovedSessionIDs: removedSessionIDs,
 	}, nil
 }

@@ -112,8 +112,6 @@ export function useAgentGUIComposerCapabilities(
   );
 
   return {
-    backgroundAgentCount:
-      input.activeEngineSession?.backgroundAgents?.count ?? 0,
     compactSupported:
       sessionCapabilities?.compact ??
       resolveAgentActivityCapability("compact", {

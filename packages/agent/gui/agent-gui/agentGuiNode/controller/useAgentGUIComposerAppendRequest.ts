@@ -1,5 +1,6 @@
 import {
   agentComposerDraftFiles,
+  agentComposerDraftPrompt,
   emptyAgentComposerDraft,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -9,9 +10,31 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 
-export interface AgentGUIComposerAppendRequest {
-  files: readonly AgentComposerDraftFile[];
-  sequence: number;
+export type AgentGUIComposerAppendRequest =
+  | {
+      files: readonly AgentComposerDraftFile[];
+      prompt?: string;
+      sequence: number;
+    }
+  | {
+      files?: never;
+      prompt: string;
+      sequence: number;
+    };
+
+export function appendAgentGUIComposerPrompt(
+  draft: AgentComposerDraft,
+  incomingPrompt: string
+): AgentComposerDraft {
+  const currentPrompt = agentComposerDraftPrompt(draft);
+  const normalizedPrompt = incomingPrompt.trim();
+  if (!normalizedPrompt || currentPrompt.includes(normalizedPrompt)) {
+    return draft;
+  }
+  const separator = currentPrompt && !/\s$/u.test(currentPrompt) ? " " : "";
+  return updateAgentComposerDraft(draft, {
+    prompt: `${currentPrompt}${separator}${normalizedPrompt} `
+  });
 }
 
 export function appendAgentGUIComposerFiles(
@@ -54,7 +77,10 @@ export function resolveAgentGUIComposerAppendRequest(input: {
   const currentDraft = draftByScopeKey[draftKey] ?? emptyAgentComposerDraft();
   return {
     draftKey,
-    nextDraft: appendAgentGUIComposerFiles(currentDraft, request.files),
+    nextDraft: appendAgentGUIComposerFiles(
+      appendAgentGUIComposerPrompt(currentDraft, request.prompt ?? ""),
+      request.files ?? []
+    ),
     sequence: request.sequence
   };
 }

@@ -5,6 +5,7 @@ import type { AgentConversationPromptVM } from "../../../shared/agentConversatio
 import type { AgentAskUserQuestionVM } from "../../../shared/agentConversation/contracts/agentAskUserQuestionItemVM";
 import type {
   AgentGUIConversationTitleFallback,
+  AgentGUIConversationTitleLeadingMentionKind,
   AgentGUIResolvedProvider
 } from "../../../shared/agentConversationTitleProjection.ts";
 import type {
@@ -37,6 +38,7 @@ export interface AgentGUIConversationSummary {
   provider: AgentGUIResolvedProvider;
   resumable?: boolean;
   title: string;
+  titleLeadingMentionKind?: AgentGUIConversationTitleLeadingMentionKind | null;
   titleFallback?: AgentGUIConversationTitleFallback;
   status: AgentGUIConversationStatus;
   cwd: string;
@@ -59,6 +61,7 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "agentTargetId"
   | "provider"
   | "title"
+  | "titleLeadingMentionKind"
   | "titleFallback"
   | "status"
   | "cwd"

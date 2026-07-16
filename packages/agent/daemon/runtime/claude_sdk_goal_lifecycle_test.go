@@ -40,11 +40,9 @@ func claudeSDKSnapshotForEvent(t *testing.T, events []activityshared.Event, even
 	return activityshared.TurnLifecycleSnapshot{}
 }
 
-// The adapter must publish adapter-origin lifecycle snapshots at every turn
-// transition it emits, with a per-session monotonic seq, so the session flips
-// to snapshot-authority mode and never recomputes lifecycle from discrete
-// events (ADR 0008 Phase B).
-func TestClaudeSDKAdapterStampsLifecycleSnapshots(t *testing.T) {
+// Interaction transitions still carry adapter snapshots, while SDK provider
+// completion must not stamp a settled canonical root lifecycle.
+func TestClaudeSDKAdapterKeepsCanonicalLifecycleLiveAtProviderCompletion(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
@@ -93,11 +91,14 @@ func TestClaudeSDKAdapterStampsLifecycleSnapshots(t *testing.T) {
 		Type:    "turn_completed",
 		Payload: map[string]any{"turnId": "turn-1", "stopReason": "end_turn"},
 	})
-	settled := claudeSDKSnapshotForEvent(t, emitted, activityshared.EventTurnCompleted)
-	if settled.Phase != string(activityshared.TurnPhaseSettled) ||
-		settled.Outcome != string(activityshared.TurnOutcomeCompleted) ||
-		settled.ActiveTurnID != "" || settled.Seq <= running.Seq {
-		t.Fatalf("settled snapshot = %#v", settled)
+	providerCompleted := activityEventsWithType(emitted, activityshared.EventRootProviderTurnCompleted)
+	if len(providerCompleted) != 1 || providerCompleted[0].Payload.TurnID != "turn-1" ||
+		providerCompleted[0].Payload.ProviderTurnID != "turn-1" ||
+		providerCompleted[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCompleted) {
+		t.Fatalf("provider completion = %#v", providerCompleted)
+	}
+	if _, ok := activityshared.TurnLifecycleSnapshotFromEvent(providerCompleted[0]); ok {
+		t.Fatalf("provider completion must not settle canonical lifecycle: %#v", providerCompleted[0])
 	}
 	select {
 	case result := <-waiter.done:
@@ -109,13 +110,12 @@ func TestClaudeSDKAdapterStampsLifecycleSnapshots(t *testing.T) {
 	}
 }
 
-// Cancel on a live turn synthesizes a stamped terminal transition and
-// forwards the cancel to the sidecar.
-func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
+// Cancel forwards the request but waits for the SDK's terminal confirmation.
+func TestClaudeSDKCancelLiveTurnWaitsForProviderTerminal(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	// The live turn is identified by the adapter's own registry, not by the
@@ -127,13 +127,8 @@ func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	// turn.canceled folds into turn.completed with an interrupted outcome at
-	// event construction.
-	snapshot := claudeSDKSnapshotForEvent(t, events, activityshared.EventTurnCompleted)
-	if snapshot.Phase != string(activityshared.TurnPhaseSettled) ||
-		snapshot.Outcome != string(activityshared.TurnOutcomeInterrupted) ||
-		snapshot.ActiveTurnID != "" {
-		t.Fatalf("cancel snapshot = %#v", snapshot)
+	if len(events) != 0 {
+		t.Fatalf("cancel events = %#v, want no unconfirmed terminal", events)
 	}
 	sent := conn.sentRequests()
 	if len(sent) != 1 || sent[0].Type != "cancel" {
@@ -142,16 +137,15 @@ func TestClaudeSDKCancelLiveTurnEmitsStampedTerminal(t *testing.T) {
 }
 
 // The controller calls adapter.Cancel(ctx, session, reason) — the third argument
-// is the cancel reason ("user"), not a turnID. Cancel must stamp the interrupted
-// terminal for the real live turnID taken from its own registry, never for the
-// reason string, and must leave the waiter registered so the sidecar's own
+// is the cancel reason ("user"), not a turnID. Cancel must not stamp either
+// value as a terminal, and must leave the waiter registered so the sidecar's own
 // turn_canceled can still settle it (removing it would break /goal clear and
 // drop the natural settle).
 func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
@@ -162,17 +156,13 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	var canceledTurnIDs []string
 	for _, event := range events {
-		if event.Type == activityshared.EventTurnCompleted {
-			canceledTurnIDs = append(canceledTurnIDs, event.Payload.TurnID)
-		}
 		if event.Payload.TurnID == "user" {
 			t.Fatalf("Cancel stamped a terminal for the reason string as a turnID: %#v", event)
 		}
 	}
-	if len(canceledTurnIDs) != 1 || canceledTurnIDs[0] != "turn-live" {
-		t.Fatalf("canceled turn ids = %#v, want [turn-live]", canceledTurnIDs)
+	if len(events) != 0 {
+		t.Fatalf("cancel events = %#v, want no unconfirmed terminal", events)
 	}
 	// The waiter must survive so the sidecar's natural turn_canceled still settles
 	// it (the /goal clear contract; the controller separately cancels the turn
@@ -188,7 +178,7 @@ func TestClaudeSDKCancelAfterSettleIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
-	conn := &recordingClaudeSDKConnection{}
+	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-1", nil)
@@ -356,6 +346,8 @@ func TestClaudeSDKExecGoalControl(t *testing.T) {
 		events, handled, err := adapter.ExecGoalControl(context.Background(), session, textPrompt("/goal clear"), "", "turn-goal")
 		results <- goalExecResult{events, handled, err}
 	}()
+	cancelRequest := waitForClaudeSDKSentRequest(t, conn, "cancel")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: cancelRequest.ID, Type: "ok"})
 	clearRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal clear")
 	conn.pushEvent(claudeSDKSidecarEvent{ID: clearRequest.ID, Type: "ok"})
 	result := <-results
@@ -381,9 +373,8 @@ func TestClaudeSDKExecGoalControl(t *testing.T) {
 	// settles once the goal is met — a queued clear would never run while
 	// the goal loop keeps working.
 	assertClaudeSDKCancelBeforeGoalExec(t, conn.sentRequests(), "/goal clear")
-	interrupted := claudeSDKSnapshotForEvent(t, events, activityshared.EventTurnCompleted)
-	if interrupted.Outcome != string(activityshared.TurnOutcomeInterrupted) {
-		t.Fatalf("interrupt snapshot = %#v", interrupted)
+	if terminals := activityEventsWithType(events, activityshared.EventTurnCompleted); len(terminals) != 0 {
+		t.Fatalf("goal clear emitted unconfirmed canonical terminal: %#v", terminals)
 	}
 	// The waiter still belongs to the sidecar's natural turn_canceled settle;
 	// the synthetic terminal must not force-remove it.
@@ -470,6 +461,8 @@ func TestClaudeSDKGoalResetClearsWithoutArming(t *testing.T) {
 		_, handled, err := adapter.ExecGoalControl(context.Background(), session, textPrompt("/goal reset"), "", "turn-goal")
 		results <- goalExecResult{handled, err}
 	}()
+	cancelRequest := waitForClaudeSDKSentRequest(t, conn, "cancel")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: cancelRequest.ID, Type: "ok"})
 	request := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal reset")
 	conn.pushEvent(claudeSDKSidecarEvent{ID: request.ID, Type: "ok"})
 	result := <-results
@@ -506,6 +499,8 @@ func TestClaudeSDKGoalControlClearInterruptsLiveTurn(t *testing.T) {
 		events, _, err := adapter.GoalControl(context.Background(), session, GoalControlClear, "")
 		results <- controlResult{events, err}
 	}()
+	cancelRequest := waitForClaudeSDKSentRequest(t, conn, "cancel")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: cancelRequest.ID, Type: "ok"})
 	clearRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal clear")
 	conn.pushEvent(claudeSDKSidecarEvent{ID: clearRequest.ID, Type: "ok"})
 	result := <-results
@@ -513,16 +508,16 @@ func TestClaudeSDKGoalControlClearInterruptsLiveTurn(t *testing.T) {
 		t.Fatalf("GoalControl clear: %v", result.err)
 	}
 	assertClaudeSDKCancelBeforeGoalExec(t, conn.sentRequests(), "/goal clear")
-	interrupted := claudeSDKSnapshotForEvent(t, result.events, activityshared.EventTurnCompleted)
-	if interrupted.Outcome != string(activityshared.TurnOutcomeInterrupted) {
-		t.Fatalf("interrupt snapshot = %#v", interrupted)
+	if terminals := activityEventsWithType(result.events, activityshared.EventTurnCompleted); len(terminals) != 0 {
+		t.Fatalf("goal clear emitted unconfirmed canonical terminal: %#v", terminals)
 	}
 }
 
 // Claude Code emits no goal_status attachment on achievement: the goal loop
-// holds the turn open via Stop-hook feedback until the condition is met, so
-// a normally completed turn IS the achievement signal and must flip the
-// mirror to complete (the user-visible "goal done" state).
+// holds the provider turn open via Stop-hook feedback until the condition is
+// met, so a normally completed provider turn flips the provider-native goal
+// mirror to complete. Neither fact is a canonical root-turn terminal; tuttid
+// may still keep that root turn waiting for provider-native children.
 func TestClaudeSDKGoalCompletesWhenTurnSettles(t *testing.T) {
 	t.Parallel()
 
@@ -537,6 +532,13 @@ func TestClaudeSDKGoalCompletesWhenTurnSettles(t *testing.T) {
 	})
 	if err != nil || !terminal {
 		t.Fatalf("turn_completed terminal=%v err=%v", terminal, err)
+	}
+	providerCompleted := activityEventsWithType(events, activityshared.EventRootProviderTurnCompleted)
+	if len(providerCompleted) != 1 || providerCompleted[0].Payload.TurnID != "turn-goal" {
+		t.Fatalf("root provider completion = %#v", providerCompleted)
+	}
+	if canonicalCompleted := activityEventsWithType(events, activityshared.EventTurnCompleted); len(canonicalCompleted) != 0 {
+		t.Fatalf("provider and goal completion emitted canonical root completion: %#v", canonicalCompleted)
 	}
 	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_update")
 	if goal := adapter.localGoal(adapterSession); goal["status"] != "complete" {

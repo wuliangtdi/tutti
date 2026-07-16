@@ -183,6 +183,12 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		currentPhase = deriveCurrentPhaseFromEntityPatches(patch.Entities)
 	}
 	out := WorkspaceAgentSessionStateUpdate{
+		Kind:                  strings.TrimSpace(patch.Kind),
+		RootAgentSessionID:    strings.TrimSpace(patch.RootAgentSessionID),
+		RootTurnID:            strings.TrimSpace(patch.RootTurnID),
+		ParentAgentSessionID:  strings.TrimSpace(patch.ParentAgentSessionID),
+		ParentTurnID:          strings.TrimSpace(patch.ParentTurnID),
+		ParentToolCallID:      strings.TrimSpace(patch.ParentToolCallID),
 		AgentTargetID:         strings.TrimSpace(patch.AgentTargetID),
 		DeviceID:              strings.TrimSpace(patch.DeviceID),
 		Provider:              strings.TrimSpace(patch.Provider),
@@ -199,6 +205,7 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		CurrentPhase:          currentPhase,
 		LastError:             strings.TrimSpace(patch.LastError),
 		OccurredAtUnixMS:      patch.OccurredAtUnixMS,
+		RootProviderTurn:      cloneRootProviderTurnTransition(patch.RootProviderTurn),
 	}
 	if patch.Turn != nil {
 		out.Turn = &WorkspaceAgentTurnStateUpdate{
@@ -215,6 +222,15 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 		}
 	}
 	return out
+}
+
+func cloneRootProviderTurnTransition(value *WorkspaceAgentRootProviderTurnTransition) *WorkspaceAgentRootProviderTurnTransition {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.CompletedCommand = cloneCompletedCommand(value.CompletedCommand)
+	return &cloned
 }
 
 func cloneMessageSemantics(value *WorkspaceAgentMessageSemantics) *WorkspaceAgentMessageSemantics {

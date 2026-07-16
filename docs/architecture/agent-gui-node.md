@@ -234,6 +234,12 @@ consumer status therefore bridges a new activation to `working` only when that
 activation submitted initial content, then derives status from its first
 canonical turn. Empty new sessions become `idle` after confirmation. GUI
 projections must not patch this confirmation gap locally.
+Accepted submit intents are optimistic correlation records, not an independent
+busy source after canonical turn ownership moves on. Composer send/loading
+projections may treat an accepted submit as unconfirmed only while its accepted
+turn is still the session's active turn; a settled, cleared, or superseded
+active turn must let canonical session and turn lifecycle unlock the composer
+even if the pending intent record is waiting for later cleanup.
 
 AgentGuiNode may expose agent selection in multiple UI-local entry points,
 including the conversation rail agent grid and the agent select next to the
@@ -312,6 +318,12 @@ immediately, including host-provided name/artwork, model options,
 and permission modes. Generic home composer overrides are single-target draft
 state and must be cleared when the selected agent changes; provider-
 or target-scoped defaults may still provide the next settings.
+Provider permission tiers and provider workflow modes are separate contracts.
+A provider's read-only tier must map to its actual non-writing execution mode,
+not to a planning workflow that can advance into implementation. For Cursor,
+the durable `read-only` tier maps to ACP `ask`, while the independent
+`planMode` flag maps to ACP `plan`; leaving plan mode restores the runtime mode
+derived from the durable permission tier.
 Host feature switches that disable an agent for new conversations should keep
 the entry present with a non-ready `availability.status` when another surface
 still needs to show it. Filter the entry out only for surfaces that should
@@ -330,6 +342,17 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+Providers whose model catalog exists only after runtime session bootstrap must
+declare hidden live-model probing and its cache scope in their provider
+descriptor. The daemon may
+start an invisible, no-prompt discovery session, cache the advertised catalog,
+and clean up that session after discovery so a first-time empty composer can
+choose a non-default model before creating a visible conversation. When visible
+conversation creation settles, AgentGUI must force one target-scoped options
+refresh: an earlier selected-model-only bootstrap response must not stay
+valid merely because its request signature matches. This refresh goes through
+`AgentActivityRuntime`; AgentGUI must not recover the catalog by reading private
+session runtime context.
 When a model catalog advertises model-specific reasoning profiles, the composer
 must derive the reasoning options from the currently presented model and
 re-resolve an unsupported prior effort to that model's advertised default.
@@ -715,6 +738,15 @@ so back, forward, reload, address entry, external-open, and overflow actions use
 the same controller and runtime state as the webview. The Terminal tray's close
 control only collapses the tray; it
 must not terminate or unmount the active terminal session.
+
+The standalone Agent renderer is not a durable Workbench snapshot writer. Its
+`view=agent` composition root may read the workspace snapshot once to seed
+product chrome such as wallpaper, but its repository is window-local after
+that read: layout, stack, wallpaper, and onboarding saves update only that
+window's memory and never call the workspace Workbench PUT endpoint. The OS
+workspace renderer remains the single durable snapshot writer for a workspace.
+This keeps the synthetic close-coordination host from accidentally becoming a
+second layout owner while standalone windows coexist with the main workspace.
 Electron main may create one of two native workspace shells. `OS` mode keeps
 the existing workspace window and its `ReadyWorkspaceWorkbench`
 desktop/window/dock surface, while `Agent` mode creates the frameless Agent
@@ -855,6 +887,29 @@ envelopes such as `rawInput`, `rawOutput`, and output metadata are projected int
 the canonical tool payload consumed by shared renderers. Agent GUI may normalize
 historical persisted envelopes for display compatibility, but it must not add
 provider-specific rendering branches.
+
+Provider command lifecycle banners, including context compaction, are canonical
+`agent_system_notice` messages rather than ordinary assistant text. One stable
+message ID carries the lifecycle from `running` to `completed`, `failed`, or
+`canceled`, with `noticeCommand` and `noticeCommandStatus` as the presentation
+contract. Terminal selection for that stable lifecycle is first-write-wins: an
+adapter records an explicit or synthesized terminal state atomically and ignores
+late provider terminal updates rather than rewriting an already published
+outcome. The canonical message `semantics` field is authoritative; duplicated
+payload fields are a compatibility fallback for historical timeline data. Agent
+GUI maps the context-compaction lifecycle through one pure presentation resolver:
+active compaction becomes `specific-progress`, while terminal compaction notices
+become `turn-boundary`. Generic processing and transcript-divider layout consume
+those roles instead of matching the provider, command name, or English copy.
+Shared command presentation policy does not belong in the provider registry;
+provider adapters only normalize their wire events into the canonical contract.
+Agent GUI keeps notices outside assistant-text coalescing. It may normalize
+historical `source=compact` messages and stable `compaction:` lifecycle records
+with exact canonical titles into that contract. Legacy title inference requires
+compact identity evidence; arbitrary notices with matching copy remain ordinary
+content. Agent GUI removes an immediately following assistant echo only when it
+exactly repeats the failed notice detail; distinct provider guidance remains
+visible.
 
 Conversation file links use the selected project root when one exists. For a
 no-project session, the durable session cwd is the file-resolution root. This
@@ -1062,36 +1117,20 @@ prompt", and explicit `null` means "clear the current prompt". Do not model it
 as a persisted workspace session field or as a pointer-only JSON field that
 cannot emit `null`.
 
-Claude background agents are session-level runtime state for both ACP and SDK
-adapters. Raw Claude `task_started`, `task_progress`, `task_notification`,
-`task_updated`, and SDK sidecar `task_*` events should update
-`runtimeContext.backgroundAgents` and emit activity timeline events, without
-forcing the parent session into a working lifecycle state. Composer wait copy
-such as "Waiting for 1 background agent to finish" must be derived from that
-structured runtime context. Do not infer background agent waits from terminal
-streaming state or from transcript text; persistent session readers can receive
-task progress after the active prompt call has returned.
+Provider-native work is represented by subordinate `WorkspaceAgentSession`
+entities, not by a summary inside root runtime context. The earliest Claude SDK
+`Task` tool-use event creates a child session and submitted child turn. Later
+`task_id` and `agent_id` values are provider aliases bound to that same child;
+they must never select another child by display order or by "only running"
+heuristics. Child messages, tools, and interactions retain the exact child
+session and child turn as their canonical owner.
 
-For Claude SDK background agents, treat the Agent tool call id
-(`parentToolUseId`) as the canonical background-agent key. SDK `task_id` and
-`agent_id` values are aliases that may arrive later or from hooks without a
-parent id, and `task_id` frequently carries the agent id, so aliases must be
-resolved against both maps. Do not bind any unscoped task event (`TaskCreated`,
-`TaskCompleted`, `task_started`, `task_progress`, `task_notification`) to "the
-only running" delegated task when its alias fails to resolve and another
-registered task already has a known alias; concurrent launches can otherwise
-attach one child task id to a different Agent tool call, fold two background
-agents into one runtime entry, and leave the composer wait count stale or
-cleared early. The daemon `backgroundAgents` map follows the same canonical
-rule: an update carrying an explicit parent tool call id may merge through
-weaker aliases only into an entry with an empty or identical recorded parent.
-Delegated tasks settle only on the child `result` message, the
-`task_notification` system message, or the `TaskCompleted` hook. Child
-assistant messages tagged with `parent_tool_use_id` stream while the child is
-still running and must not complete the task, and a trailing `task_progress`
-after settlement must not flip the task back to running; only a new
-`task_started` may restart it. Violating either rule makes the running
-background-agent count oscillate without new launches.
+AgentGUI receives every nested child session from the root session detail read
+and loads messages through each child's normal message endpoint. The workspace
+engine remains the single frontend entity store. Pure projection attaches a
+child lane to the delegation card whose call id equals the child's immutable
+`parentToolCallId`, then recurses through `parentAgentSessionId` for nested
+children. Lane status comes only from the child's canonical active/latest turn.
 
 Claude SDK manual `/compact` turns must publish a visible compact completion
 activity when the SDK emits only a `compact_boundary` system message. The
@@ -1100,17 +1139,19 @@ the user message or after the result settles; AgentGUI needs the sidecar to
 attach a durable `compact_completed` event to the compact command turn rather
 than only the currently active turn.
 
-When Claude resumes parent work after a background agent completes, that resumed
-work is a new synthetic turn for AgentGUI lifecycle purposes. The sidecar and
-runtime adapter must publish a turn-start lifecycle patch before transcript or
-tool updates for that synthetic turn; otherwise AgentGuiNode will correctly keep
-the composer idle because the authoritative runtime state is still settled.
-The same adapter path must also publish that synthetic turn's
-completed/failed/canceled terminal through the session event sink. Synthetic
-turns are not submitted through `Exec()`/`ExecAsync()`, so they have no turn
-waiter; dropping waiter-less terminals as "untracked orphans" leaves durable
-`activeTurn` stuck in `running` and AgentGUI keeps showing the processing row
-after the assistant content has already finished.
+When Claude resumes root work after a child completes, the SDK continuation is
+another provider turn attached to the same canonical root turn. The adapter
+publishes its provider start and terminal facts, while `services/tuttid` keeps
+the root turn active until that provider turn and every nested child turn are
+terminal. AgentGUI must not turn a synthetic provider id into another
+`WorkspaceAgentTurn`.
+
+Claude Goal status is presentation metadata, not a lifecycle authority. A
+complete Goal may coexist with a waiting canonical root and running child.
+AgentGUI derives its visible completion, composer availability, prompt queue,
+and new-turn eligibility only from the `services/tuttid` root turn; it must not
+unlock or create a turn because Goal became complete or because the Claude SDK
+root call returned.
 
 Do not persist the UI button state. A successful Undo only flips the local
 button to Reapply for the current render. If the page reloads, the source of
@@ -1275,6 +1316,21 @@ to engine entities. Do not keep a second summary cache or manually patch
 section rows from conversation summaries. Removing a project removes that rail
 section from the section list; re-adding the same path reveals historical
 sessions with the same section key.
+The daemon first-page reader is a required production repository seam, not an
+optional fast path with a per-section fallback. Its SQLite query must be driven
+by the requested section keys: ordinary branches use the rail-section page
+index, and pinned rows use a separate pinned-page index branch. Do not scan the
+workspace session history and test section membership row by row; workspaces
+retain historical sessions for removed projects that are not part of the
+current rail. Count, sort, and first-page trimming operate on narrow session-id
+rows; load full session entities only after that trimming. The query shape must
+not add one compound-select arm per requested section or inherit SQLite's
+compound-select term limit as a Rail project-count limit.
+When `agentTargetId` narrows the provider rail, use an exact target predicate
+and target-scoped ordinary/pinned composite indexes. An optional
+`(? = '' OR agent_target_id = ?)` predicate on an unscoped index only filters
+after scanning every provider row in the section and is not an acceptable
+provider-switch query plan.
 Rail search is a separate UI-local query over
 `GET /v1/workspaces/{workspaceID}/agent-sessions`. Its `searchQuery` and active
 `agentTargetId` are applied by the daemon before cursor pagination, so results
@@ -1421,6 +1477,12 @@ activeConversationId changes
 Detail loading is separate from list loading. A conversation can appear in the
 rail before its messages are loaded. The detail panel should show message
 loading from the session view store, not infer it from the send button state.
+The root session detail response also contains a flat collection of every
+nested child session. Desktop reconcile upserts the root and all children into
+the same workspace engine, then loads each session's messages through the
+existing per-session message endpoint. Root-only list selectors keep children
+out of the rail and Message Center counts; the full snapshot still retains
+children for transcript lanes and exact child interactions.
 Older-history prefetch is opportunistic UI behavior. If a page load for a
 specific `(agentSessionId, beforeVersion)` cursor fails, AgentGuiNode should
 record that failed cursor and suppress automatic retries until the detail page
@@ -1510,6 +1572,10 @@ content in the pending record. Activation and existing-session submit share this
 contract. Their optimistic user messages use the authoritative payload shape:
 `content`, optional `displayPrompt`, and `text` resolved from `displayPrompt`
 before content-derived text.
+Provider adapters must carry the materialized prompt in the provider's input
+field only. Auxiliary request metadata must not duplicate unbounded prompt
+content; provider-specific wire metadata remains adapter-owned and limited to
+the provider contract.
 Timeline admission must treat renderable structured prompt content as a user
 message even when that derived text is empty. In particular, an image-only
 pending prompt projects through the same canonical user-message path and
@@ -1830,15 +1896,12 @@ has no reliable `turnId`, the boundary must reject it instead of synthesizing a
 must not retarget optimistic prompts from turnless or untimestamped live
 messages.
 
-Codex app-server sub-agent child-thread rows carry `payload.ownerThreadId` and
-must stay out of the parent transcript. AgentGUI should project those rows only
-through the parent collaboration tool card's sub-agent lanes. Child lifecycle
-state is lane-owned: spawn-card success means only that delegation started
-successfully, not that the child completed. The lane projection should treat
-owner-thread `subAgentLifecycle` markers as terminal state, use
-`agentsStates`/`statuses` from wait or close control-tool output as
-corroborating terminal state, and keep the lane running while child output
-continues without either signal.
+Codex app-server child-thread rows belong to a subordinate child session and
+must stay out of the root transcript. AgentGUI projects that session only under
+the delegation card named by its immutable parent tool-call relation. Spawn-card
+success means only that delegation started successfully; child terminal state
+comes from the child's canonical turn. Wait/close tool output and transcript
+markers are display data, not lifecycle authority.
 
 ### Layer Ownership Summary
 
@@ -1945,9 +2008,31 @@ User-visible rules:
   backfill them from the earliest visible user message, or clear message-less
   placeholders without changing session timestamps. This classifier is
   migration-only; live submit must not guess whether a target name is a title.
-- CLI, AgentGUI, message-center, notification, and desktop surfaces consume
-  `session.title` directly. They must not reconstruct titles from transcript
-  messages, parse Markdown again, or add mention prefixes.
+- CLI, message-center, notification, Dock, and desktop identity surfaces consume
+  `session.title` directly. The active workbench detail header has one
+  presentation-only exception for a first prompt containing task, session, app,
+  file, or Agent references: it may render that canonical prompt as readonly
+  mention chips plus adjacent prompt text only while its normalized,
+  length-capped title still equals `session.title`. The AgentGUI conversation
+  rail continues to render the provider icon and canonical plain title, and may
+  insert exactly one monochrome marker for the leading supported reference kind.
+  When that marker is present, it replaces the structural meaning of the
+  canonical title's first `@`, so the rail-only title presentation omits that
+  one prefix without mutating the stored title.
+  Browser-element and other custom mentions do not produce this marker. The
+  rail derives the marker from a stable selector containing only each session's
+  first user prompt, or from a pending new-session activation. Assistant
+  streaming must preserve the selector result identity without copying or
+  sorting complete histories. Separately, browser-element mentions never appear
+  in the conversation rail title: while the canonical title still matches the
+  first prompt, the rail removes every browser-element mention and keeps only
+  the remaining user text. The detail/workbench header instead renders the
+  registered browser-element card beside that text, without exposing its raw
+  `@img`/DOM-tag title label. The header titlebar itself remains present, and the
+  stored `session.title` is unchanged. Explicit renames and title clears stop the
+  projection. Other title consumers must not reconstruct titles from transcript
+  messages, parse Markdown again, or add mention prefixes. The detail rich-title
+  projection remains one clipped line and must not wrap into a taller titlebar.
 - Live runtime snapshot data is the source for workbench and dock titles. Do
   not persist or restore `lastActiveConversationTitle` from workbench node
   state.
@@ -2261,6 +2346,13 @@ turn remains blocked; cancel-then-send records the selected prompt as
 after the cancel result validates or the canonical turn settles. Metadata-only
 session patches and locally inferred idle states cannot unlock the queue.
 
+A pending submit confirmation deadline is not a queue-wait deadline. While the
+same `clientSubmitId` still has a queue-owned delivery that has not failed or
+entered uncertain delivery, expiry rolls the confirmation window forward
+instead of marking the submit failed. An explicit `queue/sendPrompt` failure
+still fails the submit immediately, while a timed-out delivery keeps its
+uncertain reconciliation and terminal expiry behavior.
+
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
 suspends the session's prompt queue (`suspendReason: "user_stop"`) before
 issuing the cancel, so the drainer must not fire the next queued prompt the
@@ -2327,6 +2419,11 @@ User-visible rules:
 - Approval/ask-user cards are attention surfaces, not composer drafts.
 - The same prompt may appear inline and in a bottom dock. Both surfaces must
   share request identity and submitting state.
+- For a child prompt, identity is the exact
+  `(agentSessionId, turnId, requestId)` tuple. AgentGUI may aggregate the prompt
+  into the selected root conversation, but submission must target the child
+  tuple; the runtime uses the root session only to locate the shared live
+  provider connection.
 - Answering a prompt should clear or supersede every visible surface for that
   request ID after the runtime update lands.
 - Plan approval decisions can translate into settings updates and/or
@@ -2818,6 +2915,47 @@ composer document
 Never fix send bugs only in the composer UI. Also inspect the pending overlay,
 runtime command input, and timeline merge path.
 
+Host-generated context must enter the composer through a domain-specific,
+host-owned custom mention rather than impersonating a generic picker file. For
+example, the standalone Browser inserts a `browser-element` mention whose
+visible label is the compact DOM tag (`<a>`, `<div>`, and so on), while its href
+scope carries a bounded, sanitized Cursor-compatible text record with the
+three fields `DOM Path`, `Position`, and `HTML Element`. It must not retain the
+former whole-snapshot JSON envelope or create a draft `file` block.
+Repeated selections append
+multiple `browser-element` mentions inline, separated by ordinary spaces, to
+the same text-only draft. Their editable custom-mention wrappers must size to
+the compact chip instead of forcing the generic 24px mention height. The append
+path must also retain one ordinary trailing space after the last mention, just
+like interactive mention insertion, so the caret lands in a text node and uses
+the same height as ordinary composer text. Prompt normalization removes that
+trailing whitespace before send. Any prompt containing a serialized structured
+mention must also cross the runtime boundary as `displayPrompt`: execution
+content materializes each registered browser mention into its plain three-field
+text immediately before runtime dispatch, while optimistic and durable
+user-message projection keeps the original mention markup and renders the same
+chips shown by the composer. The daemon, activity runtime, and provider
+protocols therefore receive ordinary text blocks and require no browser-specific
+contract. One sent message can reference several nodes without introducing
+visible attachment blocks. Host presentation must also tolerate historical
+`browser-element` references that carry only `path`, `tag`, and `workspaceId`:
+the tag label and icon remain renderable even when inline execution `context`
+is unavailable. Only runtime materialization depends on `context`; a missing
+execution field must not make persisted composer or timeline markup fall back
+to literal Markdown.
+The custom mention's canonical Markdown label is distinct from its host chip
+presentation: a DOM tag may serialize as `[@a](mention://browser-element/...)`
+while the registered chip renders `<a>`. Parsing and re-serializing the
+composer must preserve the canonical label instead of replacing it with the
+presentation string. Sent timeline rows render the same registered chip and
+retain the adjacent concrete prompt. For an automatically derived conversation
+title, the AgentGUI conversation rail removes browser-element mentions and
+displays only the remaining user text, while the detail/workbench header keeps
+the registered browser-element card beside that text. The stored canonical
+title is unchanged. Task, session, app, file, and Agent references may also
+produce title cards or rail markers. Renamed or cleared titles stay canonical
+plain text instead of restoring the historical prompt.
+
 ### Composer Mention References
 
 ```text
@@ -3033,7 +3171,8 @@ provider capability/options
   -> composer support model
   -> node default settings
   -> per-session settings
-  -> runtime settings update or draft settings tracking
+  -> AgentSessionEngine settings-update intent
+  -> live runtime update or historical durable projection update
   -> menu rendering
 ```
 
@@ -3041,10 +3180,28 @@ Avoid fixing a menu label or disabled state without checking whether the same
 setting is also used by prompt creation, session continuation, and runtime
 tracking.
 Active-session settings are first-class session state, not composer defaults.
-The controller should submit the runtime settings patch and let the provider
-adapter decide whether the change can be applied live or requires a new
-session. Provider capability differences belong in the daemon runtime adapter:
-for example, OpenCode model and reasoning-effort changes are live ACP
+The controller should submit exactly one engine intent for one menu selection;
+it must not also promote the active value into target defaults. The engine owns
+the operation state. A timed-out update remains `unknown`, and the next explicit
+user selection carries retry intent instead of being silently dropped. That
+retry merges the unresolved in-flight patch, any queued patch, and the latest
+selection in that order, so the newest value wins without losing settings that
+the daemon may not have applied before the timeout.
+
+The daemon selects the mutation path from session liveness. A live session
+updates through its provider adapter. A historical session updates the durable
+activity projection directly and publishes reconciliation without resuming the
+provider runtime or starting a sidecar. This keeps historical settings available
+for the next explicit continuation while avoiding hidden startup latency and
+provider side effects. Runtime resume and durable settings read-modify-write
+share a context-aware per-session daemon serialization boundary, so a canceled
+caller does not remain blocked behind a slow resume, a concurrent continuation
+cannot restore stale settings, and partial patches cannot overwrite one another.
+Workflows that must continue the same provider
+conversation, such as plan implementation, explicitly resume first and then use
+the live settings path; they must not depend on a generic settings call to wake
+the runtime. Provider capability differences belong in the daemon runtime
+adapter: for example, OpenCode model and reasoning-effort changes are live ACP
 `session/set_config_option` updates, while spawn-time-only provider settings may
 return the `agent.settings_require_new_session` reason. The UI should surface
 that reason as guidance, not as an unhandled runtime error.

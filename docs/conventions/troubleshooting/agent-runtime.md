@@ -18,6 +18,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Codex provider install fails with missing npm](./agent-provider-setup.md#codex-provider-install-fails-with-missing-npm)
 - [Codex ACP warns about user-level config as project-local config](./agent-provider-setup.md#codex-acp-warns-about-user-level-config-as-project-local-config)
 - [Cursor sessions create project `.cursor/skills` or `AGENTS.md` changes](./agent-provider-setup.md#cursor-sessions-create-project-cursorskills-or-agentsmd-changes)
+- [Cursor read-only mode still creates files without approval](./agent-provider-setup.md#cursor-read-only-mode-still-creates-files-without-approval)
 - [Codex provider shows login required when global service tier is legacy](./agent-provider-setup.md#codex-provider-shows-login-required-when-global-service-tier-is-legacy)
 - [Codex provider shows login required when only an API key is configured](./agent-provider-setup.md#codex-provider-shows-login-required-when-only-an-api-key-is-configured)
 - [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)
@@ -48,6 +49,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
+- [Historical AgentGUI permission changes time out or stop responding](./agent-session-lifecycle.md#historical-agentgui-permission-changes-time-out-or-stop-responding)
 - [AgentGUI pin or unpin appears stuck for a live session](./agent-session-lifecycle.md#agentgui-pin-or-unpin-appears-stuck-for-a-live-session)
 - [Agent GUI provider tab shows fused or stale conversations](./agent-session-lifecycle.md#agent-gui-provider-tab-shows-fused-or-stale-conversations)
 - [Agent GUI no-project sessions appear under a user project](./agent-session-lifecycle.md#agent-gui-no-project-sessions-appear-under-a-user-project)
@@ -60,6 +62,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI freezes when session history is large](./agent-session-lifecycle.md#agentgui-freezes-when-session-history-is-large)
 - [AgentGUI @ Sessions tab is empty](./agent-session-lifecycle.md#agentgui--sessions-tab-is-empty)
 - [Agent diagnostics flood while a turn is streaming](./agent-session-lifecycle.md#agent-diagnostics-flood-while-a-turn-is-streaming)
+- [Codex WebSocket reconnect rejects a long prompt metadata header](./agent-session-lifecycle.md#codex-websocket-reconnect-rejects-a-long-prompt-metadata-header)
 - [Imported sessions trigger fresh-completion indicators](./agent-session-lifecycle.md#imported-sessions-trigger-fresh-completion-indicators)
 - [Realtime agent completion does not show unread attention](./agent-session-lifecycle.md#realtime-agent-completion-does-not-show-unread-attention)
 - [Completed agent session stays activating and disables the composer](./agent-session-lifecycle.md#completed-agent-session-stays-activating-and-disables-the-composer)
@@ -67,7 +70,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 
 ## [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md)
 
-Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
+Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
 
 - [External PR review approvals do not refresh gate status](./agent-approvals-subagents.md#external-pr-review-approvals-do-not-refresh-gate-status)
 - [Cursor approval card shows only title and options, no command/path detail](./agent-approvals-subagents.md#cursor-approval-card-shows-only-title-and-options-no-commandpath-detail)
@@ -75,5 +78,8 @@ Approval gates, plan exits, parent/child event attribution, background agents, a
 - [Claude SDK ExitPlanMode fails as interrupted after plan is ready](./agent-approvals-subagents.md#claude-sdk-exitplanmode-fails-as-interrupted-after-plan-is-ready)
 - [Codex app-server subagent output appears as the parent reply](./agent-approvals-subagents.md#codex-app-server-subagent-output-appears-as-the-parent-reply)
 - [Claude SDK subagent events overwrite or complete the parent turn](./agent-approvals-subagents.md#claude-sdk-subagent-events-overwrite-or-complete-the-parent-turn)
+- [Claude child card shows a generic Agent title and no task detail](./agent-approvals-subagents.md#claude-child-card-shows-a-generic-agent-title-and-no-task-detail)
 - [Claude SDK subagent approval stuck in Message Center](./agent-approvals-subagents.md#claude-sdk-subagent-approval-stuck-in-message-center)
-- [Claude SDK parent waits forever for background agents that already finished](./agent-approvals-subagents.md#claude-sdk-parent-waits-forever-for-background-agents-that-already-finished)
+- [Root remains active after all child turns settle](./agent-approvals-subagents.md#root-remains-active-after-all-child-turns-settle)
+- [Provider terminal report replays a settled root as running](./agent-approvals-subagents.md#provider-terminal-report-replays-a-settled-root-as-running)
+- [Cursor or OpenCode turn settles before late ACP activity arrives](./agent-session-lifecycle.md#cursor-or-opencode-turn-settles-before-late-acp-activity-arrives)

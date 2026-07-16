@@ -1022,6 +1022,98 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("uses active semantic progress instead of appending generic processing", () => {
+    const baseTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+    expect(
+      conversation.rows.some(
+        (row) =>
+          row.kind === "message" &&
+          row.messages.some(
+            (message) => message.presentationKind === "specific-progress"
+          )
+      )
+    ).toBe(true);
+  });
+
+  it.each(["completed", "failed", "canceled"] as const)(
+    "fails open to generic processing after compact is %s",
+    (commandStatus) => {
+      const baseTurn = detailViewModel().turns[0]!;
+      const compactNotice = compactNoticeMessage("turn-1", commandStatus);
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              ...baseTurn,
+              agentMessages: [compactNotice],
+              toolCalls: [],
+              toolCallCount: 0,
+              agentItems: [{ kind: "message", message: compactNotice }]
+            }
+          ],
+          showProcessingIndicator: true
+        })
+      );
+
+      expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+        true
+      );
+    }
+  );
+
+  it("does not let progress from an older turn suppress current processing", () => {
+    const firstTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const secondTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up", turnId: "turn-2" },
+      userMessages: [{ id: "user-2", body: "Follow-up", turnId: "turn-2" }],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...firstTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          },
+          secondTurn
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ turnId: "turn-2" })
+    );
+  });
+
   it("keeps Edit and Write tool calls as standalone rows when avoidGroupingEdits is enabled", () => {
     const detail = detailViewModel();
 
@@ -1686,5 +1778,25 @@ function detailViewModel(
     ],
     showProcessingIndicator: true,
     ...overrides
+  };
+}
+
+function compactNoticeMessage(
+  turnId: string,
+  commandStatus: "running" | "completed" | "failed" | "canceled"
+): WorkspaceAgentSessionDetailViewModel["turns"][number]["agentMessages"][number] {
+  return {
+    id: `compact:${turnId}`,
+    body: "Compact notice",
+    turnId,
+    systemNotice: {
+      noticeKind: "system_notice",
+      severity: null,
+      command: "compact",
+      commandStatus,
+      title: "Compact notice",
+      detail: null,
+      retryable: null
+    }
   };
 }

@@ -28,10 +28,16 @@ export class ToolActivityProjector {
   private readonly delegatedParentByTaskID = new Map<string, string>();
   private readonly activeTurnId: () => string;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
+  private readonly onFinalDelegatedTaskSettling: () => void;
 
-  constructor(activeTurnId: () => string, emit: ClaudeSDKSidecarEventEmitter) {
+  constructor(
+    activeTurnId: () => string,
+    emit: ClaudeSDKSidecarEventEmitter,
+    onFinalDelegatedTaskSettling: () => void = () => {}
+  ) {
     this.activeTurnId = activeTurnId;
     this.emit = emit;
+    this.onFinalDelegatedTaskSettling = onFinalDelegatedTaskSettling;
     this.taskPlan = new TaskPlanTracker(activeTurnId, emit);
     this.tools = new ToolEventProjector(
       (tool) => this.resolveToolEventTurnId(tool),
@@ -110,6 +116,7 @@ export class ToolActivityProjector {
       if (task.status !== "running") {
         return;
       }
+      this.prepareDelegatedTaskTerminal(task);
       task.status = delegatedTaskStatus(message.status);
       this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
       this.emitDelegatedTaskParentUpdate(task, message);
@@ -204,6 +211,7 @@ export class ToolActivityProjector {
     if (!task) {
       return;
     }
+    this.prepareDelegatedTaskTerminal(task);
     const taskId = stringValue(hookInput.task_id) || task.taskId;
     if (taskId && !task.taskId) {
       task.taskId = taskId;
@@ -255,6 +263,7 @@ export class ToolActivityProjector {
     if (!task || task.status !== "running") {
       return;
     }
+    this.prepareDelegatedTaskTerminal(task);
     task.status = delegatedTaskStatus(message.status);
     this.emitDelegatedTaskLifecycleEvent("task_completed", task, message);
     this.emitDelegatedTaskParentUpdate(task, message);
@@ -449,6 +458,18 @@ export class ToolActivityProjector {
       this.tools.hasPendingChildResults(parentToolUseId) ||
       this.hasRunningChildDelegatedTasks(parentToolUseId)
     );
+  }
+
+  private prepareDelegatedTaskTerminal(task: DelegatedTaskState): void {
+    if (task.status !== "running") {
+      return;
+    }
+    const running = [...this.delegatedTasksByParentToolUseID.values()].filter(
+      (candidate) => candidate.status === "running"
+    );
+    if (running.length === 1 && running[0] === task) {
+      this.onFinalDelegatedTaskSettling();
+    }
   }
 
   private emitDelegatedTaskParentUpdate(

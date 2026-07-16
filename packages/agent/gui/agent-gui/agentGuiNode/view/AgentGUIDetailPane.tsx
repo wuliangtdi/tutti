@@ -346,10 +346,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   const stableRequestGitBranches =
     useOptionalStableEventCallback(onRequestGitBranches);
   const authLogin = useOptionalStableEventCallback(onAgentProviderLogin);
-  const backgroundAgentStatusText =
-    viewModel.detail.backgroundAgentCount > 0
-      ? labels.waitingForBackgroundAgent(viewModel.detail.backgroundAgentCount)
-      : null;
   const submitBottomDockInteractivePrompt = useCallback(
     (input: {
       requestId: string;
@@ -462,7 +458,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       referenceProvenanceFilter,
       // Plan decisions replace the composer; approval / ask-user embed here.
       activePrompt: composerActivePrompt,
-      backgroundAgentStatusText,
       activePromptKeyboardShortcutsEnabled: isActive,
       promptTips: labels.promptTips,
       composerFocusRequestSequence,
@@ -500,7 +495,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     }),
     [
       canQueueWhileBusy,
-      backgroundAgentStatusText,
       capabilityMenuState,
       canSwitchComposerProvider,
       composerDisabled,
@@ -600,7 +594,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sessionChrome.auth?.message ?? "",
     sessionChrome.recovery?.kind ?? "",
     sessionChrome.recovery?.message ?? "",
-    backgroundAgentStatusText ?? "",
     viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
     viewModel.composer.queueStatus,
     viewModel.composer.drainingQueuedPromptId ?? "",

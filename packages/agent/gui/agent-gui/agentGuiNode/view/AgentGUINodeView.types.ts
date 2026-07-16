@@ -240,7 +240,6 @@ export interface AgentGUIViewLabels {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
-  waitingForBackgroundAgent: (count: number) => string;
   thinkingLabel: string;
   toolCallsLabel: (count: number) => string;
   openConversationWindow: string;

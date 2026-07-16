@@ -36,7 +36,7 @@ func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.ClaudeCode)
 	if profile.LiveModelDiscoveryKind != providerregistry.LiveModelDiscoveryKindClaudeSDK ||
-		!profile.LiveModelProbeSession || profile.SkillKind != "claude-code" ||
+		!profile.LiveModelProbeSession || !profile.LiveModelAccountScoped || profile.SkillKind != "claude-code" ||
 		profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStatic {
 		t.Fatalf("claude composer profile = %#v", profile)
 	}
@@ -47,8 +47,12 @@ func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	}
 }
 
-func TestCursorSkillDiscoveryComesFromProviderDescriptor(t *testing.T) {
+func TestCursorComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.Cursor)
+	if profile.LiveModelDiscoveryKind != providerregistry.LiveModelDiscoveryKindRuntimeSession ||
+		!profile.LiveModelProbeSession || !profile.LiveModelAccountScoped {
+		t.Fatalf("cursor live model discovery profile = %#v", profile)
+	}
 	if profile.SkillKind != string(providerregistry.SkillKindCursor) || profile.SkillInvocation != string(providerregistry.SkillInvocationTextTrigger) {
 		t.Fatalf("cursor skill profile = %#v", profile)
 	}

@@ -183,12 +183,23 @@ type codexAppServerSession struct {
 	// must not veto the running turn's terminal in settleActiveTurn. Guarded
 	// by the adapter mutex.
 	activeTurnStartConfirmed bool
-	// lastTurnID survives turn settlement so post-turn child lifecycle
-	// markers can carry a turn id (the activity store rejects turnless
-	// message updates).
-	lastTurnID   string
-	activeTurn   *codexAppServerActiveTurn
-	childThreads map[string]*codexAppServerThreadContext
+	// lastCanonicalTurnID survives provider-turn settlement so provider-native
+	// child registrations can still resolve the canonical root turn while they
+	// drain. It must never contain an app-server provider turn id.
+	lastCanonicalTurnID string
+	// canceledRootTurnID is an adapter-local execution boundary. Once the user
+	// cancels a canonical root turn, server-initiated root turns and child
+	// threads discovered after the durable cancel target snapshot are stopped
+	// instead of being adopted or projected as new canonical work. A later
+	// explicit canonical turn clears the boundary in beginActiveTurn.
+	canceledRootTurnID string
+	// canceledProviderThreads remembers late child provider threads that were
+	// discovered behind canceledRootTurnID. They never receive canonical child
+	// session identities; the set only lets later provider notifications be
+	// interrupted and dropped consistently.
+	canceledProviderThreads map[string]struct{}
+	activeTurn              *codexAppServerActiveTurn
+	childThreads            map[string]*codexAppServerThreadContext
 	// recentForeignDrops remembers recently dropped unknown thread ids so a
 	// late registration can report how many events the ordering gap lost.
 	recentForeignDrops map[string]int
@@ -197,9 +208,15 @@ type codexAppServerSession struct {
 }
 
 type codexAppServerThreadContext struct {
-	parentThreadID string
-	parentItemID   string
-	normalizer     *acpTurnNormalizer
+	agentSessionID       string
+	turnID               string
+	rootAgentSessionID   string
+	rootTurnID           string
+	parentAgentSessionID string
+	parentTurnID         string
+	parentThreadID       string
+	parentItemID         string
+	normalizer           *acpTurnNormalizer
 	// droppedBeforeRegistration counts events for this thread that arrived
 	// (and were dropped as unknown) before its receiverThreadIds registration
 	// - permanent telemetry for ADR 0003's ordering question.
@@ -214,15 +231,16 @@ type codexAppServerThreadContext struct {
 // finishes when the `turn/completed` notification delivers the final turn
 // payload through the reducer-owned terminal projection.
 type codexAppServerActiveTurn struct {
-	turnID       string
-	session      Session
-	ctx          context.Context
-	normalizer   *acpTurnNormalizer
-	emit         func([]activityshared.Event)
-	emitCommands CommandSnapshotSink
-	kind         codexAppServerTurnKind
-	phase        codexAppServerTurnPhase
-	terminal     chan codexAppServerTurnTerminal
+	turnID         string
+	providerTurnID string
+	session        Session
+	ctx            context.Context
+	normalizer     *acpTurnNormalizer
+	emit           func([]activityshared.Event)
+	emitCommands   CommandSnapshotSink
+	kind           codexAppServerTurnKind
+	phase          codexAppServerTurnPhase
+	terminal       chan codexAppServerTurnTerminal
 	// terminated is closed exactly once when the Exec goroutine for this turn
 	// returns (turn fully finalized). Cancel waits on it so it only responds
 	// after the turn has actually stopped.

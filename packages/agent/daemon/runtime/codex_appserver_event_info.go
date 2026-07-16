@@ -97,12 +97,12 @@ func appServerTurnTerminalEvents(
 	normalizer *acpTurnNormalizer,
 ) []activityshared.Event {
 	status := asString(turn["status"])
+	providerTurnID := firstNonEmpty(asString(turn["id"]), turnID)
 	switch status {
 	case "interrupted":
 		events := normalizer.FinishInterrupted(session, turnID, "interrupted")
-		return append(events, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
-			"stopReason": "canceled",
-		}))
+		terminal := appServerRootProviderTurnCompletedEvent(session, turnID, providerTurnID, activityshared.TurnOutcomeCanceled, map[string]any{"stopReason": "canceled"})
+		return append(events, terminal)
 	case "failed":
 		events := normalizer.FinishFailed(session, turnID)
 		metadata := map[string]any{
@@ -120,13 +120,30 @@ func appServerTurnTerminalEvents(
 				metadata["additionalDetails"] = details
 			}
 		}
-		return append(events, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", metadata))
+		terminal := appServerRootProviderTurnCompletedEvent(session, turnID, providerTurnID, activityshared.TurnOutcomeFailed, metadata)
+		return append(events, terminal)
 	default:
 		events := normalizer.FinishCompleted(session, turnID)
-		return append(events, newTurnActivityEvent(session, EventTurnCompleted, turnID, SessionStatusReady, "", "", map[string]any{
-			"stopReason": "end_turn",
-		}))
+		terminal := appServerRootProviderTurnCompletedEvent(session, turnID, providerTurnID, activityshared.TurnOutcomeCompleted, map[string]any{"stopReason": "end_turn"})
+		return append(events, terminal)
 	}
+}
+
+func appServerRootProviderTurnCompletedEvent(
+	session Session,
+	rootTurnID string,
+	providerTurnID string,
+	outcome activityshared.TurnOutcome,
+	metadata map[string]any,
+) activityshared.Event {
+	providerTurnID = firstNonEmpty(strings.TrimSpace(providerTurnID), strings.TrimSpace(rootTurnID))
+	ctx, ok := activityEventContext(session, "root-provider-turn-completed:"+providerTurnID, rootTurnID)
+	if !ok {
+		return activityshared.Event{}
+	}
+	event := activityshared.NewRootProviderTurnCompleted(ctx, rootTurnID, providerTurnID, outcome)
+	event.Payload.Metadata = clonePayload(metadata)
+	return event
 }
 
 // --- session capability metadata ---

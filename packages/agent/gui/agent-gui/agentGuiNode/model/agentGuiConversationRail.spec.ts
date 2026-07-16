@@ -3,6 +3,7 @@ import type { AgentGUIConversationSummary } from "./agentGuiConversationModel";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
   insertConversationRailSectionOverlay,
+  conversationSummariesRenderEqual,
   projectConversationRailSectionsWithActiveConversation,
   planRuntimeRailMembershipRefresh,
   projectRuntimeSectionsToConversationRailMemberships,
@@ -59,6 +60,17 @@ function membership(
 }
 
 describe("planRuntimeRailMembershipRefresh", () => {
+  it("re-renders a row when its leading mention kind becomes available", () => {
+    const plain = conversation("session-1");
+
+    expect(
+      conversationSummariesRenderEqual(plain, {
+        ...plain,
+        titleLeadingMentionKind: "task"
+      })
+    ).toBe(false);
+  });
+
   it("treats hydration of an already-loaded historical row as entity detail", () => {
     const recent = conversation("recent");
     const historical = conversation("historical");

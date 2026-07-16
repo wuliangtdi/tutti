@@ -1183,30 +1183,6 @@ func (e WorkbenchSnapshotNodeDisplayMode) Valid() bool {
 	}
 }
 
-// Defines values for WorkspaceAgentBackgroundAgentItemStatus.
-const (
-	WorkspaceAgentBackgroundAgentItemStatusCanceled  WorkspaceAgentBackgroundAgentItemStatus = "canceled"
-	WorkspaceAgentBackgroundAgentItemStatusCompleted WorkspaceAgentBackgroundAgentItemStatus = "completed"
-	WorkspaceAgentBackgroundAgentItemStatusFailed    WorkspaceAgentBackgroundAgentItemStatus = "failed"
-	WorkspaceAgentBackgroundAgentItemStatusRunning   WorkspaceAgentBackgroundAgentItemStatus = "running"
-)
-
-// Valid indicates whether the value is a known member of the WorkspaceAgentBackgroundAgentItemStatus enum.
-func (e WorkspaceAgentBackgroundAgentItemStatus) Valid() bool {
-	switch e {
-	case WorkspaceAgentBackgroundAgentItemStatusCanceled:
-		return true
-	case WorkspaceAgentBackgroundAgentItemStatusCompleted:
-		return true
-	case WorkspaceAgentBackgroundAgentItemStatusFailed:
-		return true
-	case WorkspaceAgentBackgroundAgentItemStatusRunning:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for WorkspaceAgentCompletedCommandKind.
 const (
 	Compact WorkspaceAgentCompletedCommandKind = "compact"
@@ -1393,6 +1369,24 @@ func (e WorkspaceAgentSessionGoalControlRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionKind.
+const (
+	Child WorkspaceAgentSessionKind = "child"
+	Root  WorkspaceAgentSessionKind = "root"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionKind enum.
+func (e WorkspaceAgentSessionKind) Valid() bool {
+	switch e {
+	case Child:
+		return true
+	case Root:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionSectionKind.
 const (
 	Conversations WorkspaceAgentSessionSectionKind = "conversations"
@@ -1434,22 +1428,22 @@ func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 
 // Defines values for WorkspaceAgentTurnOutcome.
 const (
-	WorkspaceAgentTurnOutcomeCanceled    WorkspaceAgentTurnOutcome = "canceled"
-	WorkspaceAgentTurnOutcomeCompleted   WorkspaceAgentTurnOutcome = "completed"
-	WorkspaceAgentTurnOutcomeFailed      WorkspaceAgentTurnOutcome = "failed"
-	WorkspaceAgentTurnOutcomeInterrupted WorkspaceAgentTurnOutcome = "interrupted"
+	Canceled    WorkspaceAgentTurnOutcome = "canceled"
+	Completed   WorkspaceAgentTurnOutcome = "completed"
+	Failed      WorkspaceAgentTurnOutcome = "failed"
+	Interrupted WorkspaceAgentTurnOutcome = "interrupted"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentTurnOutcome enum.
 func (e WorkspaceAgentTurnOutcome) Valid() bool {
 	switch e {
-	case WorkspaceAgentTurnOutcomeCanceled:
+	case Canceled:
 		return true
-	case WorkspaceAgentTurnOutcomeCompleted:
+	case Completed:
 		return true
-	case WorkspaceAgentTurnOutcomeFailed:
+	case Failed:
 		return true
-	case WorkspaceAgentTurnOutcomeInterrupted:
+	case Interrupted:
 		return true
 	default:
 		return false
@@ -3758,29 +3752,6 @@ type WorkbenchSnapshotSpace struct {
 	NodeIds []string        `json:"nodeIds"`
 }
 
-// WorkspaceAgentBackgroundAgentItem defines model for WorkspaceAgentBackgroundAgentItem.
-type WorkspaceAgentBackgroundAgentItem struct {
-	CompletedAtUnixMs *int64                                  `json:"completedAtUnixMs,omitempty"`
-	Description       string                                  `json:"description"`
-	LastToolName      *string                                 `json:"lastToolName,omitempty"`
-	StartedAtUnixMs   *int64                                  `json:"startedAtUnixMs,omitempty"`
-	Status            WorkspaceAgentBackgroundAgentItemStatus `json:"status"`
-	Summary           *string                                 `json:"summary,omitempty"`
-	TaskId            string                                  `json:"taskId"`
-	TaskType          *string                                 `json:"taskType,omitempty"`
-	UpdatedAtUnixMs   *int64                                  `json:"updatedAtUnixMs,omitempty"`
-}
-
-// WorkspaceAgentBackgroundAgentItemStatus defines model for WorkspaceAgentBackgroundAgentItem.Status.
-type WorkspaceAgentBackgroundAgentItemStatus string
-
-// WorkspaceAgentBackgroundAgents Protocol v2 explicit field extracted from runtimeContext.
-type WorkspaceAgentBackgroundAgents struct {
-	// Count Number of background agents still running.
-	Count int                                 `json:"count"`
-	Items []WorkspaceAgentBackgroundAgentItem `json:"items"`
-}
-
 // WorkspaceAgentCapabilities Protocol v2 daemon-issued capability descriptor. Clients branch on these booleans instead of provider identity. Field names mirror the canonical capability keys in packages/agent/daemon/runtime/capabilities.go.
 type WorkspaceAgentCapabilities struct {
 	// ActiveTurnGuidance The provider can accept a user prompt as guidance for the currently running turn without canceling it or creating a normal next turn.
@@ -3883,9 +3854,6 @@ type WorkspaceAgentSession struct {
 	// AgentTargetId Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
 	AgentTargetId *string `json:"agentTargetId"`
 
-	// BackgroundAgents Protocol v2. Explicit field extracted from runtimeContext.
-	BackgroundAgents *WorkspaceAgentBackgroundAgents `json:"backgroundAgents"`
-
 	// Capabilities Protocol v2. Daemon-issued capability descriptor; clients must branch on capabilities, never on provider identity.
 	Capabilities *WorkspaceAgentCapabilities `json:"capabilities"`
 
@@ -3903,21 +3871,39 @@ type WorkspaceAgentSession struct {
 	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
 	Imported bool `json:"imported"`
 
+	// Kind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
+	Kind WorkspaceAgentSessionKind `json:"kind"`
+
 	// LatestTurn Protocol v2. Read-only embedded projection of the most recently updated turn for this session, including settled turns. This is an independent turn entity projection and is not session-owned persistent state or a session reference.
 	LatestTurn *WorkspaceAgentTurn `json:"latestTurn"`
 
 	// LatestTurnInteractions Protocol v2. Read-only independent Interaction entity projections for latestTurn, including pending, answered, and superseded terminal states. These entities are not session-owned persistent state.
 	LatestTurnInteractions []WorkspaceAgentInteraction `json:"latestTurnInteractions"`
 
+	// ParentAgentSessionId Direct parent session that created this child session. Null when kind is root.
+	ParentAgentSessionId *string `json:"parentAgentSessionId"`
+
+	// ParentToolCallId Delegation tool call in the parent turn that created this child session. Null when kind is root.
+	ParentToolCallId *string `json:"parentToolCallId"`
+
+	// ParentTurnId Exact turn in the direct parent session that created this child session. Null when kind is root.
+	ParentTurnId *string `json:"parentTurnId"`
+
 	// PendingInteractions Protocol v2. Pending interactions (approvals, questions, plan confirmations) for the active turn. Pending means present in this collection with status pending; there is no tri-state null protocol.
-	PendingInteractions []WorkspaceAgentInteraction  `json:"pendingInteractions"`
-	PermissionConfig    PermissionConfig             `json:"permissionConfig"`
-	PinnedAtUnixMs      *int64                       `json:"pinnedAtUnixMs"`
-	Provider            WorkspaceAgentProvider       `json:"provider"`
-	ProviderSessionId   *string                      `json:"providerSessionId"`
-	Resumable           bool                         `json:"resumable"`
-	Settings            AgentSessionComposerSettings `json:"settings"`
-	Title               *string                      `json:"title"`
+	PendingInteractions []WorkspaceAgentInteraction `json:"pendingInteractions"`
+	PermissionConfig    PermissionConfig            `json:"permissionConfig"`
+	PinnedAtUnixMs      *int64                      `json:"pinnedAtUnixMs"`
+	Provider            WorkspaceAgentProvider      `json:"provider"`
+	ProviderSessionId   *string                     `json:"providerSessionId"`
+	Resumable           bool                        `json:"resumable"`
+
+	// RootAgentSessionId Root session that owns this child session. Null when kind is root.
+	RootAgentSessionId *string `json:"rootAgentSessionId"`
+
+	// RootTurnId Root turn under which this child session was created. Null when kind is root.
+	RootTurnId *string                      `json:"rootTurnId"`
+	Settings   AgentSessionComposerSettings `json:"settings"`
+	Title      *string                      `json:"title"`
 
 	// UpdatedAtUnixMs Protocol v2. Unix milliseconds replacement for updatedAt.
 	UpdatedAtUnixMs int64 `json:"updatedAtUnixMs"`
@@ -3937,6 +3923,13 @@ type WorkspaceAgentSessionAttachmentResponse struct {
 
 // WorkspaceAgentSessionAttachmentResponseMimeType defines model for WorkspaceAgentSessionAttachmentResponse.MimeType.
 type WorkspaceAgentSessionAttachmentResponseMimeType string
+
+// WorkspaceAgentSessionDetailResponse defines model for WorkspaceAgentSessionDetailResponse.
+type WorkspaceAgentSessionDetailResponse struct {
+	// ChildSessions Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
+	ChildSessions []WorkspaceAgentSession `json:"childSessions"`
+	Session       WorkspaceAgentSession   `json:"session"`
+}
 
 // WorkspaceAgentSessionEventEnvelope defines model for WorkspaceAgentSessionEventEnvelope.
 type WorkspaceAgentSessionEventEnvelope struct {
@@ -3981,6 +3974,9 @@ type WorkspaceAgentSessionGoalControlResponse struct {
 	Goal    *WorkspaceAgentSessionGoal `json:"goal,omitempty"`
 	Session WorkspaceAgentSession      `json:"session"`
 }
+
+// WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
+type WorkspaceAgentSessionKind string
 
 // WorkspaceAgentSessionListResponse defines model for WorkspaceAgentSessionListResponse.
 type WorkspaceAgentSessionListResponse struct {

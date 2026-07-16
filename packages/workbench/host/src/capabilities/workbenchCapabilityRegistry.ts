@@ -1,8 +1,14 @@
 import type { WorkbenchContribution } from "@tutti-os/workbench-surface";
-import type {
-  WorkbenchCapabilityFactoryDescriptor,
-  WorkbenchProductProfile
-} from "./workbenchProductProfile.ts";
+
+export interface WorkbenchCapabilityFactoryDescriptor {
+  readonly id: string;
+  readonly order: number;
+  readonly create: () => WorkbenchContribution | null;
+}
+
+export interface WorkbenchCapabilityRegistryInput {
+  readonly capabilityFactories: readonly WorkbenchCapabilityFactoryDescriptor[];
+}
 
 export interface WorkbenchCapabilityRegistryResult {
   readonly contributions: readonly WorkbenchContribution[];
@@ -14,9 +20,9 @@ interface ResolvedWorkbenchCapability {
 }
 
 export function resolveWorkbenchCapabilityRegistry(
-  profile: WorkbenchProductProfile
+  input: WorkbenchCapabilityRegistryInput
 ): WorkbenchCapabilityRegistryResult {
-  const factories = [...profile.capabilityFactories].sort(
+  const factories = [...input.capabilityFactories].sort(
     compareWorkbenchCapabilityFactories
   );
   assertUniqueFactoryIds(factories);

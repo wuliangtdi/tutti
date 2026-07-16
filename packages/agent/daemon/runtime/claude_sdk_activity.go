@@ -1,7 +1,6 @@
 package agentruntime
 
 import (
-	"sort"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -53,163 +52,191 @@ func (s *claudeSDKAdapterSession) thinkingMessageID(turnID string) string {
 }
 
 func (s *claudeSDKAdapterSession) claudeSDKToolEvents(session Session, turnID string, payload map[string]any, eventType string, status string, sidecarType string) []activityshared.Event {
-	if s == nil {
-		if strings.TrimSpace(turnID) == "" {
-			return nil
+	turnID = strings.TrimSpace(turnID)
+	if s == nil || turnID == "" {
+		return nil
+	}
+	isDelegation := payloadString(payload, "callType") == "subagent"
+	if isDelegation {
+		toolEvent := claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)
+		// The Agent/Task call belongs to the session that launched the child,
+		// not to the child it creates. Claude's completed event repeats the
+		// spawned child's own tool call id, so resolving the owner from every
+		// child alias would move the completion into the new child turn and
+		// leave the parent's started call dangling. Only an explicit
+		// parentToolUseId identifies a nested delegation owned by another child.
+		if parent, ok := s.claudeSDKDelegationParentForPayload(payload); ok {
+			toolEvent = claudeSDKToolActivityEvent(claudeSDKChildRuntimeSession(session, parent), parent.TurnID, payload, eventType, status)
+			toolEvent = claudeSDKEventForChild(toolEvent, parent)
 		}
-		return []activityshared.Event{claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)}
+		events := []activityshared.Event{toolEvent}
+		return append(events, s.updateClaudeSDKChildFromTool(session, turnID, payload, eventType, sidecarType)...)
 	}
-	effectiveTurnID := s.backgroundAgentTurnID(payload, turnID)
-	var events []activityshared.Event
-	if strings.TrimSpace(effectiveTurnID) != "" {
-		events = append(events, claudeSDKToolActivityEvent(session, effectiveTurnID, payload, eventType, status))
+	if child, ok := s.claudeSDKChildForPayload(payload); ok {
+		childSession := claudeSDKChildRuntimeSession(session, child)
+		event := claudeSDKToolActivityEvent(childSession, child.TurnID, payload, eventType, status)
+		return []activityshared.Event{claudeSDKEventForChild(event, child)}
 	}
-	backgroundEvents := s.updateClaudeSDKBackgroundAgentFromTool(session, turnID, payload, eventType, sidecarType)
-	return append(events, backgroundEvents...)
+	return []activityshared.Event{claudeSDKToolActivityEvent(session, turnID, payload, eventType, status)}
 }
 
 func (s *claudeSDKAdapterSession) claudeSDKTaskLifecycleEvents(session Session, turnID string, sidecarType string, payload map[string]any) []activityshared.Event {
 	if s == nil {
 		return nil
 	}
-	agent, runtimeContext, ok := s.updateClaudeSDKBackgroundAgent(claudeSDKBackgroundAgentUpdate{
+	child, created, titleChanged, ok := s.updateClaudeSDKChild(session, claudeSDKChildUpdate{
 		Key:             firstNonEmptyString(payloadString(payload, "parentToolUseId"), payloadString(payload, "toolCallId"), payloadString(payload, "agentId"), payloadString(payload, "taskId"), payloadString(payload, "task_id")),
 		ParentToolUseID: firstNonEmptyString(payloadString(payload, "parentToolUseId"), payloadString(payload, "toolCallId"), payloadString(payload, "callId")),
-		TurnID:          turnID,
+		RootTurnID:      turnID,
 		TaskID:          firstNonEmptyString(payloadString(payload, "taskId"), payloadString(payload, "task_id")),
 		AgentID:         payloadString(payload, "agentId"),
 		Description:     payloadString(payload, "description"),
 		Summary:         payloadString(payload, "summary"),
 		LastToolName:    firstNonEmptyString(payloadString(payload, "lastToolName"), payloadString(payload, "last_tool_name")),
 		Status:          claudeSDKTaskStatus(sidecarType, payloadString(payload, "status")),
+		Async:           true,
 		Started:         sidecarType == "task_started",
 	})
 	if !ok {
 		return nil
 	}
-	return claudeSDKBackgroundAgentEvents(session, agent, runtimeContext, sidecarType)
+	return claudeSDKChildEvents(session, child, created, titleChanged, sidecarType)
 }
 
-func (s *claudeSDKAdapterSession) updateClaudeSDKBackgroundAgentFromTool(session Session, turnID string, payload map[string]any, eventType string, sidecarType string) []activityshared.Event {
+func (s *claudeSDKAdapterSession) updateClaudeSDKChildFromTool(session Session, turnID string, payload map[string]any, _ string, sidecarType string) []activityshared.Event {
 	metadata := payloadMap(payload, "metadata")
-	if payloadString(payload, "callType") != "subagent" && metadata["subagentAsync"] != true {
-		return nil
-	}
-	if metadata["subagentAsync"] != true {
+	if payloadString(payload, "callType") != "subagent" {
 		return nil
 	}
 	input := payloadMap(payload, "input")
 	parentToolUseID := firstNonEmptyString(payloadString(payload, "toolCallId"), payloadString(payload, "callId"))
-	status := firstNonEmptyString(payloadString(metadata, "subagentStatus"), payloadString(metadata, "taskStatus"))
-	if status == "" {
-		switch eventType {
-		case EventCallFailed:
-			status = string(activityshared.ActivityStatusFailed)
-		default:
-			status = string(activityshared.ActivityStatusRunning)
-		}
+	async := metadata["subagentAsync"] == true || payloadBoolValue(input, "run_in_background")
+	status := string(activityshared.ActivityStatusRunning)
+	if sidecarType == "tool_failed" {
+		status = string(activityshared.ActivityStatusFailed)
+	} else if sidecarType == "tool_completed" && !async {
+		status = string(activityshared.ActivityStatusCompleted)
 	}
-	agent, runtimeContext, ok := s.updateClaudeSDKBackgroundAgent(claudeSDKBackgroundAgentUpdate{
+	child, created, titleChanged, ok := s.updateClaudeSDKChild(session, claudeSDKChildUpdate{
 		Key:             firstNonEmptyString(parentToolUseID, payloadString(metadata, "taskId"), payloadString(metadata, "agentId"), payloadString(metadata, "subagentAgentId")),
 		ParentToolUseID: parentToolUseID,
-		TurnID:          turnID,
+		ParentChildKey:  firstNonEmptyString(payloadString(metadata, "parentToolUseId"), payloadString(payload, "parentToolUseId")),
+		RootTurnID:      turnID,
 		TaskID:          payloadString(metadata, "taskId"),
 		AgentID:         firstNonEmptyString(payloadString(metadata, "agentId"), payloadString(metadata, "subagentAgentId")),
 		Description:     firstNonEmptyString(payloadString(input, "description"), payloadString(input, "prompt"), payloadString(payload, "name")),
 		Summary:         payloadString(payloadMap(payload, "output"), "text"),
-		Status:          claudeSDKNormalizeTaskStatus(status),
+		Status:          status,
+		Async:           async,
 		Started:         true,
 	})
 	if !ok {
 		return nil
 	}
-	return claudeSDKBackgroundAgentEvents(session, agent, runtimeContext, sidecarType)
+	return claudeSDKChildEvents(session, child, created, titleChanged, sidecarType)
 }
 
-type claudeSDKBackgroundAgentUpdate struct {
+type claudeSDKChildUpdate struct {
 	Key             string
 	ParentToolUseID string
-	TurnID          string
+	ParentChildKey  string
+	RootTurnID      string
 	TaskID          string
 	AgentID         string
 	Description     string
 	Status          string
 	Summary         string
 	LastToolName    string
+	Async           bool
 	Started         bool
 }
 
-func (s *claudeSDKAdapterSession) updateClaudeSDKBackgroundAgent(update claudeSDKBackgroundAgentUpdate) (claudeSDKBackgroundAgent, map[string]any, bool) {
+func (s *claudeSDKAdapterSession) updateClaudeSDKChild(session Session, update claudeSDKChildUpdate) (claudeSDKChildSession, bool, bool, bool) {
 	if s == nil {
-		return claudeSDKBackgroundAgent{}, nil, false
+		return claudeSDKChildSession{}, false, false, false
 	}
 	key := strings.TrimSpace(update.Key)
 	if key == "" {
-		return claudeSDKBackgroundAgent{}, nil, false
+		return claudeSDKChildSession{}, false, false, false
 	}
-	if s.backgroundAgents == nil {
-		s.backgroundAgents = make(map[string]claudeSDKBackgroundAgent)
+	if s.childSessions == nil {
+		s.childSessions = make(map[string]claudeSDKChildSession)
 	}
-	key = s.resolveClaudeSDKBackgroundAgentKey(update, key)
+	key = s.resolveClaudeSDKChildKey(update, key)
 	updatedAt := unixMS(now())
-	agent := s.backgroundAgents[key]
-	if agent.Key == "" {
-		agent.Key = key
+	child := s.childSessions[key]
+	created := child.Key == ""
+	if created {
+		child.Key = key
+		child.AgentSessionID = newID()
+		child.TurnID = newID()
+		if parent := s.claudeSDKChildByKey(update.ParentChildKey); parent.AgentSessionID != "" {
+			child.RootAgentSessionID = parent.RootAgentSessionID
+			child.RootTurnID = parent.RootTurnID
+			child.ParentAgentSessionID = parent.AgentSessionID
+			child.ParentTurnID = parent.TurnID
+		} else {
+			child.RootAgentSessionID = strings.TrimSpace(session.AgentSessionID)
+			child.RootTurnID = strings.TrimSpace(update.RootTurnID)
+			child.ParentAgentSessionID = strings.TrimSpace(session.AgentSessionID)
+			child.ParentTurnID = strings.TrimSpace(update.RootTurnID)
+		}
 	}
-	agent.UpdatedAtUnixMS = updatedAt
-	if update.ParentToolUseID != "" && (agent.ParentToolUseID == "" || agent.ParentToolUseID == update.ParentToolUseID) {
-		agent.ParentToolUseID = update.ParentToolUseID
+	child.UpdatedAtUnixMS = updatedAt
+	if update.ParentToolUseID != "" && (child.ParentToolUseID == "" || child.ParentToolUseID == update.ParentToolUseID) {
+		child.ParentToolUseID = update.ParentToolUseID
 	}
-	if update.TurnID != "" {
-		agent.TurnID = update.TurnID
-	}
-	if update.TaskID != "" && (agent.TaskID == "" || agent.TaskID == update.TaskID) && !s.backgroundAgentAliasBelongsToOtherKey(key, update.TaskID, func(agent claudeSDKBackgroundAgent) string {
-		return agent.TaskID
+	if update.TaskID != "" && (child.TaskID == "" || child.TaskID == update.TaskID) && !s.claudeSDKChildAliasBelongsToOtherKey(key, update.TaskID, func(child claudeSDKChildSession) string {
+		return child.TaskID
 	}) {
-		agent.TaskID = update.TaskID
+		child.TaskID = update.TaskID
 	}
-	if update.AgentID != "" && (agent.AgentID == "" || agent.AgentID == update.AgentID) && !s.backgroundAgentAliasBelongsToOtherKey(key, update.AgentID, func(agent claudeSDKBackgroundAgent) string {
-		return agent.AgentID
+	if update.AgentID != "" && (child.AgentID == "" || child.AgentID == update.AgentID) && !s.claudeSDKChildAliasBelongsToOtherKey(key, update.AgentID, func(child claudeSDKChildSession) string {
+		return child.AgentID
 	}) {
-		agent.AgentID = update.AgentID
+		child.AgentID = update.AgentID
 	}
-	if update.Description != "" {
-		agent.Description = update.Description
+	previousDescription := strings.TrimSpace(child.Description)
+	nextDescription := strings.TrimSpace(update.Description)
+	titleChanged := nextDescription != "" && nextDescription != previousDescription
+	if nextDescription != "" {
+		child.Description = nextDescription
 	}
 	if update.Summary != "" {
-		agent.Summary = update.Summary
+		child.Summary = update.Summary
 	}
 	if update.LastToolName != "" {
-		agent.LastToolName = update.LastToolName
+		child.LastToolName = update.LastToolName
 	}
-	agent.Status = firstNonEmptyString(claudeSDKNormalizeTaskStatus(update.Status), agent.Status, string(activityshared.ActivityStatusRunning))
-	if update.Started && agent.StartedAtUnixMS == 0 {
-		agent.StartedAtUnixMS = updatedAt
+	child.Async = child.Async || update.Async
+	child.Status = firstNonEmptyString(claudeSDKNormalizeTaskStatus(update.Status), child.Status, string(activityshared.ActivityStatusRunning))
+	if update.Started && child.StartedAtUnixMS == 0 {
+		child.StartedAtUnixMS = updatedAt
 	}
-	if backgroundAgentStatusIsTerminal(agent.Status) && agent.CompletedAtUnixMS == 0 {
-		agent.CompletedAtUnixMS = updatedAt
+	if claudeSDKChildStatusIsTerminal(child.Status) && child.CompletedAtUnixMS == 0 {
+		child.CompletedAtUnixMS = updatedAt
 	}
-	s.backgroundAgents[key] = agent
-	return agent, claudeSDKBackgroundAgentsRuntimeContext(s.backgroundAgents), true
+	s.childSessions[key] = child
+	return child, created, titleChanged && !created, true
 }
 
-func (s *claudeSDKAdapterSession) resolveClaudeSDKBackgroundAgentKey(update claudeSDKBackgroundAgentUpdate, fallback string) string {
+func (s *claudeSDKAdapterSession) resolveClaudeSDKChildKey(update claudeSDKChildUpdate, fallback string) string {
 	parentID := strings.TrimSpace(update.ParentToolUseID)
 	if parentID != "" {
-		if resolved := s.backgroundAgentKeyByAlias(parentID); resolved != "" {
+		if resolved := s.claudeSDKChildKeyByAlias(parentID); resolved != "" {
 			return resolved
 		}
-		// The Agent tool call id is the canonical background-agent key. An
+		// The Task tool call id is the canonical child-session key. An
 		// update that carries one may merge through weaker task/agent aliases
 		// only into an entry that does not already belong to a different
 		// parent tool call; otherwise a poisoned alias would fold two
-		// concurrent background agents into one entry.
+		// concurrent child sessions into one entry.
 		for _, alias := range []string{update.AgentID, update.TaskID, update.Key} {
-			resolved := s.backgroundAgentKeyByAlias(alias)
+			resolved := s.claudeSDKChildKeyByAlias(alias)
 			if resolved == "" {
 				continue
 			}
-			existingParent := strings.TrimSpace(s.backgroundAgents[resolved].ParentToolUseID)
+			existingParent := strings.TrimSpace(s.childSessions[resolved].ParentToolUseID)
 			if existingParent == "" || existingParent == parentID {
 				return resolved
 			}
@@ -222,49 +249,48 @@ func (s *claudeSDKAdapterSession) resolveClaudeSDKBackgroundAgentKey(update clau
 		update.Key,
 	}
 	for _, key := range keys {
-		if resolved := s.backgroundAgentKeyByAlias(key); resolved != "" {
+		if resolved := s.claudeSDKChildKeyByAlias(key); resolved != "" {
 			return resolved
 		}
 	}
 	return fallback
 }
 
-func (s *claudeSDKAdapterSession) backgroundAgentKeyByAlias(alias string) string {
+func (s *claudeSDKAdapterSession) claudeSDKChildKeyByAlias(alias string) string {
 	alias = strings.TrimSpace(alias)
 	if alias == "" || s == nil {
 		return ""
 	}
-	if agent := s.backgroundAgents[alias]; agent.TurnID != "" || agent.Key != "" {
+	if child := s.childSessions[alias]; child.TurnID != "" || child.Key != "" {
 		return alias
 	}
-	for key, agent := range s.backgroundAgents {
-		if alias == agent.ParentToolUseID || alias == agent.AgentID || alias == agent.TaskID {
+	for key, child := range s.childSessions {
+		if alias == child.ParentToolUseID || alias == child.AgentID || alias == child.TaskID {
 			return key
 		}
 	}
 	return ""
 }
 
-func (s *claudeSDKAdapterSession) backgroundAgentAliasBelongsToOtherKey(currentKey string, alias string, selectAlias func(claudeSDKBackgroundAgent) string) bool {
+func (s *claudeSDKAdapterSession) claudeSDKChildAliasBelongsToOtherKey(currentKey string, alias string, selectAlias func(claudeSDKChildSession) string) bool {
 	alias = strings.TrimSpace(alias)
 	if alias == "" || s == nil {
 		return false
 	}
-	for key, agent := range s.backgroundAgents {
+	for key, child := range s.childSessions {
 		if key == currentKey {
 			continue
 		}
-		if alias == strings.TrimSpace(selectAlias(agent)) {
+		if alias == strings.TrimSpace(selectAlias(child)) {
 			return true
 		}
 	}
 	return false
 }
 
-func (s *claudeSDKAdapterSession) backgroundAgentTurnID(payload map[string]any, turnID string) string {
-	turnID = strings.TrimSpace(turnID)
-	if turnID != "" || s == nil || len(s.backgroundAgents) == 0 {
-		return turnID
+func (s *claudeSDKAdapterSession) claudeSDKChildForPayload(payload map[string]any) (claudeSDKChildSession, bool) {
+	if s == nil || len(s.childSessions) == 0 {
+		return claudeSDKChildSession{}, false
 	}
 	metadata := payloadMap(payload, "metadata")
 	keys := []string{
@@ -274,138 +300,199 @@ func (s *claudeSDKAdapterSession) backgroundAgentTurnID(payload map[string]any, 
 		payloadString(payload, "agentId"),
 		payloadString(metadata, "agentId"),
 		payloadString(metadata, "subagentAgentId"),
+		payloadString(metadata, "parentToolUseId"),
 		payloadString(payload, "parentToolUseId"),
 		payloadString(payload, "toolCallId"),
 		payloadString(payload, "callId"),
 	}
 	for _, key := range keys {
-		if agent := s.backgroundAgentByKey(key); agent.TurnID != "" {
-			return agent.TurnID
+		if child := s.claudeSDKChildByKey(key); child.TurnID != "" {
+			return child, true
 		}
 	}
-	return ""
+	return claudeSDKChildSession{}, false
 }
 
-func (s *claudeSDKAdapterSession) backgroundAgentByKey(key string) claudeSDKBackgroundAgent {
+func (s *claudeSDKAdapterSession) claudeSDKDelegationParentForPayload(payload map[string]any) (claudeSDKChildSession, bool) {
+	if s == nil || len(s.childSessions) == 0 {
+		return claudeSDKChildSession{}, false
+	}
+	metadata := payloadMap(payload, "metadata")
+	parentToolUseID := firstNonEmptyString(
+		payloadString(metadata, "parentToolUseId"),
+		payloadString(payload, "parentToolUseId"),
+	)
+	if parentToolUseID == "" {
+		return claudeSDKChildSession{}, false
+	}
+	parent := s.claudeSDKChildByKey(parentToolUseID)
+	return parent, parent.TurnID != ""
+}
+
+func (s *claudeSDKAdapterSession) claudeSDKChildByKey(key string) claudeSDKChildSession {
 	key = strings.TrimSpace(key)
 	if key == "" || s == nil {
-		return claudeSDKBackgroundAgent{}
+		return claudeSDKChildSession{}
 	}
-	if resolved := s.backgroundAgentKeyByAlias(key); resolved != "" {
-		return s.backgroundAgents[resolved]
+	if resolved := s.claudeSDKChildKeyByAlias(key); resolved != "" {
+		return s.childSessions[resolved]
 	}
-	return claudeSDKBackgroundAgent{}
+	return claudeSDKChildSession{}
 }
 
-func claudeSDKBackgroundAgentEvents(session Session, agent claudeSDKBackgroundAgent, runtimeContext map[string]any, sidecarType string) []activityshared.Event {
-	turnID := strings.TrimSpace(agent.TurnID)
-	ctx, ok := activityEventContext(session, newID(), turnID)
+func (s *claudeSDKAdapterSession) claudeSDKChildByAgentSessionID(agentSessionID string) (claudeSDKChildSession, bool) {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if s == nil || agentSessionID == "" {
+		return claudeSDKChildSession{}, false
+	}
+	for _, child := range s.childSessions {
+		if child.AgentSessionID == agentSessionID {
+			return child, true
+		}
+	}
+	return claudeSDKChildSession{}, false
+}
+
+func claudeSDKChildRuntimeSession(root Session, child claudeSDKChildSession) Session {
+	root.AgentSessionID = child.AgentSessionID
+	root.ProviderSessionID = firstNonEmptyString(child.TaskID, child.AgentID, child.Key)
+	root.Title = child.Description
+	root.Status = SessionStatusWorking
+	root.TurnLifecycle = nil
+	root.SubmitAvailability = blockedSubmitAvailability("active_turn")
+	return root
+}
+
+func claudeSDKChildEventContext(session Session, child claudeSDKChildSession, eventID string) (activityshared.EventContext, bool) {
+	ctx, ok := activityEventContext(claudeSDKChildRuntimeSession(session, child), eventID, child.TurnID)
 	if !ok {
-		return []activityshared.Event{claudeSDKBackgroundAgentsSessionEvent(session, runtimeContext)}
+		return activityshared.EventContext{}, false
 	}
-	metadata := claudeSDKBackgroundAgentMetadata(agent)
-	activityKey := "claude-sdk-background-agent:" + agent.Key
-	var event activityshared.Event
-	switch {
-	case strings.EqualFold(agent.Status, string(activityshared.ActivityStatusFailed)):
-		event = activityshared.NewActivityFailed(ctx, activityKey, metadata)
-	case backgroundAgentStatusIsTerminal(agent.Status):
-		event = activityshared.NewActivityCompleted(ctx, activityKey, metadata)
-	case sidecarType == "task_started" || sidecarType == "tool_completed":
-		event = activityshared.NewActivityStarted(ctx, activityKey, metadata)
-	default:
-		event = activityshared.NewActivityUpdated(ctx, activityKey, metadata)
-	}
-	return []activityshared.Event{event, claudeSDKBackgroundAgentsSessionEvent(session, runtimeContext)}
+	ctx.SessionKind = "child"
+	ctx.RootAgentSessionID = child.RootAgentSessionID
+	ctx.RootTurnID = child.RootTurnID
+	ctx.ParentAgentSessionID = child.ParentAgentSessionID
+	ctx.ParentTurnID = child.ParentTurnID
+	ctx.ParentToolCallID = child.ParentToolUseID
+	return ctx, true
 }
 
-func claudeSDKBackgroundAgentsSessionEvent(session Session, runtimeContext map[string]any) activityshared.Event {
-	return newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-		"runtimeContext": map[string]any{
-			"backgroundAgents": runtimeContext,
-		},
-	})
+func claudeSDKEventForChild(event activityshared.Event, child claudeSDKChildSession) activityshared.Event {
+	event.AgentSessionID = child.AgentSessionID
+	event.ProviderSessionID = firstNonEmptyString(child.TaskID, child.AgentID, child.Key)
+	event.SessionKind = "child"
+	event.RootAgentSessionID = child.RootAgentSessionID
+	event.RootTurnID = child.RootTurnID
+	event.ParentAgentSessionID = child.ParentAgentSessionID
+	event.ParentTurnID = child.ParentTurnID
+	event.ParentToolCallID = child.ParentToolUseID
+	return event
 }
 
-func claudeSDKBackgroundAgentsRuntimeContext(value map[string]claudeSDKBackgroundAgent) map[string]any {
-	if len(value) == 0 {
+func claudeSDKChildEvents(session Session, child claudeSDKChildSession, created bool, titleChanged bool, sidecarType string) []activityshared.Event {
+	baseEventID := "claude-child:" + child.Key + ":" + sidecarType + ":" + newID()
+	ctx, ok := claudeSDKChildEventContext(session, child, baseEventID)
+	if !ok {
 		return nil
 	}
-	keys := make([]string, 0, len(value))
-	for key := range value {
-		keys = append(keys, key)
+	eventContext := func(suffix string) activityshared.EventContext {
+		next := ctx
+		next.EventID = baseEventID + ":" + suffix
+		return next
 	}
-	sort.Strings(keys)
-	items := make([]any, 0, len(keys))
-	runningCount := 0
-	for _, key := range keys {
-		agent := value[key]
-		status := firstNonEmptyString(strings.TrimSpace(agent.Status), string(activityshared.ActivityStatusRunning))
-		if !backgroundAgentStatusIsTerminal(status) {
-			runningCount++
-		}
-		item := map[string]any{
-			"taskId":      firstNonEmptyString(agent.TaskID, agent.Key),
-			"description": agent.Description,
-			"status":      status,
-		}
-		if agent.ParentToolUseID != "" {
-			item["parentToolUseId"] = agent.ParentToolUseID
-		}
-		if agent.AgentID != "" {
-			item["agentId"] = agent.AgentID
-		}
-		if agent.Summary != "" {
-			item["summary"] = agent.Summary
-		}
-		if agent.LastToolName != "" {
-			item["lastToolName"] = agent.LastToolName
-		}
-		if agent.StartedAtUnixMS > 0 {
-			item["startedAtUnixMs"] = agent.StartedAtUnixMS
-		}
-		if agent.UpdatedAtUnixMS > 0 {
-			item["updatedAtUnixMs"] = agent.UpdatedAtUnixMS
-		}
-		if agent.CompletedAtUnixMS > 0 {
-			item["completedAtUnixMs"] = agent.CompletedAtUnixMS
-		}
-		items = append(items, item)
+	events := make([]activityshared.Event, 0, 4)
+	if created {
+		sessionContext := eventContext("session-started")
+		sessionContext.Title = child.Description
+		events = append(events, activityshared.NewChildSessionStarted(sessionContext, child.TurnID))
+	} else if titleChanged {
+		titleContext := eventContext("session-title-updated")
+		titleContext.Title = child.Description
+		events = append(events, activityshared.NewSessionTitleUpdated(titleContext))
 	}
-	return map[string]any{
-		"count": runningCount,
-		"items": items,
+	metadata := claudeSDKChildMetadata(child)
+	activityKey := "claude-sdk-child:" + child.Key
+	switch sidecarType {
+	case "task_started":
+		if created {
+			events = append(events, activityshared.NewTurnStarted(eventContext("turn-started"), child.TurnID))
+		}
+		events = append(events, activityshared.NewActivityStarted(eventContext("activity-started"), activityKey, metadata))
+	case "task_progress":
+		events = append(events, activityshared.NewTurnUpdated(eventContext("turn-updated"), child.TurnID, activityshared.TurnPhaseWorking))
+		events = append(events, activityshared.NewActivityUpdated(eventContext("activity-updated"), activityKey, metadata))
+	case "task_completed":
+		switch claudeSDKNormalizeTaskStatus(child.Status) {
+		case string(activityshared.ActivityStatusFailed):
+			events = append(events, activityshared.NewActivityFailed(eventContext("activity-failed"), activityKey, metadata))
+			events = append(events, activityshared.NewTurnFailed(eventContext("turn-failed"), child.TurnID))
+		case "stopped":
+			events = append(events, activityshared.NewActivityCompleted(eventContext("activity-completed"), activityKey, metadata))
+			events = append(events, activityshared.NewTurnCanceled(eventContext("turn-canceled"), child.TurnID))
+		default:
+			events = append(events, activityshared.NewActivityCompleted(eventContext("activity-completed"), activityKey, metadata))
+			events = append(events, activityshared.NewTurnCompleted(eventContext("turn-completed"), child.TurnID, activityshared.TurnOutcomeCompleted))
+		}
+	case "tool_started", "tool_updated":
+		if created {
+			events = append(events, activityshared.NewTurnStarted(eventContext("turn-started"), child.TurnID))
+		}
+	case "tool_completed":
+		if created {
+			events = append(events, activityshared.NewTurnStarted(eventContext("turn-started"), child.TurnID))
+		}
+		if !child.Async {
+			events = append(events, activityshared.NewTurnCompleted(eventContext("turn-completed"), child.TurnID, activityshared.TurnOutcomeCompleted))
+		}
+	case "tool_failed":
+		if created {
+			events = append(events, activityshared.NewTurnStarted(eventContext("turn-started"), child.TurnID))
+		}
+		events = append(events, activityshared.NewTurnFailed(eventContext("turn-failed"), child.TurnID))
+	}
+	for index := range events {
+		events[index] = claudeSDKEventForChild(events[index], child)
+	}
+	return events
+}
+
+func claudeSDKChildStatusIsTerminal(status string) bool {
+	switch claudeSDKNormalizeTaskStatus(status) {
+	case string(activityshared.ActivityStatusCompleted), string(activityshared.ActivityStatusFailed), "stopped":
+		return true
+	default:
+		return false
 	}
 }
 
-func claudeSDKBackgroundAgentMetadata(agent claudeSDKBackgroundAgent) map[string]any {
+func claudeSDKChildMetadata(child claudeSDKChildSession) map[string]any {
 	metadata := map[string]any{
-		"kind":        "background_agent",
-		"taskId":      firstNonEmptyString(agent.TaskID, agent.Key),
-		"description": agent.Description,
-		"status":      firstNonEmptyString(agent.Status, string(activityshared.ActivityStatusRunning)),
-		"title":       firstNonEmptyString(agent.Description, "Background agent"),
+		"kind":        "child_agent",
+		"taskId":      firstNonEmptyString(child.TaskID, child.Key),
+		"description": child.Description,
+		"status":      firstNonEmptyString(child.Status, string(activityshared.ActivityStatusRunning)),
+		"title":       child.Description,
 	}
-	if agent.ParentToolUseID != "" {
-		metadata["parentToolUseId"] = agent.ParentToolUseID
+	if child.ParentToolUseID != "" {
+		metadata["parentToolUseId"] = child.ParentToolUseID
 	}
-	if agent.AgentID != "" {
-		metadata["agentId"] = agent.AgentID
+	if child.AgentID != "" {
+		metadata["agentId"] = child.AgentID
 	}
-	if agent.Summary != "" {
-		metadata["summary"] = agent.Summary
+	if child.Summary != "" {
+		metadata["summary"] = child.Summary
 	}
-	if agent.LastToolName != "" {
-		metadata["lastToolName"] = agent.LastToolName
+	if child.LastToolName != "" {
+		metadata["lastToolName"] = child.LastToolName
 	}
-	if agent.StartedAtUnixMS > 0 {
-		metadata["startedAtUnixMs"] = agent.StartedAtUnixMS
+	if child.StartedAtUnixMS > 0 {
+		metadata["startedAtUnixMs"] = child.StartedAtUnixMS
 	}
-	if agent.UpdatedAtUnixMS > 0 {
-		metadata["updatedAtUnixMs"] = agent.UpdatedAtUnixMS
+	if child.UpdatedAtUnixMS > 0 {
+		metadata["updatedAtUnixMs"] = child.UpdatedAtUnixMS
 	}
-	if agent.CompletedAtUnixMS > 0 {
-		metadata["completedAtUnixMs"] = agent.CompletedAtUnixMS
+	if child.CompletedAtUnixMS > 0 {
+		metadata["completedAtUnixMs"] = child.CompletedAtUnixMS
 	}
 	return metadata
 }
@@ -583,19 +670,65 @@ func claudeSDKCallBodyKey(eventType string) string {
 	}
 }
 
-func (s *claudeSDKAdapterSession) compactMessageEvent(session Session, turnID string, streamState string, content string) activityshared.Event {
-	if s.compactMessages == nil {
-		s.compactMessages = make(map[string]string)
+func (a *ClaudeCodeSDKAdapter) compactMessageEvent(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnID string,
+	streamState string,
+	noticeStatus string,
+	detail string,
+) (activityshared.Event, bool) {
+	a.mu.Lock()
+	compact := adapterSession.compactMessages[turnID]
+	if compact.messageID == "" {
+		compact.messageID = "claude-sdk:compact:" + turnID
 	}
-	messageID := s.compactMessages[turnID]
-	if messageID == "" {
-		messageID = "claude-sdk:compact:" + turnID
-		s.compactMessages[turnID] = messageID
+	if compact.terminalStatus != "" {
+		a.mu.Unlock()
+		return activityshared.Event{}, false
 	}
-	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, content, map[string]any{
-		"adapter":     claudeSDKSidecarAdapterName,
-		"messageId":   messageID,
-		"contentMode": messageContentModeSnapshot,
-		"source":      "compact",
-	})
+	if noticeStatus == "running" {
+		compact.active = true
+	} else {
+		compact.active = false
+		compact.terminalStatus = noticeStatus
+	}
+	if adapterSession.compactMessages == nil {
+		adapterSession.compactMessages = make(map[string]claudeSDKCompactMessage)
+	}
+	adapterSession.compactMessages[turnID] = compact
+	a.mu.Unlock()
+	return claudeSDKCompactMessageEvent(session, turnID, compact.messageID, streamState, noticeStatus, detail), true
+}
+
+func claudeSDKCompactMessageEvent(
+	session Session,
+	turnID string,
+	messageID string,
+	streamState string,
+	noticeStatus string,
+	detail string,
+) activityshared.Event {
+	title := appServerCompactingContextTitle
+	if noticeStatus == "completed" {
+		title = appServerContextCompactedTitle
+	}
+	if noticeStatus == "failed" || noticeStatus == "canceled" {
+		title = appServerCompactionInterruptedTitle
+	}
+	metadata := map[string]any{
+		"adapter":             claudeSDKSidecarAdapterName,
+		"messageId":           messageID,
+		"contentMode":         messageContentModeSnapshot,
+		"source":              "compact",
+		"kind":                "agent_system_notice",
+		"noticeKind":          "system_notice",
+		"noticeCommand":       "compact",
+		"noticeCommandStatus": noticeStatus,
+		"title":               title,
+	}
+	if strings.TrimSpace(detail) != "" {
+		metadata["detail"] = strings.TrimSpace(detail)
+	}
+	return newTurnActivityEventWithID(session, messageID, EventMessage, turnID, streamState, RoleAssistant, title, metadata)
 }

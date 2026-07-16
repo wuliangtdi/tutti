@@ -294,7 +294,10 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
       createWorkspaceAgentSession: async () => createdSession,
-      getWorkspaceAgentSession: async () => loadedSession,
+      getWorkspaceAgentSession: async () => ({
+        session: loadedSession,
+        childSessions: []
+      }),
       sendWorkspaceAgentSessionInput: async () => ({ session: loadedSession }),
       updateWorkspaceAgentSessionVisibility: async () => loadedSession
     } as unknown as TuttidClient,
@@ -549,8 +552,8 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () =>
-        workspaceAgentSession({
+      getWorkspaceAgentSession: async () => ({
+        session: workspaceAgentSession({
           currentPhase: "idle",
           status: "completed",
           turnLifecycle: {
@@ -558,7 +561,9 @@ test("WorkspaceAgentActivityService starts session-event streams and preserves u
             outcome: "completed",
             phase: "settled"
           }
-        })
+        }),
+        childSessions: []
+      })
     } as unknown as TuttidClient,
     runtimeApi: {
       logTerminalDiagnostic: async () => {}
@@ -658,7 +663,10 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
       subscribeConnectionState: () => () => {}
     } as never,
     tuttidClient: {
-      getWorkspaceAgentSession: async () => settled,
+      getWorkspaceAgentSession: async () => ({
+        session: settled,
+        childSessions: []
+      }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
         sessions: [running],
@@ -744,7 +752,7 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
       getWorkspaceAgentSession: async () => {
         getCalls += 1;
         if (getCalls === 1) throw new Error("temporary reconcile failure");
-        return settled;
+        return { session: settled, childSessions: [] };
       },
       listWorkspaceAgentSessionMessages: async () => ({
         hasMore: false,
@@ -784,7 +792,7 @@ test("WorkspaceAgentActivityService preserves live provenance across a transient
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(getCalls, 2);
+  assert.equal(getCalls, 3);
   assert.equal(
     selectSessionAttention(
       service.getSessionEngine("ws-1").getSnapshot(),
@@ -934,7 +942,7 @@ test("WorkspaceAgentActivityService selects, scans, and imports the same Claude 
   ]);
 });
 
-test("WorkspaceAgentActivityService fetches combined reconcile state after messages", async () => {
+test("WorkspaceAgentActivityService fetches detail before combined message reconciliation", async () => {
   const diagnostics: unknown[] = [];
   const calls: string[] = [];
   let messagesResolved = false;
@@ -958,7 +966,10 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
     tuttidClient: {
       getWorkspaceAgentSession: async () => {
         calls.push("getSession");
-        return messagesResolved ? finalSession : staleSession;
+        return {
+          session: messagesResolved ? finalSession : staleSession,
+          childSessions: []
+        };
       },
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
@@ -990,7 +1001,7 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   await new Promise((resolve) => setImmediate(resolve));
 
   const session = service.getSnapshot("ws-1").sessions[0];
-  assert.deepEqual(calls, ["listMessages", "getSession"]);
+  assert.deepEqual(calls, ["getSession", "listMessages", "getSession"]);
   assert.equal(session?.activeTurn, null);
   assert.equal(session?.latestTurn?.phase, "settled");
   assert.deepEqual(
@@ -1009,6 +1020,8 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
           traceEvent.startsWith("reconcile.combined")
       ),
     [
+      "reconcile.combined.discovery_fetch.requested",
+      "reconcile.combined.discovery_fetch.resolved",
       "reconcile.combined.messages_requested",
       "reconcile.combined.messages_resolved",
       "reconcile.combined.state_fetch.requested",
@@ -1019,12 +1032,93 @@ test("WorkspaceAgentActivityService fetches combined reconcile state after messa
   );
 });
 
+test("WorkspaceAgentActivityService reconciles child sessions and their messages through root detail", async () => {
+  const root = {
+    ...workspaceAgentSession({ status: "working" }),
+    kind: "root"
+  };
+  const child = {
+    ...workspaceAgentSession({ status: "working" }),
+    id: "child-1",
+    kind: "child",
+    rootAgentSessionId: "session-1",
+    rootTurnId: "turn-1",
+    parentAgentSessionId: "session-1",
+    parentTurnId: "turn-1",
+    parentToolCallId: "spawn-1",
+    title: "Child 1"
+  };
+  const messageRequests: string[] = [];
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async () => ({
+        session: root,
+        childSessions: [child]
+      }),
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [root],
+        workspaceId: "ws-1"
+      }),
+      listWorkspaceAgentSessionMessages: async (
+        _workspaceId: string,
+        agentSessionId: string
+      ) => {
+        messageRequests.push(agentSessionId);
+        return {
+          hasMore: false,
+          latestVersion: 1,
+          messages: [
+            {
+              agentSessionId,
+              kind: "text",
+              messageId: `${agentSessionId}-message-1`,
+              occurredAtUnixMs: 1,
+              payload: { text: agentSessionId },
+              role: "assistant",
+              turnId: agentSessionId === "child-1" ? "child-turn-1" : "turn-1",
+              version: 1
+            }
+          ]
+        };
+      }
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  await service.load("ws-1");
+  service.ensureSessionSynchronized({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const snapshot = service.getSnapshot("ws-1");
+  assert.deepEqual(messageRequests.sort(), ["child-1", "session-1"]);
+  assert.deepEqual(
+    snapshot.sessions.map((session) => session.agentSessionId).sort(),
+    ["child-1", "session-1"]
+  );
+  assert.equal(
+    snapshot.sessions.find((session) => session.agentSessionId === "child-1")
+      ?.kind,
+    "child"
+  );
+  assert.equal(
+    snapshot.sessionMessagesById["child-1"]?.[0]?.turnId,
+    "child-turn-1"
+  );
+});
+
 test("WorkspaceAgentActivityService loads the newest history page first", async () => {
   const requests: unknown[] = [];
   const session = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => session,
+      getWorkspaceAgentSession: async () => ({
+        session,
+        childSessions: []
+      }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
         sessions: [session],
@@ -1070,7 +1164,10 @@ test("WorkspaceAgentActivityService drains every incremental history page", asyn
   });
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
-      getWorkspaceAgentSession: async () => session,
+      getWorkspaceAgentSession: async () => ({
+        session,
+        childSessions: []
+      }),
       listWorkspaceAgentSessions: async () => ({
         hasMore: false,
         sessions: [session],
@@ -1674,7 +1771,6 @@ function workspaceAgentSession(overrides: {
           ? "turn-1"
           : null,
     agentTargetId: null,
-    backgroundAgents: null,
     capabilities: null,
     createdAtUnixMs: Date.parse("2026-06-16T00:00:00.000Z"),
     endedAtUnixMs: null,

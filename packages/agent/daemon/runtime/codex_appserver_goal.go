@@ -227,14 +227,14 @@ func (a *CodexAppServerAdapter) execSlashCommand(
 		// immediate RPC failure or an interrupted/failed turn always has a
 		// pending banner to settle in place.
 		startMessageID := "compaction:" + turnID
-		normalizer.TrackCompactionNotice(startMessageID, false)
-		emitEvents([]activityshared.Event{appServerCompactionNoticeEvent(session, turnID, startMessageID, false)})
+		startMessageID, _ = normalizer.StartCompactionNotice(startMessageID)
+		emitEvents([]activityshared.Event{appServerCompactionNoticeEvent(session, turnID, startMessageID, "running")})
 		_, err := appSession.client.ThreadCompactStart(ctx, map[string]any{
 			"threadId": appSession.threadID,
 		}, a.appServerMessageHandler(appSession, session, turnID, normalizer, emitEvents, emitCommands))
 		if err != nil {
 			emitTerminal(append(
-				normalizer.settlePendingCompactionEvents(session, turnID, appServerCompactionInterruptedTitle),
+				normalizer.settlePendingCompactionEvents(session, turnID, "failed"),
 				newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)),
 			))
 			return true, nil

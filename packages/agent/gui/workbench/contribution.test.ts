@@ -1834,6 +1834,32 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("keeps rich workbench titles on one aligned line", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title\s*{[^}]*display:\s*block;[^}]*width:\s*0;[^}]*height:\s*24px;[^}]*flex:\s*1 1 0;[^}]*overflow:\s*hidden;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title > div,\s*\.agent-gui-workbench-header__rich-title \.ProseMirror\s*{[^}]*width:\s*100%;[^}]*height:\s*24px;[^}]*overflow:\s*visible;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title p\s*{[^}]*display:\s*flex;[^}]*width:\s*max-content;[^}]*min-width:\s*100%;[^}]*height:\s*24px;[^}]*align-items:\s*center;[^}]*overflow:\s*visible;[^}]*overflow-wrap:\s*normal;[^}]*line-height:\s*24px;[^}]*white-space:\s*nowrap;[^}]*word-break:\s*normal;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title \.agent-rich-text-mention-node,\s*\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--file,\s*\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--entity,\s*\.agent-gui-workbench-header__rich-title \[data-slot="mention-pill"\]\s*{[^}]*top:\s*0;[^}]*align-items:\s*center;[^}]*transform:\s*none;[^}]*vertical-align:\s*middle;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title\s+\.agent-rich-text-mention-node\[data-agent-custom-mention="true"\]\s*{[^}]*display:\s*inline-flex;[^}]*height:\s*24px;[^}]*align-items:\s*center;[^}]*transform:\s*translateY\(-1\.5px\);/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title \.tsh-agent-object-token--file\s*{[^}]*height:\s*24px;[^}]*min-height:\s*24px;[^}]*line-height:\s*24px;/s
+    );
+    expect(css).toMatch(
+      /\.agent-gui-workbench-header__rich-title\s+\.tsh-agent-object-token--file\s+\.tsh-agent-object-token__main\s*{[^}]*transform:\s*translateY\(-1\.25px\);/s
+    );
+  });
+
   it("keeps standalone tool actions pinned to the window edge when the conversation rail collapses", () => {
     const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
 
@@ -1905,6 +1931,14 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(css).toMatch(
       /\.agent-gui-node__composer-textarea\s+\[data-agent-file-mention="true"\]\.tsh-agent-object-token:hover\s*{[^}]*background:\s*color-mix\(in srgb, currentColor 16%, transparent\);/s
+    );
+  });
+
+  it("lets compact custom mention chips keep the normal composer caret height", () => {
+    const css = readFileSync(resolve("app/renderer/agentactivity.css"), "utf8");
+
+    expect(css).toMatch(
+      /\.agent-gui-node__composer-textarea\s+\.agent-rich-text-mention-node\[data-agent-custom-mention="true"\]\s*\{[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*line-height:\s*inherit;/s
     );
   });
 

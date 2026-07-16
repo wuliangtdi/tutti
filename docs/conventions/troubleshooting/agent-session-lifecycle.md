@@ -4,6 +4,36 @@
 
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
+### Codex WebSocket reconnect rejects a long prompt metadata header
+
+- Symptom:
+  A long-running Codex turn disconnects, then its WebSocket reconnect fails with
+  `did not receive a valid HTTP request; Separator is found, but chunk is longer than limit`.
+  The same prompt may succeed when the original connection stays open.
+- Quick checks:
+  Inspect the Codex app-server `turn/start` params without logging prompt text.
+  Compare prompt byte count with any client metadata byte count. An unbounded
+  prompt copy in `responsesapiClientMetadata` can cross a WebSocket HTTP
+  parser's roughly 32 KiB line limit during reconnect.
+- Root cause:
+  Codex may forward Responses API client metadata through the WebSocket HTTP
+  handshake. Duplicating the full prompt into that metadata turns prompt size
+  into header size. Reconnect then fails before the provider can process the
+  normal `input` payload.
+- Fix:
+  Keep the full materialized prompt in `turn/start.input`. Do not duplicate it
+  into auxiliary metadata, truncate it in AgentGUI, or compensate with reconnect
+  retries. Provider-specific metadata stays inside the provider adapter and must
+  follow a demonstrated provider contract.
+- Validation:
+  Cover a prompt larger than 32 KiB. Assert `turn/start.input` preserves it
+  exactly and `responsesapiClientMetadata` contains no prompt copy. Run
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### AgentGUI turn actions return plain-text route 404s
 
 - Symptom:
@@ -227,6 +257,63 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
+### Cursor or OpenCode turn settles before late ACP activity arrives
+
+- Symptom:
+  A Cursor or OpenCode turn appears complete, then a delayed tool or permission
+  event is projected onto the old turn; the composer may relock, persistence
+  may reject a settled-to-running transition, or a synthetic turn may appear.
+  A Cursor background Task may also appear launched successfully while its
+  detached child later requests permissions that never reach the UI.
+- Quick checks:
+  Correlate `session/prompt` response timing with later `session/update` or
+  `session/request_permission` messages. If the prompt response arrived first,
+  the late event no longer has an active canonical turn owner. Also verify the
+  terminal report is `root_provider_turn.completed`, not a direct canonical
+  `turn.completed` from the ACP adapter. For Cursor Task/subagent probes,
+  correlate `agent_session.cursor.task_tool_update` with
+  `agent_session.cursor.task_extension`; the latter records only redacted
+  identity, ordering, field-presence, and duration facts. A background Task
+  tool result with `isBackground=true` and a very short duration is a launch
+  acknowledgement, not child terminal evidence. Permission requests arriving
+  after the root prompt result confirm the child is still running out of scope.
+- Root cause:
+  Standard ACP has one active prompt handler and a session-level fallback
+  handler. Reusing a recent turn ID in the fallback path treats temporal
+  proximity as ownership. That can reopen a settled root or fabricate a turn,
+  and ordinary tool display fields do not supply the stable child identity and
+  terminal lifecycle required for a provider-native child session. Cursor's
+  background Task implementation records eventual completion in an internal
+  work registry, but Cursor ACP `2026.07.01-41b2de7` does not expose that
+  terminal to Tutti.
+- Fix:
+  Route every Standard ACP prompt terminal through the daemon-owned root
+  provider lifecycle. Drop turn-scoped tool/message updates outside the active
+  prompt call and reject out-of-band permission callbacks; never synthesize a
+  canonical turn. Keep Cursor/OpenCode root-only until their ACP transports
+  expose stable child, parent, and child-terminal facts. Cursor Agent
+  `2026.07.01-41b2de7` does not merge `--plugin-dir` hooks into ACP, so the
+  dormant `preToolUse` Task guard is deliberately not advertised or
+  materialized. Do not treat background Task as supported or blocked, do not
+  write hooks into user/project configuration, and do not settle a detached
+  child from a guessed timeout.
+- Validation:
+  Cover Cursor and OpenCode normal completion with
+  `root_provider_turn.started/completed` and no canonical terminal from the
+  adapter. Deliver a late tool update and late permission after prompt return
+  and verify neither creates a turn, interaction, or child session. Make a
+  `session/cancel` write fail and verify the error reaches the caller. Also
+  fail an automatic permission-response write and verify the adapter does not
+  report a false approval while the provider is still waiting. Verify the
+  dormant Cursor hook allows foreground Task inputs, rejects snake-case and
+  camel-case background flags, does not match flag-like text inside the Task
+  prompt, and fails closed for malformed input; separately verify the current
+  ACP plugin manifest does not advertise or materialize that hook.
+- References:
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [standard_acp_stream.go](../../../packages/agent/daemon/runtime/standard_acp_stream.go)
+  [provider-native subagents](../../specs/2026-07-15-provider-native-subagents.md)
+
 ### Codex goal stops after a turn while the goal remains active
 
 - Symptom:
@@ -318,7 +405,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   turn ID and suppress only that turn's assistant/thinking acknowledgement at
   the runtime-adapter boundary before persistence. Do not filter by localized
   acknowledgement text and do not move the message into the interrupted turn.
-  Preserve goal/session updates and terminal cleanup.
+  Preserve goal/session updates and terminal cleanup, but do not register the
+  internal command as a root provider turn or feed its terminal into canonical
+  root settlement.
   Keep Stop and processing derived from the canonical active turn, and report a
   successful clear with a localized transient toast. Render that toast in an
   AgentGUI detail-scoped viewport and use UI System themed surface, foreground,
@@ -470,12 +559,54 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
 
+### Historical AgentGUI permission changes time out or stop responding
+
+- Symptom:
+  Changing permission mode in a historical conversation appears to do nothing,
+  or the first selection times out and later selections are ignored. Logs may
+  show a 30-second settings request with no provider settings application.
+- Quick checks:
+  Confirm the selected session is absent from the live runtime but present in
+  `workspace_agent_sessions`. Check whether one menu choice emitted two settings
+  requests. After a timeout, inspect the engine settings operation: `unknown`
+  plus a later request without `retry` explains a silent drop.
+- Root cause:
+  Historical settings were routed through runtime preparation, so a metadata
+  change could block on provider resume and sidecar startup. The permission
+  menu also handled both item pointer-down and Select value-change, duplicating
+  one user action. When the first command timed out, the engine correctly kept
+  uncertainty but the controller did not mark a later explicit choice as a
+  retry.
+- Fix:
+  Send one settings intent from Select value-change. Read the current engine
+  operation at action time and mark an explicit choice as retry when its status
+  is `unknown`. In the daemon, update inactive-session settings through the
+  durable activity projection and publish reconciliation; reserve provider
+  runtime updates for sessions that are already live. Serialize runtime resume
+  with durable settings read-modify-write per session, preventing stale resume
+  inputs and lost concurrent partial patches. Do not copy an active session
+  setting into target defaults.
+- Validation:
+  Cover one pointer selection producing one callback, timeout followed by an
+  explicit retry, and a historical Claude Code settings update that persists
+  while runtime resume and live adapter update counts remain zero. Run the
+  AgentGUI, activity-core, store-sqlite, and agent-service focused tests.
+- References:
+  [AgentComposerSettingsMenus.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx)
+  [useAgentGUIComposerSettingsActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerSettingsActions.ts)
+  [service_settings.go](../../../services/tuttid/service/agent/service_settings.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent GUI provider tab shows fused or stale conversations
 
 - Symptom:
   Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
   makes the selected row disappear, collapses a loaded page, or briefly flashes
-  missing Show more controls. Five page rows plus one selected overlay may show
+  missing Show more controls. The same switch may remain visibly blocked even
+  when each individual session query takes only tens of milliseconds, because
+  the first-page bootstrap repeats count, sort, entity projection, and turn /
+  interaction hydration once per current project section. Five page rows plus
+  one selected overlay may show
   Show more/Show less even when only six sessions exist, or a nine-session
   section may ignore the first Show more click. Restart can reproduce the same
   selected-row loss.
@@ -485,21 +616,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
   renderer, distinguish daemon-owned section membership ids from engine-owned
   session entities; activating or hydrating one session must not rewrite the
-  loaded membership page.
+  loaded membership page. For latency, count repository section reads per
+  bootstrap: production must issue one `ListSessionSections` batch read, not one
+  `ListSessionSection` call per project plus pinned and Chats. Run
+  `EXPLAIN QUERY PLAN` and confirm ordinary branches use
+  `idx_workspace_agent_sessions_rail_section_page`, pinned branches use
+  `idx_workspace_agent_sessions_pinned_page`, and selected page entities load
+  by the session primary key after narrow id trimming. A target-filtered rail
+  must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
+  `idx_workspace_agent_sessions_pinned_target_page` with an exact target
+  predicate; an optional `OR` predicate cannot narrow the index range. For a
+  reported slow switch, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`: the renderer event separates
+  request and controller-apply time, while the daemon event separates current
+  projects, store, and hydration time. Corresponding `*_failed` events record
+  real failures. Successful requests below 250 ms, aborted requests, and stale
+  responses are intentionally silent; these diagnostics must not log project
+  paths, section keys, session titles, or prompts.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
   from changing conversation summaries, so provider/detail reconciliation could
   collapse pages or synthesize membership. Counting the active overlay as a
   pageable row also corrupted Show more decisions. Bounded engine snapshots can
-  recreate the loss if omission is treated as deletion.
+  recreate the loss if omission is treated as deletion. The latency variant is
+  an N-section daemon read: current projects are a small requested set, while
+  the workspace DB retains history for removed projects. Scanning that full
+  history or repeating canonical turn / interaction hydration per section makes
+  the rail wait scale with project count even when every leaf query looks fast.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
   engine entities with a pure model projection. Keep active and pending sessions
   as display overlays outside pagination. Preserve old scope chrome and metadata
   atomically while a provider refetch is pending. Engine snapshots merge
-  monotonically; only explicit `session/removed` owns deletion.
+  monotonically; only explicit `session/removed` owns deletion. Keep first-page
+  bootstrap as a required narrow repository seam: one requested-section-driven
+  batch query, independent pinned and ordinary index branches, count/sort/limit
+  on narrow session ids, then one cross-section canonical entity hydration.
+  Do not add one `UNION ALL` arm per section; that restores section-count scaling
+  and inherits SQLite's compound-select term limit.
 - Validation:
   Run `pnpm --filter @tutti-os/agent-gui test`,
   `pnpm --filter @tutti-os/agent-activity-core test`, and
@@ -507,7 +664,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
   and
   `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
-  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
+  so cursor metadata and daemon ordering are covered. Run
+  `cd packages/agent/store-sqlite && go test -run '^$' -bench 'BenchmarkStoreListSessionSectionsLargeRemovedProjectHistory' -benchmem`
+  to compare the batch reader with the serial reference across sparse and dense
+  requested-section histories. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:

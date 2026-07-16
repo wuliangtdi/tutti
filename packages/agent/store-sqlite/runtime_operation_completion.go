@@ -59,55 +59,150 @@ func (s *Store) CompleteCancelRuntimeOperation(ctx context.Context, input Comple
 			if op.Kind != RuntimeOperationKindCancelTurn {
 				return "", "", nil, ErrRuntimeOperationSubjectState
 			}
-			turn, found, err := getAgentTurnTx(ctx, tx, op.WorkspaceID, op.AgentSessionID, op.TurnID)
+			targets, err := cancelTargetsFromRuntimeOperation(op)
 			if err != nil {
 				return "", "", nil, err
 			}
-			if !found {
-				return "", "", nil, ErrRuntimeOperationSubjectState
+			requestedOutcomes, err := cancelTargetOutcomeMap(targets, input.TargetOutcomes)
+			if err != nil {
+				return "", "", nil, err
 			}
-			result := RuntimeOperationResultCanceled
-			if turn.Phase == TurnPhaseSettled {
-				if turn.Outcome != TurnOutcomeCanceled {
-					result = RuntimeOperationResultAlreadySettled
+			result := RuntimeOperationResultAlreadySettled
+			eventTargets := make([]any, 0, len(targets))
+			rootAgentSessionID := payloadString(op.Payload, "rootAgentSessionId")
+			rootTargeted := false
+			for _, target := range targets {
+				if target.AgentSessionID == rootAgentSessionID {
+					rootTargeted = true
+					break
 				}
-			} else {
-				var activeTurnID sql.NullString
-				if err := tx.QueryRowContext(ctx, `
-SELECT active_turn_id FROM workspace_agent_sessions
-WHERE workspace_id = ? AND agent_session_id = ?
-`, op.WorkspaceID, op.AgentSessionID).Scan(&activeTurnID); err != nil {
-					return "", "", nil, fmt.Errorf("read cancel runtime operation session: %w", err)
+			}
+			var reconciledRoot Turn
+			for _, target := range targets {
+				turn, found, err := getAgentTurnTx(ctx, tx, op.WorkspaceID, target.AgentSessionID, target.TurnID)
+				if err != nil {
+					return "", "", nil, err
 				}
-				if !activeTurnID.Valid || activeTurnID.String != op.TurnID {
+				if !found {
 					return "", "", nil, ErrRuntimeOperationSubjectState
 				}
-				if _, err := tx.ExecContext(ctx, `
+				outcome := turn.Outcome
+				if turn.Phase != TurnPhaseSettled {
+					outcome = requestedOutcomes[cancelTargetKey(target.AgentSessionID, target.TurnID)]
+					var activeTurnID sql.NullString
+					if err := tx.QueryRowContext(ctx, `
+SELECT active_turn_id FROM workspace_agent_sessions
+WHERE workspace_id = ? AND agent_session_id = ?
+`, op.WorkspaceID, target.AgentSessionID).Scan(&activeTurnID); err != nil {
+						return "", "", nil, fmt.Errorf("read cancel runtime operation session: %w", err)
+					}
+					if !activeTurnID.Valid || activeTurnID.String != target.TurnID {
+						return "", "", nil, ErrRuntimeOperationSubjectState
+					}
+					if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns
 SET phase = ?, outcome = ?, settled_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND phase != ?
-`, TurnPhaseSettled, TurnOutcomeCanceled, input.NowUnixMS, input.NowUnixMS,
-					op.WorkspaceID, op.AgentSessionID, op.TurnID, TurnPhaseSettled); err != nil {
-					return "", "", nil, fmt.Errorf("settle canceled runtime operation turn: %w", err)
-				}
-				if _, err := tx.ExecContext(ctx, `
+`, TurnPhaseSettled, outcome, input.NowUnixMS, input.NowUnixMS,
+						op.WorkspaceID, target.AgentSessionID, target.TurnID, TurnPhaseSettled); err != nil {
+						return "", "", nil, fmt.Errorf("settle cancel runtime operation target: %w", err)
+					}
+					if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions SET active_turn_id = NULL, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND active_turn_id = ?
-`, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID, op.TurnID); err != nil {
-					return "", "", nil, fmt.Errorf("clear canceled runtime operation active turn: %w", err)
+`, input.NowUnixMS, op.WorkspaceID, target.AgentSessionID, target.TurnID); err != nil {
+						return "", "", nil, fmt.Errorf("clear canceled runtime operation active turn: %w", err)
+					}
+					turn.Phase = TurnPhaseSettled
+					turn.Outcome = outcome
+					turn.SettledAtUnixMS = input.NowUnixMS
+					turn.UpdatedAtUnixMS = input.NowUnixMS
+					if !rootTargeted {
+						root, accepted, err := s.reconcileRootTurnAfterChildTerminalTx(ctx, tx, turn, input.NowUnixMS)
+						if err != nil {
+							return "", "", nil, err
+						}
+						if accepted {
+							reconciledRoot = root
+						}
+					}
 				}
-			}
-			if _, err := tx.ExecContext(ctx, `
+				if target.AgentSessionID == op.AgentSessionID && target.TurnID == op.TurnID && outcome == TurnOutcomeCanceled {
+					result = RuntimeOperationResultCanceled
+				}
+				if outcome == TurnOutcomeCanceled {
+					if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_turns
+SET error_json = NULL, updated_at_unix_ms = ?
+WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
+  AND outcome = ? AND error_json IS NOT NULL
+`, input.NowUnixMS, op.WorkspaceID, target.AgentSessionID, target.TurnID, TurnOutcomeCanceled); err != nil {
+						return "", "", nil, fmt.Errorf("clear canceled runtime operation target error: %w", err)
+					}
+					turn.ErrorMessage = ""
+					turn.ErrorCode = ""
+					turn.UpdatedAtUnixMS = input.NowUnixMS
+				}
+				if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_interactions SET status = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND status = ?
-`, InteractionStatusSuperseded, input.NowUnixMS, op.WorkspaceID, op.AgentSessionID,
-				op.TurnID, InteractionStatusPending); err != nil {
-				return "", "", nil, fmt.Errorf("supersede canceled runtime operation interactions: %w", err)
+`, InteractionStatusSuperseded, input.NowUnixMS, op.WorkspaceID, target.AgentSessionID,
+					target.TurnID, InteractionStatusPending); err != nil {
+					return "", "", nil, fmt.Errorf("supersede canceled runtime operation interactions: %w", err)
+				}
+				eventTargets = append(eventTargets, map[string]any{
+					"agentSessionId": target.AgentSessionID,
+					"turnId":         target.TurnID,
+					"outcome":        outcome,
+				})
 			}
-			return result, RuntimeOperationEventTurnCanceled, map[string]any{
-				"turnId": op.TurnID, "result": result,
-			}, nil
+			eventPayload := map[string]any{
+				"turnId": op.TurnID, "result": result, "rootAgentSessionId": rootAgentSessionID, "targets": eventTargets,
+			}
+			if reconciledRoot.TurnID != "" {
+				eventPayload["reconciledRoot"] = map[string]any{
+					"agentSessionId": reconciledRoot.AgentSessionID,
+					"turnId":         reconciledRoot.TurnID,
+					"outcome":        reconciledRoot.Outcome,
+				}
+			}
+			return result, RuntimeOperationEventTurnCanceled, eventPayload, nil
 		})
+}
+
+func cancelTargetOutcomeMap(
+	targets []runtimeCancelTarget,
+	values []CancelRuntimeOperationTargetOutcome,
+) (map[string]string, error) {
+	if len(values) != len(targets) {
+		return nil, errors.New("cancel completion outcomes must cover every target")
+	}
+	allowed := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		allowed[cancelTargetKey(target.AgentSessionID, target.TurnID)] = struct{}{}
+	}
+	result := make(map[string]string, len(values))
+	for _, value := range values {
+		value.AgentSessionID = strings.TrimSpace(value.AgentSessionID)
+		value.TurnID = strings.TrimSpace(value.TurnID)
+		value.Outcome = strings.TrimSpace(value.Outcome)
+		key := cancelTargetKey(value.AgentSessionID, value.TurnID)
+		if _, ok := allowed[key]; !ok {
+			return nil, errors.New("cancel completion outcome does not match an operation target")
+		}
+		if _, duplicate := result[key]; duplicate {
+			return nil, errors.New("cancel completion outcomes must be unique")
+		}
+		if value.Outcome != TurnOutcomeCanceled && value.Outcome != TurnOutcomeInterrupted {
+			return nil, errors.New("cancel completion outcome must be canceled or interrupted")
+		}
+		result[key] = value.Outcome
+	}
+	return result, nil
+}
+
+func cancelTargetKey(agentSessionID string, turnID string) string {
+	return strings.TrimSpace(agentSessionID) + "\x00" + strings.TrimSpace(turnID)
 }
 
 func (s *Store) CompletePlanDecisionRuntimeOperation(ctx context.Context, input CompletePlanDecisionRuntimeOperationInput) (RuntimeOperationCompletion, bool, error) {

@@ -165,6 +165,67 @@ export function fakeDelegatedTaskQuery(
   } as AsyncIterable<SDKMessage>;
 }
 
+export function fakeTimedOutDelegatedTaskQuery(
+  prompt: AsyncIterable<SDKUserMessage>,
+  onInterrupt: () => void
+): AsyncIterable<SDKMessage> & {
+  interrupt: () => Promise<void>;
+  close: () => void;
+} {
+  let releaseWait: () => void = () => {};
+  const wait = new Promise<void>((resolve) => {
+    releaseWait = resolve;
+  });
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield* fakeDelegatedTaskQuery(prompt);
+      await wait;
+    },
+    async interrupt() {
+      onInterrupt();
+      releaseWait();
+    },
+    close() {
+      releaseWait();
+    }
+  };
+}
+
+export function fakeGuidedDelegatedContinuationQuery(
+  prompt: AsyncIterable<SDKUserMessage>
+): AsyncIterable<SDKMessage> & { close: () => void } {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield* fakeDelegatedTaskQuery(prompt);
+      const guidance = await prompt[Symbol.asyncIterator]().next();
+      if (guidance.done) {
+        return;
+      }
+      yield {
+        ...guidance.value,
+        type: "user",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1"
+      } as SDKMessage;
+      yield {
+        type: "assistant",
+        uuid: "assistant-guided-continuation",
+        parent_tool_use_id: null,
+        session_id: "provider-session-1",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Guided continuation." }]
+        }
+      } as unknown as SDKMessage;
+      yield {
+        type: "result",
+        subtype: "success"
+      } as unknown as SDKMessage;
+    },
+    close() {}
+  };
+}
+
 export function fakeDelegatedAssistantParentQuery({
   prompt
 }: {

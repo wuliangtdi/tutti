@@ -62,9 +62,15 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 		c.applyCommandSnapshot(session, snapshot)
 	}
 	events, err := adapter.Exec(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
+	rootProviderLifecycle := adapterUsesRootProviderTurnLifecycle(adapter)
 	shouldEmitTerminalEvents := false
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if rootProviderLifecycle && errors.Is(err, context.Canceled) {
+			// Provider interruption is a fact emitted by the adapter.
+			// Do not fabricate a canonical root terminal here: tuttid owns that
+			// transition after child-turn aggregation.
+			events = retainTurnCallLifecycleEvents(events, turnID)
+		} else if !rootProviderLifecycle && errors.Is(err, context.Canceled) {
 			// Keep lifecycle close events Exec already produced (Claude
 			// finishing open tools and in-flight thinking/assistant snapshots
 			// on ctx cancel). Replacing the whole slice would drop those
@@ -73,7 +79,7 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 			events = append(retainTurnCallLifecycleEvents(events, turnID), newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 				"error": err.Error(),
 			}))
-		} else {
+		} else if !rootProviderLifecycle {
 			events = []activityshared.Event{newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", map[string]any{
 				"error": err.Error(),
 			})}
@@ -100,7 +106,19 @@ func (c *Controller) runExecTurn(ctx context.Context, session Session, adapter A
 	if shouldAdvanceSessionUpdatedAtFromEvents(statusEvents) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
+	if rootProviderLifecycle {
+		// Exec returning closes only the provider invocation. The controller's
+		// active root turn remains addressable for guidance/cancel until the
+		// daemon commits and reconciles canonical root settlement.
+		c.store(session)
+		return
+	}
 	c.finishTurn(session, turnID)
+}
+
+func adapterUsesRootProviderTurnLifecycle(adapter Adapter) bool {
+	lifecycle, ok := adapter.(RootProviderTurnLifecycleAdapter)
+	return ok && lifecycle.UsesRootProviderTurnLifecycle()
 }
 
 func (c *Controller) runAsyncExecTurn(ctx context.Context, session Session, adapter AsyncExecAdapter, content []PromptContentBlock, displayPrompt string, turnID string) {

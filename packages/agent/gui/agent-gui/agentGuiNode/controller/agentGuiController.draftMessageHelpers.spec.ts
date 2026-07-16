@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "../../../shared/agentCustomMentionKinds";
 import {
   buildAgentComposerDraft,
   snapshotAgentComposerDraft
@@ -8,8 +12,55 @@ import {
   areAgentComposerDraftsEqual,
   clearSubmittedDraftIfUnchanged,
   deleteSubmittedDraftSnapshotsForScopes,
-  deleteUnacceptedSubmittedDraftSnapshot
+  deleteUnacceptedSubmittedDraftSnapshot,
+  toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
+
+afterEach(() => {
+  resetAgentCustomMentionKindsForTests();
+});
+
+describe("runtime prompt materialization", () => {
+  it("expands a custom mention for the runtime without changing its display prompt", () => {
+    registerAgentCustomMentionKind({
+      kind: "browser-element",
+      present: (mention) => ({ name: mention.label }),
+      materializePromptText: (mention) => {
+        const context = mention.scope?.context?.trim();
+        return context ? `\n${context}\n` : null;
+      }
+    });
+    const displayPrompt =
+      "[@div](mention://browser-element/browser-element%3A1?context=DOM+Path%3A+%23app%0APosition%3A+top%3D0px%0AHTML+Element%3A+%3Cdiv%3EHello%3C%2Fdiv%3E&tag=div&workspaceId=workspace-1) explain this";
+
+    expect(
+      toRuntimeSendContent([{ type: "text", text: displayPrompt }])
+    ).toEqual([
+      {
+        type: "text",
+        text: [
+          "DOM Path: #app",
+          "Position: top=0px",
+          "HTML Element: <div>Hello</div>",
+          " explain this"
+        ].join("\n")
+      }
+    ]);
+    expect(displayPrompt).toContain("mention://browser-element/");
+  });
+
+  it("preserves a custom mention when its kind has no prompt materializer", () => {
+    registerAgentCustomMentionKind({
+      kind: "external-note",
+      present: (mention) => ({ name: mention.label })
+    });
+    const prompt = "[@note](mention://external-note/note-1) review";
+
+    expect(toRuntimeSendContent([{ type: "text", text: prompt }])).toEqual([
+      { type: "text", text: prompt }
+    ]);
+  });
+});
 
 describe("submitted composer draft cleanup", () => {
   const sourceScopeKey = "session:session-1";

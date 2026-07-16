@@ -74,7 +74,6 @@ export interface AgentComposerProps {
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
-  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;

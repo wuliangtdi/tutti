@@ -91,6 +91,7 @@ function messageRow(index: number, body: string): AgentTranscriptRowVM {
         id: `message-${index}`,
         turnId: `turn-${index}`,
         body,
+        presentationKind: "content",
         occurredAtUnixMs: index
       }
     ],

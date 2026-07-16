@@ -11,6 +11,7 @@ import {
 import { fakeQueryWithInitializationModels } from "./sessionRuntimeTestQueries.assistant.ts";
 import {
   fakeCompactBoundaryQuery,
+  fakeFailedCompactQuery,
   fakeGuidancePromptQuery,
   fakePermissionCheckQuery,
   fakeStatusOnlyCompactQuery
@@ -315,6 +316,53 @@ test("compact success reported only via status message still refreshes usage", a
     assert.equal(usage?.payload?.turnId, "turn-status-only");
     assert.equal(contextWindow?.usedTokens, 4_061);
     assert.equal(contextWindow?.totalTokens, 1_000_000);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("compact failure preserves the status reason and assistant response", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeFailedCompactQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-compact-failed", "/compact");
+    await waitForEvent(events, "compact_failed");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.find((event) => event.type === "compact_failed")?.payload?.content,
+      "Compacting failed: Not enough messages to compact."
+    );
+    assert.equal(
+      events.find((event) => event.type === "compact_failed")?.payload?.reason,
+      "Not enough messages to compact."
+    );
+    assert.equal(
+      events.find((event) => event.type === "assistant_completed")?.payload
+        ?.content,
+      "Not enough messages to compact."
+    );
   } finally {
     restoreSink();
   }

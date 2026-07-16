@@ -48,7 +48,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		resumeCursor:      claudeSDKResumeCursorFromSession(session),
 		assistantMessages: make(map[string]string),
 		thinkingMessages:  make(map[string]string),
-		compactMessages:   make(map[string]string),
+		compactMessages:   make(map[string]claudeSDKCompactMessage),
 		pendingRequests:   make(map[string]*pendingInteractiveRequest),
 		pendingResponses:  make(map[string]chan claudeSDKSidecarEvent),
 		turns:             make(map[string]*claudeSDKTurnWaiter),

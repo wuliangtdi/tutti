@@ -11,7 +11,7 @@ import (
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
 	report := reportActivityInput(session, events)
-	c.enrichReportStatePatchesWithSessionSnapshot(session, &report)
+	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
 	c.enqueueReport(ctx, report)
 }
 
@@ -58,10 +58,10 @@ func (c *Controller) enrichReportWithSessionSnapshot(session Session, report *ag
 		report.StatePatches = append(report.StatePatches, patch)
 		return
 	}
-	enrichReportStatePatches(report, patch)
+	enrichReportStatePatchesWithSessionMetadata(report, patch)
 }
 
-func (c *Controller) enrichReportStatePatchesWithSessionSnapshot(
+func (c *Controller) enrichReportStatePatchesWithSessionMetadata(
 	session Session,
 	report *agentsessionstore.ReportActivityInput,
 ) {
@@ -72,7 +72,7 @@ func (c *Controller) enrichReportStatePatchesWithSessionSnapshot(
 	if snapshot.AgentSessionID == "" {
 		return
 	}
-	enrichReportStatePatches(report, statePatchFromSessionStateSnapshot(snapshot))
+	enrichReportStatePatchesWithSessionMetadata(report, statePatchFromSessionStateSnapshot(snapshot))
 }
 
 func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
@@ -98,12 +98,17 @@ func (c *Controller) enrichStreamStateEventsWithSessionSnapshot(
 		tmp := agentsessionstore.ReportActivityInput{
 			StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{patch},
 		}
-		enrichReportStatePatches(&tmp, snapshotPatch)
+		enrichReportStatePatchesWithSessionMetadata(&tmp, snapshotPatch)
+		tmp.StatePatches[0].TurnLifecycle = cloneTurnLifecycle(snapshotPatch.TurnLifecycle)
+		tmp.StatePatches[0].SubmitAvailability = cloneSubmitAvailability(snapshotPatch.SubmitAvailability)
 		events[index].Data = tmp.StatePatches[0]
 	}
 }
 
-func enrichReportStatePatches(
+// enrichReportStatePatchesWithSessionMetadata fills stable session metadata on
+// persisted event reports. Canonical turn lifecycle is intentionally excluded:
+// only an event's explicit Turn patch may advance a WorkspaceAgentTurn.
+func enrichReportStatePatchesWithSessionMetadata(
 	report *agentsessionstore.ReportActivityInput,
 	patch agentsessionstore.WorkspaceAgentStatePatch,
 ) {
@@ -111,10 +116,13 @@ func enrichReportStatePatches(
 		return
 	}
 	for index := range report.StatePatches {
+		if patch.AgentSessionID != "" &&
+			report.StatePatches[index].AgentSessionID != "" &&
+			strings.TrimSpace(report.StatePatches[index].AgentSessionID) != strings.TrimSpace(patch.AgentSessionID) {
+			continue
+		}
 		report.StatePatches[index].Settings = clonePayload(patch.Settings)
 		report.StatePatches[index].RuntimeContext = clonePayload(patch.RuntimeContext)
-		report.StatePatches[index].TurnLifecycle = cloneTurnLifecycle(patch.TurnLifecycle)
-		report.StatePatches[index].SubmitAvailability = cloneSubmitAvailability(patch.SubmitAvailability)
 		if report.StatePatches[index].Provider == "" {
 			report.StatePatches[index].Provider = patch.Provider
 		}

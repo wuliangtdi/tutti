@@ -13,7 +13,15 @@ import (
 )
 
 func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
-	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
+	rootAgentSessionID := strings.TrimSpace(input.RootAgentSessionID)
+	if rootAgentSessionID == "" {
+		return SubmitInteractiveResult{}, fmt.Errorf("root agent session id is required")
+	}
+	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
+	if input.AgentSessionID == "" {
+		return SubmitInteractiveResult{}, fmt.Errorf("target agent session id is required")
+	}
+	session, adapter, err := c.sessionAndAdapter(input.RoomID, rootAgentSessionID)
 	if err != nil {
 		return SubmitInteractiveResult{}, err
 	}
@@ -25,7 +33,7 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 			}
 		}
 		if isTerminalInteractiveDisposition(result.Disposition) {
-			c.recordTerminalInteractiveDisposition(session.AgentSessionID, input.TurnID, input.RequestID, result.Disposition)
+			c.recordTerminalInteractiveDisposition(input.AgentSessionID, input.TurnID, input.RequestID, result.Disposition)
 		}
 		if err == nil {
 			c.syncInteractiveSelectionState(adapter, session, result.OptionID)
@@ -38,16 +46,19 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 	return SubmitInteractiveResult{}, fmt.Errorf("agent provider %q does not support interactive submission", session.Provider)
 }
 
-func (c *Controller) InteractiveDisposition(roomID string, agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+func (c *Controller) InteractiveDisposition(roomID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) InteractiveDisposition {
 	if disposition := c.terminalInteractiveDisposition(agentSessionID, turnID, requestID); disposition != InteractiveDispositionUnknown {
 		return disposition
 	}
-	session, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	session, adapter, err := c.sessionAndAdapter(roomID, rootAgentSessionID)
 	if err != nil {
 		return InteractiveDispositionUnknown
 	}
 	interactiveAdapter, ok := adapter.(InteractiveDispositionAdapter)
-	if !ok {
+	if targeted, targetedOK := adapter.(TargetedInteractiveDispositionAdapter); targetedOK {
+		return targeted.InteractiveDispositionForTarget(session, agentSessionID, turnID, requestID)
+	}
+	if !ok || strings.TrimSpace(agentSessionID) != strings.TrimSpace(rootAgentSessionID) {
 		return InteractiveDispositionUnknown
 	}
 	return interactiveAdapter.InteractiveDisposition(session, turnID, requestID)

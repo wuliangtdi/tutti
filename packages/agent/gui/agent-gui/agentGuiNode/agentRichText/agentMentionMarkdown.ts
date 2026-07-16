@@ -126,8 +126,47 @@ export function formatAgentMentionMarkdown(
       scope: { workspaceId: item.workspaceId }
     });
   }
+  if (item.kind === "custom") {
+    const identity = parseRichTextMentionHref(item.href, item.sourceLabel);
+    return identity ? createRichTextMentionMarkdown(identity) : "";
+  }
   const identity = parseRichTextMentionHref(item.href, item.name);
   return identity ? createRichTextMentionMarkdown(identity) : "";
+}
+
+export function materializeAgentCustomMentionPromptText(value: string): string {
+  let cursor = 0;
+  let result = "";
+  while (cursor < value.length) {
+    const mentionStart = value.indexOf("[", cursor);
+    if (mentionStart < 0) {
+      result += value.slice(cursor);
+      break;
+    }
+    const parsed = parseAgentMentionMarkdown(value, mentionStart);
+    if (!parsed || parsed.item.kind !== "custom") {
+      result += value.slice(cursor, mentionStart + 1);
+      cursor = mentionStart + 1;
+      continue;
+    }
+    const identity = parseRichTextMentionHref(
+      parsed.item.href,
+      parsed.item.sourceLabel
+    );
+    const definition = identity
+      ? getAgentCustomMentionKind(parsed.item.customKind)
+      : undefined;
+    const materialized =
+      identity && definition?.materializePromptText
+        ? definition.materializePromptText(identity, parsed.item.href)
+        : "";
+    result += value.slice(cursor, mentionStart);
+    result += materialized?.trim()
+      ? materialized
+      : value.slice(mentionStart, parsed.end);
+    cursor = parsed.end;
+  }
+  return result;
 }
 
 function normalizeAgentSessionMarkdownLabel(value: string): string {
@@ -357,6 +396,7 @@ export function parseMentionItemFromHref(input: {
       href,
       workspaceId: presentation.workspaceId?.trim() || workspaceId,
       targetId,
+      sourceLabel: mention.label,
       name: presentation.name.trim() || name,
       summary: presentation.summary?.trim() || undefined
     };

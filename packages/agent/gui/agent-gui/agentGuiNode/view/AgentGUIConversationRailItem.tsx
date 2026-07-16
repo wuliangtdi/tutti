@@ -4,7 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties
+  type CSSProperties,
+  type ReactNode
 } from "react";
 import { ExternalLink } from "lucide-react";
 import {
@@ -12,6 +13,11 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
+  AgentSessionsIcon,
+  FileIcon,
+  IssueIcon,
+  NavAgentsIcon,
+  NavApplicationsLinedIcon,
   NewWorkspaceLinedIcon,
   cn
 } from "@tutti-os/ui-system";
@@ -54,6 +60,15 @@ function agentGUIConversationIconUrl(
     targetPresentation?.iconUrl?.trim() ||
     null
   );
+}
+
+function agentGUIConversationRailTitle(
+  item: AgentGUINodeViewModel["rail"]["conversations"][number],
+  labels: AgentGUIViewLabels,
+  uiLanguage: UiLanguage
+): string {
+  const title = conversationPlainTitle(item, labels, uiLanguage);
+  return item.titleLeadingMentionKind ? title.replace(/^@\s*/, "") : title;
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -284,8 +299,21 @@ export const AgentGUIConversationRailItem = memo(
                 }
               />
             ) : null}
+            {item.titleLeadingMentionKind ? (
+              <span
+                aria-hidden="true"
+                className={styles.conversationTitleMentionIcon}
+                data-agent-gui-conversation-title-mention-icon={
+                  item.titleLeadingMentionKind
+                }
+              >
+                <ConversationTitleMentionIcon
+                  kind={item.titleLeadingMentionKind}
+                />
+              </span>
+            ) : null}
             <span className={styles.conversationTitle}>
-              {conversationPlainTitle(item, labels, uiLanguage)}
+              {agentGUIConversationRailTitle(item, labels, uiLanguage)}
             </span>
           </span>
           <ConversationMeta item={item} nowMs={currentTimeMs} labels={labels} />
@@ -437,6 +465,20 @@ export const AgentGUIConversationRailItem = memo(
     );
   }
 );
+
+function ConversationTitleMentionIcon({
+  kind
+}: {
+  kind: NonNullable<
+    AgentGUINodeViewModel["rail"]["conversations"][number]["titleLeadingMentionKind"]
+  >;
+}): ReactNode {
+  if (kind === "task") return <IssueIcon />;
+  if (kind === "app") return <NavApplicationsLinedIcon />;
+  if (kind === "file") return <FileIcon />;
+  if (kind === "agent") return <NavAgentsIcon />;
+  return <AgentSessionsIcon />;
+}
 
 export function AgentGUIProjectRailHeader({
   disabled,

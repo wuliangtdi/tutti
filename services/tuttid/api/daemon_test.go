@@ -347,6 +347,10 @@ func (stubAgentSessionService) Get(context.Context, string, string) (agentservic
 	return agentservice.Session{}, nil
 }
 
+func (stubAgentSessionService) GetDetail(context.Context, string, string) (agentservice.SessionDetail, error) {
+	return agentservice.SessionDetail{ChildSessions: []agentservice.Session{}}, nil
+}
+
 func (s stubAgentSessionService) ReadAttachment(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string) (agentservice.PromptAttachment, error) {
 	if s.readAttachmentFn != nil {
 		return s.readAttachmentFn(ctx, workspaceID, agentSessionID, attachmentID)

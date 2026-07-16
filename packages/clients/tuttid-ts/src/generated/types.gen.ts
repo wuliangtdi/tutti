@@ -1269,8 +1269,34 @@ export type AgentProviderStatusListResponse = {
   providers: Array<AgentProviderStatus>;
 };
 
+/**
+ * Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
+ */
+export type WorkspaceAgentSessionKind = "root" | "child";
+
 export type WorkspaceAgentSession = {
   id: string;
+  kind: WorkspaceAgentSessionKind;
+  /**
+   * Root session that owns this child session. Null when kind is root.
+   */
+  rootAgentSessionId: string | null;
+  /**
+   * Root turn under which this child session was created. Null when kind is root.
+   */
+  rootTurnId: string | null;
+  /**
+   * Direct parent session that created this child session. Null when kind is root.
+   */
+  parentAgentSessionId: string | null;
+  /**
+   * Exact turn in the direct parent session that created this child session. Null when kind is root.
+   */
+  parentTurnId: string | null;
+  /**
+   * Delegation tool call in the parent turn that created this child session. Null when kind is root.
+   */
+  parentToolCallId: string | null;
   /**
    * Agent target that authorized this session launch. Historical or imported provider-only sessions may omit it.
    */
@@ -1309,10 +1335,6 @@ export type WorkspaceAgentSession = {
   /**
    * Protocol v2. Explicit field extracted from runtimeContext.
    */
-  backgroundAgents: WorkspaceAgentBackgroundAgents | null;
-  /**
-   * Protocol v2. Explicit field extracted from runtimeContext.
-   */
   goal: WorkspaceAgentSessionGoal | null;
   /**
    * Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
@@ -1340,6 +1362,14 @@ export type WorkspaceAgentSession = {
 
 export type WorkspaceAgentSessionResponse = {
   session: WorkspaceAgentSession;
+};
+
+export type WorkspaceAgentSessionDetailResponse = {
+  session: WorkspaceAgentSession;
+  /**
+   * Flat collection of every nested child session below session. Clients reconstruct the tree from the immutable parent fields.
+   */
+  childSessions: Array<WorkspaceAgentSession>;
 };
 
 export type SendWorkspaceAgentSessionInputResponse = {
@@ -1471,29 +1501,6 @@ export type WorkspaceAgentUsageQuota = {
 export type WorkspaceAgentUsage = {
   contextWindow: WorkspaceAgentUsageContextWindow | null;
   quotas: Array<WorkspaceAgentUsageQuota>;
-};
-
-export type WorkspaceAgentBackgroundAgentItem = {
-  taskId: string;
-  description: string;
-  status: "running" | "completed" | "failed" | "canceled";
-  summary?: string;
-  lastToolName?: string;
-  taskType?: string;
-  startedAtUnixMs?: number;
-  updatedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-};
-
-/**
- * Protocol v2 explicit field extracted from runtimeContext.
- */
-export type WorkspaceAgentBackgroundAgents = {
-  /**
-   * Number of background agents still running.
-   */
-  count: number;
-  items: Array<WorkspaceAgentBackgroundAgentItem>;
 };
 
 /**
@@ -6222,7 +6229,7 @@ export type GetWorkspaceAgentSessionResponses = {
   /**
    * Workspace agent session
    */
-  200: WorkspaceAgentSessionResponse;
+  200: WorkspaceAgentSessionDetailResponse;
 };
 
 export type GetWorkspaceAgentSessionResponse =

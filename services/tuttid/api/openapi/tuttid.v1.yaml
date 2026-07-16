@@ -2357,7 +2357,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkspaceAgentSessionResponse"
+                $ref: "#/components/schemas/WorkspaceAgentSessionDetailResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "400":
@@ -7002,11 +7002,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentProviderStatus"
+    WorkspaceAgentSessionKind:
+      type: string
+      description: >-
+        Root sessions are user-visible conversations. Child sessions are
+        provider-native agents reached through their immutable parent fields.
+      enum:
+        - root
+        - child
     WorkspaceAgentSession:
       type: object
       additionalProperties: false
       required:
         - id
+        - kind
+        - rootAgentSessionId
+        - rootTurnId
+        - parentAgentSessionId
+        - parentTurnId
+        - parentToolCallId
         - agentTargetId
         - provider
         - providerSessionId
@@ -7027,13 +7041,48 @@ components:
         - pendingInteractions
         - capabilities
         - usage
-        - backgroundAgents
         - goal
         - imported
       properties:
         id:
           type: string
           minLength: 1
+        kind:
+          $ref: "#/components/schemas/WorkspaceAgentSessionKind"
+        rootAgentSessionId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Root session that owns this child session. Null when kind is root.
+        rootTurnId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Root turn under which this child session was created. Null when
+            kind is root.
+        parentAgentSessionId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Direct parent session that created this child session. Null when
+            kind is root.
+        parentTurnId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Exact turn in the direct parent session that created this child
+            session. Null when kind is root.
+        parentToolCallId:
+          type: string
+          nullable: true
+          minLength: 1
+          description: >-
+            Delegation tool call in the parent turn that created this child
+            session. Null when kind is root.
         agentTargetId:
           type: string
           nullable: true
@@ -7100,11 +7149,6 @@ components:
           description: >-
             Protocol v2. Typed context-window and quota usage projected from
             provider runtime state.
-        backgroundAgents:
-          allOf:
-            - $ref: "#/components/schemas/WorkspaceAgentBackgroundAgents"
-          nullable: true
-          description: Protocol v2. Explicit field extracted from runtimeContext.
         goal:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
@@ -7155,6 +7199,22 @@ components:
       properties:
         session:
           $ref: "#/components/schemas/WorkspaceAgentSession"
+    WorkspaceAgentSessionDetailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - session
+        - childSessions
+      properties:
+        session:
+          $ref: "#/components/schemas/WorkspaceAgentSession"
+        childSessions:
+          type: array
+          description: >-
+            Flat collection of every nested child session below session.
+            Clients reconstruct the tree from the immutable parent fields.
+          items:
+            $ref: "#/components/schemas/WorkspaceAgentSession"
     SendWorkspaceAgentSessionInputResponse:
       type: object
       additionalProperties: false
@@ -7469,60 +7529,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkspaceAgentUsageQuota"
-    WorkspaceAgentBackgroundAgentItem:
-      type: object
-      additionalProperties: false
-      required:
-        - taskId
-        - description
-        - status
-      properties:
-        taskId:
-          type: string
-          minLength: 1
-        description:
-          type: string
-        status:
-          type: string
-          enum:
-            - running
-            - completed
-            - failed
-            - canceled
-        summary:
-          type: string
-        lastToolName:
-          type: string
-        taskType:
-          type: string
-        startedAtUnixMs:
-          type: integer
-          format: int64
-          minimum: 0
-        updatedAtUnixMs:
-          type: integer
-          format: int64
-          minimum: 0
-        completedAtUnixMs:
-          type: integer
-          format: int64
-          minimum: 0
-    WorkspaceAgentBackgroundAgents:
-      type: object
-      description: Protocol v2 explicit field extracted from runtimeContext.
-      additionalProperties: false
-      required:
-        - count
-        - items
-      properties:
-        count:
-          type: integer
-          minimum: 0
-          description: Number of background agents still running.
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/WorkspaceAgentBackgroundAgentItem"
     WorkspaceAgentSessionGoal:
       type: object
       description: Protocol v2 explicit field extracted from runtimeContext.

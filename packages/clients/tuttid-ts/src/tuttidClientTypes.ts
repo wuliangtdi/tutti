@@ -101,6 +101,7 @@ import type {
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
   WorkspaceAgentSessionAttachmentResponse,
@@ -292,7 +293,7 @@ export interface TuttidClient {
   getWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string
-  ): Promise<WorkspaceAgentSession>;
+  ): Promise<WorkspaceAgentSessionDetailResponse>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
     request?: GetAgentProviderComposerOptionsRequest,

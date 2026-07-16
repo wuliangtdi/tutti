@@ -4295,6 +4295,14 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-node__composer-textarea
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  top: 0;
+  height: auto;
+  min-height: 0;
+  line-height: inherit;
+}
+
+.agent-gui-node__composer-textarea
   .agent-rich-text-mention-node[data-agent-file-mention="true"].tsh-agent-object-token,
 .agent-gui-node__composer-textarea
   .agent-rich-text-mention-node
@@ -5026,6 +5034,77 @@ aside.workspace-agents-status-panel
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mention typography and icons use the same 24px row as the plain title, so
+   the whole rich title can share the Agent icon's vertical center directly. */
+.agent-gui-workbench-header__rich-title {
+  display: block;
+  width: 0;
+  min-width: 0;
+  height: 24px;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.agent-gui-workbench-header__rich-title > div,
+.agent-gui-workbench-header__rich-title .ProseMirror {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  overflow: visible;
+}
+
+.agent-gui-workbench-header__rich-title p {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  height: 24px;
+  align-items: center;
+  margin: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  line-height: 24px;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.agent-gui-workbench-header__rich-title .agent-rich-text-mention-node,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--entity,
+.agent-gui-workbench-header__rich-title [data-slot="mention-pill"] {
+  top: 0;
+  align-items: center;
+  transform: none;
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  display: inline-flex;
+  max-width: min(100%, var(--agent-mention-max-width, 20rem));
+  height: 24px;
+  align-items: center;
+  margin-right: 4px;
+  transform: translateY(-1.5px);
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file {
+  height: 24px;
+  min-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 24px;
+}
+
+.agent-gui-workbench-header__rich-title
+  .tsh-agent-object-token--file
+  .tsh-agent-object-token__main {
+  transform: translateY(-1.25px);
 }
 
 .agent-gui-workbench-header__agent-name {
@@ -6350,6 +6429,21 @@ button.agent-gui-node__conversation-section-toggle:hover
     no-repeat;
 }
 
+.agent-gui-node__conversation-title-mention-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+.agent-gui-node__conversation-title-mention-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+
 .agent-gui-node__conversation-actions
   > button.agent-gui-node__conversation-open-window-button:not(:disabled):hover,
 .agent-gui-node__conversation-actions
@@ -7520,6 +7614,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-prompt-input-area {
   display: grid;
+  /* Keep the input shadow above the following footer row. Both rows otherwise
+     share z-index: 1, so the later-painted footer visually clips the shadow. */
+  z-index: 2;
   grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
   height: var(--agent-gui-composer-input-height, 56px);
@@ -8773,6 +8870,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-menu-item > span:last-child > span {
   width: 100%;
   min-width: 0;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"] {
+  color: var(--state-warning);
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"] {
+  color: var(--tutti-purple);
 }
 
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {

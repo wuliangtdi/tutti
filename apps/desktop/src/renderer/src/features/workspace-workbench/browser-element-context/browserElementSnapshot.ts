@@ -14,6 +14,7 @@ export interface BrowserElementSnapshot {
     attributes: Record<string, string>;
     bounds: { height: number; width: number; x: number; y: number };
     classes: string[];
+    domPath: string;
     html: string;
     htmlTruncated: boolean;
     id: string | null;
@@ -72,6 +73,9 @@ export function normalizeBrowserElementSelectionResult(
         y: finiteNumber(bounds.y)
       },
       classes: boundedStringArray(element.classes, 24, 200),
+      domPath:
+        boundedString(element.domPath, 4_000) ||
+        boundedString(element.selector, 2_000),
       html: boundedString(element.html, browserElementSnapshotMaxHtmlChars),
       htmlTruncated:
         element.htmlTruncated === true ||
@@ -110,27 +114,31 @@ export function normalizeBrowserElementSelectionResult(
       width: finiteNumber(viewport.width)
     }
   };
-  if (!normalized.element.tagName || !normalized.element.selector) return null;
+  if (!normalized.element.tagName || !normalized.element.domPath) return null;
   return { snapshot: normalized, status: "selected" };
-}
-
-export function browserElementSnapshotAttachmentName(
-  snapshot: BrowserElementSnapshot
-): string {
-  const page = snapshot.page.title.trim() || "Web page";
-  const element = snapshot.element.id
-    ? `${snapshot.element.tagName}#${snapshot.element.id}`
-    : snapshot.element.tagName;
-  return `${boundedString(element, 80)} · ${boundedString(page, 80)}.json`.replace(
-    /[\\/]/gu,
-    "-"
-  );
 }
 
 export function serializeBrowserElementSnapshot(
   snapshot: BrowserElementSnapshot
 ): string {
-  return `${JSON.stringify(snapshot, null, 2)}\n`;
+  const { bounds } = snapshot.element;
+  return [
+    `DOM Path: ${snapshot.element.domPath}`,
+    `Position: top=${formatPixel(bounds.y)}, left=${formatPixel(bounds.x)}, width=${formatPixel(bounds.width)}, height=${formatPixel(bounds.height)}`,
+    `HTML Element: ${compactHtmlFragment(snapshot.element.html)}`
+  ].join("\n");
+}
+
+function formatPixel(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return `${Object.is(rounded, -0) ? 0 : rounded}px`;
+}
+
+function compactHtmlFragment(value: string): string {
+  return value
+    .replace(/\r?\n/gu, " ")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
 }
 
 function sanitizeSnapshotUrl(value: string): string {

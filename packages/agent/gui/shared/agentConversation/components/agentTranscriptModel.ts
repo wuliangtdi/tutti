@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
+import { agentTranscriptRowHasPresentationKind } from "../projection/agentTranscriptPresentation";
 import { normalizeAgentTitleText } from "../../utils/agentTitleText.ts";
 
 export interface AgentTranscriptTurnGroup {
@@ -174,6 +175,10 @@ export function findTurnDividerRowIndexes(
       turnIndex > 0 &&
       previousTurnId &&
       previousTurnId !== currentTurnId &&
+      !agentTranscriptRowHasPresentationKind(
+        rows[rowIndex - 1],
+        "turn-boundary"
+      ) &&
       !previousTurnIds.has(currentTurnId)
     ) {
       dividerRowIndexes.add(rowIndex);

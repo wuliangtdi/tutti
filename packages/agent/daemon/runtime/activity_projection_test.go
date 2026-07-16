@@ -68,6 +68,36 @@ func TestReportableActivityEventsReportsOnlyCompletedAssistantSnapshots(t *testi
 	}
 }
 
+func TestReportableActivityEventsIncludesRootProviderTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	events := ReportableActivityEvents([]activityshared.Event{
+		activityshared.NewRootProviderTurnStarted(ctx, "root-turn-1", "provider-turn-1"),
+		activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeCompleted),
+	})
+
+	if len(events) != 2 {
+		t.Fatalf("activity events = %#v, want root provider start and completion", events)
+	}
+	report := reportActivityInput(session, events)
+	if len(report.StatePatches) != 2 {
+		t.Fatalf("state patches = %#v, want root provider start and completion", report.StatePatches)
+	}
+	started := report.StatePatches[0].RootProviderTurn
+	if started == nil || started.RootTurnID != "root-turn-1" || started.ProviderTurnID != "provider-turn-1" || started.Phase != agentsessionstore.RootProviderTurnPhaseRunning {
+		t.Fatalf("started root provider turn = %#v, want running transition", started)
+	}
+	completed := report.StatePatches[1].RootProviderTurn
+	if completed == nil || completed.RootTurnID != "root-turn-1" || completed.ProviderTurnID != "provider-turn-1" || completed.Phase != agentsessionstore.RootProviderTurnPhaseCompleted || completed.Outcome != string(activityshared.TurnOutcomeCompleted) {
+		t.Fatalf("completed root provider turn = %#v, want completed transition", completed)
+	}
+}
+
 func TestSessionStatusFromActivityPreservesWaiting(t *testing.T) {
 	t.Parallel()
 

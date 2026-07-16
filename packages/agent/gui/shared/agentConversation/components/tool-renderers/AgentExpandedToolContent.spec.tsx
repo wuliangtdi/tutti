@@ -1341,7 +1341,8 @@ describe("AgentExpandedToolContent", () => {
     render(
       <AgentSubAgentCard
         subAgent={{
-          ownerThreadId: "child-thread-1",
+          childSessionId: "child-session-1",
+          parentToolCallId: "spawn-1",
           status: "running",
           name: "Repo smell analyst",
           task: "inspect the repository",
@@ -1357,7 +1358,8 @@ describe("AgentExpandedToolContent", () => {
           failureDetail: null,
           startedAtUnixMs: 1_000,
           latestActivityAtUnixMs: 101_000,
-          terminalAtUnixMs: null
+          terminalAtUnixMs: null,
+          childSessions: []
         }}
       />
     );
@@ -1382,7 +1384,8 @@ describe("AgentExpandedToolContent", () => {
     render(
       <AgentSubAgentCard
         subAgent={{
-          ownerThreadId: "child-thread-1",
+          childSessionId: "child-session-1",
+          parentToolCallId: "spawn-1",
           status: "running",
           name: null,
           task: "inspect the repository",
@@ -1395,7 +1398,8 @@ describe("AgentExpandedToolContent", () => {
           failureDetail: null,
           startedAtUnixMs: 1_000,
           latestActivityAtUnixMs: 1_000,
-          terminalAtUnixMs: null
+          terminalAtUnixMs: null,
+          childSessions: []
         }}
       />
     );

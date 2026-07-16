@@ -22,7 +22,6 @@ ALTER TABLE workspace_agent_sessions ADD COLUMN session_metadata_json TEXT NOT N
     AND json_type(session_metadata_json, '$.visible') IN ('true','false')
     AND json_type(session_metadata_json, '$.imported') IN ('true','false')
     AND json_type(session_metadata_json, '$.capabilities') = 'array'
-    AND (json_type(session_metadata_json, '$.backgroundAgents') IS NULL OR json_type(session_metadata_json, '$.backgroundAgents') IN ('null','object'))
     AND (json_type(session_metadata_json, '$.goal') IS NULL OR json_type(session_metadata_json, '$.goal') IN ('null','object')));
 ALTER TABLE workspace_agent_sessions ADD COLUMN internal_runtime_context_json TEXT NOT NULL DEFAULT '{}'
   CHECK (json_valid(internal_runtime_context_json) AND json_type(internal_runtime_context_json) = 'object');
@@ -65,7 +64,6 @@ func backfillSessionMetadataV1(ctx context.Context, tx *sql.Tx) error {
 		if err != nil {
 			return fmt.Errorf("decode legacy session runtime context: %w", err)
 		}
-		normalizeLegacyBackgroundAgents(runtimeContext)
 		legacyGoal := normalizeLegacyGoal(runtimeContext)
 		metadata, internal, err := splitSessionRuntimeContext(runtimeContext)
 		if err != nil {
@@ -87,24 +85,6 @@ func backfillSessionMetadataV1(ctx context.Context, tx *sql.Tx) error {
 		}
 	}
 	return nil
-}
-
-func normalizeLegacyBackgroundAgents(runtimeContext map[string]any) {
-	background, ok := runtimeContext["backgroundAgents"].(map[string]any)
-	if !ok {
-		return
-	}
-	items, _ := background["items"].([]any)
-	running := 0
-	for _, raw := range items {
-		item, _ := raw.(map[string]any)
-		status := normalizeBackgroundAgentStatus(payloadString(item, "status"))
-		item["status"] = status
-		if status == "running" {
-			running++
-		}
-	}
-	background["count"] = running
 }
 
 func normalizeLegacyGoal(runtimeContext map[string]any) any {

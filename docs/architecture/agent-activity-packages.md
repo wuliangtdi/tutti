@@ -138,9 +138,11 @@ timeline, synchronization, summary, and message-overlay modules. Working and
 completion decisions derive from canonical `activeTurn` and `latestTurn`
 state, not from legacy session-level lifecycle mirrors.
 Canonical sessions also carry typed `settings`, `permissionConfig`,
-`capabilities`, `usage`, `backgroundAgents`, `goal`, and `imported` fields from
-the daemon. Desktop adapters preserve those fields and must not recreate them
-from `runtimeContext`, `lastError`, or module-global per-session defaults.
+`capabilities`, `usage`, `goal`, `imported`, and root/parent relationship fields
+from the daemon. Desktop adapters preserve those fields and must not recreate
+them from `runtimeContext`, `lastError`, or module-global per-session defaults.
+Provider-native child work is represented only by child sessions and their
+turns; there is no parallel session metadata summary for it.
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
 An omitted pre-session descriptor means the connected daemon predates the
@@ -272,7 +274,7 @@ never transitions back to `pending`.
 
 Protocol-v2 session responses expose `activeTurnId` (required and nullable),
 `pendingInteractions` (required and never null), independent `activeTurn` /
-`latestTurn` projections, typed capabilities/usage/background-agent/goal/import
+`latestTurn` projections, typed capabilities/usage/goal/import and child-session
 fields, and Unix-millisecond timestamps. They do not expose legacy session
 status, turn lifecycle, submit availability, last error, ISO timestamps, or
 the raw runtime context. SQLite migrations split typed session metadata from

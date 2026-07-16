@@ -40,10 +40,10 @@ type claudeSDKAdapterSession struct {
 	session           Session
 	providerSessionID string
 	resumeCursor      map[string]any
-	backgroundAgents  map[string]claudeSDKBackgroundAgent
+	childSessions     map[string]claudeSDKChildSession
 	assistantMessages map[string]string
 	thinkingMessages  map[string]string
-	compactMessages   map[string]string
+	compactMessages   map[string]claudeSDKCompactMessage
 	pendingRequests   map[string]*pendingInteractiveRequest
 	pendingResponses  map[string]chan claudeSDKSidecarEvent
 	turns             map[string]*claudeSDKTurnWaiter
@@ -63,17 +63,20 @@ type claudeSDKAdapterSession struct {
 	// over different channels (the Exec emit closure and the session event
 	// sink) can drop stale ones. Guarded by the adapter mutex.
 	lifecycleSeq uint64
+	// diagnosticEventSeq orders the bounded Claude SDK lifecycle diagnostics
+	// written by the Go adapter. It never participates in event projection or
+	// durable turn state. Guarded by the adapter mutex.
+	diagnosticEventSeq uint64
 	// settledTurns remembers turn IDs whose terminal event already left this
 	// adapter, so a late Cancel re-states the settled snapshot instead of
 	// fabricating a competing terminal transition. Guarded by the adapter
 	// mutex.
 	settledTurns map[string]string
-	// openSessionTurns remembers turn IDs whose EventTurnStarted was published
-	// through the session event sink without an Exec()/ExecAsync() waiter
-	// (synthetic background continuations). Their completed/failed/canceled
-	// terminal must close through the same sink; otherwise durable state stays
-	// running after the sidecar has finished. Guarded by the adapter mutex.
-	openSessionTurns map[string]struct{}
+	// rootTurnID remains the canonical WorkspaceAgentTurn across SDK-native
+	// synthetic continuations. Provider turn ids are aliases, never new root
+	// WorkspaceAgentTurn ids.
+	rootTurnID        string
+	rootProviderTurns map[string]struct{}
 	// goalArmTurnID is the sidecar turn carrying a queued /goal set command
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.
@@ -86,19 +89,34 @@ type claudeSDKAdapterSession struct {
 	goalClearControlTurns map[string]struct{}
 }
 
-type claudeSDKBackgroundAgent struct {
-	Key               string
-	ParentToolUseID   string
-	TurnID            string
-	TaskID            string
-	AgentID           string
-	Description       string
-	Status            string
-	Summary           string
-	LastToolName      string
-	StartedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
-	CompletedAtUnixMS int64
+type claudeSDKCompactMessage struct {
+	messageID string
+	active    bool
+	// terminalStatus makes the first explicit or synthesized terminal update
+	// authoritative. A late sidecar result must not overwrite a canceled turn.
+	// Guarded by the adapter mutex.
+	terminalStatus string
+}
+
+type claudeSDKChildSession struct {
+	Key                  string
+	AgentSessionID       string
+	ParentToolUseID      string
+	TurnID               string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	TaskID               string
+	AgentID              string
+	Description          string
+	Status               string
+	Summary              string
+	LastToolName         string
+	Async                bool
+	StartedAtUnixMS      int64
+	UpdatedAtUnixMS      int64
+	CompletedAtUnixMS    int64
 }
 
 type claudeSDKTurnWaiter struct {
@@ -132,6 +150,10 @@ func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 
 func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
+}
+
+func (*ClaudeCodeSDKAdapter) UsesRootProviderTurnLifecycle() bool {
+	return true
 }
 
 func (a *ClaudeCodeSDKAdapter) SetProviderLaunchPreparer(preparer ProviderLaunchPreparer) {

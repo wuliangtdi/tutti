@@ -7,13 +7,18 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
-func appServerCompactionNoticeEvent(session Session, turnID string, messageID string, completed bool) activityshared.Event {
-	title := appServerCompactingContextTitle
-	if completed {
+func appServerCompactionNoticeEvent(session Session, turnID string, messageID string, status string) activityshared.Event {
+	title := appServerCompactionInterruptedTitle
+	switch status {
+	case "running":
+		title = appServerCompactingContextTitle
+	case "completed":
 		title = appServerContextCompactedTitle
 	}
 	return appServerSystemNoticeEvent(session, turnID, "system_notice", title, "", map[string]any{
-		"messageId": messageID,
+		"messageId":           messageID,
+		"noticeCommand":       "compact",
+		"noticeCommandStatus": status,
 	})
 }
 
@@ -42,19 +47,25 @@ func (*CodexAppServerAdapter) appServerItemEvents(
 		// (before this notification can even arrive) and tracks its messageId
 		// on the normalizer up front so the transcript row exists even if Codex
 		// app-server never streams item/started at all. When that's already
-		// the case, reuse the pending messageId instead of deriving a new one
-		// from the item id: otherwise item/started would append a second,
-		// unrelated banner row rather than confirming the one already shown.
-		messageID := normalizer.pendingCompactionMessageID
-		alreadyStarted := messageID != ""
-		if messageID == "" {
-			messageID = "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		// the case, reuse the normalizer's stable messageId instead of deriving
+		// a new one from the item id: otherwise item/started would append a
+		// second, unrelated banner row rather than confirming the one already
+		// shown.
+		messageID := "compaction:" + firstNonEmpty(asString(item["id"]), turnID)
+		shouldEmit := false
+		if completed {
+			messageID, shouldEmit = normalizer.CompleteCompactionNotice(messageID)
+		} else {
+			messageID, shouldEmit = normalizer.StartCompactionNotice(messageID)
 		}
-		normalizer.TrackCompactionNotice(messageID, completed)
-		if !completed && alreadyStarted {
+		if !shouldEmit {
 			return nil
 		}
-		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, completed)}
+		status := "running"
+		if completed {
+			status = "completed"
+		}
+		return []activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, status)}
 	}
 	switch itemType {
 	case "agentMessage":
@@ -268,9 +279,8 @@ func appServerItemToolCallUpdate(item map[string]any, completed bool) (map[strin
 			"task":      asStringRaw(item["prompt"]),
 			"agentName": tool,
 		}
-		// The GUI seeds placeholder lanes from the spawn card's declared
-		// children before any child rows arrive; lane attachment itself rides
-		// the ownerCallId recorded on each child row (ADR 0007).
+		// Preserve provider receiver ids as tool output detail. Canonical child
+		// attachment uses the child session's parentToolCallId relation.
 		if receivers := appServerReceiverThreadIDs(item["receiverThreadIds"]); len(receivers) > 0 {
 			ids := make([]any, 0, len(receivers))
 			for _, id := range receivers {
@@ -368,14 +378,10 @@ func appServerOutputText(value any) string {
 }
 
 type appServerNotificationRoute struct {
-	ownerThreadID string
-	// ownerCallID is the spawn collabAgentToolCall item id that created the
-	// owning child thread (registry parentItemID). Stamped on every routed
-	// child event so the GUI attaches lanes by recorded edge, not inference
-	// (ADR 0007).
-	ownerCallID string
-	turnID      string
-	normalizer  *acpTurnNormalizer
-	events      []activityshared.Event
-	drop        bool
+	session    Session
+	child      *codexAppServerThreadContext
+	turnID     string
+	normalizer *acpTurnNormalizer
+	events     []activityshared.Event
+	drop       bool
 }

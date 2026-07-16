@@ -488,7 +488,10 @@ func shouldAdvanceSessionUpdatedAtFromActivityEvent(event activityshared.Event) 
 	switch event.Type {
 	case activityshared.EventTurnStarted,
 		activityshared.EventTurnCompleted,
-		activityshared.EventTurnFailed:
+		activityshared.EventTurnFailed,
+		activityshared.EventTurnCanceled,
+		activityshared.EventRootProviderTurnStarted,
+		activityshared.EventRootProviderTurnCompleted:
 		return true
 	case activityshared.EventTurnUpdated:
 		switch normalizeSessionStatusToken(event.Payload.TurnPhase) {
@@ -534,7 +537,9 @@ func isAgentStatusEvent(eventType activityshared.EventType) bool {
 		activityshared.EventTurnStarted,
 		activityshared.EventTurnUpdated,
 		activityshared.EventTurnCompleted,
-		activityshared.EventTurnFailed:
+		activityshared.EventTurnFailed,
+		activityshared.EventRootProviderTurnStarted,
+		activityshared.EventRootProviderTurnCompleted:
 		return true
 	default:
 		return false
@@ -686,5 +691,13 @@ func applyStatusPayload(session *ProviderActivitySessionProjection, event activi
 	case activityshared.EventTurnFailed:
 		session.TurnPhase = firstNonEmptyString(event.Payload.TurnPhase, string(activityshared.TurnPhaseFailed))
 		session.EffectiveStatus = string(activityshared.SessionStatusFailed)
+	case activityshared.EventRootProviderTurnStarted:
+		session.LifecycleStatus = firstNonEmptyString(session.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
+		session.TurnPhase = string(activityshared.TurnPhaseRunning)
+		session.EffectiveStatus = string(activityshared.SessionStatusWorking)
+	case activityshared.EventRootProviderTurnCompleted:
+		session.LifecycleStatus = firstNonEmptyString(session.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
+		session.TurnPhase = string(activityshared.TurnPhaseWaiting)
+		session.EffectiveStatus = string(activityshared.SessionStatusWaiting)
 	}
 }

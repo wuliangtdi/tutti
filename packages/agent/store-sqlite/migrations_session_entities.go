@@ -40,7 +40,6 @@ CREATE TABLE workspace_agent_sessions_v3 (
       AND json_type(session_metadata_json, '$.visible') IN ('true','false')
       AND json_type(session_metadata_json, '$.imported') IN ('true','false')
       AND json_type(session_metadata_json, '$.capabilities') = 'array'
-      AND (json_type(session_metadata_json, '$.backgroundAgents') IS NULL OR json_type(session_metadata_json, '$.backgroundAgents') IN ('null','object'))
       AND (json_type(session_metadata_json, '$.goal') IS NULL OR json_type(session_metadata_json, '$.goal') IN ('null','object'))),
   internal_runtime_context_json TEXT NOT NULL DEFAULT '{}'
     CHECK (json_valid(internal_runtime_context_json) AND json_type(internal_runtime_context_json) = 'object'),

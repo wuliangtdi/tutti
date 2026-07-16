@@ -67,7 +67,9 @@ export function projectAgentConversationVM(
     dropCodexRuntimeDiagnosticNotices(
       dropRedundantErrorWarningNotices(
         mergeAdjacentAssistantMessageRows(
-          mergeAdjacentTransportRetryNoticeRows(rows)
+          dropRedundantCompactFailureEchoRows(
+            mergeAdjacentTransportRetryNoticeRows(rows)
+          )
         )
       )
     ),
@@ -82,6 +84,59 @@ export function projectAgentConversationVM(
     sourceDetail: detail,
     rows: normalizedRows
   };
+}
+
+function dropRedundantCompactFailureEchoRows(
+  rows: readonly AgentTranscriptRowVM[]
+): AgentTranscriptRowVM[] {
+  const filtered: AgentTranscriptRowVM[] = [];
+  for (const row of rows) {
+    const previous = filtered.at(-1);
+    if (
+      isSingleCompactFailureNoticeRow(previous) &&
+      isSinglePlainAssistantMessageRow(row) &&
+      previous.turnId === row.turnId &&
+      previous.messages[0]?.systemNotice?.detail?.trim() ===
+        row.messages[0]?.body.trim()
+    ) {
+      continue;
+    }
+    filtered.push(row);
+  }
+  return filtered;
+}
+
+function isSingleCompactFailureNoticeRow(
+  row: AgentTranscriptRowVM | undefined
+): row is AgentMessageRowVM {
+  if (
+    !row ||
+    row.kind !== "message" ||
+    row.speaker !== "assistant" ||
+    row.thinking.length > 0 ||
+    row.messages.length !== 1
+  ) {
+    return false;
+  }
+  const notice = row.messages[0]?.systemNotice;
+  return (
+    notice?.command === "compact" &&
+    notice.commandStatus === "failed" &&
+    Boolean(notice.detail?.trim())
+  );
+}
+
+function isSinglePlainAssistantMessageRow(
+  row: AgentTranscriptRowVM
+): row is AgentMessageRowVM {
+  return (
+    row.kind === "message" &&
+    row.speaker === "assistant" &&
+    row.thinking.length === 0 &&
+    row.messages.length === 1 &&
+    !row.messages[0]?.visibleError &&
+    !row.messages[0]?.systemNotice
+  );
 }
 
 export function reconcileProjectedAgentConversationVM(

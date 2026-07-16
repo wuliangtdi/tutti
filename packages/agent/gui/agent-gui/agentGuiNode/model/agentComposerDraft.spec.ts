@@ -108,6 +108,21 @@ describe("agentComposerDraft", () => {
     ).toEqual([{ type: "text", text: "run tests" }]);
   });
 
+  it("preserves structured mentions as the conversation display prompt", () => {
+    const prompt =
+      "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
+      "[@div](mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1) 22222222";
+
+    expect(
+      agentComposerDraftDisplayPrompt(buildAgentComposerDraft({ prompt }))
+    ).toBe(prompt);
+    expect(
+      agentComposerDraftDisplayPrompt(
+        buildAgentComposerDraft({ prompt: "ordinary text" })
+      )
+    ).toBeUndefined();
+  });
+
   it("builds prompt-item blocks from the skill invocation contract", () => {
     expect(
       agentComposerDraftToPromptContent({

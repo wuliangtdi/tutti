@@ -592,12 +592,6 @@ ORDER BY created_at_unix_ms ASC, request_id ASC`
 	return interactions, nil
 }
 
-const agentTurnSelectSQL = `
-SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
-       file_changes_json, completed_command_json, backfilled,
-       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-FROM workspace_agent_turns`
-
 const agentInteractionSelectSQL = `
 SELECT workspace_id, agent_session_id, request_id, turn_id, kind, status, tool_name,
        input_json, output_json, metadata_json, created_at_unix_ms, updated_at_unix_ms
@@ -629,59 +623,6 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND request_id =
 		return Interaction{}, false, fmt.Errorf("get workspace agent interaction for update: %w", err)
 	}
 	return interaction, true, nil
-}
-
-func scanAgentTurn(scanner rowScanner) (Turn, error) {
-	var turn Turn
-	var outcome sql.NullString
-	var errorJSON sql.NullString
-	var fileChangesJSON sql.NullString
-	var completedCommandJSON sql.NullString
-	var settledAt sql.NullInt64
-	var backfilled int
-	err := scanner.Scan(
-		&turn.WorkspaceID,
-		&turn.AgentSessionID,
-		&turn.TurnID,
-		&turn.Phase,
-		&outcome,
-		&errorJSON,
-		&fileChangesJSON,
-		&completedCommandJSON,
-		&backfilled,
-		&turn.StartedAtUnixMS,
-		&settledAt,
-		&turn.CreatedAtUnixMS,
-		&turn.UpdatedAtUnixMS,
-	)
-	if err != nil {
-		return Turn{}, err
-	}
-	turn.Outcome = strings.TrimSpace(outcome.String)
-	turn.Backfilled = backfilled != 0
-	turn.SettledAtUnixMS = settledAt.Int64
-	if errorJSON.Valid && strings.TrimSpace(errorJSON.String) != "" {
-		decoded, err := unmarshalJSONMap(errorJSON.String)
-		if err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn error: %w", err)
-		}
-		turn.ErrorMessage, _ = decoded["message"].(string)
-		turn.ErrorCode, _ = decoded["code"].(string)
-	}
-	if fileChangesJSON.Valid && strings.TrimSpace(fileChangesJSON.String) != "" {
-		if turn.FileChanges, err = unmarshalJSONMap(fileChangesJSON.String); err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn file changes: %w", err)
-		}
-	}
-	if completedCommandJSON.Valid && strings.TrimSpace(completedCommandJSON.String) != "" {
-		decoded, err := unmarshalJSONMap(completedCommandJSON.String)
-		if err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn completed command: %w", err)
-		}
-		turn.CompletedCommandKind, _ = decoded["kind"].(string)
-		turn.CompletedCommandStatus, _ = decoded["status"].(string)
-	}
-	return turn, nil
 }
 
 func scanAgentInteraction(scanner rowScanner) (Interaction, error) {

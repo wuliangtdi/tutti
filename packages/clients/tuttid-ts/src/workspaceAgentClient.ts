@@ -117,7 +117,7 @@ export function createWorkspaceAgentClient(
           path: { agentSessionID, workspaceID }
         }),
         "Workspace agent session request failed."
-      ).session;
+      );
     },
     async listWorkspaceAgentSessions(workspaceID, request, requestOptions) {
       return unwrapData(

@@ -57,7 +57,102 @@ test("turn lifecycle cancels queued turns and consumes their orphan results", ()
   assert.equal(events.at(-1)?.payload?.turnId, "turn-2");
 });
 
-function createLifecycle(): {
+test("notification-reserved synthetic turn times out and rejects late continuation", async () => {
+  const timeouts = { count: 0 };
+  const { lifecycle, events } = createLifecycle({
+    continuationStartTimeoutMs: 5,
+    onContinuationStartTimeout: () => {
+      timeouts.count += 1;
+    }
+  });
+
+  const reserved = lifecycle.expectSyntheticContinuation();
+  assert.equal(reserved?.synthetic, true);
+  assert.equal(lifecycle.awaitingContinuation, true);
+  assert.equal(events[0]?.type, "turn_started");
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(timeouts.count, 1);
+  assert.equal(lifecycle.activeId, "");
+  assert.deepEqual(events.at(-1), {
+    type: "turn_completed",
+    payload: {
+      stopReason: "background_agent_continuation_timeout",
+      syntheticTimeout: true,
+      turnId: reserved?.turnId
+    }
+  });
+  assert.equal(lifecycle.ensureActive("assistant"), undefined);
+  assert.equal(lifecycle.consumeTimedOutContinuationResult(), true);
+
+  lifecycle.enqueue({
+    turnId: "turn-after-timeout",
+    promptUuid: "prompt-after-timeout",
+    settled: false
+  });
+  lifecycle.activateForUserMessage("prompt-after-timeout");
+  assert.equal(lifecycle.activeId, "turn-after-timeout");
+  assert.equal(lifecycle.consumeTimedOutContinuationResult(), false);
+});
+
+test("root output confirms a reserved continuation and disarms its start timeout", async () => {
+  const timeouts = { count: 0 };
+  const { lifecycle, events } = createLifecycle({
+    continuationStartTimeoutMs: 5,
+    onContinuationStartTimeout: () => {
+      timeouts.count += 1;
+    }
+  });
+  const reserved = lifecycle.expectSyntheticContinuation();
+
+  assert.equal(lifecycle.ensureActive("assistant"), reserved);
+  assert.equal(lifecycle.awaitingContinuation, false);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  assert.equal(timeouts.count, 0);
+  assert.equal(
+    events.filter((event) => event.type === "turn_started").length,
+    1
+  );
+  assert.equal(
+    events.some((event) => event.type === "turn_completed"),
+    false
+  );
+  lifecycle.settleActive("turn_completed");
+});
+
+test("cancel and guidance preserve reserved continuation ownership", async () => {
+  const timeouts = { count: 0 };
+  const { lifecycle, events } = createLifecycle({
+    continuationStartTimeoutMs: 5,
+    onContinuationStartTimeout: () => {
+      timeouts.count += 1;
+    }
+  });
+  const reserved = lifecycle.expectSyntheticContinuation();
+
+  lifecycle.activateForUserMessage("guidance-prompt");
+  assert.equal(lifecycle.activeTurn, reserved);
+  assert.equal(
+    events.filter((event) => event.type === "turn_started").length,
+    1
+  );
+
+  assert.equal(lifecycle.cancelQueued(), true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(timeouts.count, 0);
+  lifecycle.settleActive("turn_canceled");
+  assert.equal(events.at(-1)?.type, "turn_canceled");
+  assert.equal(events.at(-1)?.payload?.turnId, reserved?.turnId);
+});
+
+function createLifecycle(
+  options: {
+    continuationStartTimeoutMs?: number;
+    onContinuationStartTimeout?: () => void;
+  } = {}
+): {
   lifecycle: TurnLifecycle;
   events: Array<Omit<ClaudeSDKSidecarEvent, "version">>;
   activations: { count: number };
@@ -73,7 +168,8 @@ function createLifecycle(): {
     },
     onSettled: () => {
       settlements.count += 1;
-    }
+    },
+    ...options
   });
   return { lifecycle, events, activations, settlements };
 }

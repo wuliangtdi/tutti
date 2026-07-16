@@ -72,6 +72,7 @@ type ClaudeHookCallback = (
 ) => Promise<{ continue: boolean }>;
 
 const DEFAULT_FORCE_CANCEL_GRACE_MS = 30_000;
+const DEFAULT_CONTINUATION_START_TIMEOUT_MS = 30_000;
 export class SessionRuntime {
   readonly promptQueue = new AsyncPromptQueue();
   query: ClaudeQueryRuntime | undefined;
@@ -108,7 +109,8 @@ export class SessionRuntime {
     settings: SidecarSessionSettings,
     claudeOptions: SidecarClaudeOptions,
     resumeCursor?: Record<string, unknown>,
-    queryFactory?: ClaudeQueryFactory
+    queryFactory?: ClaudeQueryFactory,
+    continuationStartTimeoutMs = DEFAULT_CONTINUATION_START_TIMEOUT_MS
   ) {
     const resumeSessionId = stringValue(resumeCursor?.resume);
     this.providerSessionId = resumeSessionId || providerSessionId;
@@ -119,7 +121,18 @@ export class SessionRuntime {
     this.turns = new TurnLifecycle({
       emit,
       onActivate: () => this.resetTurnScratch(),
-      onSettled: () => this.emitSessionState()
+      onSettled: () => this.emitSessionState(),
+      continuationStartTimeoutMs,
+      onContinuationStartTimeout: () => {
+        void this.query?.interrupt?.().catch((error) => {
+          emit({
+            type: "error",
+            payload: {
+              error: `Claude SDK continuation interrupt failed: ${errorMessage(error)}`
+            }
+          });
+        });
+      }
     });
     this.assistantStream = new AssistantStreamProjector(
       () => this.turns.activeId,
@@ -127,7 +140,8 @@ export class SessionRuntime {
     );
     this.activities = new ToolActivityProjector(
       () => this.turns.activeId,
-      emit
+      emit,
+      () => this.turns.expectSyntheticContinuation()
     );
     this.compaction = new CompactionTracker({
       activeTurnId: () => this.turns.activeId,
@@ -453,9 +467,6 @@ export class SessionRuntime {
   private resolveInteractiveTurnId(
     callbackOptions: ToolPermissionOptions
   ): string {
-    if (this.turns.activeId) {
-      return this.turns.activeId;
-    }
     const toolUseID = stringValue(callbackOptions.toolUseID);
     if (toolUseID) {
       const delegatedTurnId =
@@ -463,6 +474,23 @@ export class SessionRuntime {
       if (delegatedTurnId) {
         return delegatedTurnId;
       }
+    }
+    // Before Claude emits the root continuation, a permission callback with
+    // no locally observed tool parent can still be trailing child work. Keep
+    // it on the latest delegated turn instead of the notification-reserved
+    // synthetic root provider turn.
+    if (this.turns.awaitingContinuation) {
+      const runningDelegatedTurnId = this.activities.runningDelegatedTurnId();
+      if (runningDelegatedTurnId) {
+        return runningDelegatedTurnId;
+      }
+      const latestDelegatedTurnId = this.activities.latestDelegatedTurnId();
+      if (latestDelegatedTurnId) {
+        return latestDelegatedTurnId;
+      }
+    }
+    if (this.turns.activeId) {
+      return this.turns.activeId;
     }
     for (let index = this.turns.queue.length - 1; index >= 0; index -= 1) {
       const turn = this.turns.queue[index];

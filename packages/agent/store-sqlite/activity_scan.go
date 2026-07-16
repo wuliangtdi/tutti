@@ -17,7 +17,9 @@ func getAgentSessionForUpdate(
 	agentSessionID string,
 ) (agentactivityprojection.SessionSnapshot, bool, error) {
 	row := tx.QueryRowContext(ctx, `
-SELECT workspace_id, agent_session_id, origin, agent_target_id, provider, provider_session_id, model,
+SELECT workspace_id, agent_session_id, session_kind, root_agent_session_id, root_turn_id,
+       parent_agent_session_id, parent_turn_id, parent_tool_call_id,
+       origin, agent_target_id, provider, provider_session_id, model,
        user_id, settings_json, session_metadata_json, internal_runtime_context_json, cwd,
 	       title, message_version, last_event_at_unix_ms,
        started_at_unix_ms, ended_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
@@ -26,12 +28,20 @@ FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ?
 `, workspaceID, agentSessionID)
 	var session agentactivityprojection.SessionSnapshot
+	var rootAgentSessionID, rootTurnID sql.NullString
+	var parentAgentSessionID, parentTurnID, parentToolCallID sql.NullString
 	var agentTargetID sql.NullString
 	var settingsJSON string
 	var metadataJSON, internalRuntimeContextJSON string
 	err := row.Scan(
 		&session.WorkspaceID,
 		&session.AgentSessionID,
+		&session.Kind,
+		&rootAgentSessionID,
+		&rootTurnID,
+		&parentAgentSessionID,
+		&parentTurnID,
+		&parentToolCallID,
 		&session.Origin,
 		&agentTargetID,
 		&session.Provider,
@@ -60,6 +70,11 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	if session.Settings, err = unmarshalJSONMap(settingsJSON); err != nil {
 		return agentactivityprojection.SessionSnapshot{}, false, fmt.Errorf("decode workspace agent session settings: %w", err)
 	}
+	session.RootAgentSessionID = strings.TrimSpace(rootAgentSessionID.String)
+	session.RootTurnID = strings.TrimSpace(rootTurnID.String)
+	session.ParentAgentSessionID = strings.TrimSpace(parentAgentSessionID.String)
+	session.ParentTurnID = strings.TrimSpace(parentTurnID.String)
+	session.ParentToolCallID = strings.TrimSpace(parentToolCallID.String)
 	session.AgentTargetID = strings.TrimSpace(agentTargetID.String)
 	metadata, err := unmarshalSessionMetadata(metadataJSON)
 	if err != nil {
@@ -93,11 +108,19 @@ func scanAgentSessionWithTrailingValues(
 	var session Session
 	var agentTargetID sql.NullString
 	var activeTurnID sql.NullString
+	var rootAgentSessionID, rootTurnID sql.NullString
+	var parentAgentSessionID, parentTurnID, parentToolCallID sql.NullString
 	var settingsJSON string
 	var metadataJSON, internalRuntimeContextJSON string
 	destinations := []any{
 		&session.WorkspaceID,
 		&session.ID,
+		&session.Kind,
+		&rootAgentSessionID,
+		&rootTurnID,
+		&parentAgentSessionID,
+		&parentTurnID,
+		&parentToolCallID,
 		&session.Origin,
 		&agentTargetID,
 		&session.Provider,
@@ -128,6 +151,11 @@ func scanAgentSessionWithTrailingValues(
 	}
 	session.AgentTargetID = strings.TrimSpace(agentTargetID.String)
 	session.ActiveTurnID = strings.TrimSpace(activeTurnID.String)
+	session.RootAgentSessionID = strings.TrimSpace(rootAgentSessionID.String)
+	session.RootTurnID = strings.TrimSpace(rootTurnID.String)
+	session.ParentAgentSessionID = strings.TrimSpace(parentAgentSessionID.String)
+	session.ParentTurnID = strings.TrimSpace(parentTurnID.String)
+	session.ParentToolCallID = strings.TrimSpace(parentToolCallID.String)
 	if session.Metadata, err = unmarshalSessionMetadata(metadataJSON); err != nil {
 		return Session{}, fmt.Errorf("decode workspace agent session metadata: %w", err)
 	}

@@ -9,12 +9,11 @@ import (
 )
 
 type SessionMetadata struct {
-	Visible          bool                     `json:"visible"`
-	Imported         bool                     `json:"imported"`
-	Capabilities     []string                 `json:"capabilities"`
-	Usage            *SessionUsage            `json:"usage,omitempty"`
-	BackgroundAgents *SessionBackgroundAgents `json:"backgroundAgents,omitempty"`
-	Goal             *SessionGoal             `json:"goal,omitempty"`
+	Visible      bool          `json:"visible"`
+	Imported     bool          `json:"imported"`
+	Capabilities []string      `json:"capabilities"`
+	Usage        *SessionUsage `json:"usage,omitempty"`
+	Goal         *SessionGoal  `json:"goal,omitempty"`
 }
 
 type SessionUsage struct {
@@ -33,23 +32,6 @@ type SessionUsageQuota struct {
 	ResetsAtUnixMS   *int64  `json:"resetsAtUnixMs"`
 }
 
-type SessionBackgroundAgents struct {
-	Count int                          `json:"count"`
-	Items []SessionBackgroundAgentItem `json:"items"`
-}
-
-type SessionBackgroundAgentItem struct {
-	TaskID            string `json:"taskId"`
-	Description       string `json:"description"`
-	Status            string `json:"status"`
-	Summary           string `json:"summary,omitempty"`
-	LastToolName      string `json:"lastToolName,omitempty"`
-	TaskType          string `json:"taskType,omitempty"`
-	StartedAtUnixMS   int64  `json:"startedAtUnixMs,omitempty"`
-	UpdatedAtUnixMS   int64  `json:"updatedAtUnixMs,omitempty"`
-	CompletedAtUnixMS int64  `json:"completedAtUnixMs,omitempty"`
-}
-
 type SessionGoal struct {
 	Objective  string `json:"objective"`
 	Status     string `json:"status"`
@@ -59,7 +41,7 @@ type SessionGoal struct {
 	Tokens     int64  `json:"tokens,omitempty"`
 }
 
-var sessionMetadataRuntimeContextKeys = []string{"visible", "imported", "capabilities", "usage", "backgroundAgents", "goal"}
+var sessionMetadataRuntimeContextKeys = []string{"visible", "imported", "capabilities", "usage", "goal"}
 
 func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata, map[string]any, error) {
 	metadata := SessionMetadata{Visible: true, Capabilities: []string{}}
@@ -93,19 +75,6 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 		}
 		metadata.Usage = &value
 	}
-	if raw := runtimeContext["backgroundAgents"]; raw != nil {
-		var value SessionBackgroundAgents
-		if err := remarshalJSON(raw, &value); err != nil {
-			return SessionMetadata{}, nil, err
-		}
-		for index := range value.Items {
-			value.Items[index].Status = normalizeBackgroundAgentStatus(value.Items[index].Status)
-		}
-		if err := validateSessionBackgroundAgents(value); err != nil {
-			return SessionMetadata{}, nil, err
-		}
-		metadata.BackgroundAgents = &value
-	}
 	if raw := runtimeContext["goal"]; raw != nil {
 		var value SessionGoal
 		if err := remarshalJSON(raw, &value); err != nil {
@@ -127,51 +96,6 @@ func splitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata,
 // provider-private runtime state at the runtime adapter boundary.
 func SplitSessionRuntimeContext(runtimeContext map[string]any) (SessionMetadata, map[string]any, error) {
 	return splitSessionRuntimeContext(runtimeContext)
-}
-
-func validateSessionBackgroundAgents(value SessionBackgroundAgents) error {
-	if value.Count < 0 || value.Items == nil {
-		return fmt.Errorf("background agents count must be non-negative and items must be present")
-	}
-	running := 0
-	for _, item := range value.Items {
-		if strings.TrimSpace(item.TaskID) == "" || strings.TrimSpace(item.Description) == "" {
-			return fmt.Errorf("background agent task id and description are required")
-		}
-		switch strings.TrimSpace(item.Status) {
-		case "running":
-			running++
-		case "completed", "failed", "canceled":
-		default:
-			return fmt.Errorf("unsupported background agent status %q", item.Status)
-		}
-		if item.StartedAtUnixMS < 0 || item.UpdatedAtUnixMS < 0 || item.CompletedAtUnixMS < 0 {
-			return fmt.Errorf("background agent timestamps must be non-negative")
-		}
-		if item.StartedAtUnixMS > 0 && item.UpdatedAtUnixMS > 0 && item.UpdatedAtUnixMS < item.StartedAtUnixMS {
-			return fmt.Errorf("background agent updated time precedes start time")
-		}
-		if item.StartedAtUnixMS > 0 && item.CompletedAtUnixMS > 0 && item.CompletedAtUnixMS < item.StartedAtUnixMS {
-			return fmt.Errorf("background agent completion time precedes start time")
-		}
-	}
-	if value.Count != running {
-		return fmt.Errorf("background agents count %d does not match %d running items", value.Count, running)
-	}
-	return nil
-}
-
-func normalizeBackgroundAgentStatus(raw string) string {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "completed", "complete", "succeeded", "success":
-		return "completed"
-	case "failed", "failure", "error", "errored":
-		return "failed"
-	case "canceled", "cancelled":
-		return "canceled"
-	default:
-		return "running"
-	}
 }
 
 func validateSessionGoal(value SessionGoal) error {
@@ -266,11 +190,6 @@ func validateSessionMetadata(value SessionMetadata) error {
 		}
 		seen[capability] = struct{}{}
 	}
-	if value.BackgroundAgents != nil {
-		if err := validateSessionBackgroundAgents(*value.BackgroundAgents); err != nil {
-			return err
-		}
-	}
 	if value.Usage != nil {
 		if err := validateSessionUsage(*value.Usage); err != nil {
 			return err
@@ -298,13 +217,6 @@ func joinSessionRuntimeContext(metadata SessionMetadata, internal map[string]any
 			return nil, err
 		}
 		result["usage"] = value
-	}
-	if metadata.BackgroundAgents != nil {
-		var value map[string]any
-		if err := remarshalJSON(metadata.BackgroundAgents, &value); err != nil {
-			return nil, err
-		}
-		result["backgroundAgents"] = value
 	}
 	if metadata.Goal != nil {
 		var value map[string]any

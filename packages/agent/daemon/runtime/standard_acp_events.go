@@ -75,6 +75,27 @@ func standardACPUpdateEvents(config standardACPConfig, session Session, turnID s
 		}
 		return nil
 	case "tool_call", "tool_call_update":
+		if diagnostics := config.messageDiagnostics; diagnostics != nil && diagnostics.observeUpdate != nil {
+			diagnostics.observeUpdate(config, session, turnID, updateType, params.Update)
+		}
+		// Tool activity is turn-scoped. A nil normalizer means the notification
+		// arrived outside the active session/prompt call (for example after the
+		// provider already returned its prompt result). Do not attach that late
+		// activity to a recently settled canonical turn or invent a new identity.
+		if normalizer == nil || strings.TrimSpace(turnID) == "" {
+			slog.Warn("agent session ACP dropped turn-scoped update outside active prompt",
+				"event", "agent_session.acp.update.turn_scope_missing",
+				"provider", config.provider,
+				"adapter", config.adapterName,
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider_session_id", session.ProviderSessionID,
+				"recent_turn_id", strings.TrimSpace(turnID),
+				"update_type", updateType,
+				"tool_call_id", firstNonEmpty(asString(params.Update["toolCallId"]), asString(params.Update["callId"]), asString(params.Update["id"])),
+			)
+			return nil
+		}
 		applyStandardACPToolAlias(config, params.Update)
 		if events, ok := normalizer.StandardToolCallEvents(session, turnID, updateType, params.Update); ok {
 			return events

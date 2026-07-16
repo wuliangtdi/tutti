@@ -4585,6 +4585,16 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	}
 	service := newIsolatedAgentService(newFakeRuntime())
 	service.SessionReader = reader
+	latestTurnCalls := 0
+	activeTurnCalls := 0
+	pendingInteractionCalls := 0
+	latestInteractionCalls := 0
+	service.TurnStore = failingTurnStore{
+		latestListCalls:            &latestTurnCalls,
+		activeListCalls:            &activeTurnCalls,
+		interactionListCalls:       &pendingInteractionCalls,
+		latestInteractionListCalls: &latestInteractionCalls,
+	}
 	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
 		ID:    "project-1",
 		Path:  "/workspace/project",
@@ -4625,9 +4635,150 @@ func TestServiceListSessionSectionsUsesCurrentProjectsAndConversations(t *testin
 	if page.Sections[1].Kind != "conversations" || page.Sections[1].SectionKey != "conversations" {
 		t.Fatalf("conversations section = %#v", page.Sections[1])
 	}
-	if reader.lastInput.AgentTargetID != "claude-target" {
-		t.Fatalf("reader agentTargetID = %q, want claude-target", reader.lastInput.AgentTargetID)
+	if reader.sectionBatchCalls != 1 || reader.singleSectionCalls != 0 {
+		t.Fatalf("section reader calls = batch %d single %d, want one batch and no per-section reads", reader.sectionBatchCalls, reader.singleSectionCalls)
 	}
+	if reader.lastSectionsInput.AgentTargetID != "claude-target" || reader.lastSectionsInput.LimitPerSection != 5 {
+		t.Fatalf("reader input = %#v, want filtered five-row first pages", reader.lastSectionsInput)
+	}
+	if latestTurnCalls != 1 || activeTurnCalls != 1 || pendingInteractionCalls != 1 || latestInteractionCalls != 1 {
+		t.Fatalf(
+			"turn projection reads = latest %d active %d pending-interactions %d latest-interactions %d, want one cross-section batch each",
+			latestTurnCalls,
+			activeTurnCalls,
+			pendingInteractionCalls,
+			latestInteractionCalls,
+		)
+	}
+}
+
+func TestServiceListSessionSectionsPropagatesReaderError(t *testing.T) {
+	want := errors.New("section store unavailable")
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = &fakeSectionReader{sectionBatchErr: want}
+	service.UserProjectReader = fakeUserProjectReader{}
+
+	_, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+	})
+	if !errors.Is(err, want) {
+		t.Fatalf("ListSessionSections() error = %v, want original store error", err)
+	}
+}
+
+func TestServiceListSessionSectionsRequiresBatchReader(t *testing.T) {
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = fakeSessionReader{}
+	service.UserProjectReader = fakeUserProjectReader{}
+
+	_, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("ListSessionSections() error = %v, want required batch reader", err)
+	}
+}
+
+func TestServiceListSessionSectionsProductionReaderCanRetryAfterCancellation(t *testing.T) {
+	store := openAgentServiceSQLiteStore(t)
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = NewActivityProjection(store)
+	service.UserProjectReader = fakeUserProjectReader{}
+
+	canceledContext, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := service.ListSessionSections(canceledContext, "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled ListSessionSections() error = %v, want context.Canceled", err)
+	}
+	if errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("canceled ListSessionSections() error = %v, must not be classified as invalid input", err)
+	}
+
+	page, err := service.ListSessionSections(context.Background(), "ws-1", ListSessionSectionsInput{
+		LimitPerSection: 5,
+	})
+	if err != nil {
+		t.Fatalf("retry ListSessionSections() error = %v", err)
+	}
+	if page.WorkspaceID != "ws-1" || len(page.Sections) != 1 || page.Sections[0].SectionKey != sessionSectionKeyConversations {
+		t.Fatalf("retry page = %#v, want empty Chats section", page)
+	}
+}
+
+func TestServiceListSessionPageReadersPropagateStorageErrors(t *testing.T) {
+	want := errors.New("section page store unavailable")
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = &fakeSectionReader{singleSectionErr: want}
+
+	t.Run("ordinary section", func(t *testing.T) {
+		_, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
+			SectionKey: sessionSectionKeyConversations,
+			Limit:      5,
+		})
+		if !errors.Is(err, want) {
+			t.Fatalf("ListSessionSectionPage() error = %v, want original store error", err)
+		}
+	})
+
+	t.Run("pinned", func(t *testing.T) {
+		_, err := service.ListPinnedSessionPage(context.Background(), "ws-1", ListPinnedSessionPageInput{
+			Limit: 5,
+		})
+		if !errors.Is(err, want) {
+			t.Fatalf("ListPinnedSessionPage() error = %v, want original store error", err)
+		}
+	})
+}
+
+func TestServiceListSessionPageProductionReaderCanRetryAfterCancellation(t *testing.T) {
+	store := openAgentServiceSQLiteStore(t)
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = NewActivityProjection(store)
+
+	t.Run("ordinary section", func(t *testing.T) {
+		canceledContext, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := service.ListSessionSectionPage(canceledContext, "ws-1", ListSessionSectionPageInput{
+			SectionKey: sessionSectionKeyConversations,
+			Limit:      5,
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled ListSessionSectionPage() error = %v, want context.Canceled", err)
+		}
+		if errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("canceled ListSessionSectionPage() error = %v, must not be classified as invalid input", err)
+		}
+		page, err := service.ListSessionSectionPage(context.Background(), "ws-1", ListSessionSectionPageInput{
+			SectionKey: sessionSectionKeyConversations,
+			Limit:      5,
+		})
+		if err != nil || page.SectionKey != sessionSectionKeyConversations || len(page.Sessions) != 0 {
+			t.Fatalf("retry ListSessionSectionPage() page=%#v error=%v", page, err)
+		}
+	})
+
+	t.Run("pinned", func(t *testing.T) {
+		canceledContext, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err := service.ListPinnedSessionPage(canceledContext, "ws-1", ListPinnedSessionPageInput{
+			Limit: 5,
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled ListPinnedSessionPage() error = %v, want context.Canceled", err)
+		}
+		if errors.Is(err, ErrInvalidArgument) {
+			t.Fatalf("canceled ListPinnedSessionPage() error = %v, must not be classified as invalid input", err)
+		}
+		page, err := service.ListPinnedSessionPage(context.Background(), "ws-1", ListPinnedSessionPageInput{
+			Limit: 5,
+		})
+		if err != nil || len(page.Sessions) != 0 {
+			t.Fatalf("retry ListPinnedSessionPage() page=%#v error=%v", page, err)
+		}
+	})
 }
 
 func TestServiceListSessionSectionPageForwardsStableCursor(t *testing.T) {
@@ -5308,52 +5459,6 @@ func TestServiceGetDoesNotReconcileActionableInteractionFromStaleTranscript(t *t
 	}
 }
 
-func TestServiceGetDoesNotReconcileLiveRuntimeBackgroundAgent(t *testing.T) {
-	runtime := newFakeRuntime()
-	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
-		ID:          "session-1",
-		WorkspaceID: "ws-1",
-		Provider:    "claude-code",
-		Status:      "created",
-		RuntimeContext: map[string]any{
-			"backgroundAgents": map[string]any{
-				"count": 1,
-				"items": []any{map[string]any{
-					"parentToolUseId": "call-agent-1",
-					"status":          "running",
-				}},
-			},
-		},
-	}
-	service := newIsolatedAgentService(runtime)
-	service.SessionReader = fakeSessionReader{
-		sessions: map[string]PersistedSession{
-			"ws-1:session-1": {
-				ID:          "session-1",
-				WorkspaceID: "ws-1",
-				Provider:    "claude-code",
-			},
-		},
-	}
-	service.MessageReader = fakeMessageReader{
-		page: SessionMessagesPage{
-			Messages: []SessionMessage{{
-				TurnID: "synthetic-turn-1",
-				Kind:   "tool_call",
-				Status: "streaming",
-				Payload: map[string]any{
-					"input": map[string]any{"toolName": "Read"},
-				},
-			}},
-		},
-	}
-
-	_, err := service.Get(context.Background(), "ws-1", "session-1")
-	if err != nil {
-		t.Fatalf("Get returned error: %v", err)
-	}
-}
-
 func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	var prepareInput runtimeprep.PrepareInput
@@ -5706,38 +5811,70 @@ func (f *fakeProviderAvailabilityChecker) ListProviderAvailability(_ context.Con
 type fakeSessionReader struct {
 	sessions   map[string]PersistedSession
 	tombstoned map[string]bool
+	children   map[string][]PersistedSession
 }
 
 type fakeSectionReader struct {
 	fakeSessionReader
 	lastInput                   agentactivitybiz.ListSessionSectionInput
+	lastSectionsInput           agentactivitybiz.ListSessionSectionsInput
 	lastDeletionCandidatesInput agentactivitybiz.ListSessionSectionDeletionCandidatesInput
 	deletionCandidates          agentactivitybiz.SessionSectionDeletionCandidates
 	lastBatchDeleteInput        agentactivitybiz.DeleteSessionsBatchInput
 	batchDeleteResult           agentactivitybiz.DeleteSessionsBatchResult
 	batchDeleteErr              error
 	batchDeleteCalls            int
+	sectionBatchCalls           int
+	singleSectionCalls          int
+	sectionBatchErr             error
+	singleSectionErr            error
 	pages                       map[string]agentactivitybiz.SessionSectionPage
 }
 
-func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool) {
+func (f *fakeSectionReader) ListSessionSection(_ context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
+	f.singleSectionCalls++
 	f.lastInput = input
+	if f.singleSectionErr != nil {
+		return agentactivitybiz.SessionSectionPage{}, false, f.singleSectionErr
+	}
 	if f.pages == nil {
 		return agentactivitybiz.SessionSectionPage{
 			WorkspaceID: input.WorkspaceID,
 			SectionKey:  input.SectionKey,
-		}, true
+		}, true, nil
 	}
 	page, ok := f.pages[input.SectionKey]
 	if !ok {
 		return agentactivitybiz.SessionSectionPage{
 			WorkspaceID: input.WorkspaceID,
 			SectionKey:  input.SectionKey,
-		}, true
+		}, true, nil
 	}
 	page.WorkspaceID = input.WorkspaceID
 	page.SectionKey = input.SectionKey
-	return page, true
+	return page, true, nil
+}
+
+func (f *fakeSectionReader) ListSessionSections(_ context.Context, input agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	f.sectionBatchCalls++
+	f.lastSectionsInput = input
+	if f.sectionBatchErr != nil {
+		return agentactivitybiz.SessionSectionsPage{}, false, f.sectionBatchErr
+	}
+	sections := make([]agentactivitybiz.SessionSectionPage, 0, len(input.SectionKeys))
+	for _, sectionKey := range input.SectionKeys {
+		page, ok := f.pages[sectionKey]
+		if !ok {
+			page = agentactivitybiz.SessionSectionPage{}
+		}
+		page.WorkspaceID = input.WorkspaceID
+		page.SectionKey = sectionKey
+		sections = append(sections, page)
+	}
+	return agentactivitybiz.SessionSectionsPage{
+		WorkspaceID: input.WorkspaceID,
+		Sections:    sections,
+	}, true, nil
 }
 
 func (f *fakeSectionReader) ListSessionSectionDeletionCandidates(_ context.Context, input agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool) {
@@ -5787,13 +5924,21 @@ func newFakeRuntime() *fakeRuntime {
 
 func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (RuntimeCancelResult, error) {
 	f.cancelCalls = append(f.cancelCalls, input)
+	targetAgentSessionID := input.RootAgentSessionID
+	if len(input.Targets) > 0 {
+		targetAgentSessionID = input.Targets[len(input.Targets)-1].AgentSessionID
+	}
 	if f.cancelResultSet {
 		if f.cancelResult.AgentSessionID == "" {
-			f.cancelResult.AgentSessionID = input.AgentSessionID
+			f.cancelResult.AgentSessionID = targetAgentSessionID
 		}
 		return f.cancelResult, nil
 	}
-	return RuntimeCancelResult{AgentSessionID: input.AgentSessionID, Canceled: true}, nil
+	return RuntimeCancelResult{
+		AgentSessionID:   targetAgentSessionID,
+		Canceled:         true,
+		ConfirmedTargets: append([]RuntimeCancelTarget(nil), input.Targets...),
+	}, nil
 }
 
 func (*fakeRuntime) GoalControl(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalControlResult, error) {
@@ -5859,7 +6004,7 @@ func (f *fakeRuntime) SubmitInteractive(_ context.Context, input RuntimeSubmitIn
 	return RuntimeSubmitInteractiveResult{Disposition: disposition}, nil
 }
 
-func (f *fakeRuntime) InteractiveDisposition(string, string, string, string) RuntimeInteractiveDisposition {
+func (f *fakeRuntime) InteractiveDisposition(string, string, string, string, string) RuntimeInteractiveDisposition {
 	if f.interactiveDisposition == "" {
 		return RuntimeInteractiveDispositionUnknown
 	}
@@ -5975,6 +6120,10 @@ func (f fakeSessionReader) ListSessions(workspaceID string) ([]PersistedSession,
 		}
 	}
 	return result, len(result) > 0
+}
+
+func (f fakeSessionReader) ListChildSessions(_ context.Context, workspaceID string, rootAgentSessionID string) ([]PersistedSession, error) {
+	return append([]PersistedSession(nil), f.children[workspaceID+":"+rootAgentSessionID]...), nil
 }
 
 func (f *fakeSessionReader) UpdateSessionTitle(_ context.Context, workspaceID string, agentSessionID string, title string) (PersistedSession, bool, error) {
@@ -6096,8 +6245,12 @@ type activityProjectionRepoStub struct {
 	messagePageOK  bool
 	messagePageErr error
 	turnResult     agentactivitybiz.Turn
+	turnResults    map[string]agentactivitybiz.Turn
 	turnFound      bool
 	turnErr        error
+	sectionsPage   agentactivitybiz.SessionSectionsPage
+	sectionsOK     bool
+	sectionsErr    error
 }
 
 func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (agentactivitybiz.ClearSessionsResult, error) {
@@ -6112,6 +6265,10 @@ func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (
 	return agentactivitybiz.Session{}, false, nil
 }
 
+func (*activityProjectionRepoStub) ListChildSessions(context.Context, string, string) ([]agentactivitybiz.Session, error) {
+	return nil, nil
+}
+
 func (*activityProjectionRepoStub) SessionDeleted(context.Context, string, string) (bool, error) {
 	return false, nil
 }
@@ -6122,6 +6279,10 @@ func (*activityProjectionRepoStub) ListSessions(context.Context, string) ([]agen
 
 func (*activityProjectionRepoStub) ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
 	return agentactivitybiz.SessionSectionPage{}, false, nil
+}
+
+func (r *activityProjectionRepoStub) ListSessionSections(context.Context, agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	return r.sectionsPage, r.sectionsOK, r.sectionsErr
 }
 
 func (*activityProjectionRepoStub) ListSessionSectionDeletionCandidates(context.Context, agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool, error) {
@@ -6181,11 +6342,19 @@ func (*activityProjectionRepoStub) UpdateSessionPinned(context.Context, string, 
 	return agentactivitybiz.Session{}, false, nil
 }
 
+func (*activityProjectionRepoStub) UpdateSessionSettings(context.Context, string, string, string, map[string]any) (agentactivitybiz.Session, bool, error) {
+	return agentactivitybiz.Session{}, false, nil
+}
+
 func (*activityProjectionRepoStub) UpdateSessionTitle(context.Context, string, string, string) (agentactivitybiz.Session, bool, error) {
 	return agentactivitybiz.Session{}, false, nil
 }
 
-func (r *activityProjectionRepoStub) GetTurn(context.Context, string, string, string) (agentactivitybiz.Turn, bool, error) {
+func (r *activityProjectionRepoStub) GetTurn(_ context.Context, _ string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
+	if r.turnResults != nil {
+		turn, ok := r.turnResults[agentSessionID+"\x00"+turnID]
+		return turn, ok, r.turnErr
+	}
 	return r.turnResult, r.turnFound, r.turnErr
 }
 

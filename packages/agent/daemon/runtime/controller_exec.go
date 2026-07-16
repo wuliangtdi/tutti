@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -134,14 +135,31 @@ func (c *Controller) guideActiveTurn(
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
 	}
-	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, nil, nil)
+	var emittedMu sync.Mutex
+	var emitted []activityshared.Event
+	emit := func(next []activityshared.Event) {
+		if len(next) == 0 {
+			return
+		}
+		emittedMu.Lock()
+		emitted = append(emitted, next...)
+		emittedMu.Unlock()
+		c.applySessionEventsByAgentSessionID(session.AgentSessionID, next)
+	}
+	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
+		c.applyCommandSnapshotByAgentSessionID(snapshot)
+	}
+	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, emit, emitCommands)
 	if err != nil {
 		logAgentSubmitTrace("runtime.exec.guidance_failed", session, turnID, metadata, map[string]any{
 			"error": err.Error(),
 		})
 		return ExecResult{}, err
 	}
-	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	emittedMu.Lock()
+	remaining := unemittedActivityEvents(events, emitted)
+	emittedMu.Unlock()
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, remaining)
 	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
 		"activity_event_count": len(events),
 	})

@@ -52,6 +52,8 @@ type Service struct {
 	liveModelInvalidatedAtUnixMS   map[string]int64
 	liveModelDiscoverySessions     map[string]liveModelDiscoverySessionRef
 	liveModelDiscoveryGroup        singleflight.Group
+	sessionSettingsMu              sync.Mutex
+	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
@@ -77,7 +79,7 @@ type RuntimeController interface {
 	Sessions(workspaceID string) []ProviderRuntimeSession
 	Start(context.Context, RuntimeStartInput) (ProviderRuntimeSession, error)
 	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
-	InteractiveDisposition(workspaceID string, agentSessionID string, turnID string, requestID string) RuntimeInteractiveDisposition
+	InteractiveDisposition(workspaceID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) RuntimeInteractiveDisposition
 	Subscribe(workspaceID string, agentSessionID string) (<-chan RuntimeStreamEvent, func(), bool)
 	UpdateSettings(context.Context, RuntimeUpdateSettingsInput) error
 	ValidatePromptContent(context.Context, RuntimeExecInput) error
@@ -115,22 +117,28 @@ type ExtensionComposerSkillRoot struct {
 }
 
 type Session struct {
-	ID                string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Cwd               string
-	Visible           bool
-	Resumable         bool
-	Settings          *ComposerSettings
-	PermissionConfig  PermissionConfig
-	Title             *string
-	PinnedAtUnixMS    int64
-	CreatedAt         time.Time
-	UpdatedAt         *time.Time
-	EndedAt           *time.Time
-	Metadata          agentactivitybiz.SessionMetadata
+	ID                   string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Cwd                  string
+	Visible              bool
+	Resumable            bool
+	Settings             *ComposerSettings
+	PermissionConfig     PermissionConfig
+	Title                *string
+	PinnedAtUnixMS       int64
+	CreatedAt            time.Time
+	UpdatedAt            *time.Time
+	EndedAt              *time.Time
+	Metadata             agentactivitybiz.SessionMetadata
 	// Protocol v2 turn state (agent-gui refactor plan): the session keeps an
 	// activeTurnId reference; phase/outcome/error live on the turn entity.
 	ActiveTurnID           string
@@ -221,6 +229,12 @@ type SessionSection struct {
 type PersistedSession struct {
 	ID                     string
 	WorkspaceID            string
+	Kind                   string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ParentAgentSessionID   string
+	ParentTurnID           string
+	ParentToolCallID       string
 	Origin                 string
 	UserID                 string
 	AgentTargetID          string
@@ -263,8 +277,21 @@ type SessionReader interface {
 	SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error)
 }
 
+type ChildSessionReader interface {
+	ListChildSessions(context.Context, string, string) ([]PersistedSession, error)
+}
+
+type SessionDetail struct {
+	Session       Session
+	ChildSessions []Session
+}
+
+type SessionSectionsReader interface {
+	ListSessionSections(context.Context, agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error)
+}
+
 type SessionSectionReader interface {
-	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool)
+	ListSessionSection(context.Context, agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error)
 }
 
 type SessionSectionDeletionCandidateReader interface {
@@ -295,6 +322,10 @@ type SessionDeleter interface {
 
 type SessionPinUpdater interface {
 	UpdateSessionPinned(context.Context, string, string, bool) (PersistedSession, bool, error)
+}
+
+type SessionSettingsUpdater interface {
+	UpdateSessionSettings(context.Context, string, string, ComposerSettings) (PersistedSession, bool, error)
 }
 
 type SessionTitleUpdater interface {
@@ -415,16 +446,22 @@ type TurnLifecycle struct {
 }
 
 type RuntimeCancelInput struct {
-	WorkspaceID    string
+	WorkspaceID        string
+	RootAgentSessionID string
+	Targets            []RuntimeCancelTarget
+	Reason             string
+}
+
+type RuntimeCancelTarget struct {
 	AgentSessionID string
 	TurnID         string
-	Reason         string
 }
 
 type RuntimeCancelResult struct {
-	AgentSessionID string
-	Canceled       bool
-	TargetAbsent   bool
+	AgentSessionID   string
+	Canceled         bool
+	TargetAbsent     bool
+	ConfirmedTargets []RuntimeCancelTarget
 }
 
 type RuntimeGoalControlInput struct {
@@ -445,13 +482,14 @@ type RuntimeCloseInput struct {
 }
 
 type RuntimeSubmitInteractiveInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	TurnID         string
-	RequestID      string
-	Action         string
-	OptionID       string
-	Payload        map[string]any
+	WorkspaceID        string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
 }
 
 type RuntimeSubmitInteractiveResult struct {

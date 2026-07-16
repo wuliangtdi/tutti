@@ -31,16 +31,43 @@ func (a *CodexAppServerAdapter) appServerServerRequest(
 			return nil, fmt.Errorf("invalid approval request: %w", err)
 		}
 	}
-	events, pending, err := a.appServerApprovalRequested(session, turnID, message.ID, message.Method, params, normalizer)
+	eventSession, eventTurnID, child, err := a.appServerInteractiveRequestScope(session, turnID, params)
+	if err != nil {
+		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32000, Message: err.Error()})
+		return nil, err
+	}
+	eventNormalizer := normalizer
+	if child != nil {
+		eventNormalizer = child.normalizer
+	}
+	events, pending, err := a.appServerApprovalRequested(eventSession, eventTurnID, message.ID, message.Method, params, eventNormalizer)
 	if err != nil {
 		_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32602, Message: err.Error()})
 		return events, err
 	}
+	events = appServerEventsForChild(events, child)
 	if len(events) > 0 {
 		emit(events)
 	}
-	go a.respondAppServerServerRequest(ctx, client, session, turnID, message, params, pending, emit)
+	go a.respondAppServerServerRequest(ctx, client, eventSession, eventTurnID, child, message, params, pending, emit)
 	return nil, nil
+}
+
+func (a *CodexAppServerAdapter) appServerInteractiveRequestScope(
+	root Session,
+	rootTurnID string,
+	params map[string]any,
+) (Session, string, *codexAppServerThreadContext, error) {
+	rootProviderThreadID := strings.TrimSpace(root.ProviderSessionID)
+	requestThreadID := strings.TrimSpace(asString(params["threadId"]))
+	if requestThreadID == "" || rootProviderThreadID == "" || requestThreadID == rootProviderThreadID {
+		return root, rootTurnID, nil, nil
+	}
+	child, ok := a.appServerChildThread(root.AgentSessionID, requestThreadID)
+	if !ok {
+		return Session{}, "", nil, fmt.Errorf("interactive request references unknown child thread %q", requestThreadID)
+	}
+	return appServerChildSession(root, requestThreadID, child), child.turnID, child, nil
 }
 
 func (*CodexAppServerAdapter) respondAppServerServerRequest(
@@ -48,6 +75,7 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 	client *codexAppServerClient,
 	session Session,
 	turnID string,
+	child *codexAppServerThreadContext,
 	message acpMessage,
 	params map[string]any,
 	pending *pendingInteractiveRequest,
@@ -67,6 +95,7 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 			"phase":     string(activityshared.TurnPhaseWorking),
 			"requestId": pending.requestID,
 		}))
+		resolved = appServerEventsForChild(resolved, child)
 		if emit != nil {
 			emit(resolved)
 		}
@@ -74,7 +103,7 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 		return
 	}
 	if selection.outOfBandResolved {
-		resolved := acpPermissionOutOfBandResolvedEvents(session, turnID, pending)
+		resolved := appServerEventsForChild(acpPermissionOutOfBandResolvedEvents(session, turnID, pending), child)
 		if emit != nil {
 			emit(resolved)
 		}
@@ -83,12 +112,12 @@ func (*CodexAppServerAdapter) respondAppServerServerRequest(
 	result, responseErr := appServerApprovalResult(message.Method, params, selection)
 	if err := client.Respond(ctx, message.ID, result, responseErr); err != nil {
 		if pending.finish(pendingInteractiveRequestStateSuperseded) && emit != nil {
-			emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, err))
+			emit(appServerEventsForChild(normalizedPermissionResolvedEvents(session, turnID, pending, selection, err), child))
 		}
 		return
 	}
 	if pending.finish(pendingInteractiveRequestStateAnswered) && emit != nil {
-		emit(normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil))
+		emit(appServerEventsForChild(normalizedPermissionResolvedEvents(session, turnID, pending, selection, nil), child))
 	}
 }
 

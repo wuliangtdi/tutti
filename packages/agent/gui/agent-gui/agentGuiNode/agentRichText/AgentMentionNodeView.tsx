@@ -529,6 +529,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
             selected ? "is-selected" : ""
           }`}
           contentEditable={false}
+          data-agent-custom-mention="true"
           data-agent-file-mention="true"
           data-agent-mention-href={mention.href}
           data-agent-mention-kind={mention.customKind || mention.kind}
@@ -551,6 +552,7 @@ export function AgentMentionNodeView(props: NodeViewProps): JSX.Element {
           selected ? "is-selected" : ""
         }`}
         contentEditable={false}
+        data-agent-custom-mention="true"
         data-agent-file-mention="true"
         data-agent-mention-href={mention.href}
         data-agent-mention-kind={mention.customKind || mention.kind}

@@ -5,6 +5,7 @@ import {
 import { useEffect, useMemo, useRef } from "react";
 import { useAgentActivityRuntime } from "../../../agentActivityRuntime";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList";
+import { createAgentGUIConversationRailTitlePromptSelector } from "../../../shared/agentConversationRailTitlePromptSelector";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import { conversationSummariesRenderEqual } from "../model/agentGuiConversationRail";
@@ -74,6 +75,13 @@ export function useAgentGUIConversationRailQuery({
     identitySnapshot,
     Object.is
   );
+  const selectRuntimeRailConversations = useMemo(
+    () =>
+      createRuntimeRailConversationsSelector(
+        createAgentGUIConversationRailTitlePromptSelector()
+      ),
+    []
+  );
   const runtimeRailConversations = useEngineSelector(
     engine,
     selectRuntimeRailConversations,
@@ -95,12 +103,16 @@ export function useAgentGUIConversationRailQuery({
   );
 }
 
-function selectRuntimeRailConversations(
-  state: AgentSessionEngineState
-): AgentGUIConversationSummary[] {
-  return projectCanonicalAgentGUIConversationSummaries(
-    selectWorkspaceAgentConsumerSessions(state)
-  );
+function createRuntimeRailConversationsSelector(
+  selectTitlePrompts: ReturnType<
+    typeof createAgentGUIConversationRailTitlePromptSelector
+  >
+): (state: AgentSessionEngineState) => AgentGUIConversationSummary[] {
+  return (state) =>
+    projectCanonicalAgentGUIConversationSummaries(
+      selectWorkspaceAgentConsumerSessions(state),
+      selectTitlePrompts(state)
+    );
 }
 
 function conversationSummaryListsRenderEqual(

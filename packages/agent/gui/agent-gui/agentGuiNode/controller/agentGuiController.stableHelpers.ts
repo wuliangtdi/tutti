@@ -219,6 +219,7 @@ export function conversationSummariesRenderEqual(
     left.userId === right.userId &&
     left.provider === right.provider &&
     left.title === right.title &&
+    left.titleLeadingMentionKind === right.titleLeadingMentionKind &&
     conversationTitleFallbacksRenderEqual(
       left.titleFallback,
       right.titleFallback

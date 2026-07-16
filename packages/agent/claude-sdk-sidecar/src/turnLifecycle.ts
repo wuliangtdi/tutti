@@ -4,6 +4,7 @@ export type RuntimeTurn = {
   readonly turnId: string;
   readonly promptUuid: string;
   readonly synthetic?: boolean;
+  awaitingContinuation?: boolean;
   settled: boolean;
 };
 
@@ -14,21 +15,31 @@ export class TurnLifecycle {
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly onActivate: () => void;
   private readonly onSettled: () => void;
+  private readonly onContinuationStartTimeout: () => void;
+  private readonly continuationStartTimeoutMs: number;
   private active: RuntimeTurn | undefined;
   private activeIdValue = "";
   private pendingOrphanCount = 0;
   private cancelledValue = false;
   private completedTurnCount = 0;
   private forceCancelTimer: ReturnType<typeof setTimeout> | undefined;
+  private continuationStartTimer: ReturnType<typeof setTimeout> | undefined;
+  private rejectingTimedOutContinuation = false;
 
   constructor(options: {
     emit: ClaudeSDKSidecarEventEmitter;
     onActivate: () => void;
     onSettled: () => void;
+    onContinuationStartTimeout?: () => void;
+    continuationStartTimeoutMs?: number;
   }) {
     this.emit = options.emit;
     this.onActivate = options.onActivate;
     this.onSettled = options.onSettled;
+    this.onContinuationStartTimeout =
+      options.onContinuationStartTimeout ?? (() => {});
+    this.continuationStartTimeoutMs =
+      options.continuationStartTimeoutMs ?? 30_000;
   }
 
   get activeId(): string {
@@ -37,6 +48,10 @@ export class TurnLifecycle {
 
   get activeTurn(): RuntimeTurn | undefined {
     return this.active;
+  }
+
+  get awaitingContinuation(): boolean {
+    return this.active?.awaitingContinuation === true;
   }
 
   get queue(): readonly RuntimeTurn[] {
@@ -76,6 +91,9 @@ export class TurnLifecycle {
       (turn) => !turn.settled && turn.promptUuid === promptUuid
     );
     if (matched) {
+      if (!matched.synthetic) {
+        this.rejectingTimedOutContinuation = false;
+      }
       this.activate(matched);
     }
   }
@@ -89,7 +107,13 @@ export class TurnLifecycle {
 
   ensureActive(messageType: string): RuntimeTurn | undefined {
     if (this.active && !this.active.settled) {
+      if (messageType === "assistant" || messageType === "stream_event") {
+        this.confirmContinuationStarted();
+      }
       return this.active;
+    }
+    if (this.rejectingTimedOutContinuation && messageType !== "user") {
+      return undefined;
     }
     if (messageType !== "user" && this.pendingOrphanCount > 0) {
       return undefined;
@@ -114,6 +138,43 @@ export class TurnLifecycle {
     return turn;
   }
 
+  expectSyntheticContinuation(): RuntimeTurn | undefined {
+    if (this.active && !this.active.settled) {
+      return this.active;
+    }
+    if (this.rejectingTimedOutContinuation) {
+      return undefined;
+    }
+    const turn = this.activateSynthetic();
+    turn.awaitingContinuation = true;
+    this.continuationStartTimer = setTimeout(() => {
+      if (this.active !== turn || turn.settled || !turn.awaitingContinuation) {
+        return;
+      }
+      turn.awaitingContinuation = false;
+      this.rejectingTimedOutContinuation = true;
+      this.settleActive("turn_completed", {
+        stopReason: "background_agent_continuation_timeout",
+        syntheticTimeout: true
+      });
+      this.onContinuationStartTimeout();
+    }, this.continuationStartTimeoutMs);
+    (
+      this.continuationStartTimer as ReturnType<typeof setTimeout> & {
+        unref?: () => void;
+      }
+    ).unref?.();
+    return turn;
+  }
+
+  consumeTimedOutContinuationResult(): boolean {
+    if (!this.rejectingTimedOutContinuation) {
+      return false;
+    }
+    this.rejectingTimedOutContinuation = false;
+    return true;
+  }
+
   closeSyntheticBeforeUserTurn(): void {
     if (!this.active?.synthetic || this.active.settled) {
       return;
@@ -133,6 +194,7 @@ export class TurnLifecycle {
     this.completedTurnCount += 1;
     this.emit({ type, payload: { ...payload, turnId: turn.turnId } });
     this.clearForceCancelTimer();
+    this.clearContinuationStartTimer();
     this.active = undefined;
     this.activeIdValue = "";
     this.compactQueue();
@@ -164,6 +226,10 @@ export class TurnLifecycle {
 
   cancelQueued(): boolean {
     this.cancelledValue = true;
+    this.clearContinuationStartTimer();
+    if (this.active) {
+      this.active.awaitingContinuation = false;
+    }
     let orphaned = 0;
     for (const turn of this.turns) {
       if (turn.settled || turn === this.active) {
@@ -202,6 +268,7 @@ export class TurnLifecycle {
 
   close(): void {
     this.clearForceCancelTimer();
+    this.clearContinuationStartTimer();
   }
 
   private activate(turn: RuntimeTurn): void {
@@ -219,6 +286,22 @@ export class TurnLifecycle {
         payload: { turnId: turn.turnId, synthetic: true }
       });
     }
+  }
+
+  private confirmContinuationStarted(): void {
+    if (!this.active?.awaitingContinuation) {
+      return;
+    }
+    this.active.awaitingContinuation = false;
+    this.clearContinuationStartTimer();
+  }
+
+  private clearContinuationStartTimer(): void {
+    if (!this.continuationStartTimer) {
+      return;
+    }
+    clearTimeout(this.continuationStartTimer);
+    this.continuationStartTimer = undefined;
   }
 
   private settleQueuedTurn(

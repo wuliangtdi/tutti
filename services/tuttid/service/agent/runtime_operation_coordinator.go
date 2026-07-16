@@ -64,6 +64,7 @@ func (s *Service) prepareInteractiveRuntimeOperation(
 	agentSessionID string,
 	requestID string,
 	input SubmitInteractiveInput,
+	rootAgentSessionID string,
 ) (agentactivitybiz.RuntimeOperation, error) {
 	if s.RuntimeOperationStore == nil || s.TurnStore == nil {
 		return agentactivitybiz.RuntimeOperation{}, errors.New("agent runtime operation store is unavailable")
@@ -75,10 +76,11 @@ func (s *Service) prepareInteractiveRuntimeOperation(
 	}
 	operationID := runtimeOperationID(workspaceID, agentSessionID, agentactivitybiz.RuntimeOperationKindInteractiveResponse, operationSubjectID)
 	payload := map[string]any{
-		"action":   optionalInputString(input.Action),
-		"optionId": optionalInputString(input.OptionID),
-		"payload":  clonePayload(input.Payload),
-		"turnId":   expectedTurnID,
+		"rootAgentSessionId": strings.TrimSpace(rootAgentSessionID),
+		"action":             optionalInputString(input.Action),
+		"optionId":           optionalInputString(input.OptionID),
+		"payload":            clonePayload(input.Payload),
+		"turnId":             expectedTurnID,
 	}
 	// A completed response no longer has a pending interaction. Resolve the
 	// deterministic operation first so an API retry remains idempotent after
@@ -127,6 +129,8 @@ func (s *Service) prepareCancelRuntimeOperation(
 	workspaceID string,
 	agentSessionID string,
 	turnID string,
+	rootAgentSessionID string,
+	targets []RuntimeCancelTarget,
 ) (agentactivitybiz.RuntimeOperation, error) {
 	if s.RuntimeOperationStore == nil {
 		return agentactivitybiz.RuntimeOperation{}, errors.New("agent runtime operation store is unavailable")
@@ -135,9 +139,13 @@ func (s *Service) prepareCancelRuntimeOperation(
 	operation, _, err := s.RuntimeOperationStore.PrepareRuntimeOperation(ctx, agentactivitybiz.RuntimeOperationPrepare{
 		OperationID: runtimeOperationID(workspaceID, agentSessionID, agentactivitybiz.RuntimeOperationKindCancelTurn, turnID),
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
-		Kind:         agentactivitybiz.RuntimeOperationKindCancelTurn,
-		TurnID:       turnID,
-		Payload:      map[string]any{"reason": "user requested turn cancellation"},
+		Kind:   agentactivitybiz.RuntimeOperationKindCancelTurn,
+		TurnID: turnID,
+		Payload: map[string]any{
+			"reason":             "user requested turn cancellation",
+			"rootAgentSessionId": strings.TrimSpace(rootAgentSessionID),
+			"targets":            runtimeCancelTargetsPayload(targets),
+		},
 		OccurredAtMS: now,
 	})
 	return operation, err
@@ -206,7 +214,7 @@ func (s *Service) executeInteractiveRuntimeOperation(
 	runtimeDisposition := RuntimeInteractiveDispositionUnknown
 	var submissionErr error
 	if recovering {
-		runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, operation.RequestID)
+		runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, payloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
 		if runtimeDisposition == RuntimeInteractiveDispositionUnknown && !runtimeSessionFound {
 			return s.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after runtime session removal", operation.RequestID), true)
 		}
@@ -215,17 +223,19 @@ func (s *Service) executeInteractiveRuntimeOperation(
 		runtimeDisposition != RuntimeInteractiveDispositionSuperseded &&
 		runtimeDisposition != RuntimeInteractiveDispositionInterrupted {
 		result, err := s.controller().SubmitInteractive(ctx, RuntimeSubmitInteractiveInput{
-			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
-			TurnID:    operation.TurnID,
-			RequestID: operation.RequestID,
-			Action:    payloadText(operation.Payload, "action"),
-			OptionID:  payloadText(operation.Payload, "optionId"),
-			Payload:   payloadMap(operation.Payload, "payload"),
+			WorkspaceID:        operation.WorkspaceID,
+			RootAgentSessionID: payloadText(operation.Payload, "rootAgentSessionId"),
+			AgentSessionID:     operation.AgentSessionID,
+			TurnID:             operation.TurnID,
+			RequestID:          operation.RequestID,
+			Action:             payloadText(operation.Payload, "action"),
+			OptionID:           payloadText(operation.Payload, "optionId"),
+			Payload:            payloadMap(operation.Payload, "payload"),
 		})
 		submissionErr = err
 		runtimeDisposition = result.Disposition
 		if runtimeDisposition == "" {
-			runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, operation.RequestID)
+			runtimeDisposition = s.controller().InteractiveDisposition(operation.WorkspaceID, payloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
 		}
 	}
 	dispositionErr := submissionErr
@@ -266,32 +276,27 @@ func (s *Service) executeCancelRuntimeOperation(
 	ctx context.Context,
 	operation agentactivitybiz.RuntimeOperation,
 	owner string,
-	recovering bool,
+	_ bool,
 ) (agentactivitybiz.RuntimeOperation, error) {
-	alreadyApplied := recovering
-	if !recovering {
-		result, err := s.controller().Cancel(ctx, RuntimeCancelInput{
-			WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
-			TurnID: operation.TurnID, Reason: payloadText(operation.Payload, "reason"),
-		})
-		if err != nil {
-			return s.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
-		}
-		alreadyApplied = result.Canceled || result.TargetAbsent
-		if !alreadyApplied {
-			turn, found, lookupErr := s.TurnStore.GetTurn(ctx, operation.WorkspaceID, operation.AgentSessionID, operation.TurnID)
-			if lookupErr != nil {
-				return operation, lookupErr
-			}
-			alreadyApplied = !found || turn.Phase == agentactivitybiz.TurnPhaseSettled
-		}
+	targets := runtimeCancelTargetsFromPayload(operation.Payload)
+	result, err := s.controller().Cancel(ctx, RuntimeCancelInput{
+		WorkspaceID:        operation.WorkspaceID,
+		RootAgentSessionID: payloadText(operation.Payload, "rootAgentSessionId"),
+		Targets:            targets,
+		Reason:             payloadText(operation.Payload, "reason"),
+	})
+	if err != nil {
+		return s.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
 	}
-	if !alreadyApplied {
-		return s.releaseRuntimeOperation(ctx, operation, owner, errors.New("runtime still owns the exact cancel target"), true)
-	}
+	targetOutcomes := runtimeCancelTargetOutcomes(
+		payloadText(operation.Payload, "rootAgentSessionId"),
+		targets,
+		result.ConfirmedTargets,
+	)
 	completion, _, err := s.RuntimeOperationStore.CompleteCancelRuntimeOperation(ctx, agentactivitybiz.CompleteCancelRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
-		LeaseOwner: owner, NowUnixMS: s.runtimeOperationNow().UnixMilli(),
+		LeaseOwner: owner, TargetOutcomes: targetOutcomes,
+		NowUnixMS: s.runtimeOperationNow().UnixMilli(),
 	})
 	if err != nil {
 		return operation, err
@@ -300,6 +305,66 @@ func (s *Service) executeCancelRuntimeOperation(
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed cancel runtime operation: %w", err))
 	}
 	return completion.Operation, nil
+}
+
+func runtimeCancelTargetOutcomes(
+	rootAgentSessionID string,
+	targets []RuntimeCancelTarget,
+	confirmed []RuntimeCancelTarget,
+) []agentactivitybiz.CancelRuntimeOperationTargetOutcome {
+	confirmedSet := make(map[string]struct{}, len(confirmed))
+	for _, target := range confirmed {
+		confirmedSet[runtimeCancelTargetKey(target)] = struct{}{}
+	}
+	rootAgentSessionID = strings.TrimSpace(rootAgentSessionID)
+	result := make([]agentactivitybiz.CancelRuntimeOperationTargetOutcome, 0, len(targets))
+	for _, target := range targets {
+		outcome := agentactivitybiz.TurnOutcomeInterrupted
+		if strings.TrimSpace(target.AgentSessionID) == rootAgentSessionID {
+			// Root cancellation records the user's intent even when the provider
+			// had already stopped owning the exact native turn.
+			outcome = agentactivitybiz.TurnOutcomeCanceled
+		} else if _, ok := confirmedSet[runtimeCancelTargetKey(target)]; ok {
+			outcome = agentactivitybiz.TurnOutcomeCanceled
+		}
+		result = append(result, agentactivitybiz.CancelRuntimeOperationTargetOutcome{
+			AgentSessionID: strings.TrimSpace(target.AgentSessionID),
+			TurnID:         strings.TrimSpace(target.TurnID),
+			Outcome:        outcome,
+		})
+	}
+	return result
+}
+
+func runtimeCancelTargetKey(target RuntimeCancelTarget) string {
+	return strings.TrimSpace(target.AgentSessionID) + "\x00" + strings.TrimSpace(target.TurnID)
+}
+
+func runtimeCancelTargetsPayload(targets []RuntimeCancelTarget) []any {
+	result := make([]any, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, map[string]any{
+			"agentSessionId": strings.TrimSpace(target.AgentSessionID),
+			"turnId":         strings.TrimSpace(target.TurnID),
+		})
+	}
+	return result
+}
+
+func runtimeCancelTargetsFromPayload(payload map[string]any) []RuntimeCancelTarget {
+	raw, _ := payload["targets"].([]any)
+	result := make([]RuntimeCancelTarget, 0, len(raw))
+	for _, item := range raw {
+		value, _ := item.(map[string]any)
+		target := RuntimeCancelTarget{
+			AgentSessionID: payloadText(value, "agentSessionId"),
+			TurnID:         payloadText(value, "turnId"),
+		}
+		if target.AgentSessionID != "" && target.TurnID != "" {
+			result = append(result, target)
+		}
+	}
+	return result
 }
 
 func (s *Service) releaseRuntimeOperation(

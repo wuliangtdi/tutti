@@ -33,30 +33,37 @@ func (r codexAppServerReducer) ReduceNotification(
 	if a == nil {
 		return codexAppServerReduction{}
 	}
+	rootAgentSessionID := session.AgentSessionID
 	params := map[string]any{}
 	if len(message.Params) > 0 {
 		_ = json.Unmarshal(message.Params, &params)
 	}
-	route := a.appServerNotificationRoute(session, message.Method, params)
+	route := a.appServerNotificationRoute(session, turnID, message.Method, params)
 	if route.drop {
-		routed := appServerEventsWithOwner(route.events, route.ownerThreadID, route.ownerCallID)
-		for index := range routed {
-			// The activity store rejects turnless message updates; fall back to
-			// the parent's turn so hidden child markers always reach the GUI.
-			if routed[index].Payload.TurnID == "" {
-				routed[index].Payload.TurnID = firstNonEmpty(turnID, r.adapter.sessionMarkerTurnID(session.AgentSessionID))
-			}
-		}
-		return codexAppServerReduction{Events: routed}
+		return codexAppServerReduction{Events: route.events}
+	}
+	if route.session.AgentSessionID != "" {
+		session = route.session
 	}
 	if route.normalizer != nil {
 		normalizer = route.normalizer
 	}
 	turnID = firstNonEmpty(route.turnID, turnID)
-	ownerThreadID := route.ownerThreadID
-	ownerCallID := route.ownerCallID
+	prefixEvents := route.events
+	if _, canceled := a.rootTurnCanceled(rootAgentSessionID); canceled && route.child == nil &&
+		message.Method != appServerNotifyTurnStarted && message.Method != appServerNotifyTurnCompleted {
+		// The route still runs first so a late spawn edge can interrupt its native
+		// child threads. No transcript/progress from the canceled execution is
+		// projected after the durable cancel boundary.
+		return codexAppServerReduction{}
+	}
 	emit := func(events []activityshared.Event) codexAppServerReduction {
-		return codexAppServerReduction{Events: appServerEventsWithOwner(events, ownerThreadID, ownerCallID)}
+		events = appServerEventsForChild(events, route.child)
+		combined := make([]activityshared.Event, 0, len(prefixEvents)+len(events))
+		combined = append(combined, prefixEvents...)
+		combined = append(combined, events...)
+		prefixEvents = nil
+		return codexAppServerReduction{Events: combined}
 	}
 	switch message.Method {
 	case appServerNotifyTurnStarted:
@@ -69,9 +76,10 @@ func (r codexAppServerReducer) ReduceNotification(
 		// turn/completed and awaitTurnCompletion would never settle. After
 		// completion clears the id, the next turn/started (for example a goal
 		// continuation) records normally.
+		providerTurnID := strings.TrimSpace(asString(payloadObject(params["turn"])["id"]))
 		if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
 			if turn := payloadObject(params["turn"]); turn != nil {
-				providerTurnID := strings.TrimSpace(asString(turn["id"]))
+				providerTurnID = strings.TrimSpace(asString(turn["id"]))
 				if recorded := a.sessionActiveTurnID(session.AgentSessionID); recorded != "" && recorded != providerTurnID {
 					return codexAppServerReduction{}
 				}
@@ -88,10 +96,24 @@ func (r codexAppServerReducer) ReduceNotification(
 			// drives goal continuation on its own, so adopt the turn while the
 			// goal is active — otherwise its output would be dropped and the
 			// GUI would freeze while codex keeps working invisibly.
-			providerTurnID := strings.TrimSpace(asString(turn["id"]))
+			providerTurnID = strings.TrimSpace(asString(turn["id"]))
 			goal := a.sessionGoal(session.AgentSessionID)
 			goalStatus := strings.TrimSpace(asString(goal["status"]))
+			canceledRootTurnID, rootTurnCanceled := a.rootTurnCanceled(session.AgentSessionID)
 			switch {
+			case rootTurnCanceled:
+				slog.Warn("agent session app-server interrupting unowned turn after root cancellation",
+					"event", "agent_session.app_server.turn.unowned_after_cancel",
+					"agent_session_id", session.AgentSessionID,
+					"root_turn_id", canceledRootTurnID,
+					"provider_turn_id", providerTurnID,
+				)
+				// Async: a synchronous RPC on the read loop would block its own
+				// response from being dispatched.
+				go a.sendThreadInterrupt(client, session,
+					firstNonEmpty(asString(params["threadId"]), session.ProviderSessionID),
+					providerTurnID, "root turn canceled")
+				return emit(nil)
 			case goalStatus == "paused":
 				// The user explicitly stopped the goal (Stop pauses it); codex
 				// must not keep running turns for it.
@@ -120,7 +142,13 @@ func (r codexAppServerReducer) ReduceNotification(
 				)
 			}
 		}
-		return codexAppServerReduction{}
+		if providerTurnID == "" {
+			return emit(nil)
+		}
+		if ctx, ok := activityEventContext(session, "root-provider-turn-started:"+providerTurnID, turnID); ok {
+			return emit([]activityshared.Event{activityshared.NewRootProviderTurnStarted(ctx, turnID, providerTurnID)})
+		}
+		return emit(nil)
 	case appServerNotifyTurnCompleted:
 		// Deliver the final turn payload to the goroutine waiting in Exec.
 		a.completeActiveTurn(session.AgentSessionID, payloadObject(params["turn"]))
@@ -195,7 +223,14 @@ func (r codexAppServerReducer) ReduceNotification(
 			asString(params["fromModel"]), asString(params["toModel"]))
 		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", title, asString(params["reason"]))})
 	case appServerNotifyThreadCompacted:
-		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", "Context compacted.", "")})
+		if normalizer == nil {
+			return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "system_notice", appServerContextCompactedTitle, "")})
+		}
+		messageID, shouldEmit := normalizer.CompleteCompactionNotice("compaction:" + turnID)
+		if !shouldEmit {
+			return codexAppServerReduction{}
+		}
+		return emit([]activityshared.Event{appServerCompactionNoticeEvent(session, turnID, messageID, "completed")})
 	case appServerNotifyServerRequestResolved:
 		a.resolvePendingRequestFromProvider(session.AgentSessionID, params)
 		return codexAppServerReduction{}
@@ -215,12 +250,12 @@ func (r codexAppServerReducer) ReduceNotification(
 				}
 			}
 		}
-		a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwner(goalEvents, ownerThreadID, ownerCallID))
+		a.emitSessionEvents(session.AgentSessionID, goalEvents)
 		return codexAppServerReduction{}
 	case appServerNotifyThreadGoalCleared:
 		a.applyGoalClear(session.AgentSessionID)
 		if event, ok := normalizedGoalUpdatedEvent(session, "thread_goal_cleared"); ok {
-			a.emitSessionEvents(session.AgentSessionID, appServerEventsWithOwner([]activityshared.Event{event}, ownerThreadID, ownerCallID))
+			a.emitSessionEvents(session.AgentSessionID, []activityshared.Event{event})
 		}
 		return codexAppServerReduction{}
 	case appServerNotifyThreadStarted:

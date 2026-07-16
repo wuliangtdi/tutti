@@ -62,24 +62,6 @@ func payloadWithCallBody(key string, payload map[string]any, metadata map[string
 	return out
 }
 
-func withOwnerThreadID(payload map[string]any, event activityshared.Event) map[string]any {
-	ownerThreadID := strings.TrimSpace(event.OwnerThreadID)
-	if ownerThreadID == "" {
-		return payload
-	}
-	if payload == nil {
-		payload = map[string]any{}
-	}
-	payload["ownerThreadId"] = ownerThreadID
-	// The spawn call that created the owning child thread. The GUI attaches
-	// sub-agent lanes to their collab card by this id alone (ADR 0007); a
-	// child row without it never attaches by guesswork.
-	if ownerCallID := strings.TrimSpace(event.OwnerCallID); ownerCallID != "" {
-		payload["ownerCallId"] = ownerCallID
-	}
-	return payload
-}
-
 func payloadValueIsEmpty(value any) bool {
 	switch typed := value.(type) {
 	case nil:

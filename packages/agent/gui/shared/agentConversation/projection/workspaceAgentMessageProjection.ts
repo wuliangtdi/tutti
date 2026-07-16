@@ -1,12 +1,13 @@
+import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
+import { resolveWorkspaceAgentNoticeCommandSemantics } from "../../workspaceAgentSystemNoticeSemantics";
+import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import {
   projectAgentConversationVM,
   type AgentConversationProjectionOptions
 } from "./agentConversationProjection";
-import type { WorkspaceAgentActivityTimelineItem } from "../../workspaceAgentTimelineTypes";
-import type { AgentActivityMessage } from "@tutti-os/agent-activity-core";
 
 export interface ProjectWorkspaceAgentMessagesInput extends Omit<
   BuildWorkspaceAgentSessionDetailInput,
@@ -126,8 +127,9 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
     }
 
     if (kind === "text" && (role === "assistant" || role === "agent")) {
+      const projectedMessage = normalizeLegacyCompactNotice(message, payload);
       return messageTimelineItem({
-        message,
+        message: projectedMessage,
         id,
         seq,
         eventId,
@@ -135,7 +137,7 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
         actorType: "agent",
         itemType: "message.assistant",
         role: "assistant",
-        content: messageText(message),
+        content: messageText(projectedMessage),
         occurredAtUnixMs
       });
     }
@@ -174,6 +176,54 @@ export function projectWorkspaceAgentMessagesToTimelineItems(
   });
 }
 
+function normalizeLegacyCompactNotice(
+  message: AgentActivityMessage,
+  payload: Record<string, unknown>
+): AgentActivityMessage {
+  const commandSemantics = resolveWorkspaceAgentNoticeCommandSemantics({
+    eventId: message.messageId,
+    messageSemantics: message.semantics,
+    payload,
+    status: message.status
+  });
+  if (commandSemantics?.command !== "compact") {
+    return message;
+  }
+  const commandStatus = commandSemantics.commandStatus;
+  const title =
+    stringValue(payload.title) ||
+    (commandStatus === "completed"
+      ? "Context compacted."
+      : commandStatus === "running"
+        ? "Compacting context."
+        : "Context compaction interrupted.");
+  const originalText = messageText(message);
+  const detail =
+    stringValue(payload.detail) ||
+    (commandStatus === "failed" || commandStatus === "canceled"
+      ? originalText.replace(/^Compacting failed:\s*/iu, "").trim()
+      : "");
+  return {
+    ...message,
+    semantics: {
+      ...message.semantics,
+      noticeCommand: "compact",
+      noticeCommandStatus: commandStatus
+    },
+    payload: {
+      ...payload,
+      kind: "agent_system_notice",
+      noticeKind: stringValue(payload.noticeKind) || "system_notice",
+      noticeCommand: "compact",
+      noticeCommandStatus: commandStatus,
+      title,
+      text: title,
+      content: title,
+      ...(detail ? { detail } : {})
+    }
+  };
+}
+
 function latestMessageSnapshots(
   messages: readonly AgentActivityMessage[]
 ): AgentActivityMessage[] {
@@ -200,9 +250,14 @@ function mergeMessageSnapshot(
   previous: AgentActivityMessage | undefined,
   next: AgentActivityMessage
 ): AgentActivityMessage {
+  const semantics =
+    previous?.semantics || next.semantics
+      ? { ...previous?.semantics, ...next.semantics }
+      : undefined;
   return {
     ...previous,
     ...next,
+    ...(semantics ? { semantics } : {}),
     payload: {
       ...(previous?.payload ?? {}),
       ...(next.payload ?? {})
@@ -255,6 +310,7 @@ function messageTimelineItem({
     itemType,
     role,
     status: message.status,
+    ...(message.semantics ? { messageSemantics: message.semantics } : {}),
     content,
     payload: normalizedPayload(message.payload),
     ...(occurredAtUnixMs !== undefined ? { occurredAtUnixMs } : {}),

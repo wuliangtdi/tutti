@@ -17,7 +17,9 @@ Use the focused runtime index or open one area directly:
 - [Agent Providers And Setup](./agent-provider-setup.md): Provider discovery, installation, authentication, models, configuration, and runtime reachability.
   Includes extension command/Skill palette hydration failures.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
-- [Agent Approvals And Sub-Agents](./agent-approvals-subagents.md): Approval gates, plan exits, parent/child event attribution, background agents, and Message Center.
+- [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
+  Includes provider-native work that continues invisibly after root cancellation
+  and late child creation racing the durable cancel boundary.
 
 ## [Desktop And Release](./desktop-release.md)
 
@@ -63,6 +65,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [Workspace app uninstall fails on cached manifest validation](./workspace-apps-files.md#workspace-app-uninstall-fails-on-cached-manifest-validation)
 - [Workspace app update reopens the old dock window](./workspace-apps-files.md#workspace-app-update-reopens-the-old-dock-window)
 - [Agent inline app opening leaks into the OS App Center](./workspace-apps-files.md#agent-inline-app-opening-leaks-into-the-os-app-center)
+- [Agent file preview behavior leaks into the OS shell](./workspace-apps-files.md#agent-file-preview-behavior-leaks-into-the-os-shell)
 - [Load unpacked project roots with source manifests](./workspace-apps-files.md#load-unpacked-project-roots-with-source-manifests)
 - [Agent GUI app mentions show unavailable workspace apps](./workspace-apps-files.md#agent-gui-app-mentions-show-unavailable-workspace-apps)
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
@@ -81,6 +84,7 @@ CLI behavior, CI, package assets, skills, Browser Node, and terminal input.
 - [Browser Node action finds a webview but page injection does nothing](./toolchain-browser-terminal.md#browser-node-action-finds-a-webview-but-page-injection-does-nothing)
 - [Hidden Browser Node webview covers another panel](./toolchain-browser-terminal.md#hidden-browser-node-webview-covers-another-panel)
 - [IME composition leaks native input into xterm terminals](./toolchain-browser-terminal.md#ime-composition-leaks-native-input-into-xterm-terminals)
+- [Chinese input renders replacement and control characters in workspace terminals](./toolchain-browser-terminal.md#chinese-input-renders-replacement-and-control-characters-in-workspace-terminals)
 - [Post-composition suppression window swallows real terminal input](./toolchain-browser-terminal.md#post-composition-suppression-window-swallows-real-terminal-input)
 - [Published package runtime asset 404 because the consumer bundler never saw the file](./toolchain-browser-terminal.md#published-package-runtime-asset-404-because-the-consumer-bundler-never-saw-the-file)
 - [New release CDN namespace returns an S3 403](./toolchain-browser-terminal.md#new-release-cdn-namespace-returns-an-s3-403)

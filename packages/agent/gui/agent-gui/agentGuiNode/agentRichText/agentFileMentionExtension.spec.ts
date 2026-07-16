@@ -185,6 +185,32 @@ describe("parseAgentMentionMarkdown", () => {
     }
   });
 
+  it("keeps the canonical custom mention label when chip presentation changes it", () => {
+    registerAgentCustomMentionKind({
+      kind: "browser-element",
+      present: (mention) => ({ name: `<${mention.label}>` })
+    });
+    try {
+      const prompt =
+        "[@a](mention://browser-element/browser-element:1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1)";
+      const parsed = parseAgentMentionMarkdown(prompt);
+
+      expect(parsed?.item).toMatchObject({
+        kind: "custom",
+        name: "<a>",
+        sourceLabel: "a"
+      });
+      expect(formatAgentMentionMarkdown(parsed!.item)).toBe(prompt);
+      expect(
+        formatAgentMentionMarkdown(
+          attrsToMentionItem(mentionItemToAttrs(parsed!.item))
+        )
+      ).toBe(prompt);
+    } finally {
+      resetAgentCustomMentionKindsForTests();
+    }
+  });
+
   it("accepts workspace app mention hrefs without an @ prefix", () => {
     expect(
       parseAgentMentionMarkdown(

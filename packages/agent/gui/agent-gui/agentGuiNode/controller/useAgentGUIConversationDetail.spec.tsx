@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { createEmptyAgentActivitySnapshot } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { createTestAgentSessionEngine } from "../../../shared/testing/createTestAgentSessionEngine";
 import { useAgentGUIConversationDetail } from "./useAgentGUIConversationDetail";
@@ -18,6 +19,7 @@ describe("useAgentGUIConversationDetail", () => {
         activeQueuedPromptInFlight: null,
         activeQueuedPrompts: [],
         activeQueueStatus: "active",
+        agentActivitySnapshot: createEmptyAgentActivitySnapshot("workspace-1"),
         activeSessionReconcileError: null,
         activeSessionView: null,
         activeTimelineItems: [],
@@ -67,6 +69,7 @@ describe("useAgentGUIConversationDetail", () => {
         activeQueuedPromptInFlight: null,
         activeQueuedPrompts: [],
         activeQueueStatus: "active",
+        agentActivitySnapshot: createEmptyAgentActivitySnapshot("workspace-1"),
         activeSessionReconcileError: "detail reconcile failed",
         activeSessionView: null,
         activeTimelineItems: [],

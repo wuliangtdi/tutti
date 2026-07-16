@@ -40,20 +40,65 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 			}
 		}
 	case agentactivitybiz.RuntimeOperationEventTurnCanceled:
-		turnID := payloadString(event.Payload, "turnId")
-		turn, ok, err := p.repo.GetTurn(ctx, event.WorkspaceID, event.AgentSessionID, turnID)
-		if err != nil {
-			return err
-		}
-		if ok {
-			eventType = "turn_update"
-			payload = activityTurnUpdateEventPayload(
+		rootAgentSessionID := payloadString(event.Payload, "rootAgentSessionId")
+		targets, _ := event.Payload["targets"].([]any)
+		published := 0
+		for _, rawTarget := range targets {
+			target, _ := rawTarget.(map[string]any)
+			agentSessionID := payloadString(target, "agentSessionId")
+			turnID := payloadString(target, "turnId")
+			turn, ok, err := p.repo.GetTurn(ctx, event.WorkspaceID, agentSessionID, turnID)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return errors.New("cancel runtime operation target turn is unavailable")
+			}
+			if err := p.publisher.PublishAgentActivityUpdated(
+				ctx,
 				event.WorkspaceID,
-				event.AgentSessionID,
-				turn,
-				event.CreatedAtUnixMS,
-			)
+				agentSessionID,
+				"turn_update",
+				activityTurnUpdateEventPayload(
+					event.WorkspaceID,
+					agentSessionID,
+					turn,
+					event.CreatedAtUnixMS,
+				),
+			); err != nil {
+				return err
+			}
+			if agentSessionID == rootAgentSessionID && turn.Phase == agentactivitybiz.TurnPhaseSettled {
+				p.observeRootTurnSettled(ctx, event.WorkspaceID, agentSessionID, turn)
+			}
+			published++
 		}
+		if rawRoot, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
+			agentSessionID := payloadString(rawRoot, "agentSessionId")
+			turnID := payloadString(rawRoot, "turnId")
+			turn, found, err := p.repo.GetTurn(ctx, event.WorkspaceID, agentSessionID, turnID)
+			if err != nil {
+				return err
+			}
+			if !found || turn.Phase != agentactivitybiz.TurnPhaseSettled {
+				return errors.New("reconciled root turn is unavailable")
+			}
+			if err := p.publisher.PublishAgentActivityUpdated(
+				ctx,
+				event.WorkspaceID,
+				agentSessionID,
+				"turn_update",
+				activityTurnUpdateEventPayload(event.WorkspaceID, agentSessionID, turn, event.CreatedAtUnixMS),
+			); err != nil {
+				return err
+			}
+			p.observeRootTurnSettled(ctx, event.WorkspaceID, agentSessionID, turn)
+			published++
+		}
+		if published == 0 {
+			return errors.New("cancel runtime operation targets are unavailable")
+		}
+		return nil
 	case agentactivitybiz.RuntimeOperationEventPlanDecisionPending:
 		return p.publishPlanDecisionNoticeUpdate(ctx, event)
 	case agentactivitybiz.RuntimeOperationEventPlanDecisionCompleted:
@@ -90,6 +135,23 @@ func (p *ActivityProjection) PublishRuntimeOperationEvent(
 		event.AgentSessionID,
 		eventType,
 		payload,
+	)
+}
+
+func (p *ActivityProjection) observeRootTurnSettled(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+) {
+	if p == nil || p.rootTurnObserver == nil {
+		return
+	}
+	p.rootTurnObserver.ObserveRootTurnSettled(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		turn,
 	)
 }
 

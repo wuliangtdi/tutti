@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -13,24 +14,48 @@ type agentRuntimeAdapter struct {
 	controller *agentruntime.Controller
 }
 
+func (a agentRuntimeAdapter) ObserveRootTurnSettled(_ context.Context, workspaceID string, agentSessionID string, turn agentactivitybiz.Turn) {
+	a.controller.ReconcileRootTurnSettlement(agentruntime.RootTurnSettlement{
+		RoomID:         workspaceID,
+		AgentSessionID: agentSessionID,
+		TurnID:         turn.TurnID,
+		Outcome:        turn.Outcome,
+	})
+}
+
 func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAdapter {
 	return agentRuntimeAdapter{controller: controller}
 }
 
 func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
+	targets := make([]agentruntime.CancelTarget, 0, len(input.Targets))
+	for _, target := range input.Targets {
+		targets = append(targets, agentruntime.CancelTarget{
+			AgentSessionID: target.AgentSessionID,
+			TurnID:         target.TurnID,
+		})
+	}
 	result, err := a.controller.Cancel(ctx, agentruntime.CancelInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		TurnID:         input.TurnID,
-		Reason:         input.Reason,
+		RoomID:             input.WorkspaceID,
+		RootAgentSessionID: input.RootAgentSessionID,
+		Targets:            targets,
+		Reason:             input.Reason,
 	})
 	if err != nil {
 		return agentservice.RuntimeCancelResult{}, mapAgentRuntimeError(err)
 	}
+	confirmedTargets := make([]agentservice.RuntimeCancelTarget, 0, len(result.ConfirmedTargets))
+	for _, target := range result.ConfirmedTargets {
+		confirmedTargets = append(confirmedTargets, agentservice.RuntimeCancelTarget{
+			AgentSessionID: target.AgentSessionID,
+			TurnID:         target.TurnID,
+		})
+	}
 	return agentservice.RuntimeCancelResult{
-		AgentSessionID: result.AgentSessionID,
-		Canceled:       result.Canceled,
-		TargetAbsent:   result.TargetAbsent,
+		AgentSessionID:   result.AgentSessionID,
+		Canceled:         result.Canceled,
+		TargetAbsent:     result.TargetAbsent,
+		ConfirmedTargets: confirmedTargets,
 	}, nil
 }
 
@@ -198,13 +223,14 @@ func runtimePromptContentFromService(content []agentservice.PromptContentBlock) 
 
 func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agentservice.RuntimeSubmitInteractiveInput) (agentservice.RuntimeSubmitInteractiveResult, error) {
 	result, err := a.controller.SubmitInteractive(ctx, agentruntime.SubmitInteractiveInput{
-		RoomID:         input.WorkspaceID,
-		AgentSessionID: input.AgentSessionID,
-		TurnID:         input.TurnID,
-		RequestID:      input.RequestID,
-		Action:         input.Action,
-		OptionID:       input.OptionID,
-		Payload:        input.Payload,
+		RoomID:             input.WorkspaceID,
+		RootAgentSessionID: input.RootAgentSessionID,
+		AgentSessionID:     input.AgentSessionID,
+		TurnID:             input.TurnID,
+		RequestID:          input.RequestID,
+		Action:             input.Action,
+		OptionID:           input.OptionID,
+		Payload:            input.Payload,
 	})
 	mapped := agentservice.RuntimeSubmitInteractiveResult{
 		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
@@ -215,8 +241,8 @@ func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agents
 	return mapped, nil
 }
 
-func (a agentRuntimeAdapter) InteractiveDisposition(workspaceID string, agentSessionID string, turnID string, requestID string) agentservice.RuntimeInteractiveDisposition {
-	return agentservice.RuntimeInteractiveDisposition(a.controller.InteractiveDisposition(workspaceID, agentSessionID, turnID, requestID))
+func (a agentRuntimeAdapter) InteractiveDisposition(workspaceID string, rootAgentSessionID string, agentSessionID string, turnID string, requestID string) agentservice.RuntimeInteractiveDisposition {
+	return agentservice.RuntimeInteractiveDisposition(a.controller.InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID))
 }
 
 func (a agentRuntimeAdapter) UpdateSettings(ctx context.Context, input agentservice.RuntimeUpdateSettingsInput) error {

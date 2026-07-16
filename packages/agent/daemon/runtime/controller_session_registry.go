@@ -430,13 +430,14 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		c.mu.Unlock()
 		return
 	}
+	stateEvents := eventsOwnedBySession(events, session.AgentSessionID)
 	// Cursor mirrors agent-driven plan entry/exit through a separate settings
 	// path that locks internally. Only break the atomic window when such an
 	// event is actually present, otherwise the unlock re-opens the lost-update
 	// race the surrounding lock guards against.
-	if hasACPCurrentModeUpdatedEvent(events) {
+	if hasACPCurrentModeUpdatedEvent(stateEvents) {
 		c.mu.Unlock()
-		c.syncCursorPlanModeFromEvents(session, events)
+		c.syncCursorPlanModeFromEvents(session, stateEvents)
 		c.mu.Lock()
 		var stillPresent bool
 		session, stillPresent = c.sessions[foundKey]
@@ -445,18 +446,18 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 			return
 		}
 	}
-	if session.LifecycleAuthority || eventsCarryAdapterLifecycleSnapshot(events) {
+	if session.LifecycleAuthority || eventsCarryAdapterLifecycleSnapshot(stateEvents) {
 		// ADR 0008: copy snapshots and derive purely — no ready-guard, no
 		// reconcile; the snapshot IS the truth.
-		session = applySessionEventsBase(session, events)
-		session = applyTurnLifecycleSnapshots(session, events)
-		session.Status = statusForAuthoritySession(session, sessionLevelStatusFromEvents(events))
+		session = applySessionEventsBase(session, stateEvents)
+		session = applyTurnLifecycleSnapshots(session, stateEvents)
+		session.Status = statusForAuthoritySession(session, sessionLevelStatusFromEvents(stateEvents))
 		session.SubmitAvailability = submitAvailabilityForAuthoritySession(session)
 	} else {
 		previousStatus := session.Status
-		session = applySessionEvents(session, events)
-		session = applyTurnLifecycleFromEvents(session, events)
-		session.Status = deriveSessionStatusFromEvents(events, session.Status)
+		session = applySessionEvents(session, stateEvents)
+		session = applyTurnLifecycleFromEvents(session, stateEvents)
+		session.Status = deriveSessionStatusFromEvents(stateEvents, session.Status)
 		// Metadata-only session updates (usage/goal refreshes) default to
 		// ready; while the lifecycle reports an active turn that would flap
 		// the status to idle mid-turn.
@@ -469,7 +470,7 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 			session = c.reconcileSessionStatusLocked(foundKey, session)
 		}
 	}
-	if shouldAdvanceSessionUpdatedAtFromEvents(events) {
+	if shouldAdvanceSessionUpdatedAtFromEvents(stateEvents) {
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.sessions[foundKey] = session

@@ -3,17 +3,13 @@ import type { ReactNode } from "react";
 import {
   Button,
   InspectIcon,
-  LoadingIcon,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
   cn
 } from "@tutti-os/ui-system";
-import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
-import type { DesktopHostFilesApi } from "@preload/types";
 import type { BrowserNodeWebviewTag } from "@tutti-os/browser-node/react";
 import {
-  browserElementSnapshotAttachmentName,
   normalizeBrowserElementSelectionResult,
   serializeBrowserElementSnapshot
 } from "./browserElementSnapshot";
@@ -25,6 +21,7 @@ import {
   cancelBrowserElementWebviewSelection,
   executeBrowserElementWebviewScript
 } from "./browserElementWebview";
+import { createBrowserElementMentionMarkdown } from "./browserElementMention";
 
 export interface BrowserElementContextCopy {
   cancel: string;
@@ -34,22 +31,18 @@ export interface BrowserElementContextCopy {
 
 export function BrowserElementContextAction({
   copy,
-  hostFilesApi,
-  onAppendFile,
+  onAppendMention,
   onError,
   surfaceId,
   workspaceId
 }: {
   copy: BrowserElementContextCopy;
-  hostFilesApi: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
-  onAppendFile: (file: AgentComposerDraftFile) => void;
+  onAppendMention: (mention: string) => void;
   onError: (message: string) => void;
   surfaceId: string;
   workspaceId: string;
 }): ReactNode {
-  const [state, setState] = useState<"idle" | "selecting" | "archiving">(
-    "idle"
-  );
+  const [state, setState] = useState<"idle" | "selecting">("idle");
   const mountedRef = useRef(true);
   const selectingWebviewRef = useRef<BrowserNodeWebviewTag | null>(null);
 
@@ -94,21 +87,17 @@ export function BrowserElementContextAction({
       );
       const result = normalizeBrowserElementSelectionResult(rawResult);
       if (!result || result.status === "cancelled") return;
-      if (mountedRef.current) setState("archiving");
       const content = serializeBrowserElementSnapshot(result.snapshot);
-      const archived = await hostFilesApi.archiveAgentPromptFile({
-        dataBase64: utf8ToBase64(content),
-        displayName: browserElementSnapshotAttachmentName(result.snapshot),
-        mimeType: "application/json",
-        workspaceID: workspaceId
+      const mention = createBrowserElementMentionMarkdown({
+        context: content,
+        id: createBrowserElementReferenceId(),
+        tagName: result.snapshot.element.tagName,
+        workspaceId
       });
-      onAppendFile({
-        id: createBrowserElementAttachmentId(),
-        mimeType: "application/json",
-        name: archived.name,
-        path: archived.path,
-        sizeBytes: archived.sizeBytes
-      });
+      if (!mention) {
+        throw new Error("Browser element mention could not be created");
+      }
+      onAppendMention(mention);
     } catch {
       onError(copy.failed);
     } finally {
@@ -118,8 +107,7 @@ export function BrowserElementContextAction({
   }, [
     cancelSelection,
     copy.failed,
-    hostFilesApi,
-    onAppendFile,
+    onAppendMention,
     onError,
     state,
     surfaceId,
@@ -138,17 +126,12 @@ export function BrowserElementContextAction({
             state === "selecting" &&
               "bg-[var(--transparency-block)] text-[var(--text-primary)]"
           )}
-          disabled={state === "archiving"}
           size="icon-sm"
           type="button"
           variant="chrome"
           onClick={() => void startSelection()}
         >
-          {state === "archiving" ? (
-            <LoadingIcon className="size-[15px] animate-spin" />
-          ) : (
-            <InspectIcon className="size-[15px]" />
-          )}
+          <InspectIcon className="size-[15px]" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
@@ -173,14 +156,7 @@ function findActiveBrowserWebview(
   );
 }
 
-function utf8ToBase64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function createBrowserElementAttachmentId(): string {
+function createBrowserElementReferenceId(): string {
   return `browser-element:${
     globalThis.crypto?.randomUUID?.() ??
     `${Date.now()}-${Math.random().toString(36).slice(2)}`

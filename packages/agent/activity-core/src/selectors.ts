@@ -13,6 +13,15 @@ export function selectCanonicalAgentActivitySessions(
   return snapshot.sessions;
 }
 
+export function selectRootAgentActivitySessions(
+  snapshot: Pick<AgentActivitySnapshot, "sessions">
+): readonly AgentActivitySession[] {
+  // In-memory optimistic root sessions may exist before their first daemon
+  // snapshot is normalized. Only an explicit child relation excludes a
+  // session from root conversation lists.
+  return snapshot.sessions.filter((session) => session.kind !== "child");
+}
+
 export function selectNeedsAttentionCount(
   snapshot: AgentActivitySnapshot
 ): number {

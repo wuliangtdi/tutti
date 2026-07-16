@@ -30,6 +30,7 @@ export {
 export {
   normalizeAgentActivityDisplayStatus,
   selectCanonicalAgentActivitySessions,
+  selectRootAgentActivitySessions,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems
 } from "./selectors.ts";
@@ -256,11 +257,11 @@ export type {
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
-  AgentActivitySessionBackgroundAgents,
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,
   AgentActivitySessionPermissionConfig,
   AgentActivitySessionSettings,
+  AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
   AgentActivitySubmitInteractiveInput,

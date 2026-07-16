@@ -12,6 +12,8 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
+var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
+
 // Agent activity and agent target persistence is delegated to the
 // embeddable packages/agent/store-sqlite module, sharing this store's
 // database handle. The delegation below keeps SQLiteStore satisfying the
@@ -103,6 +105,10 @@ func (s *SQLiteStore) GetSession(ctx context.Context, workspaceID string, agentS
 	return s.agentStore().GetSession(ctx, workspaceID, agentSessionID)
 }
 
+func (s *SQLiteStore) ListChildSessions(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Session, error) {
+	return s.agentStore().ListChildSessions(ctx, workspaceID, agentSessionID)
+}
+
 func (s *SQLiteStore) SessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
 	return s.agentStore().SessionDeleted(ctx, workspaceID, agentSessionID)
 }
@@ -113,6 +119,10 @@ func (s *SQLiteStore) ListSessions(ctx context.Context, workspaceID string) ([]a
 
 func (s *SQLiteStore) ListSessionSection(ctx context.Context, input agentactivitybiz.ListSessionSectionInput) (agentactivitybiz.SessionSectionPage, bool, error) {
 	return s.agentStore().ListSessionSection(ctx, input)
+}
+
+func (s *SQLiteStore) ListSessionSections(ctx context.Context, input agentactivitybiz.ListSessionSectionsInput) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	return s.agentStore().ListSessionSections(ctx, input)
 }
 
 func (s *SQLiteStore) ListSessionSectionDeletionCandidates(ctx context.Context, input agentactivitybiz.ListSessionSectionDeletionCandidatesInput) (agentactivitybiz.SessionSectionDeletionCandidates, bool, error) {
@@ -141,6 +151,10 @@ func (s *SQLiteStore) ClearSessions(ctx context.Context, workspaceID string) (ag
 
 func (s *SQLiteStore) UpdateSessionPinned(ctx context.Context, workspaceID string, agentSessionID string, pinned bool) (agentactivitybiz.Session, bool, error) {
 	return s.agentStore().UpdateSessionPinned(ctx, workspaceID, agentSessionID, pinned)
+}
+
+func (s *SQLiteStore) UpdateSessionSettings(ctx context.Context, workspaceID string, agentSessionID string, model string, settings map[string]any) (agentactivitybiz.Session, bool, error) {
+	return s.agentStore().UpdateSessionSettings(ctx, workspaceID, agentSessionID, model, settings)
 }
 
 func (s *SQLiteStore) UpdateSessionTitle(ctx context.Context, workspaceID string, agentSessionID string, title string) (agentactivitybiz.Session, bool, error) {

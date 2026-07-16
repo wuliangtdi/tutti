@@ -98,6 +98,14 @@ func (a *CodexAppServerAdapter) beginActiveTurn(
 	if appSession == nil || appSession.activeTurn != nil {
 		return false
 	}
+	canonicalTurnID := strings.TrimSpace(turn.turnID)
+	if appSession.canceledRootTurnID != "" && canonicalTurnID != appSession.canceledRootTurnID {
+		appSession.canceledRootTurnID = ""
+		appSession.canceledProviderThreads = nil
+	}
+	if canonicalTurnID != "" {
+		appSession.lastCanonicalTurnID = canonicalTurnID
+	}
 	appSession.activeTurn = turn
 	return true
 }
@@ -186,12 +194,12 @@ func (a *CodexAppServerAdapter) setSessionActiveTurnID(
 	// rebind the provider id after the slot is already empty or reused.
 	if appSession != nil && appSession.activeTurn == expectedTurn {
 		appSession.activeTurnID = strings.TrimSpace(turnID)
+		if expectedTurn != nil {
+			expectedTurn.providerTurnID = appSession.activeTurnID
+		}
 		// The binding starts unconfirmed; a matching turn/started notification
 		// confirms it via confirmSessionActiveTurnStarted.
 		appSession.activeTurnStartConfirmed = false
-		if appSession.activeTurnID != "" {
-			appSession.lastTurnID = appSession.activeTurnID
-		}
 		if appSession.activeTurn != nil &&
 			appSession.activeTurnID != "" &&
 			appSession.activeTurn.cancelRequested &&
@@ -248,7 +256,59 @@ func (a *CodexAppServerAdapter) sessionMarkerTurnID(agentSessionID string) strin
 	if appSession == nil {
 		return ""
 	}
-	return firstNonEmpty(appSession.activeTurnID, appSession.lastTurnID)
+	if appSession.activeTurn != nil && strings.TrimSpace(appSession.activeTurn.turnID) != "" {
+		return strings.TrimSpace(appSession.activeTurn.turnID)
+	}
+	return strings.TrimSpace(appSession.lastCanonicalTurnID)
+}
+
+func (a *CodexAppServerAdapter) markRootTurnCanceled(agentSessionID string, rootTurnID string) {
+	if a == nil {
+		return
+	}
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	rootTurnID = strings.TrimSpace(rootTurnID)
+	if agentSessionID == "" || rootTurnID == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[agentSessionID]
+	if appSession == nil {
+		return
+	}
+	appSession.canceledRootTurnID = rootTurnID
+	if appSession.canceledProviderThreads == nil {
+		appSession.canceledProviderThreads = make(map[string]struct{})
+	}
+}
+
+func (a *CodexAppServerAdapter) rootTurnCanceled(agentSessionID string) (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return "", false
+	}
+	rootTurnID := strings.TrimSpace(appSession.canceledRootTurnID)
+	return rootTurnID, rootTurnID != ""
+}
+
+func (a *CodexAppServerAdapter) canceledProviderThread(agentSessionID string, providerThreadID string) bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil || appSession.canceledProviderThreads == nil {
+		return false
+	}
+	_, ok := appSession.canceledProviderThreads[strings.TrimSpace(providerThreadID)]
+	return ok
 }
 
 func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingInteractiveRequest) {
@@ -257,7 +317,7 @@ func (a *CodexAppServerAdapter) storePendingRequest(pending *pendingInteractiveR
 	}
 	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
-	appSession := a.sessions[strings.TrimSpace(pending.agentSessionID)]
+	_, appSession := a.appServerSessionForAgentSessionIDLocked(pending.agentSessionID)
 	if appSession != nil {
 		if appSession.pendingRequests == nil {
 			appSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
@@ -273,12 +333,13 @@ func (a *CodexAppServerAdapter) getPendingRequest(agentSessionID string, turnID 
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	_, appSession := a.appServerSessionForAgentSessionIDLocked(agentSessionID)
 	if appSession == nil || appSession.pendingRequests == nil {
 		return nil
 	}
 	pending := appSession.pendingRequests[strings.TrimSpace(requestID)]
-	if pending == nil || strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) {
+	if pending == nil || strings.TrimSpace(pending.agentSessionID) != strings.TrimSpace(agentSessionID) ||
+		strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) {
 		return nil
 	}
 	return pending
@@ -291,7 +352,8 @@ func (a *CodexAppServerAdapter) recordTerminalInteractiveRequest(pending *pendin
 	disposition := interactiveDispositionFromState(state)
 	key := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
 	a.mu.Lock()
-	if appSession := a.sessions[key.agentSessionID]; appSession != nil && appSession.pendingRequests != nil {
+	_, appSession := a.appServerSessionForAgentSessionIDLocked(key.agentSessionID)
+	if appSession != nil && appSession.pendingRequests != nil {
 		if appSession.pendingRequests[key.requestID] == pending {
 			delete(appSession.pendingRequests, key.requestID)
 		}
@@ -302,6 +364,28 @@ func (a *CodexAppServerAdapter) recordTerminalInteractiveRequest(pending *pendin
 	if sink != nil {
 		sink(key.agentSessionID, key.turnID, key.requestID, disposition)
 	}
+}
+
+// appServerSessionForAgentSessionIDLocked resolves a canonical child session
+// to the root app-server session that owns the shared provider connection.
+// Durable child state remains outside the adapter; this is only a runtime
+// handle lookup and must be called with a.mu held.
+func (a *CodexAppServerAdapter) appServerSessionForAgentSessionIDLocked(agentSessionID string) (string, *codexAppServerSession) {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if appSession := a.sessions[agentSessionID]; appSession != nil {
+		return agentSessionID, appSession
+	}
+	for rootAgentSessionID, appSession := range a.sessions {
+		if appSession == nil {
+			continue
+		}
+		for _, child := range appSession.childThreads {
+			if child != nil && strings.TrimSpace(child.agentSessionID) == agentSessionID {
+				return rootAgentSessionID, appSession
+			}
+		}
+	}
+	return "", nil
 }
 
 func (a *CodexAppServerAdapter) SetInteractiveDispositionSink(sink InteractiveDispositionSink) {

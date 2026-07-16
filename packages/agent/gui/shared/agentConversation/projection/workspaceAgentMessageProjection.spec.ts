@@ -8,6 +8,81 @@ import type { WorkspaceAgentActivityCard } from "../../workspaceAgentActivityLis
 import { projectWorkspaceAgentMessagesToConversationVM } from "./workspaceAgentMessageProjection";
 
 describe("projectWorkspaceAgentMessagesToConversationVM", () => {
+  it("prefers canonical browser element prompt content over a lossy provider echo", () => {
+    const prompt =
+      "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
+      "[@div](mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1) " +
+      "这里说的什么";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-browser-elements",
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            text: "@<a> @<div> 这里说的什么",
+            content: [{ type: "text", text: prompt }]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+    expect(userRow?.kind === "message" ? userRow.messages[0]?.body : null).toBe(
+      prompt
+    );
+  });
+
+  it("renders the browser element display prompt instead of staged snapshot files", () => {
+    const displayPrompt =
+      "[@a](mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1) " +
+      "[@div](mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1) 22222222";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "user-browser-element-files",
+          version: 1,
+          role: "user",
+          kind: "text",
+          payload: {
+            displayPrompt,
+            text: "pasted-text-1.txt",
+            content: [
+              {
+                type: "file",
+                kind: "pasted-text",
+                name: "pasted-text-1.txt",
+                path: "/tmp/a.txt"
+              },
+              {
+                type: "file",
+                kind: "pasted-text",
+                name: "pasted-text-2.txt",
+                path: "/tmp/div.txt"
+              }
+            ]
+          }
+        })
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "user"
+    );
+    expect(userRow?.kind === "message" ? userRow.messages[0]?.body : null).toBe(
+      displayPrompt
+    );
+  });
+
   it("sorts message rows by stable message version instead of source-local ids", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -636,6 +711,188 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       id: "client-submit:user:submit-image-1:image:0",
       attachmentId: "attachment-1"
     });
+  });
+
+  it("projects legacy compact text as a semantic notice and removes only its matching echo", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-1",
+          version: 1,
+          status: "failed",
+          payload: {
+            source: "compact",
+            text: "Compacting failed: Not enough messages to compact."
+          }
+        }),
+        message({
+          messageId: "assistant-echo",
+          version: 2,
+          payload: { text: "Not enough messages to compact." }
+        }),
+        message({
+          messageId: "assistant-guidance",
+          version: 3,
+          payload: { text: "Add more messages and try again." }
+        })
+      ]
+    });
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(2);
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toEqual({
+      noticeKind: "system_notice",
+      severity: null,
+      source: "compact",
+      command: "compact",
+      commandStatus: "failed",
+      title: "Context compaction interrupted.",
+      detail: "Not enough messages to compact.",
+      retryable: null
+    });
+    expect(assistantRows[0]?.messages[0]?.presentationKind).toBe(
+      "turn-boundary"
+    );
+    expect(assistantRows[1]?.messages[0]?.body).toBe(
+      "Add more messages and try again."
+    );
+  });
+
+  it("preserves matching assistant guidance after canceled compaction", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-canceled",
+          version: 1,
+          status: "canceled",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "canceled"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            title: "Context compaction interrupted.",
+            detail: "Try again after adding more context.",
+            text: "Context compaction interrupted."
+          }
+        }),
+        message({
+          messageId: "assistant-guidance",
+          version: 2,
+          payload: { text: "Try again after adding more context." }
+        })
+      ]
+    });
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(2);
+    expect(assistantRows[0]?.messages[0]?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "canceled"
+      })
+    );
+    expect(assistantRows[1]?.messages[0]?.body).toBe(
+      "Try again after adding more context."
+    );
+  });
+
+  it("normalizes persisted Codex compaction notices before presentation", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compaction:turn-compact",
+          turnId: "turn-compact",
+          version: 1,
+          status: "completed",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            source: "runtime",
+            title: "Context compacted.",
+            text: "Context compacted."
+          }
+        })
+      ]
+    });
+
+    const compactMessage = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(compactMessage?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "completed"
+      })
+    );
+    expect(compactMessage?.presentationKind).toBe("turn-boundary");
+  });
+
+  it("prefers canonical message semantics over duplicated notice payload fields", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session({ effectiveStatus: "working" }),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-running",
+          version: 1,
+          status: "working",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "running"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "system_notice",
+            noticeCommand: "review",
+            noticeCommandStatus: "completed",
+            title: "Compacting context.",
+            text: "Compacting context."
+          }
+        })
+      ]
+    });
+
+    const compactMessage = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(compactMessage?.systemNotice).toEqual(
+      expect.objectContaining({
+        command: "compact",
+        commandStatus: "running"
+      })
+    );
+    expect(compactMessage?.presentationKind).toBe("specific-progress");
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
   });
 
   it("renders displayPrompt instead of rich content text while preserving prompt images", () => {

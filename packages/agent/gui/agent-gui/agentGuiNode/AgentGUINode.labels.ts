@@ -478,13 +478,6 @@ export function useAgentGUIViewLabels(input: {
       submitAnswers: t("agentHost.agentGui.submitAnswers"),
       answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
       waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
-      waitingForBackgroundAgent: (count: number) => {
-        const pluralKey =
-          count === 1
-            ? "agentHost.agentGui.waitingForBackgroundAgent_one"
-            : "agentHost.agentGui.waitingForBackgroundAgent_other";
-        return t(pluralKey, { count });
-      },
       thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),

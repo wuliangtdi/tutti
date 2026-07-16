@@ -7,6 +7,11 @@
 已锁定；切片 7 只保留客户端覆盖窗口结束后删除私有持久化 migration reader 的
 发布生命周期任务，该 reader 不进入公共契约或新写路径。
 
+2026-07-15 补充：provider-native child agent 的后续实体设计以
+[`2026-07-15-provider-native-subagents.md`](../specs/2026-07-15-provider-native-subagents.md)
+为准。本文原始基线中曾使用的 session 级 child 汇总字段不再属于目标模型；child
+现在是带 immutable root/parent relation 的 `WorkspaceAgentSession`。
+
 范围：agent 活动数据的模型协议、`packages/agent/activity-core`、
 `packages/agent/gui`，以及它们的全部消费方。不在范围内：daemon 内部各
 provider 适配器的实现细节（这部分是健康的，见 2.8 节）。
@@ -216,8 +221,7 @@ export interface AgentActivitySession {
   currentPhase;        // 与 status / turnLifecycle.phase 三处冗余
   lastError;           // turn 失败与 session 失败混在一个字段
   // ---- 无类型的大杂烩 ----
-  runtimeContext?: Record<string, unknown>;  // capabilities / backgroundAgents
-                                             //   / goal / imported 全塞这里
+  runtimeContext?: Record<string, unknown>;  // public metadata 与 provider 私有状态混载
 }
 ```
 
@@ -485,7 +489,7 @@ erDiagram
 | 二   | 取消归 turn：`cancelTurn(turnId)`；session 层没有取消操作。取消是幂等操作：对已结束或不存在的 turn 调用 `cancelTurn` 返回幂等空操作，不是错误——用户点"停止"与 turn 自然结束的竞态在协议层面无害化                                                                                                         | `cancelSession` 返回"没有活动 turn"这种自相矛盾的接口                                                                          |
 | 三   | 派生值不进行为契约：会话展示状态、提交可用性一律由引擎读取函数从 turn 加 interaction 推导；接口值最多是显示提示                                                                                                                                                                                           | 接口值与本地推导打架；"session 失败是历史状态"的界面补丁                                                                       |
 | 四   | interaction 成为集合实体：待处理等于存在于集合且状态为 pending                                                                                                                                                                                                                                            | `pendingInteractive` 的三态 null 协议在多层补丁类型间的小心传递                                                                |
-| 五   | `runtimeContext` 大杂烩拆解为显式字段：`capabilities`、`backgroundAgents`、`goal`、`imported`；`(string & {})` 收紧为封闭联合加显式的未知分支                                                                                                                                                             | 每个消费方对无类型字典的各自解读                                                                                               |
+| 五   | `runtimeContext` 大杂烩拆解为显式字段：`capabilities`、`goal`、`imported`，provider-native child agent 则建模为带 root/parent relation 的 session；`(string & {})` 收紧为封闭联合加显式的未知分支                                                                                                         | 每个消费方对无类型字典的各自解读                                                                                               |
 | 六   | schema 先行加全链路生成，消灭手写镜像：openapi 是唯一事实源，跨边界传输类型（HTTP 加事件流，含补丁）的 Go 和 TypeScript 声明全部生成；daemon 内部的存储行结构、运行时域类型允许保留自有结构体，但只能经投影函数与生成类型互转，禁止绕过生成类型直接对外；层间只允许"生成类型加窄投影"，禁止手抄传输结构体 | Session 类型七份声明、补丁四份镜像、克隆映射函数的逐字段丢失点                                                                 |
 | 七   | 状态词汇表收敛为两套：turn 的机器状态（`phase` 加 `outcome`，封闭枚举）和读取函数推导的展示状态；`status`、`currentPhase` 字段废弃                                                                                                                                                                        | 五套词汇表互相映射，各层私自扩词                                                                                               |
 | 八   | 表示法统一：时间一律毫秒整数；消息身份收敛为 `messageId` 加 `version` 两元（自增 `id` 降级为存储实现细节，不出接口）；消息归属显式二选一——挂 turn（`turnId` 非空，外键指向真实 turn）或 session 级消息（`turnId` 为 NULL），空串被 CHECK 约束禁止                                                         | 时间双轨转换层；身份三字段的合并去重复杂度；现状空串三义性（历史脏数据、真 turn 外消息、适配器忘填共享同一个空串，无法区分）   |
@@ -493,23 +497,23 @@ erDiagram
 
 落到字段级的新旧对照（现状即 2.2 节代码块里的 session 混载结构）：
 
-| 现状                                            | v2 去向                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `status`（working/completed/failed...）         | 废弃；展示状态由 selector 从 `turn.phase` 加 `outcome` 推导       |
-| `turnLifecycle.activeTurnId`                    | `session.activeTurnId`——session 上唯一保留的 turn 引用            |
-| `turnLifecycle.phase`（自由字符串）             | `turn.phase`，封闭枚举 submitted/running/waiting/settling/settled |
-| `turnLifecycle.settling`（布尔）                | 被 `turn.phase` 枚举吸收，作为独立阶段值                          |
-| `turnLifecycle.outcome`                         | `turn.outcome`，封闭枚举，仅结束时有值                            |
-| `turnLifecycle.completedCommand`                | `turn.completedCommand`——某次 turn 的产物归 turn                  |
-| `submitAvailability`（字段存储）                | 废弃；selector 派生（规则三）                                     |
-| `pendingInteractive`（三态 null）               | interactions 集合，待处理即存在且 status 为 pending（规则四）     |
-| `currentPhase`                                  | 废弃（与 status、turnLifecycle.phase 三处冗余，规则七）           |
-| `lastError`（turn 失败与 session 失败混载）     | `turn.error`；session 层不再有 turn 结果性错误                    |
-| `runtimeContext`（无类型字典）                  | 拆为显式字段 `capabilities`/`backgroundAgents`/`goal`/`imported`  |
-| `cancelSession(sessionId)`                      | `cancelTurn(turnId)`（规则二）                                    |
-| messages 表 `turn_id` 允许空串                  | 非空外键或 NULL 二选一，空串被 CHECK 禁止（规则八）               |
-| 时间 RFC3339 与毫秒双轨                         | 统一毫秒整数（规则八）                                            |
-| 消息身份 `id`/`messageId`/`version`（又名 seq） | `messageId` 加 `version` 二元，自增 `id` 不出接口（规则八）       |
+| 现状                                            | v2 去向                                                                          |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| `status`（working/completed/failed...）         | 废弃；展示状态由 selector 从 `turn.phase` 加 `outcome` 推导                      |
+| `turnLifecycle.activeTurnId`                    | `session.activeTurnId`——session 上唯一保留的 turn 引用                           |
+| `turnLifecycle.phase`（自由字符串）             | `turn.phase`，封闭枚举 submitted/running/waiting/settling/settled                |
+| `turnLifecycle.settling`（布尔）                | 被 `turn.phase` 枚举吸收，作为独立阶段值                                         |
+| `turnLifecycle.outcome`                         | `turn.outcome`，封闭枚举，仅结束时有值                                           |
+| `turnLifecycle.completedCommand`                | `turn.completedCommand`——某次 turn 的产物归 turn                                 |
+| `submitAvailability`（字段存储）                | 废弃；selector 派生（规则三）                                                    |
+| `pendingInteractive`（三态 null）               | interactions 集合，待处理即存在且 status 为 pending（规则四）                    |
+| `currentPhase`                                  | 废弃（与 status、turnLifecycle.phase 三处冗余，规则七）                          |
+| `lastError`（turn 失败与 session 失败混载）     | `turn.error`；session 层不再有 turn 结果性错误                                   |
+| `runtimeContext`（无类型字典）                  | 拆为显式字段 `capabilities`/`goal`/`imported`；child agent 使用 session relation |
+| `cancelSession(sessionId)`                      | `cancelTurn(turnId)`（规则二）                                                   |
+| messages 表 `turn_id` 允许空串                  | 非空外键或 NULL 二选一，空串被 CHECK 禁止（规则八）                              |
+| 时间 RFC3339 与毫秒双轨                         | 统一毫秒整数（规则八）                                                           |
+| 消息身份 `id`/`messageId`/`version`（又名 seq） | `messageId` 加 `version` 二元，自增 `id` 不出接口（规则八）                      |
 
 turn 外消息是正常概念，不是数据缺陷。代码取证确认当前逻辑持续产生不属于任何 turn 的消息，且这是语义正确的行为，共三类：
 
@@ -728,7 +732,8 @@ notice 只携带语义标识，由消费端 i18n。
 provider 原生 exit-plan 继续走 durable `interactive_response`，不复用该合成决策接口。
 session read 契约已移除旧 `status/turnLifecycle/submitAvailability/lastError/runtimeContext`
 与 ISO 时间字段，`activeTurnId` 必带（允许 null）、`pendingInteractions` 必带（空集合为
-`[]`），capabilities/backgroundAgents/goal/imported 使用显式字段。SQLite 中同名 legacy
+`[]`），capabilities/goal/imported 使用显式字段，child agent 使用独立 session/turn 与
+root/parent relation。SQLite 中同名 legacy
 生命周期列与 raw runtime context 暂仅允许作为 runtime 恢复内部投影，不能再作为 API 或
 session 域事实。App Factory、CLI、wait、runtime operation coordinator 与 resume/read
 路径现已切到 durable Turn/Interaction；session get/resume 不再根据 provider runtime

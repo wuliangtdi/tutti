@@ -22,26 +22,29 @@ const (
 type EventType string
 
 const (
-	EventPresenceHeartbeat     EventType = "presence.heartbeat"
-	EventSessionStarted        EventType = "session.started"
-	EventSessionUpdated        EventType = "session.updated"
-	EventSessionCompleted      EventType = "session.completed"
-	EventSessionFailed         EventType = "session.failed"
-	EventTurnStarted           EventType = "turn.started"
-	EventTurnUpdated           EventType = "turn.updated"
-	EventTurnCompleted         EventType = "turn.completed"
-	EventTurnFailed            EventType = "turn.failed"
-	EventMessageAppended       EventType = "message.appended"
-	EventMessageCreated        EventType = "message.created"
-	EventActivityStarted       EventType = "activity.started"
-	EventActivityUpdated       EventType = "activity.updated"
-	EventActivityCompleted     EventType = "activity.completed"
-	EventActivityFailed        EventType = "activity.failed"
-	EventCallStarted           EventType = "call.started"
-	EventCallCompleted         EventType = "call.completed"
-	EventCallFailed            EventType = "call.failed"
-	EventInteractionRequested  EventType = "interaction.requested"
-	EventInteractionSuperseded EventType = "interaction.superseded"
+	EventPresenceHeartbeat         EventType = "presence.heartbeat"
+	EventSessionStarted            EventType = "session.started"
+	EventSessionUpdated            EventType = "session.updated"
+	EventSessionCompleted          EventType = "session.completed"
+	EventSessionFailed             EventType = "session.failed"
+	EventTurnStarted               EventType = "turn.started"
+	EventTurnUpdated               EventType = "turn.updated"
+	EventTurnCompleted             EventType = "turn.completed"
+	EventTurnFailed                EventType = "turn.failed"
+	EventTurnCanceled              EventType = "turn.canceled"
+	EventRootProviderTurnStarted   EventType = "root_provider_turn.started"
+	EventRootProviderTurnCompleted EventType = "root_provider_turn.completed"
+	EventMessageAppended           EventType = "message.appended"
+	EventMessageCreated            EventType = "message.created"
+	EventActivityStarted           EventType = "activity.started"
+	EventActivityUpdated           EventType = "activity.updated"
+	EventActivityCompleted         EventType = "activity.completed"
+	EventActivityFailed            EventType = "activity.failed"
+	EventCallStarted               EventType = "call.started"
+	EventCallCompleted             EventType = "call.completed"
+	EventCallFailed                EventType = "call.failed"
+	EventInteractionRequested      EventType = "interaction.requested"
+	EventInteractionSuperseded     EventType = "interaction.superseded"
 )
 
 type PresenceStatus string
@@ -89,6 +92,7 @@ type TurnOutcome string
 
 const (
 	TurnOutcomeCompleted   TurnOutcome = "completed"
+	TurnOutcomeCanceled    TurnOutcome = "canceled"
 	TurnOutcomeInterrupted TurnOutcome = "interrupted"
 	TurnOutcomeFailed      TurnOutcome = "failed"
 )
@@ -110,15 +114,19 @@ const (
 )
 
 type Event struct {
-	EventID           string
-	Type              EventType
-	Provider          Provider
-	ProviderSessionID string
-	AgentSessionID    string
-	OwnerThreadID     string
-	OwnerCallID       string
-	OccurredAtUnixMS  int64
-	Payload           EventPayload
+	EventID              string
+	Type                 EventType
+	Provider             Provider
+	ProviderSessionID    string
+	AgentSessionID       string
+	SessionKind          string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	OccurredAtUnixMS     int64
+	Payload              EventPayload
 }
 
 // InteractionTransition is the provider-independent runtime statement for an
@@ -142,6 +150,7 @@ type EventPayload struct {
 	TurnID          string
 	TurnPhase       string
 	TurnOutcome     string
+	ProviderTurnID  string
 	ActivityStatus  string
 	CWD             string
 	Role            MessageRole
@@ -162,16 +171,20 @@ type EventPayload struct {
 }
 
 type EventContext struct {
-	EventID           string
-	Provider          Provider
-	ProviderSessionID string
-	AgentSessionID    string
-	OwnerThreadID     string
-	OwnerCallID       string
-	TurnID            string
-	CWD               string
-	Title             string
-	OccurredAtUnixMS  int64
+	EventID              string
+	Provider             Provider
+	ProviderSessionID    string
+	AgentSessionID       string
+	SessionKind          string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	TurnID               string
+	CWD                  string
+	Title                string
+	OccurredAtUnixMS     int64
 }
 
 func NormalizeProvider(value string) (Provider, bool) {
@@ -205,6 +218,20 @@ func NewSessionStarted(ctx EventContext) Event {
 	})
 	event.Payload.TurnID = ""
 	return event
+}
+
+// NewChildSessionStarted records the child session and its first submitted
+// turn in one durable state transition. Provider aliases may be attached now
+// or by later events, but the creator relationship is complete and immutable.
+func NewChildSessionStarted(ctx EventContext, childTurnID string) Event {
+	return eventFromContext(ctx, EventSessionStarted, EventPayload{
+		LifecycleStatus: string(SessionLifecycleStatusActive),
+		EffectiveStatus: string(SessionStatusWorking),
+		TurnID:          strings.TrimSpace(childTurnID),
+		TurnPhase:       string(TurnPhaseSubmitted),
+		CWD:             strings.TrimSpace(ctx.CWD),
+		Title:           strings.TrimSpace(ctx.Title),
+	})
 }
 
 func NewSessionUpdated(ctx EventContext, status SessionStatus) Event {
@@ -273,6 +300,34 @@ func NewTurnFailed(ctx EventContext, turnID string) Event {
 		TurnPhase:   string(TurnPhaseFailed),
 		TurnOutcome: string(TurnOutcomeFailed),
 		CWD:         strings.TrimSpace(ctx.CWD),
+	})
+}
+
+func NewTurnCanceled(ctx EventContext, turnID string) Event {
+	return eventFromContext(ctx, EventTurnCanceled, EventPayload{
+		TurnID:      strings.TrimSpace(turnID),
+		TurnPhase:   string(TurnPhaseSettled),
+		TurnOutcome: string(TurnOutcomeCanceled),
+		CWD:         strings.TrimSpace(ctx.CWD),
+	})
+}
+
+func NewRootProviderTurnStarted(ctx EventContext, rootTurnID string, providerTurnID string) Event {
+	return eventFromContext(ctx, EventRootProviderTurnStarted, EventPayload{
+		TurnID:         strings.TrimSpace(rootTurnID),
+		ProviderTurnID: strings.TrimSpace(providerTurnID),
+		TurnPhase:      string(TurnPhaseRunning),
+		CWD:            strings.TrimSpace(ctx.CWD),
+	})
+}
+
+func NewRootProviderTurnCompleted(ctx EventContext, rootTurnID string, providerTurnID string, outcome TurnOutcome) Event {
+	return eventFromContext(ctx, EventRootProviderTurnCompleted, EventPayload{
+		TurnID:         strings.TrimSpace(rootTurnID),
+		ProviderTurnID: strings.TrimSpace(providerTurnID),
+		TurnPhase:      string(TurnPhaseSettled),
+		TurnOutcome:    string(outcome),
+		CWD:            strings.TrimSpace(ctx.CWD),
 	})
 }
 
@@ -398,15 +453,19 @@ func eventFromContext(ctx EventContext, eventType EventType, payload EventPayloa
 		payload.CWD = strings.TrimSpace(ctx.CWD)
 	}
 	return Event{
-		EventID:           strings.TrimSpace(ctx.EventID),
-		Type:              eventType,
-		Provider:          ctx.Provider,
-		ProviderSessionID: strings.TrimSpace(ctx.ProviderSessionID),
-		AgentSessionID:    strings.TrimSpace(ctx.AgentSessionID),
-		OwnerThreadID:     strings.TrimSpace(ctx.OwnerThreadID),
-		OwnerCallID:       strings.TrimSpace(ctx.OwnerCallID),
-		OccurredAtUnixMS:  ctx.OccurredAtUnixMS,
-		Payload:           payload,
+		EventID:              strings.TrimSpace(ctx.EventID),
+		Type:                 eventType,
+		Provider:             ctx.Provider,
+		ProviderSessionID:    strings.TrimSpace(ctx.ProviderSessionID),
+		AgentSessionID:       strings.TrimSpace(ctx.AgentSessionID),
+		SessionKind:          strings.TrimSpace(ctx.SessionKind),
+		RootAgentSessionID:   strings.TrimSpace(ctx.RootAgentSessionID),
+		RootTurnID:           strings.TrimSpace(ctx.RootTurnID),
+		ParentAgentSessionID: strings.TrimSpace(ctx.ParentAgentSessionID),
+		ParentTurnID:         strings.TrimSpace(ctx.ParentTurnID),
+		ParentToolCallID:     strings.TrimSpace(ctx.ParentToolCallID),
+		OccurredAtUnixMS:     ctx.OccurredAtUnixMS,
+		Payload:              payload,
 	}
 }
 

@@ -21,6 +21,12 @@ func projectionSessionToDTO(session agentactivityprojection.SessionSnapshot) (Se
 	return Session{
 		ID:                     session.AgentSessionID,
 		WorkspaceID:            session.WorkspaceID,
+		Kind:                   session.Kind,
+		RootAgentSessionID:     session.RootAgentSessionID,
+		RootTurnID:             session.RootTurnID,
+		ParentAgentSessionID:   session.ParentAgentSessionID,
+		ParentTurnID:           session.ParentTurnID,
+		ParentToolCallID:       session.ParentToolCallID,
 		Origin:                 session.Origin,
 		UserID:                 session.UserID,
 		AgentTargetID:          session.AgentTargetID,

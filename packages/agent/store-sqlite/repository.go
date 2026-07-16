@@ -15,6 +15,7 @@ type Repository interface {
 	DeleteSession(context.Context, string, string) (bool, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
+	ListChildSessions(context.Context, string, string) ([]Session, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
 	GetLatestTurn(context.Context, string, string) (Turn, bool, error)
 	GetTurn(context.Context, string, string, string) (Turn, bool, error)
@@ -24,6 +25,7 @@ type Repository interface {
 	ListTurnsBySession(context.Context, string, map[string]string) (map[string]Turn, error)
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]Interaction, error)
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
+	ListSessionSections(context.Context, ListSessionSectionsInput) (SessionSectionsPage, bool, error)
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
@@ -44,6 +46,7 @@ type Repository interface {
 	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
 	SettleStaleTurns(context.Context) ([]StaleTurnSettlement, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
+	UpdateSessionSettings(context.Context, string, string, string, map[string]any) (Session, bool, error)
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
 }
 
@@ -99,6 +102,16 @@ type ListSessionSectionInput struct {
 	Limit                int
 }
 
+// ListSessionSectionsInput describes the first-page bootstrap for every rail
+// section in one workspace query. SectionKeys includes the synthetic pinned
+// page key when the caller needs pinned conversations.
+type ListSessionSectionsInput struct {
+	WorkspaceID     string
+	SectionKeys     []string
+	AgentTargetID   string
+	LimitPerSection int
+}
+
 type ListSessionSectionDeletionCandidatesInput struct {
 	WorkspaceID   string
 	SectionKey    string
@@ -136,9 +149,20 @@ type SessionSectionPage struct {
 	NextCursor  string
 }
 
+type SessionSectionsPage struct {
+	WorkspaceID string
+	Sections    []SessionSectionPage
+}
+
 type Session struct {
 	ID                     string
 	WorkspaceID            string
+	Kind                   string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ParentAgentSessionID   string
+	ParentTurnID           string
+	ParentToolCallID       string
 	Origin                 string
 	UserID                 string
 	AgentTargetID          string
@@ -164,19 +188,27 @@ type Session struct {
 	UpdatedAtUnixMS int64
 }
 
+const (
+	SessionKindRoot  = "root"
+	SessionKindChild = "child"
+)
+
 // ActivityStateReport persists the session projection and its optional v2
 // turn/interaction entities as one atomic unit. Child entities must identify
 // the same workspace and session as Session.
 type ActivityStateReport struct {
-	Session     SessionStateReport
-	Turn        *TurnTransition
-	Interaction *InteractionUpsert
+	Session          SessionStateReport
+	Turn             *TurnTransition
+	RootProviderTurn *RootProviderTurnTransition
+	Interaction      *InteractionUpsert
 }
 
 type ActivityStateReportResult struct {
 	State             StateReportResult
 	Turn              Turn
 	TurnAccepted      bool
+	RootTurn          Turn
+	RootTurnAccepted  bool
 	Interaction       Interaction
 	InteractionResult InteractionTransitionResult
 }
@@ -201,24 +233,51 @@ const (
 	TurnOutcomeInterrupted = "interrupted"
 )
 
-// Turn is the protocol v2 turn entity: one user-submission-driven execution
-// with its own phase, outcome, error, and file changes.
+// Turn is the protocol v2 turn entity: one turn inside either a root or child
+// session, with its own phase, outcome, error, and file changes.
 type Turn struct {
+	WorkspaceID                            string
+	AgentSessionID                         string
+	TurnID                                 string
+	Phase                                  string
+	Outcome                                string
+	ErrorMessage                           string
+	ErrorCode                              string
+	FileChanges                            map[string]any
+	CompletedCommandKind                   string
+	CompletedCommandStatus                 string
+	Backfilled                             bool
+	StartedAtUnixMS                        int64
+	SettledAtUnixMS                        int64
+	CreatedAtUnixMS                        int64
+	UpdatedAtUnixMS                        int64
+	RootProviderTurnID                     string
+	RootProviderTurnPhase                  string
+	RootProviderTurnOutcome                string
+	RootProviderTurnErrorMessage           string
+	RootProviderTurnErrorCode              string
+	RootProviderTurnCompletedCommandKind   string
+	RootProviderTurnCompletedCommandStatus string
+	RootProviderTurnUpdatedAtUnixMS        int64
+}
+
+const (
+	RootProviderTurnPhaseRunning   = "running"
+	RootProviderTurnPhaseCompleted = "completed"
+)
+
+type RootProviderTurnTransition struct {
 	WorkspaceID            string
-	AgentSessionID         string
-	TurnID                 string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ProviderTurnID         string
 	Phase                  string
 	Outcome                string
 	ErrorMessage           string
 	ErrorCode              string
-	FileChanges            map[string]any
 	CompletedCommandKind   string
 	CompletedCommandStatus string
-	Backfilled             bool
-	StartedAtUnixMS        int64
-	SettledAtUnixMS        int64
-	CreatedAtUnixMS        int64
-	UpdatedAtUnixMS        int64
+	OccurredAtUnixMS       int64
 }
 
 // TurnTransition records one turn phase transition. Transitions are written
@@ -309,24 +368,30 @@ type StaleTurnSettlement struct {
 }
 
 type SessionStateReport struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Origin            string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	Cwd               string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
+	WorkspaceID          string
+	AgentSessionID       string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	Origin               string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Model                string
+	Settings             map[string]any
+	RuntimeContext       map[string]any
+	Cwd                  string
+	Title                string
+	Status               string
+	CurrentPhase         string
+	LastError            string
+	OccurredAtUnixMS     int64
+	StartedAtUnixMS      int64
+	EndedAtUnixMS        int64
 }
 
 type StateReportResult struct {

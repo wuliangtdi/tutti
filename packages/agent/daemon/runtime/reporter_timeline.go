@@ -41,7 +41,6 @@ func timelineItemFromSessionEvent(
 		if item.Payload == nil {
 			item.Payload = map[string]any{}
 		}
-		item.Payload = withOwnerThreadID(item.Payload, event)
 		if event.Payload.Content != "" {
 			if _, exists := item.Payload["content"]; !exists {
 				item.Payload["content"] = event.Payload.Content
@@ -60,7 +59,6 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusRunning), "running")
 		item.Payload = payloadWithCallBody("input", event.Payload.Input, event.Payload.Metadata)
-		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
 	case activityshared.EventCallCompleted:
 		item.ItemType = "call.completed"
@@ -70,7 +68,6 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusCompleted), "completed")
 		item.Payload = payloadWithCallBody("output", event.Payload.Output, event.Payload.Metadata)
-		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
 	case activityshared.EventCallFailed:
 		item.ItemType = "call.errored"
@@ -80,7 +77,6 @@ func timelineItemFromSessionEvent(
 		item.Name = strings.TrimSpace(event.Payload.Name)
 		item.Status = firstNonEmptyString(stringFromPayload(event.Payload.Metadata, "status"), event.Payload.Status, string(activityshared.ActivityStatusFailed), "failed")
 		item.Payload = payloadWithCallBody("error", event.Payload.Error, event.Payload.Metadata)
-		item.Payload = withOwnerThreadID(item.Payload, event)
 		return item, entityPatchFromSessionEvent(source, event, sessionID, timestamp, item), true
 	case activityshared.EventActivityStarted,
 		activityshared.EventActivityUpdated,

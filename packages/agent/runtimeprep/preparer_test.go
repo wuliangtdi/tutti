@@ -1156,6 +1156,12 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 		!strings.Contains(string(pluginManifest), `"displayName": "Tutti CLI"`) {
 		t.Fatalf("cursor plugin manifest = %q", string(pluginManifest))
 	}
+	if strings.Contains(string(pluginManifest), `"hooks"`) {
+		t.Fatalf("cursor ACP plugin must not advertise unsupported plugin hooks: %q", string(pluginManifest))
+	}
+	if _, err := os.Stat(filepath.Join(pluginDir, "hooks")); !os.IsNotExist(err) {
+		t.Fatalf("cursor ACP plugin hooks should remain dormant, stat error = %v", err)
+	}
 	pluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "tutti-cli", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("cursor plugin skill missing: %v", err)

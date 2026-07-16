@@ -387,12 +387,15 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   `cwd/AGENTS.md`, which dirtied tracked repositories.
 - Fix:
   Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
-  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`, expose it through
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`; expose it through
   `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
   `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
   `.cursor/skills` discoverable for composer options, but never write Tutti
   injected skills or Tutti runtime instructions into the workspace cwd for
-  Cursor sessions.
+  Cursor sessions. Cursor Agent `2026.07.01-41b2de7` does not load plugin hooks
+  in ACP mode, so do not advertise the dormant background-Task guard in the
+  plugin manifest and do not claim that background Task is blocked. Do not
+  install the hook into user or project Cursor configuration as a workaround.
 - Validation:
   Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
   while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
@@ -405,6 +408,42 @@ file or directory`. If the CLI path exists but `codex app-server` cannot
   [cursor.go](../../../packages/agent/runtimeprep/cursor.go)
   [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [skill_options.go](../../../services/tuttid/service/agent/skill_options.go)
+
+### Cursor read-only mode still creates files without approval
+
+- Symptom:
+  AgentGUI shows Cursor as Read-only, but the transcript reports a successful
+  `Switch Mode` followed by `Edit`, the file appears on disk, and no approval
+  interaction is shown.
+- Quick checks:
+  Inspect the exported session settings and ACP startup logs together. If the
+  durable `permissionModeId` is `read-only` while
+  `agent_session.acp.permission_mode.start` reports `mode_id=plan`, then the
+  permission tier was mapped to Cursor's planning workflow rather than its
+  read-only execution mode. Confirm the turn contains no
+  `session/request_permission` before investigating AgentGUI approval cards.
+- Root cause:
+  Cursor `plan` and `ask` are different workflow modes. Plan can transition
+  into implementation, including a provider-owned `Switch Mode`, whereas Ask
+  retains read/search tools without making changes. Mapping Tutti's durable
+  read-only permission tier to Plan therefore delegated a security boundary to
+  a workflow that could advance into editing. A provider-owned tool call is
+  historical activity, not a canonical approval Interaction, so AgentGUI
+  correctly had no approval request to render.
+- Fix:
+  Map Cursor `read-only` to ACP `ask`. Keep the independent AgentGUI plan-mode
+  control mapped to ACP `plan`, and when plan mode is turned off, restore the
+  runtime mode derived from the durable permission tier instead of assuming
+  `agent`.
+- Validation:
+  Cover startup tier mapping (`read-only -> ask`) and a read-only plan-mode
+  round trip (`ask -> plan -> ask`). With a real Cursor ACP binary, verify Ask
+  can search and read project files, a request to create a file does not write
+  one, and no provider-owned mode switch silently enables Edit.
+- References:
+  [providers.go](../../../packages/agent/daemon/providerregistry/providers.go)
+  [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
+  [standard_acp_adapter_test.go](../../../packages/agent/daemon/runtime/standard_acp_adapter_test.go)
 
 ### Codex provider shows login required when global service tier is legacy
 

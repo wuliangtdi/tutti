@@ -31,6 +31,7 @@ type AgentSessionService interface {
 	ExternalImportValidProjectPaths(context.Context, agentservice.ExternalImportInput) ([]string, error)
 	Create(context.Context, string, agentservice.CreateSessionInput) (agentservice.Session, error)
 	Get(context.Context, string, string) (agentservice.Session, error)
+	GetDetail(context.Context, string, string) (agentservice.SessionDetail, error)
 	ReadAttachment(context.Context, string, string, string) (agentservice.PromptAttachment, error)
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
@@ -102,12 +103,13 @@ func (api DaemonAPI) GetWorkspaceAgentSession(ctx context.Context, request tutti
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
 		}, nil
 	}
-	session, err := api.AgentSessionService.Get(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
+	detail, err := api.AgentSessionService.GetDetail(ctx, string(request.WorkspaceID), string(request.AgentSessionID))
 	if err != nil {
 		return writeGetWorkspaceAgentSessionError(err), nil
 	}
 	return tuttigenerated.GetWorkspaceAgentSession200JSONResponse{
-		Session: generatedAgentSession(session),
+		Session:       generatedAgentSession(detail.Session),
+		ChildSessions: generatedAgentSessions(detail.ChildSessions),
 	}, nil
 }
 
@@ -701,7 +703,6 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		ActiveTurn:             activeTurn,
 		ActiveTurnId:           optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
 		AgentTargetId:          optionalStringPointer(strings.TrimSpace(session.AgentTargetID)),
-		BackgroundAgents:       generatedAgentSessionBackgroundAgents(session.Metadata.BackgroundAgents),
 		Capabilities:           generatedAgentSessionCapabilities(session.Metadata.Capabilities),
 		CreatedAtUnixMs:        session.CreatedAt.UnixMilli(),
 		Cwd:                    stringPointer(strings.TrimSpace(session.Cwd)),
@@ -709,14 +710,20 @@ func generatedAgentSession(session agentservice.Session) tuttigenerated.Workspac
 		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
 		Id:                     session.ID,
 		Imported:               session.Metadata.Imported,
+		Kind:                   tuttigenerated.WorkspaceAgentSessionKind(session.Kind),
 		LatestTurn:             latestTurn,
 		LatestTurnInteractions: latestTurnInteractions,
+		ParentAgentSessionId:   optionalStringPointer(strings.TrimSpace(session.ParentAgentSessionID)),
+		ParentToolCallId:       optionalStringPointer(strings.TrimSpace(session.ParentToolCallID)),
+		ParentTurnId:           optionalStringPointer(strings.TrimSpace(session.ParentTurnID)),
 		PendingInteractions:    pendingInteractions,
 		PermissionConfig:       generatedPermissionConfig(session.PermissionConfig),
 		Provider:               tuttigenerated.WorkspaceAgentProvider(session.Provider),
 		ProviderSessionId:      stringPointer(strings.TrimSpace(session.ProviderSessionID)),
 		PinnedAtUnixMs:         int64Pointer(session.PinnedAtUnixMS),
 		Resumable:              session.Resumable,
+		RootAgentSessionId:     optionalStringPointer(strings.TrimSpace(session.RootAgentSessionID)),
+		RootTurnId:             optionalStringPointer(strings.TrimSpace(session.RootTurnID)),
 		Settings:               generatedSettings,
 		Title:                  session.Title,
 		UpdatedAtUnixMs:        updatedAtUnixMS,

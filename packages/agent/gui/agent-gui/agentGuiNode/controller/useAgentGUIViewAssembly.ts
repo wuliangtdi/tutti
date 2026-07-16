@@ -157,7 +157,6 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
         input.activeSessionView?.isLoadingOlderMessages ?? false,
       hasOlderMessages: input.activeSessionView?.hasOlderMessages ?? false,
       usage: input.usage,
-      backgroundAgentCount: input.backgroundAgentCount,
       hasSentUserMessage: session.hasSentUserMessage,
       avoidGroupingEdits: input.avoidGroupingEdits,
       conversation: detail.conversation,

@@ -304,9 +304,9 @@ func buildDaemonAPI(ctx context.Context, store workspacedata.CatalogStore, analy
 	userProjectService := userprojectservice.Service{
 		Store: userProjectStore,
 	}
-	agentSessionService := agentservice.NewService(
-		newAgentRuntimeAdapter(agentRuntime.Controller()),
-	)
+	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
+	agentSessionService := agentservice.NewService(agentRuntimeController)
+	agentActivityProjection.SetRootTurnObserver(agentRuntimeController)
 	agentSessionService.AnalyticsReporter = analyticsReporter
 	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
 	agentModelCatalog := agentservice.NewAgentModelCatalog()

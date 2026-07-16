@@ -15,10 +15,7 @@ import {
   AGENT_GUI_STANDALONE_AUTO_COLLAPSE_WIDTH_PX,
   shouldAutoCollapseAgentGUIConversationRail
 } from "@tutti-os/agent-gui";
-import type {
-  AgentComposerDraftFile,
-  AgentGUIComposerAppendRequest
-} from "@tutti-os/agent-gui";
+import type { AgentGUIComposerAppendRequest } from "@tutti-os/agent-gui";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import {
   AGENT_GUI_WORKBENCH_CONVERSATION_RAIL_TOGGLE_EVENT,
@@ -50,7 +47,10 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
+import {
+  IWorkspaceFileManagerService,
+  IWorkspaceFilePreviewSurfaceHost
+} from "@renderer/features/workspace-file-manager";
 import type {
   DesktopApi,
   DesktopHostWindowApi,
@@ -85,6 +85,7 @@ import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowConten
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
 import { Toast } from "@renderer/lib/toast";
 import { createStandaloneAgentWorkspaceAppSurfacePresenter } from "../services/standaloneAgentWorkspaceAppSurfacePresenter.ts";
+import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "../services/standaloneAgentWorkspaceFilePreviewPresenter.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -154,6 +155,9 @@ export function StandaloneAgentWindow({
   const { i18n } = useTranslation();
   const agentsService = useService(IAgentsService);
   const workspaceAppSurfaceHost = useService(IWorkspaceAppSurfaceHost);
+  const workspaceFilePreviewSurfaceHost = useService(
+    IWorkspaceFilePreviewSurfaceHost
+  );
   const workspaceFileManagerService = useService(IWorkspaceFileManagerService);
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
   const workspaceId = workspace.id;
@@ -306,16 +310,13 @@ export function StandaloneAgentWindow({
   const [composerAppendRequest, setComposerAppendRequest] =
     useState<AgentGUIComposerAppendRequest | null>(null);
   const composerAppendSequenceRef = useRef(0);
-  const appendBrowserElementFile = useCallback(
-    (file: AgentComposerDraftFile): void => {
-      setComposerAppendRequest({
-        files: [file],
-        sequence:
-          Date.now() * 1_000 + (++composerAppendSequenceRef.current % 1_000)
-      });
-    },
-    []
-  );
+  const appendBrowserElementMention = useCallback((mention: string): void => {
+    setComposerAppendRequest({
+      prompt: mention,
+      sequence:
+        Date.now() * 1_000 + (++composerAppendSequenceRef.current % 1_000)
+    });
+  }, []);
   const fileOpenRequestSequenceRef = useRef(0);
   const openFileInSidebar = useCallback(
     async (file: string, validateExists = false): Promise<boolean> => {
@@ -350,24 +351,14 @@ export function StandaloneAgentWindow({
     [openFileInSidebar]
   );
   useEffect(() => {
-    workspaceFileManagerService.setCanvasFilePreviewLauncher(
+    return workspaceFilePreviewSurfaceHost.registerPresenter(
       workspaceId,
-      async (target) => {
-        await desktopApi.host.files.openFile(workspaceId, target.path);
-        return true;
-      }
+      createStandaloneAgentWorkspaceFilePreviewPresenter({
+        hostFilesApi: desktopApi.host.files,
+        workspaceId
+      })
     );
-    workspaceFileManagerService.setPreviewUnsupportedFallbackNotificationEnabled(
-      workspaceId,
-      false
-    );
-    return () => {
-      workspaceFileManagerService.setCanvasFilePreviewLauncher(
-        workspaceId,
-        null
-      );
-    };
-  }, [desktopApi.host.files, workspaceFileManagerService, workspaceId]);
+  }, [desktopApi.host.files, workspaceFilePreviewSurfaceHost, workspaceId]);
   useEffect(() => {
     return workspaceAppSurfaceHost.registerPresenter(
       createStandaloneAgentWorkspaceAppSurfacePresenter({
@@ -659,7 +650,6 @@ export function StandaloneAgentWindow({
         browserApi={desktopApi.browser}
         contributions={toolWorkbench.contributions}
         fileOpenRequest={fileOpenRequest}
-        hostFilesApi={desktopApi.host.files}
         issueManagerOpenRequest={issueManagerOpenRequest}
         mainContentMinWidthPx={
           isConversationRailCollapsed
@@ -719,7 +709,7 @@ export function StandaloneAgentWindow({
         )}
         onOpenMessageCenterChat={handleOpenMessageCenterChat}
         onAppsOpen={ensureWorkspaceAppPolling}
-        onAppendBrowserElementFile={appendBrowserElementFile}
+        onAppendBrowserElementMention={appendBrowserElementMention}
         onBrowserElementError={Toast.Error}
         onToolHostReady={toolWorkbench.onHostReady}
         resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}

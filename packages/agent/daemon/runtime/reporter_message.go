@@ -45,7 +45,6 @@ func textMessageUpdateFromSessionEvent(
 	payload := map[string]any{
 		"source": "runtime",
 	}
-	payload = withOwnerThreadID(payload, event)
 	if event.Payload.Content != "" {
 		payload["content"] = event.Payload.Content
 		payload["text"] = event.Payload.Content
@@ -77,15 +76,6 @@ func textMessageUpdateFromSessionEvent(
 	// GUI can render dedicated treatments instead of a plain assistant bubble.
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
-		// Sub-agent lane markers ride hidden ownerThreadId rows; the GUI
-		// settles lane status/identity from these fields.
-		if messageKind == "subAgentLifecycle" || messageKind == "subAgentName" {
-			for _, key := range []string{"subAgentLifecycleStatus", "subAgentName", "detail"} {
-				if value := stringFromPayload(event.Payload.Metadata, key); value != "" {
-					update.Payload[key] = value
-				}
-			}
-		}
 	}
 	update.Semantics = messageSemanticsFromMetadata(event.Payload.Metadata)
 	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
@@ -161,7 +151,6 @@ func callMessageUpdateFromSessionEvent(
 	payload := map[string]any{
 		"source": "runtime",
 	}
-	payload = withOwnerThreadID(payload, event)
 	rawName := callMessageUpdateDisplayName(event, callID)
 	toolName := callMessageUpdateToolName(event, callID, rawName)
 	name := firstNonEmptyString(toolName, rawName)

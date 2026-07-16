@@ -18,21 +18,30 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		activityshared.EventTurnUpdated,
 		activityshared.EventTurnCompleted,
 		activityshared.EventTurnFailed,
+		activityshared.EventTurnCanceled,
+		activityshared.EventRootProviderTurnStarted,
+		activityshared.EventRootProviderTurnCompleted,
 		activityshared.EventInteractionRequested,
 		activityshared.EventInteractionSuperseded:
 	default:
 		return agentsessionstore.WorkspaceAgentStatePatch{}, false
 	}
 	patch := agentsessionstore.WorkspaceAgentStatePatch{
-		AgentSessionID:    sessionID,
-		Provider:          firstNonEmptyString(string(event.Provider), source.Provider),
-		ProviderSessionID: firstNonEmptyString(event.ProviderSessionID, source.ProviderSessionID),
-		CWD:               firstNonEmptyString(event.Payload.CWD, source.CWD),
-		Title:             event.Payload.Title,
-		CurrentPhase:      currentPhaseFromActivityEvent(event),
-		LifecycleStatus:   event.Payload.LifecycleStatus,
-		LastError:         statePatchLastError(event),
-		OccurredAtUnixMS:  timestamp,
+		AgentSessionID:       sessionID,
+		Kind:                 strings.TrimSpace(event.SessionKind),
+		RootAgentSessionID:   strings.TrimSpace(event.RootAgentSessionID),
+		RootTurnID:           strings.TrimSpace(event.RootTurnID),
+		ParentAgentSessionID: strings.TrimSpace(event.ParentAgentSessionID),
+		ParentTurnID:         strings.TrimSpace(event.ParentTurnID),
+		ParentToolCallID:     strings.TrimSpace(event.ParentToolCallID),
+		Provider:             firstNonEmptyString(string(event.Provider), source.Provider),
+		ProviderSessionID:    firstNonEmptyString(event.ProviderSessionID, source.ProviderSessionID),
+		CWD:                  firstNonEmptyString(event.Payload.CWD, source.CWD),
+		Title:                event.Payload.Title,
+		CurrentPhase:         currentPhaseFromActivityEvent(event),
+		LifecycleStatus:      event.Payload.LifecycleStatus,
+		LastError:            statePatchLastError(event),
+		OccurredAtUnixMS:     timestamp,
 	}
 	if transition := event.Payload.Interaction; transition != nil {
 		patch.InteractionTransition = &agentsessionstore.WorkspaceAgentInteractionTransition{
@@ -48,7 +57,9 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 	if runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext"); len(runtimeContext) > 0 {
 		patch.RuntimeContext = clonePayload(runtimeContext)
 	}
-	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" {
+	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" &&
+		event.Type != activityshared.EventRootProviderTurnStarted &&
+		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &agentsessionstore.WorkspaceAgentTurnPatch{
 			TurnID:  turnID,
 			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
@@ -93,6 +104,25 @@ func statePatchFromSessionEvent(source agentsessionstore.EventSource, event acti
 		if patch.Turn != nil {
 			patch.Turn.CompletedAtUnixMS = timestamp
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
+		}
+	case activityshared.EventTurnCanceled:
+		patch.LifecycleStatus = firstNonEmptyString(patch.LifecycleStatus, string(activityshared.SessionLifecycleStatusActive))
+		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseIdle))
+		if patch.Turn != nil {
+			patch.Turn.CompletedAtUnixMS = timestamp
+			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, string(activityshared.TurnPhaseSettled))
+		}
+	case activityshared.EventRootProviderTurnStarted, activityshared.EventRootProviderTurnCompleted:
+		phase := agentsessionstore.RootProviderTurnPhaseRunning
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			phase = agentsessionstore.RootProviderTurnPhaseCompleted
+		}
+		patch.RootProviderTurn = &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+			RootTurnID:     strings.TrimSpace(event.Payload.TurnID),
+			ProviderTurnID: strings.TrimSpace(event.Payload.ProviderTurnID),
+			Phase:          phase,
+			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
+			ErrorMessage:   activityshared.BestEffortErrorMessage(event.Payload),
 		}
 	}
 	return patch, true

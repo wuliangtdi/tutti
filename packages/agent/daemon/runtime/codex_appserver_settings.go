@@ -181,7 +181,8 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 	if requestID == "" {
 		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
 	}
-	pending := a.getPendingRequest(session.AgentSessionID, turnID, requestID)
+	targetAgentSessionID := firstNonEmpty(strings.TrimSpace(input.AgentSessionID), strings.TrimSpace(session.AgentSessionID))
+	pending := a.getPendingRequest(targetAgentSessionID, turnID, requestID)
 	if pending == nil {
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
@@ -205,7 +206,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		} else if state != pendingInteractiveRequestStateAnswered {
 			return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
 		}
-		return SubmitInteractiveResult{AgentSessionID: session.AgentSessionID, RequestID: requestID, Accepted: true, OptionID: resolvedOptionID, Disposition: InteractiveDispositionAnswered}, nil
+		return SubmitInteractiveResult{AgentSessionID: targetAgentSessionID, RequestID: requestID, Accepted: true, OptionID: resolvedOptionID, Disposition: InteractiveDispositionAnswered}, nil
 	}
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
@@ -223,7 +224,7 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 		return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
 	}
 	return SubmitInteractiveResult{
-		AgentSessionID: session.AgentSessionID,
+		AgentSessionID: targetAgentSessionID,
 		RequestID:      requestID,
 		Accepted:       true,
 		Disposition:    InteractiveDispositionAnswered,
@@ -231,10 +232,14 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 }
 
 func (a *CodexAppServerAdapter) InteractiveDisposition(session Session, turnID string, requestID string) InteractiveDisposition {
-	if pending := a.getPendingRequest(session.AgentSessionID, turnID, requestID); pending != nil {
+	return a.InteractiveDispositionForTarget(session, session.AgentSessionID, turnID, requestID)
+}
+
+func (a *CodexAppServerAdapter) InteractiveDispositionForTarget(_ Session, agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if pending := a.getPendingRequest(agentSessionID, turnID, requestID); pending != nil {
 		return runtimeInteractiveDisposition(pending)
 	}
-	return a.terminalInteractiveDisposition(session.AgentSessionID, turnID, requestID)
+	return a.terminalInteractiveDisposition(agentSessionID, turnID, requestID)
 }
 
 // lockSessionLifecycle serializes lifecycle operations (Start, Resume, Close,

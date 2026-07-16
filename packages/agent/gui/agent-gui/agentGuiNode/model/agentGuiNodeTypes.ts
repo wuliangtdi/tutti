@@ -325,7 +325,6 @@ export interface AgentGUIDetailViewModel {
   isLoadingOlderMessages: boolean;
   hasOlderMessages: boolean;
   usage: AgentActivityUsage | null;
-  backgroundAgentCount: number;
   hasSentUserMessage: boolean;
   avoidGroupingEdits: boolean;
   conversation?: AgentConversationVM | null;

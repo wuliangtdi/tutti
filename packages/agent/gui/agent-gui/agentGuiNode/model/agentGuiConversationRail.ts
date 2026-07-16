@@ -567,6 +567,7 @@ export function conversationSummariesRenderEqual(
     left.agentTargetId === right.agentTargetId &&
     left.provider === right.provider &&
     left.title === right.title &&
+    left.titleLeadingMentionKind === right.titleLeadingMentionKind &&
     left.titleFallback === right.titleFallback &&
     left.status === right.status &&
     left.cwd === right.cwd &&

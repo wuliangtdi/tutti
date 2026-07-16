@@ -18,6 +18,8 @@ type pendingInteractiveRequest struct {
 	callID         string
 	callType       string
 	turnID         string
+	// providerTurnID is transport correlation; turnID remains canonical ownership.
+	providerTurnID string
 	input          map[string]any
 	kind           string
 	name           string

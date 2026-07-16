@@ -4,8 +4,41 @@ import (
 	"reflect"
 	"testing"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 )
+
+func TestTurnTransitionFromStateInputRequiresExplicitTurnPatch(t *testing.T) {
+	t.Parallel()
+
+	activeTurnID := "root-turn-1"
+	input := agentsessionstore.ReportSessionStateInput{
+		WorkspaceID:    "ws-1",
+		AgentSessionID: "session-1",
+		State: agentsessionstore.WorkspaceAgentSessionStateUpdate{
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        agentactivitybiz.TurnPhaseWaiting,
+			},
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID:     "root-turn-1",
+				ProviderTurnID: "provider-turn-1",
+				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+			},
+		},
+	}
+	transition, ok := turnTransitionFromStateInput(input)
+
+	if ok || transition.TurnID != "" {
+		t.Fatalf("lifecycle-only state produced canonical turn transition: %#v", transition)
+	}
+	providerTransition, providerOK := rootProviderTurnTransitionFromStateInput(input)
+	if !providerOK || providerTransition.RootTurnID != "root-turn-1" ||
+		providerTransition.ProviderTurnID != "provider-turn-1" ||
+		providerTransition.Phase != agentsessionstore.RootProviderTurnPhaseCompleted {
+		t.Fatalf("root provider transition = %#v, want explicit provider terminal preserved", providerTransition)
+	}
+}
 
 // Completeness-guard tests (agent-gui refactor plan rule six): the projection
 // from stored domain records to generated transport types must assign every
@@ -34,6 +67,21 @@ func TestGeneratedWorkspaceAgentTurnCoversAllFields(t *testing.T) {
 		UpdatedAtUnixMS:        1717200001000,
 	})
 	assertGeneratedFieldsPopulated(t, projected)
+}
+
+func TestGeneratedWorkspaceAgentTurnOmitsErrorForCanceledOutcome(t *testing.T) {
+	t.Parallel()
+
+	projected := GeneratedWorkspaceAgentTurn(agentactivitybiz.Turn{
+		AgentSessionID: "session-1",
+		TurnID:         "turn-1",
+		Phase:          agentactivitybiz.TurnPhaseSettled,
+		Outcome:        agentactivitybiz.TurnOutcomeCanceled,
+		ErrorMessage:   "context canceled",
+	})
+	if projected.Error != nil {
+		t.Fatalf("canceled turn error = %#v, want omitted transport-only error", projected.Error)
+	}
 }
 
 func TestGeneratedWorkspaceAgentInteractionCoversAllFields(t *testing.T) {

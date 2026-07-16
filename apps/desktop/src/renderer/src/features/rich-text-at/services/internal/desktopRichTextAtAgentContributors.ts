@@ -216,13 +216,14 @@ export function createAgentSessionAtContributor(contributorInput: {
             const workspaceId = scopeString(identity.scope, "workspaceId");
             if (!workspaceId) return null;
             return resolveMentionSafely(async () => {
-              const [session, agentDirectory] = await Promise.all([
+              const [detail, agentDirectory] = await Promise.all([
                 contributorInput.tuttidClient.getWorkspaceAgentSession(
                   workspaceId,
                   identity.entityId
                 ),
                 contributorInput.agentsService?.load() ?? null
               ]);
+              const session = detail.session;
               const agentTarget = resolveSessionAgentTarget(
                 session.agentTargetId,
                 agentDirectory?.agentTargets

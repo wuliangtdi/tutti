@@ -18,8 +18,6 @@ import type {
 import { CloseIcon, cn } from "@tutti-os/ui-system";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
 import type { DesktopBrowserApi } from "@preload/types";
-import type { DesktopHostFilesApi } from "@preload/types";
-import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
 import { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import {
@@ -57,7 +55,6 @@ interface StandaloneAgentToolSidebarProps {
   children: ReactNode;
   contributions: readonly WorkbenchContribution[] | undefined;
   fileOpenRequest?: StandaloneAgentFileOpenRequest | null;
-  hostFilesApi: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
   issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
   renderHeader: (toolActions: ReactNode) => ReactNode;
@@ -66,7 +63,7 @@ interface StandaloneAgentToolSidebarProps {
     provider: string;
   }) => void;
   onAppsOpen: () => void;
-  onAppendBrowserElementFile: (file: AgentComposerDraftFile) => void;
+  onAppendBrowserElementMention: (mention: string) => void;
   onBrowserElementError: (message: string) => void;
   onToolHostReady: (host: WorkbenchHostHandle | null) => void;
   resizeWindowContentWidth: (
@@ -84,13 +81,12 @@ export function StandaloneAgentToolSidebar({
   children,
   contributions,
   fileOpenRequest = null,
-  hostFilesApi,
   issueManagerOpenRequest = null,
   mainContentMinWidthPx,
   renderHeader,
   onOpenMessageCenterChat,
   onAppsOpen,
-  onAppendBrowserElementFile,
+  onAppendBrowserElementMention,
   onBrowserElementError,
   onToolHostReady,
   resizeWindowContentWidth,
@@ -590,14 +586,13 @@ export function StandaloneAgentToolSidebar({
                               : null
                           }
                           i18n={i18n}
-                          hostFilesApi={hostFilesApi}
                           locale={locale}
                           messageCenterOpen={
                             activeTabId === tab.id && tab.panel === "messages"
                           }
                           onCloseMessageCenter={closePanel}
-                          onAppendBrowserElementFile={
-                            onAppendBrowserElementFile
+                          onAppendBrowserElementMention={
+                            onAppendBrowserElementMention
                           }
                           onBrowserElementError={onBrowserElementError}
                           onOpenMessageCenterChat={onOpenMessageCenterChat}

@@ -375,6 +375,7 @@ describe("AgentTranscriptItemView render stability", () => {
       id: "client-submit:user:submit-1:images:0",
       turnId: "turn-1",
       body: "",
+      presentationKind: "content",
       contentKind: "image-grid",
       images: [
         {
@@ -735,6 +736,8 @@ describe("AgentTranscriptItemView render stability", () => {
           systemNotice: {
             noticeKind: "system_notice",
             severity: null,
+            command: "compact",
+            commandStatus: "completed",
             title: "Context compacted.",
             detail: "",
             retryable: null
@@ -771,6 +774,8 @@ describe("AgentTranscriptItemView render stability", () => {
             systemNotice: {
               noticeKind: "system_notice",
               severity: null,
+              command: "compact",
+              commandStatus: "running",
               title: "Compacting context.",
               detail: "",
               retryable: null
@@ -796,7 +801,7 @@ describe("AgentTranscriptItemView render stability", () => {
     }
   });
 
-  it("renders interrupted compaction notices as a static divider", () => {
+  it("renders interrupted compaction notices with a wrapping detail below the divider", () => {
     const { getByRole, getByText } = render(
       <AgentMessageBlock
         workspaceRoot="/workspace/demo"
@@ -810,8 +815,10 @@ describe("AgentTranscriptItemView render stability", () => {
           systemNotice: {
             noticeKind: "system_notice",
             severity: null,
-            title: "Context compaction interrupted.",
-            detail: "",
+            command: "compact",
+            commandStatus: "failed",
+            title: "Provider compact failure",
+            detail: "Not enough messages to compact.",
             retryable: null
           }
         })}
@@ -821,9 +828,46 @@ describe("AgentTranscriptItemView render stability", () => {
 
     const notice = getByRole("status");
     expect(notice.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(2);
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextCompactionInterrupted"
+    );
+    expect(notice.textContent).toContain("Not enough messages to compact.");
+    const detail = getByText("Not enough messages to compact.");
+    expect(detail.className).toContain("break-words");
+    expect(detail.className).not.toContain("whitespace-nowrap");
+  });
+
+  it("does not let a legacy title override canonical compact status", () => {
+    const { getByText, queryByText } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-conflicting-compaction",
+          turnId: "turn-1",
+          body: "Context compacted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "system_notice",
+            severity: null,
+            command: "compact",
+            commandStatus: "failed",
+            title: "Context compacted.",
+            detail: "",
+            retryable: null
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
     expect(
       getByText("agentHost.agentGui.contextCompactionInterrupted")
     ).toBeTruthy();
+    expect(
+      queryByText("agentHost.agentGui.contextCompactionCompleted")
+    ).toBeNull();
   });
 
   it("renders plan-tagged assistant messages as a dedicated plan card", () => {
@@ -862,8 +906,15 @@ function transcriptLabels() {
   };
 }
 
+type TestAgentMessageContentVM = Omit<
+  AgentMessageContentVM,
+  "presentationKind"
+> & {
+  presentationKind?: AgentMessageContentVM["presentationKind"];
+};
+
 function assistantMessageRow(
-  message: AgentMessageContentVM = {
+  message: TestAgentMessageContentVM = {
     kind: "message-content",
     id: "assistant-1",
     turnId: "turn-1",
@@ -876,30 +927,43 @@ function assistantMessageRow(
     id: "message-row-1",
     turnId: "turn-1",
     speaker: "assistant",
-    messages: [message],
+    messages: [withDefaultPresentationKind(message)],
     thinking: [],
     occurredAtUnixMs: 1
   };
 }
 
-function userMessageRow(message?: AgentMessageContentVM): AgentMessageRowVM {
+function userMessageRow(
+  message?: TestAgentMessageContentVM
+): AgentMessageRowVM {
   return {
     kind: "message",
     id: "message-row-user-1",
     turnId: "turn-1",
     speaker: "user",
     messages: [
-      message ?? {
-        kind: "message-content",
-        id: "user-1",
-        turnId: "turn-1",
-        body: "User asks for a fix",
-        copyText: "User asks for a fix",
-        occurredAtUnixMs: 1
-      }
+      withDefaultPresentationKind(
+        message ?? {
+          kind: "message-content",
+          id: "user-1",
+          turnId: "turn-1",
+          body: "User asks for a fix",
+          copyText: "User asks for a fix",
+          occurredAtUnixMs: 1
+        }
+      )
     ],
     thinking: [],
     occurredAtUnixMs: 1
+  };
+}
+
+function withDefaultPresentationKind(
+  message: TestAgentMessageContentVM
+): AgentMessageContentVM {
+  return {
+    ...message,
+    presentationKind: message.presentationKind ?? "content"
   };
 }
 
@@ -923,6 +987,7 @@ function claudeCodeAuthErrorMessage(): AgentMessageContentVM {
     id: "assistant-auth-1",
     turnId: "turn-1",
     body: "Claude Code needs authentication.",
+    presentationKind: "content",
     occurredAtUnixMs: 1,
     visibleError: {
       code: "auth_required",

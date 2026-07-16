@@ -35,7 +35,6 @@ export function useAgentGUIViewModel(
     [
       candidate.detail.availability,
       candidate.detail.avoidGroupingEdits,
-      candidate.detail.backgroundAgentCount,
       candidate.detail.conversation,
       candidate.detail.conversationDetail,
       candidate.detail.hasOlderMessages,

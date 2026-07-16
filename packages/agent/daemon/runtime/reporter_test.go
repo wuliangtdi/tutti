@@ -344,8 +344,6 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		"messageId":   "thinking-message-1",
 		"streamState": messageStreamStateCompleted,
 	})
-	thinkingEvent.OwnerThreadID = "child-thread-1"
-	thinkingEvent.OwnerCallID = "spawn-call-1"
 	thinkingEvent.OccurredAtUnixMS = 103
 
 	report := reportActivityInput(session, []activityshared.Event{userEvent, assistantEvent, thinkingEvent})
@@ -384,9 +382,7 @@ func TestReportActivityInputProjectsRuntimeMessagesToMessageUpdates(t *testing.T
 		thinking.Role != "assistant" ||
 		thinking.Kind != "reasoning" ||
 		thinking.Payload["content"] != "checking files" ||
-		thinking.Payload["source"] != "runtime" ||
-		thinking.Payload["ownerThreadId"] != "child-thread-1" ||
-		thinking.Payload["ownerCallId"] != "spawn-call-1" {
+		thinking.Payload["source"] != "runtime" {
 		t.Fatalf("thinking message update = %#v", thinking)
 	}
 }
@@ -471,7 +467,7 @@ func TestReportActivityInputForwardsMessageKindToPayload(t *testing.T) {
 	}
 }
 
-func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) {
+func TestReportActivityInputDoesNotProjectLegacySubAgentMarkers(t *testing.T) {
 	t.Parallel()
 
 	session := reportTestSession()
@@ -485,7 +481,6 @@ func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) 
 		"detail":                  "user requested",
 		"ownerThreadId":           "child-1",
 	})
-	marker.OwnerThreadID = "child-1"
 	marker.OccurredAtUnixMS = 120
 
 	report := reportActivityInput(session, []activityshared.Event{marker})
@@ -493,13 +488,8 @@ func TestReportActivityInputForwardsSubAgentMarkerFieldsToPayload(t *testing.T) 
 		t.Fatalf("message updates = %#v, want one marker update", report.MessageUpdates)
 	}
 	payload := report.MessageUpdates[0].Payload
-	// The GUI settles lane status/identity from these fields; the reporter
-	// must not strip them (observed live: markers stored without
-	// subAgentLifecycleStatus left lanes running forever).
-	if payload["subAgentLifecycleStatus"] != "canceled" ||
-		payload["subAgentName"] != "Repo smell analyst" ||
-		payload["detail"] != "user requested" {
-		t.Fatalf("marker payload = %#v, want sub-agent fields forwarded", payload)
+	if payload["subAgentLifecycleStatus"] != nil || payload["subAgentName"] != nil || payload["ownerThreadId"] != nil {
+		t.Fatalf("marker payload = %#v, want legacy child projection fields discarded", payload)
 	}
 }
 
@@ -1002,6 +992,34 @@ func TestSummarizeReportActivityInputForLog(t *testing.T) {
 	}
 	if len(statePatches) != 0 {
 		t.Fatalf("state patch summary = %#v, want no legacy entity patches", statePatches)
+	}
+}
+
+func TestSummarizeReportActivityInputForLogIncludesProviderAndRuntimeTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	activeTurnID := "root-turn-1"
+	report := agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "session-1",
+			TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+				ActiveTurnID: &activeTurnID,
+				Phase:        "waiting",
+			},
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID:     "root-turn-1",
+				ProviderTurnID: "provider-turn-2",
+				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+				Outcome:        "completed",
+			},
+		}},
+	}
+
+	_, statePatches := SummarizeReportActivityInputForLog(report)
+	if len(statePatches) != 1 ||
+		!strings.Contains(statePatches[0], "turnLifecycle=root-turn-1/waiting") ||
+		!strings.Contains(statePatches[0], "rootProviderTurn=root-turn-1/provider-turn-2/completed/completed") {
+		t.Fatalf("state patch summary = %#v, want runtime and root provider lifecycle", statePatches)
 	}
 }
 

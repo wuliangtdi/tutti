@@ -100,6 +100,118 @@ func TestExactCancelCompletesFromTypedRuntimeTargetAbsentEvidence(t *testing.T) 
 	}
 }
 
+func TestRootCancelRoutesDurableChildTargetsThroughRootRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:root"] = ProviderRuntimeSession{ID: "root", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
+	runtime.cancelResultSet = true
+	runtime.cancelResult = RuntimeCancelResult{
+		AgentSessionID: "root", Canceled: true,
+		ConfirmedTargets: []RuntimeCancelTarget{{AgentSessionID: "root", TurnID: "root-turn"}},
+	}
+	store := &runtimeOperationMemoryStore{}
+	turnStore := treeRuntimeOperationTurnStore{
+		failingTurnStore: failingTurnStore{},
+		sessions: map[string]agentactivitybiz.Session{
+			"root":  {WorkspaceID: "ws-1", ID: "root", Kind: agentactivitybiz.SessionKindRoot, ActiveTurnID: "root-turn"},
+			"child": {WorkspaceID: "ws-1", ID: "child", Kind: agentactivitybiz.SessionKindChild, RootAgentSessionID: "root", RootTurnID: "root-turn", ActiveTurnID: "child-turn"},
+		},
+		turns: map[string]agentactivitybiz.Turn{
+			"root:root-turn":   {WorkspaceID: "ws-1", AgentSessionID: "root", TurnID: "root-turn", Phase: agentactivitybiz.TurnPhaseRunning},
+			"child:child-turn": {WorkspaceID: "ws-1", AgentSessionID: "child", TurnID: "child-turn", Phase: agentactivitybiz.TurnPhaseRunning},
+		},
+	}
+	service := newIsolatedAgentService(runtime)
+	service.RuntimeOperationStore = store
+	service.RuntimeOperationOwner = "worker-a"
+	service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+	service.TurnStore = turnStore
+	service.SessionReader = fakeSessionReader{
+		sessions: map[string]PersistedSession{
+			"ws-1:root": {WorkspaceID: "ws-1", ID: "root", Kind: agentactivitybiz.SessionKindRoot, Provider: "codex", ActiveTurnID: "root-turn"},
+		},
+		children: map[string][]PersistedSession{
+			"ws-1:root": {{WorkspaceID: "ws-1", ID: "child", Kind: agentactivitybiz.SessionKindChild, Provider: "codex", RootAgentSessionID: "root", RootTurnID: "root-turn", ActiveTurnID: "child-turn"}},
+		},
+	}
+
+	if _, err := service.CancelTurn(context.Background(), "ws-1", "root", "root-turn"); err != nil {
+		t.Fatalf("CancelTurn() error = %v", err)
+	}
+	if len(runtime.cancelCalls) != 1 {
+		t.Fatalf("runtime cancel calls = %d, want one aggregate call", len(runtime.cancelCalls))
+	}
+	call := runtime.cancelCalls[0]
+	if call.RootAgentSessionID != "root" || len(call.Targets) != 2 ||
+		call.Targets[0].AgentSessionID != "child" || call.Targets[0].TurnID != "child-turn" ||
+		call.Targets[1].AgentSessionID != "root" || call.Targets[1].TurnID != "root-turn" {
+		t.Fatalf("runtime cancel call = %#v", call)
+	}
+	if len(store.cancelCompletions) != 1 || len(store.cancelCompletions[0].TargetOutcomes) != 2 {
+		t.Fatalf("cancel completion inputs = %#v", store.cancelCompletions)
+	}
+	outcomes := store.cancelCompletions[0].TargetOutcomes
+	if outcomes[0].AgentSessionID != "child" || outcomes[0].Outcome != agentactivitybiz.TurnOutcomeInterrupted ||
+		outcomes[1].AgentSessionID != "root" || outcomes[1].Outcome != agentactivitybiz.TurnOutcomeCanceled {
+		t.Fatalf("cancel target outcomes = %#v", outcomes)
+	}
+}
+
+func TestChildInteractionRoutesThroughRootRuntimeWithCanonicalChildTuple(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:root"] = ProviderRuntimeSession{ID: "root", WorkspaceID: "ws-1", Provider: "claude-code", Status: "working"}
+	store := &runtimeOperationMemoryStore{}
+	turnStore := treeRuntimeOperationTurnStore{
+		failingTurnStore: failingTurnStore{interactions: []agentactivitybiz.Interaction{{
+			WorkspaceID: "ws-1", AgentSessionID: "child", TurnID: "child-turn",
+			RequestID: "child-request", Status: agentactivitybiz.InteractionStatusPending,
+		}}},
+		sessions: map[string]agentactivitybiz.Session{
+			"child": {WorkspaceID: "ws-1", ID: "child", Kind: agentactivitybiz.SessionKindChild, RootAgentSessionID: "root", RootTurnID: "root-turn", ActiveTurnID: "child-turn"},
+		},
+		turns: map[string]agentactivitybiz.Turn{
+			"child:child-turn": {WorkspaceID: "ws-1", AgentSessionID: "child", TurnID: "child-turn", Phase: agentactivitybiz.TurnPhaseWaiting},
+		},
+	}
+	service := newIsolatedAgentService(runtime)
+	service.RuntimeOperationStore = store
+	service.RuntimeOperationOwner = "worker-a"
+	service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+	service.TurnStore = turnStore
+	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{
+		"ws-1:child": {WorkspaceID: "ws-1", ID: "child", Kind: agentactivitybiz.SessionKindChild, Provider: "claude-code", RootAgentSessionID: "root", RootTurnID: "root-turn", ActiveTurnID: "child-turn"},
+	}}
+
+	if _, err := service.SubmitInteractive(context.Background(), "ws-1", "child", "child-request", SubmitInteractiveInput{
+		TurnID: "child-turn", OptionID: stringRef("allow"),
+	}); err != nil {
+		t.Fatalf("SubmitInteractive() error = %v", err)
+	}
+	if len(runtime.submitInteractiveCalls) != 1 {
+		t.Fatalf("runtime submit calls = %d, want one", len(runtime.submitInteractiveCalls))
+	}
+	call := runtime.submitInteractiveCalls[0]
+	if call.RootAgentSessionID != "root" || call.AgentSessionID != "child" ||
+		call.TurnID != "child-turn" || call.RequestID != "child-request" {
+		t.Fatalf("runtime interaction call = %#v", call)
+	}
+}
+
+type treeRuntimeOperationTurnStore struct {
+	failingTurnStore
+	sessions map[string]agentactivitybiz.Session
+	turns    map[string]agentactivitybiz.Turn
+}
+
+func (s treeRuntimeOperationTurnStore) GetSession(_ context.Context, _ string, agentSessionID string) (agentactivitybiz.Session, bool, error) {
+	session, ok := s.sessions[agentSessionID]
+	return session, ok, nil
+}
+
+func (s treeRuntimeOperationTurnStore) GetTurn(_ context.Context, _ string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
+	turn, ok := s.turns[agentSessionID+":"+turnID]
+	return turn, ok, nil
+}
+
 func TestCompletedInteractiveRetryUsesDeterministicOperationWithoutPendingInteraction(t *testing.T) {
 	now := time.UnixMilli(1000)
 	runtime := newFakeRuntime()
@@ -227,7 +339,10 @@ func TestDuplicateTerminalFailedOperationReturnsTerminalFailure(t *testing.T) {
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", Kind: agentactivitybiz.RuntimeOperationKindInteractiveResponse,
 		Status: agentactivitybiz.RuntimeOperationStatusFailed, Result: agentactivitybiz.RuntimeOperationResultFailed,
 		TurnID: "turn-1", RequestID: "request-1", LastError: "invalid provider option",
-		Payload: map[string]any{"action": "", "optionId": "approve", "payload": (map[string]any)(nil), "turnId": ""},
+		Payload: map[string]any{
+			"rootAgentSessionId": "session-1", "action": "", "optionId": "approve",
+			"payload": (map[string]any)(nil), "turnId": "",
+		},
 	}}
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{ID: "session-1", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}
@@ -249,7 +364,10 @@ func TestStartupRecoveryRequeuesUnexpiredLeaseBeforeRecoveringCancel(t *testing.
 	store := &runtimeOperationMemoryStore{operation: agentactivitybiz.RuntimeOperation{
 		OperationID: "operation-1", WorkspaceID: "ws-1", AgentSessionID: "session-1",
 		Kind: agentactivitybiz.RuntimeOperationKindCancelTurn, Status: agentactivitybiz.RuntimeOperationStatusLeased,
-		TurnID: "turn-1", Payload: map[string]any{"reason": "user requested turn cancellation"},
+		TurnID: "turn-1", Payload: map[string]any{
+			"reason": "user requested turn cancellation", "rootAgentSessionId": "session-1",
+			"targets": []any{map[string]any{"agentSessionId": "session-1", "turnId": "turn-1"}},
+		},
 		LeaseOwner: "dead-process", LeaseExpiresAtMS: now.Add(time.Hour).UnixMilli(),
 	}}
 	runtime := newFakeRuntime()
@@ -266,8 +384,8 @@ func TestStartupRecoveryRequeuesUnexpiredLeaseBeforeRecoveringCancel(t *testing.
 	if store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted || store.operation.Result != agentactivitybiz.RuntimeOperationResultCanceled {
 		t.Fatalf("startup recovered operation = %#v", store.operation)
 	}
-	if len(runtime.cancelCalls) != 0 {
-		t.Fatalf("startup runtime cancel calls = %d, want 0", len(runtime.cancelCalls))
+	if len(runtime.cancelCalls) != 1 {
+		t.Fatalf("startup runtime cancel calls = %d, want 1 idempotent replay", len(runtime.cancelCalls))
 	}
 }
 
@@ -283,12 +401,13 @@ func runtimeOperationTurnStore(turnID string, requestID string) failingTurnStore
 }
 
 type runtimeOperationMemoryStore struct {
-	operation       agentactivitybiz.RuntimeOperation
-	completeErr     error
-	events          []agentactivitybiz.RuntimeOperationEvent
-	confirmedTurnID string
-	checkpointSteps []string
-	checkpointErr   error
+	operation         agentactivitybiz.RuntimeOperation
+	completeErr       error
+	events            []agentactivitybiz.RuntimeOperationEvent
+	confirmedTurnID   string
+	checkpointSteps   []string
+	checkpointErr     error
+	cancelCompletions []agentactivitybiz.CompleteCancelRuntimeOperationInput
 }
 
 func (s *runtimeOperationMemoryStore) CheckpointRuntimeOperation(_ context.Context, input agentactivitybiz.CheckpointRuntimeOperationInput) (agentactivitybiz.RuntimeOperation, bool, error) {
@@ -388,10 +507,11 @@ func (s *runtimeOperationMemoryStore) CompleteInteractiveRuntimeOperation(_ cont
 	return agentactivitybiz.RuntimeOperationCompletion{Operation: s.operation, Event: event}, true, nil
 }
 
-func (s *runtimeOperationMemoryStore) CompleteCancelRuntimeOperation(_ context.Context, _ agentactivitybiz.CompleteCancelRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error) {
+func (s *runtimeOperationMemoryStore) CompleteCancelRuntimeOperation(_ context.Context, input agentactivitybiz.CompleteCancelRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error) {
 	if s.completeErr != nil {
 		return agentactivitybiz.RuntimeOperationCompletion{}, false, s.completeErr
 	}
+	s.cancelCompletions = append(s.cancelCompletions, input)
 	s.operation.Status, s.operation.Result = agentactivitybiz.RuntimeOperationStatusCompleted, agentactivitybiz.RuntimeOperationResultCanceled
 	s.operation.LeaseOwner, s.operation.LeaseExpiresAtMS = "", 0
 	event := agentactivitybiz.RuntimeOperationEvent{ID: int64(len(s.events) + 1), OperationID: s.operation.OperationID, WorkspaceID: s.operation.WorkspaceID, AgentSessionID: s.operation.AgentSessionID, Kind: agentactivitybiz.RuntimeOperationEventTurnCanceled}

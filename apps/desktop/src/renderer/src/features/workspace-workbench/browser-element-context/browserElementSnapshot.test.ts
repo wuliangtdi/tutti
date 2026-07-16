@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  browserElementSnapshotAttachmentName,
   browserElementSnapshotFormat,
   browserElementSnapshotMaxHtmlChars,
-  normalizeBrowserElementSelectionResult
+  normalizeBrowserElementSelectionResult,
+  serializeBrowserElementSnapshot
 } from "./browserElementSnapshot.ts";
 
 test("browser element snapshots bound content and redact secret-looking URL parameters", () => {
@@ -20,6 +20,7 @@ test("browser element snapshots bound content and redact secret-looking URL para
         attributes: {},
         bounds: { height: 10, width: 20, x: 1, y: 2 },
         classes: ["primary"],
+        domPath: "#app > main.page > button.primary",
         html: "x".repeat(browserElementSnapshotMaxHtmlChars + 100),
         selector: "#submit",
         styles: {},
@@ -42,9 +43,31 @@ test("browser element snapshots bound content and redact secret-looking URL para
     result.snapshot.page.url,
     "https://example.com/page?token=%5Bredacted%5D&tab=main"
   );
+});
+
+test("browser element snapshots serialize to Cursor's three-field text format", () => {
+  const result = normalizeBrowserElementSelectionResult({
+    status: "selected",
+    snapshot: {
+      page: { title: "Example", url: "https://example.com" },
+      element: {
+        bounds: { height: 40.125, width: 120.5, x: 8, y: -0 },
+        domPath: "#app > div.page-wrapper-n1Pp9 > a.nav-link",
+        html: '<a href="https://example.com">\n  Example home\n</a>',
+        tagName: "a"
+      }
+    }
+  });
+
+  assert.equal(result?.status, "selected");
+  if (result?.status !== "selected") return;
   assert.equal(
-    browserElementSnapshotAttachmentName(result.snapshot),
-    "button · Example.json"
+    serializeBrowserElementSnapshot(result.snapshot),
+    [
+      "DOM Path: #app > div.page-wrapper-n1Pp9 > a.nav-link",
+      "Position: top=0px, left=8px, width=120.5px, height=40.13px",
+      'HTML Element: <a href="https://example.com"> Example home </a>'
+    ].join("\n")
   );
 });
 

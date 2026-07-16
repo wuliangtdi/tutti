@@ -1,5 +1,6 @@
 import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
-import type { WorkbenchDiagnosticsPort } from "./workbenchHostPorts.ts";
+
+import type { WorkbenchDiagnosticsPort } from "../diagnostics/workbenchDiagnosticsPort.ts";
 
 export interface WorkbenchScope {
   readonly id: string;

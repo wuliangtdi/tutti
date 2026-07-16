@@ -65,8 +65,31 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// TargetedCancelAdapter maps canonical root/child targets onto provider-native
+// handles. The controller supplies the root live session and never asks the
+// adapter to discover the durable child tree itself.
+type TargetedCancelAdapter interface {
+	CancelTargets(context.Context, Session, []CancelTarget, string) (TargetedCancelResult, error)
+}
+
+// TargetedCancelResult separates provider-confirmed cancellation from the
+// normalized UI events produced while issuing the command. A missing target
+// is not confirmation: services/tuttid will settle an unconfirmed child turn
+// as interrupted after this bounded provider call returns.
+type TargetedCancelResult struct {
+	Events           []activityshared.Event
+	ConfirmedTargets []CancelTarget
+}
+
 type AsyncExecAdapter interface {
 	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
+}
+
+// RootProviderTurnLifecycleAdapter reports provider-turn lifecycle facts
+// without claiming the canonical root WorkspaceAgentTurn is terminal. The
+// durable daemon settles that root turn after checking every child turn.
+type RootProviderTurnLifecycleAdapter interface {
+	UsesRootProviderTurnLifecycle() bool
 }
 
 type ActiveTurnGuidanceAdapter interface {
@@ -113,6 +136,10 @@ type InteractiveAdapter interface {
 
 type InteractiveDispositionAdapter interface {
 	InteractiveDisposition(Session, string, string) InteractiveDisposition
+}
+
+type TargetedInteractiveDispositionAdapter interface {
+	InteractiveDispositionForTarget(Session, string, string, string) InteractiveDisposition
 }
 
 type InteractiveDispositionSink func(string, string, string, InteractiveDisposition)

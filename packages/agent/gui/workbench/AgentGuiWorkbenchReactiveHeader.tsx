@@ -20,7 +20,11 @@ import type {
 
 interface AgentGuiWorkbenchReactiveHeaderProps extends Omit<
   AgentGuiWorkbenchHeaderProps,
-  "agentTitle" | "conversationIconUrl" | "conversationTitle" | "hasConversation"
+  | "agentTitle"
+  | "conversationIconUrl"
+  | "conversationTitle"
+  | "conversationTitleDisplayPrompt"
+  | "hasConversation"
 > {
   agentDirectory: AgentGUIAgentDirectoryPort;
   dockIconUrls?: Partial<Record<AgentGuiWorkbenchProvider, string>>;
@@ -72,6 +76,7 @@ export function AgentGuiWorkbenchReactiveHeader({
         conversationIdentity?.iconUrl ?? headerProps.conversationIconFallbackUrl
       }
       conversationTitle={conversationIdentity?.title}
+      conversationTitleDisplayPrompt={conversationIdentity?.titleDisplayPrompt}
       hasConversation={Boolean(
         workbenchState?.lastActiveAgentSessionId?.trim()
       )}

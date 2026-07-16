@@ -5,6 +5,7 @@ import {
   rootEngineReducer
 } from "./rootReducer.ts";
 import {
+  selectEngineSubmitAvailability,
   selectEngineSessionDeleted,
   selectWorkspaceAgentConsumerCounts,
   selectWorkspaceAgentConsumerSession
@@ -179,4 +180,71 @@ test("new activation without initial content stays idle after session confirmati
     selectWorkspaceAgentConsumerSession(state, "session-1")?.displayStatus,
     "idle"
   );
+});
+
+test("completed Claude goal does not unlock a waiting root with a running child", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    sessions: [
+      {
+        activeTurn: {
+          agentSessionId: "root",
+          phase: "waiting",
+          startedAtUnixMs: 10,
+          turnId: "root-turn",
+          updatedAtUnixMs: 30
+        },
+        activeTurnId: "root-turn",
+        agentSessionId: "root",
+        cwd: "/workspace",
+        goal: { objective: "ship it", status: "complete" },
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "claude-code",
+        title: "Root",
+        workspaceId: "workspace-1"
+      },
+      {
+        activeTurn: {
+          agentSessionId: "child",
+          phase: "running",
+          startedAtUnixMs: 20,
+          turnId: "child-turn",
+          updatedAtUnixMs: 30
+        },
+        activeTurnId: "child-turn",
+        agentSessionId: "child",
+        cwd: "/workspace",
+        kind: "child",
+        latestTurnInteractions: [],
+        parentAgentSessionId: "root",
+        parentToolCallId: "toolu-1",
+        parentTurnId: "root-turn",
+        pendingInteractions: [],
+        provider: "claude-code",
+        rootAgentSessionId: "root",
+        rootTurnId: "root-turn",
+        title: "Child",
+        workspaceId: "workspace-1"
+      }
+    ],
+    type: "session/snapshotReceived"
+  }).state;
+
+  assert.equal(
+    selectWorkspaceAgentConsumerSession(state, "root")?.displayStatus,
+    "waiting"
+  );
+  assert.deepEqual(selectEngineSubmitAvailability(state, "root"), {
+    state: "blocked",
+    reason: "active_turn"
+  });
+  assert.deepEqual(selectWorkspaceAgentConsumerCounts(state), {
+    canceled: 0,
+    completed: 0,
+    failed: 0,
+    idle: 0,
+    waiting: 1,
+    working: 0
+  });
 });

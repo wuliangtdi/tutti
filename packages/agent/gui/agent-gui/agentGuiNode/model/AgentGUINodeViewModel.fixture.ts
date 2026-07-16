@@ -50,7 +50,6 @@ export function groupAgentGUINodeViewModelFixture(
       isLoadingOlderMessages: flat.isLoadingOlderMessages,
       hasOlderMessages: flat.hasOlderMessages,
       usage: flat.usage,
-      backgroundAgentCount: flat.backgroundAgentCount,
       hasSentUserMessage: flat.hasSentUserMessage,
       avoidGroupingEdits: flat.avoidGroupingEdits,
       conversation: flat.conversation,

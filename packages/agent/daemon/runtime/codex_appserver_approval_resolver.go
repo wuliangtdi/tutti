@@ -66,10 +66,13 @@ func (a *CodexAppServerAdapter) resolvePendingRequestFromProvider(
 		return false
 	}
 	a.mu.Lock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	_, appSession := a.appServerSessionForAgentSessionIDLocked(agentSessionID)
 	var pending *pendingInteractiveRequest
 	if appSession != nil && appSession.pendingRequests != nil {
 		pending = appSession.pendingRequests[requestID]
+	}
+	if pending != nil && strings.TrimSpace(pending.agentSessionID) != strings.TrimSpace(agentSessionID) {
+		pending = nil
 	}
 	a.mu.Unlock()
 	if pending != nil && !pending.finish(pendingInteractiveRequestStateSuperseded) {

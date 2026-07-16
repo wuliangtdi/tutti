@@ -81,7 +81,6 @@ test("desktop agent activity adapter maps typed canonical session control fields
   const session = agentActivitySessionFromTuttidSession(
     workspaceId,
     createSession({
-      backgroundAgents: { count: 1, items: [] },
       capabilities: {
         activeTurnGuidance: false,
         browserUse: false,
@@ -125,7 +124,6 @@ test("desktop agent activity adapter maps typed canonical session control fields
     })
   );
 
-  assert.deepEqual(session.backgroundAgents, { count: 1, items: [] });
   assert.equal(session.capabilities?.compact, true);
   assert.equal(session.capabilities?.planMode, true);
   assert.equal(session.createdAtUnixMs, 10);
@@ -1622,7 +1620,6 @@ function createSession(
       : null;
   return {
     agentTargetId: null,
-    backgroundAgents: null,
     capabilities: null,
     createdAtUnixMs,
     cwd: "/",
@@ -1644,6 +1641,12 @@ function createSession(
     usage: null,
     visible: true,
     ...canonicalOverrides,
+    kind: canonicalOverrides.kind ?? "root",
+    rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,
+    rootTurnId: canonicalOverrides.rootTurnId ?? null,
+    parentAgentSessionId: canonicalOverrides.parentAgentSessionId ?? null,
+    parentTurnId: canonicalOverrides.parentTurnId ?? null,
+    parentToolCallId: canonicalOverrides.parentToolCallId ?? null,
     latestTurnInteractions: canonicalOverrides.latestTurnInteractions ?? [],
     pendingInteractions: canonicalOverrides.pendingInteractions ?? []
   };

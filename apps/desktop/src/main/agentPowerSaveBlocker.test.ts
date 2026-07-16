@@ -160,7 +160,7 @@ function createFakeTuttidClient(input: {
       if (!session) {
         throw new Error("session not found");
       }
-      return session;
+      return { session, childSessions: [] };
     },
     async listWorkspaceAgentSessions(workspaceID) {
       return {
@@ -189,8 +189,13 @@ function createFakeTuttidClient(input: {
 function createSession(id: string, status: string): WorkspaceAgentSession {
   const active = status === "working" || status === "running";
   return {
+    kind: "root",
+    rootAgentSessionId: null,
+    rootTurnId: null,
+    parentAgentSessionId: null,
+    parentTurnId: null,
+    parentToolCallId: null,
     agentTargetId: null,
-    backgroundAgents: null,
     capabilities: null,
     createdAtUnixMs: 1,
     cwd: "/tmp/ws-1",

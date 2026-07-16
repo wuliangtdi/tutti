@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,7 +17,9 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	if appSession == nil || appSession.client == nil {
 		return nil, ErrSessionDisconnected
 	}
-	childEvents := a.interruptLinkedChildThreads(session, appSession, a.sessionMarkerTurnID(session.AgentSessionID), reason)
+	if activeTurn := a.sessionActiveTurn(session.AgentSessionID); activeTurn != nil {
+		a.markRootTurnCanceled(session.AgentSessionID, activeTurn.turnID)
+	}
 	activeTurnID, queued := a.requestActiveTurnCancel(session.AgentSessionID)
 	// Unblock any handler waiting on an approval answer first: the message
 	// read loop is parked inside that handler, so the interrupt response
@@ -29,18 +30,62 @@ func (a *CodexAppServerAdapter) Cancel(ctx context.Context, session Session, rea
 	// no-op from the user's perspective. Pause failures fall through to the
 	// interrupt (the reducer additionally interrupts unowned turns for paused
 	// goals as defense-in-depth).
-	childEvents = append(a.pauseActiveGoalForCancel(session), childEvents...)
+	events := a.pauseActiveGoalForCancel(session)
 	if activeTurnID == "" {
 		if queued {
-			return childEvents, nil
-		}
-		if len(childEvents) > 0 {
-			return childEvents, nil
+			return events, nil
 		}
 		return nil, ErrSessionNoActiveTurn
 	}
 	appTurn := a.sessionActiveTurn(session.AgentSessionID)
-	return childEvents, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
+	return events, a.interruptActiveTurn(ctx, appSession, session, appTurn, activeTurnID, reason)
+}
+
+func (a *CodexAppServerAdapter) CancelTargets(ctx context.Context, rootSession Session, targets []CancelTarget, reason string) (TargetedCancelResult, error) {
+	rootRequested := false
+	var rootTarget CancelTarget
+	childTargets := make([]CancelTarget, 0, len(targets))
+	for _, target := range targets {
+		if strings.TrimSpace(target.AgentSessionID) == strings.TrimSpace(rootSession.AgentSessionID) {
+			rootRequested = true
+			rootTarget = target
+			continue
+		}
+		childTargets = append(childTargets, target)
+	}
+	if rootRequested {
+		a.markRootTurnCanceled(rootSession.AgentSessionID, rootTarget.TurnID)
+	}
+	// Stop the root provider turn before waiting for child RPCs. A slow child
+	// interrupt must not leave the root alive long enough to launch more
+	// provider-native children after the user's cancellation. Normal root
+	// interruption keeps the app-server connection and child handles alive;
+	// force-close already terminates the whole provider process.
+	var rootEvents []activityshared.Event
+	var rootErr error
+	if rootRequested {
+		rootEvents, rootErr = a.Cancel(ctx, rootSession, reason)
+	}
+	events, confirmedChildren := a.interruptTargetedChildTurns(rootSession, childTargets, reason)
+	result := TargetedCancelResult{Events: events, ConfirmedTargets: confirmedChildren}
+	if rootRequested {
+		if rootErr != nil && !errors.Is(rootErr, ErrSessionNoActiveTurn) {
+			result.Events = append(result.Events, rootEvents...)
+			return result, rootErr
+		}
+		result.Events = append(result.Events, rootEvents...)
+		if rootErr == nil {
+			result.ConfirmedTargets = append(result.ConfirmedTargets, rootTarget)
+		}
+		if rootErr == nil || len(result.ConfirmedTargets) > 0 {
+			return result, nil
+		}
+		return result, rootErr
+	}
+	if len(result.ConfirmedTargets) > 0 {
+		return result, nil
+	}
+	return result, ErrSessionNoActiveTurn
 }
 
 // pauseActiveGoalForCancel sets an active goal to paused so codex stops
@@ -163,10 +208,10 @@ func (a *CodexAppServerAdapter) sendTurnInterrupt(
 	a.sendThreadInterrupt(appSession.client, session, appSession.threadID, activeTurnID, reason)
 }
 
-// scheduleChildNicknameFetches resolves spawned sub-agents' display names.
+// scheduleChildNicknameFetches resolves spawned child sessions' display names.
 // codex assigns each spawned agent an agentNickname on its Thread object but
-// never pushes it (no thread/name/updated for children), so - like traycer -
-// we fetch it asynchronously via thread/read and emit a subAgentName marker.
+// never pushes it (no thread/name/updated for children), so we fetch it
+// asynchronously via thread/read and update the child session title.
 func (a *CodexAppServerAdapter) scheduleChildNicknameFetches(session Session, childThreadIDs []string) {
 	if a == nil || len(childThreadIDs) == 0 {
 		return
@@ -211,17 +256,17 @@ func (a *CodexAppServerAdapter) fetchChildThreadNickname(client *codexAppServerC
 		if nickname == "" {
 			continue
 		}
-		event := appServerSubAgentNameEvent(session, childThreadID, nickname)
-		if event.Type == "" {
+		child, ok := a.appServerChildThread(session.AgentSessionID, childThreadID)
+		if !ok {
 			return
 		}
-		if child, ok := a.appServerChildThread(session.AgentSessionID, childThreadID); ok {
-			event.OwnerCallID = child.parentItemID
+		childSession := appServerChildSession(session, childThreadID, child)
+		eventCtx, ok := appServerChildEventContext(childSession, child, "child-session-title:"+child.agentSessionID)
+		if !ok {
+			return
 		}
-		if event.Payload.TurnID == "" {
-			// The activity store rejects turnless message updates.
-			event.Payload.TurnID = a.sessionMarkerTurnID(session.AgentSessionID)
-		}
+		eventCtx.Title = nickname
+		event := activityshared.NewSessionTitleUpdated(eventCtx)
 		a.emitSessionEvents(session.AgentSessionID, []activityshared.Event{event})
 		return
 	}
@@ -233,10 +278,10 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 	threadID string,
 	turnID string,
 	reason string,
-) {
+) bool {
 	threadID = strings.TrimSpace(threadID)
 	if client == nil || threadID == "" {
-		return
+		return false
 	}
 	turnID = strings.TrimSpace(turnID)
 	err := codexSendTurnInterruptOnce(client, threadID, turnID)
@@ -273,6 +318,7 @@ func (*CodexAppServerAdapter) sendThreadInterrupt(
 			"error", err.Error(),
 		)
 	}
+	return err == nil
 }
 
 func codexSendTurnInterruptOnce(client *codexAppServerClient, threadID, turnID string) error {
@@ -318,63 +364,73 @@ func codexExpectedActiveTurnIDMismatch(err error) (string, bool) {
 	return rest, true
 }
 
-func (a *CodexAppServerAdapter) interruptLinkedChildThreads(
+func (a *CodexAppServerAdapter) interruptTargetedChildTurns(
 	session Session,
-	appSession *codexAppServerSession,
-	markerTurnID string,
+	targets []CancelTarget,
 	reason string,
-) []activityshared.Event {
-	if a == nil || appSession == nil || appSession.client == nil {
-		return nil
+) ([]activityshared.Event, []CancelTarget) {
+	if a == nil || len(targets) == 0 {
+		return nil, nil
 	}
-	linkedChildren := a.takeLinkedChildThreads(session.AgentSessionID)
-	if len(linkedChildren) == 0 {
-		return nil
+	appSession := a.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return nil, nil
 	}
-	events := make([]activityshared.Event, 0, len(linkedChildren))
-	for _, child := range linkedChildren {
-		go a.sendThreadInterrupt(appSession.client, session, child.threadID, "", reason)
-		event := appServerSubAgentLifecycleEvent(session, child.threadID, markerTurnID, "canceled", reason)
-		if event.Type != "" {
-			event.OwnerCallID = child.parentItemID
-			events = append(events, event)
+	events := make([]activityshared.Event, 0, len(targets))
+	type confirmation struct {
+		target    CancelTarget
+		confirmed bool
+	}
+	confirmations := make(chan confirmation, len(targets))
+	found := 0
+	for _, target := range targets {
+		childThreadID, context, ok := a.appServerChildThreadByAgentSessionID(session.AgentSessionID, target.AgentSessionID)
+		if !ok {
+			continue
+		}
+		found++
+		go func(target CancelTarget, childThreadID string) {
+			confirmations <- confirmation{
+				target:    target,
+				confirmed: a.sendThreadInterrupt(appSession.client, session, childThreadID, "", reason),
+			}
+		}(target, childThreadID)
+		childSession := appServerChildSession(session, childThreadID, context)
+		eventContext, ok := appServerChildEventContext(childSession, context, "child-turn-cancel-requested:"+context.turnID)
+		if !ok {
+			continue
+		}
+		event := activityshared.NewTurnUpdated(eventContext, context.turnID, activityshared.TurnPhaseWaiting)
+		event.Payload.Metadata = map[string]any{"cancelRequested": true}
+		events = append(events, event)
+	}
+	confirmed := make([]CancelTarget, 0, found)
+	for range found {
+		confirmation := <-confirmations
+		if confirmation.confirmed {
+			confirmed = append(confirmed, confirmation.target)
 		}
 	}
-	return events
+	return events, confirmed
 }
 
-type linkedChildThread struct {
-	threadID     string
-	parentItemID string
-}
-
-func (a *CodexAppServerAdapter) takeLinkedChildThreads(agentSessionID string) []linkedChildThread {
+func (a *CodexAppServerAdapter) appServerChildThreadByAgentSessionID(rootAgentSessionID string, agentSessionID string) (string, *codexAppServerThreadContext, bool) {
 	if a == nil {
-		return nil
+		return "", nil, false
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
-	if appSession == nil || len(appSession.childThreads) == 0 {
-		return nil
+	appSession := a.sessions[strings.TrimSpace(rootAgentSessionID)]
+	if appSession == nil {
+		return "", nil, false
 	}
-	children := make([]linkedChildThread, 0, len(appSession.childThreads))
 	for childThreadID, child := range appSession.childThreads {
-		trimmed := strings.TrimSpace(childThreadID)
-		if trimmed == "" {
-			continue
+		if child != nil && strings.TrimSpace(child.agentSessionID) == strings.TrimSpace(agentSessionID) {
+			copy := *child
+			return childThreadID, &copy, true
 		}
-		linked := linkedChildThread{threadID: trimmed}
-		if child != nil {
-			linked.parentItemID = child.parentItemID
-		}
-		children = append(children, linked)
 	}
-	sort.Slice(children, func(left, right int) bool {
-		return children[left].threadID < children[right].threadID
-	})
-	appSession.childThreads = nil
-	return children
+	return "", nil, false
 }
 
 func (a *CodexAppServerAdapter) markTurnForceCanceled(turn *codexAppServerActiveTurn) {

@@ -8,6 +8,7 @@ import {
   createInitialAgentSessionEngineState,
   rootEngineReducer
 } from "./rootReducer.ts";
+import { selectSessionHasUnconfirmedSubmit } from "./pendingIntents.selectors.ts";
 import type { EngineIntent, EngineRuntimeState } from "./types.ts";
 import type { AgentActivitySessionCapabilities } from "../types.ts";
 
@@ -269,6 +270,130 @@ test("canceling a queued submit atomically removes queue and pending intent", ()
   ]);
 });
 
+test("later queued submit stays requested when its expiry follows the prior delivery", () => {
+  let state = createInitialAgentSessionEngineState();
+  const runningSession = {
+    activeTurn: {
+      agentSessionId: "session-1",
+      phase: "running" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    },
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "workspace-1"
+  };
+  state = rootEngineReducer(state, {
+    sessions: [runningSession],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "queued" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 0,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-2",
+    content: [{ type: "text", text: "queued second" }],
+    expiresAtUnixMs: 120_001,
+    requestedAtUnixMs: 1,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const settled = rootEngineReducer(state, {
+    sessions: [
+      {
+        ...runningSession,
+        activeTurn: {
+          ...runningSession.activeTurn,
+          phase: "settled",
+          settledAtUnixMs: 3,
+          updatedAtUnixMs: 3
+        },
+        activeTurnId: null,
+        updatedAtUnixMs: 3
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+  const send = settled.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(send?.type, "queue/sendPrompt");
+  const nextTurn = {
+    agentSessionId: "session-1",
+    phase: "running" as const,
+    startedAtUnixMs: 4,
+    turnId: "turn-2",
+    updatedAtUnixMs: 4
+  };
+  const firstDelivered = rootEngineReducer(settled.state, {
+    commandId: send?.type === "queue/sendPrompt" ? send.commandId : "",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      session: {
+        ...runningSession,
+        activeTurn: nextTurn,
+        activeTurnId: "turn-2",
+        updatedAtUnixMs: 4
+      },
+      turn: nextTurn,
+      turnId: "turn-2"
+    }
+  });
+  assert.equal(
+    firstDelivered.state.pendingIntents.submitsByClientSubmitId["submit-1"]
+      ?.status,
+    "accepted"
+  );
+  assert.deepEqual(
+    firstDelivered.state.promptQueue.recordsBySessionId[
+      "session-1"
+    ]?.prompts.map((prompt) => prompt.clientSubmitId),
+    ["submit-2"]
+  );
+
+  const secondExpired = rootEngineReducer(firstDelivered.state, {
+    dueAtUnixMs: 120_001,
+    expiryId: "submit:submit-2",
+    type: "engine/intentExpired"
+  });
+  assert.equal(
+    secondExpired.state.pendingIntents.submitsByClientSubmitId["submit-2"]
+      ?.status,
+    "requested"
+  );
+  assert.deepEqual(
+    secondExpired.state.promptQueue.recordsBySessionId[
+      "session-1"
+    ]?.prompts.map((prompt) => prompt.clientSubmitId),
+    ["submit-2"]
+  );
+  assert.deepEqual(secondExpired.commands, [
+    {
+      dueAtUnixMs: 240_001,
+      expiryId: "submit:submit-2",
+      type: "engine/scheduleExpiry"
+    }
+  ]);
+});
+
 test("submit acceptance rejects unknown and cross-workspace canonical sessions atomically", () => {
   const submit = {
     agentSessionId: "session-1",
@@ -320,6 +445,76 @@ test("submit acceptance rejects unknown and cross-workspace canonical sessions a
     undefined
   );
   assert.deepEqual(crossWorkspace.commands, []);
+});
+
+test("accepted submit stops blocking once its turn is no longer active", () => {
+  let state = createInitialAgentSessionEngineState();
+  const runningTurn = {
+    agentSessionId: "session-1",
+    phase: "running" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const session = {
+    activeTurn: runningTurn,
+    activeTurnId: "turn-1",
+    agentSessionId: "session-1",
+    cwd: "/workspace",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: "codex",
+    title: "Session",
+    updatedAtUnixMs: 1,
+    workspaceId: "workspace-1"
+  };
+  state = rootEngineReducer(state, {
+    sessions: [session],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-1",
+    content: [{ type: "text", text: "retry" }],
+    expiresAtUnixMs: 120_000,
+    requestedAtUnixMs: 2,
+    type: "submit/requested",
+    workspaceId: "workspace-1"
+  }).state;
+  state = rootEngineReducer(state, {
+    commandId: "submit:send:submit-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    outcome: "succeeded",
+    type: "engine/commandResult",
+    value: {
+      session,
+      turn: runningTurn,
+      turnId: "turn-1"
+    }
+  }).state;
+  assert.equal(selectSessionHasUnconfirmedSubmit(state, "session-1"), true);
+
+  const laterTurn = {
+    agentSessionId: "session-1",
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 4,
+    startedAtUnixMs: 3,
+    turnId: "turn-2",
+    updatedAtUnixMs: 4
+  };
+  state = rootEngineReducer(state, {
+    session: {
+      ...session,
+      activeTurn: null,
+      activeTurnId: null,
+      latestTurn: laterTurn,
+      updatedAtUnixMs: 4
+    },
+    type: "session/upserted"
+  }).state;
+  assert.equal(selectSessionHasUnconfirmedSubmit(state, "session-1"), false);
 });
 
 test("an uncertain queued submit cannot be half-canceled", () => {
@@ -400,6 +595,21 @@ test("an uncertain queued submit cannot be half-canceled", () => {
     "submit-1"
   );
   assert.deepEqual(canceled.commands, []);
+
+  const expired = rootEngineReducer(canceled.state, {
+    dueAtUnixMs: 120_000,
+    expiryId: "submit:submit-1",
+    type: "engine/intentExpired"
+  });
+  assert.equal(
+    expired.state.pendingIntents.submitsByClientSubmitId["submit-1"]?.status,
+    "failed"
+  );
+  assert.equal(
+    expired.state.promptQueue.recordsBySessionId["session-1"]
+      ?.uncertainDelivery,
+    null
+  );
 });
 
 test("session tombstone blocks late queue and snapshot resurrection across domains", () => {

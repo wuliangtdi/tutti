@@ -28,6 +28,7 @@ function buildRow(
         id: "msg-1",
         turnId: "turn-1",
         body,
+        presentationKind: "content",
         occurredAtUnixMs: 0,
         visibleError
       }
@@ -66,6 +67,7 @@ function buildFailedTextRow(body: string): AgentMessageRowVM {
         id: "msg-1",
         turnId: "turn-1",
         body,
+        presentationKind: "content",
         statusKind: "failed",
         occurredAtUnixMs: 0,
         visibleError: null

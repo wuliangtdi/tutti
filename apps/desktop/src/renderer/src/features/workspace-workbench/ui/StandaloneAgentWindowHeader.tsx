@@ -18,6 +18,7 @@ export interface StandaloneAgentWindowHeaderIdentity {
   conversationIconFallbackUrl: string | null;
   conversationIconUrl: string | null;
   conversationTitle: string | null;
+  conversationTitleDisplayPrompt: string | null;
   hasConversation: boolean;
   provider: DesktopAgentGUIProvider;
 }
@@ -57,6 +58,8 @@ export function useStandaloneAgentWindowHeaderIdentity(input: {
     ...snapshotIdentity,
     conversationTitle:
       engineConversationIdentity?.title ?? snapshotIdentity.conversationTitle,
+    conversationTitleDisplayPrompt:
+      engineConversationIdentity?.titleDisplayPrompt ?? null,
     hasConversation: Boolean(input.nodeState.lastActiveAgentSessionId?.trim())
   };
 }
@@ -71,6 +74,7 @@ export interface StandaloneAgentWindowHeaderProps extends Omit<
   | "conversationIconFallbackUrl"
   | "conversationIconUrl"
   | "conversationTitle"
+  | "conversationTitleDisplayPrompt"
   | "hasConversation"
 > {
   identity: StandaloneAgentWindowHeaderIdentity;
@@ -87,6 +91,7 @@ export function StandaloneAgentWindowHeader({
       conversationIconFallbackUrl={identity.conversationIconFallbackUrl}
       conversationIconUrl={identity.conversationIconUrl}
       conversationTitle={identity.conversationTitle}
+      conversationTitleDisplayPrompt={identity.conversationTitleDisplayPrompt}
       hasConversation={identity.hasConversation}
     />
   );

@@ -66,6 +66,9 @@ func persistedSessionCanResume(controller RuntimeController, session PersistedSe
 	if controller == nil {
 		return false
 	}
+	if strings.TrimSpace(session.Kind) == agentactivitybiz.SessionKindChild {
+		return false
+	}
 	if strings.TrimSpace(session.Origin) == WorkspaceAgentSessionOriginImported &&
 		!externalImportResumeSupported(session.InternalRuntimeContext) {
 		return false
@@ -98,6 +101,7 @@ func serviceSession(session ProviderRuntimeSession, resumable bool) Session {
 	metadata.Visible = session.Visible
 	return Session{
 		ID:                strings.TrimSpace(session.ID),
+		Kind:              agentactivitybiz.SessionKindRoot,
 		UserID:            strings.TrimSpace(session.UserID),
 		AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
 		Provider:          normalizedProvider,
@@ -148,6 +152,15 @@ func sessionFromPersisted(session PersistedSession, resumable bool) Session {
 		Visible:           session.Metadata.Visible,
 	}, resumable)
 	result.ActiveTurnID = strings.TrimSpace(session.ActiveTurnID)
+	result.Kind = strings.TrimSpace(session.Kind)
+	if result.Kind == "" {
+		result.Kind = agentactivitybiz.SessionKindRoot
+	}
+	result.RootAgentSessionID = strings.TrimSpace(session.RootAgentSessionID)
+	result.RootTurnID = strings.TrimSpace(session.RootTurnID)
+	result.ParentAgentSessionID = strings.TrimSpace(session.ParentAgentSessionID)
+	result.ParentTurnID = strings.TrimSpace(session.ParentTurnID)
+	result.ParentToolCallID = strings.TrimSpace(session.ParentToolCallID)
 	result.Metadata = session.Metadata
 	return result
 }
@@ -166,6 +179,15 @@ func importedSessionDisplayUpdatedAtUnixMS(session PersistedSession) int64 {
 }
 
 func mergePersistedSessionState(session Session, persisted PersistedSession) Session {
+	session.Kind = strings.TrimSpace(persisted.Kind)
+	if session.Kind == "" {
+		session.Kind = agentactivitybiz.SessionKindRoot
+	}
+	session.RootAgentSessionID = strings.TrimSpace(persisted.RootAgentSessionID)
+	session.RootTurnID = strings.TrimSpace(persisted.RootTurnID)
+	session.ParentAgentSessionID = strings.TrimSpace(persisted.ParentAgentSessionID)
+	session.ParentTurnID = strings.TrimSpace(persisted.ParentTurnID)
+	session.ParentToolCallID = strings.TrimSpace(persisted.ParentToolCallID)
 	if strings.TrimSpace(session.UserID) == "" {
 		session.UserID = strings.TrimSpace(persisted.UserID)
 	}

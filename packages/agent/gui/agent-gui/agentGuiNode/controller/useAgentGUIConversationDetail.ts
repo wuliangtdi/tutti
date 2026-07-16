@@ -2,6 +2,7 @@ import {
   selectEngineAvailableCommands,
   type AgentActivityInteraction,
   type AgentActivityMessage,
+  type AgentActivitySnapshot,
   type AgentActivityTurn,
   type AgentSessionEngine,
   type EngineQueuedPrompt,
@@ -60,6 +61,7 @@ interface UseAgentGUIConversationDetailInput {
   activeQueuedPromptInFlight: PromptQueueInFlightCommand | null;
   activeQueuedPrompts: readonly EngineQueuedPrompt[];
   activeQueueStatus: AgentGUIQueueStatus;
+  agentActivitySnapshot: AgentActivitySnapshot;
   activeSessionReconcileError: string | null;
   activeSessionView: {
     hasOlderMessages: boolean;
@@ -158,23 +160,31 @@ export function useAgentGUIConversationDetail(
       [input.providerComposerOptions]
     )
   );
-  const conversationModels = useMemo(
-    () =>
-      projectionConversation
-        ? buildAgentGUIConversationModels({
-            timelineItems: input.activeTimelineItems,
-            conversation: projectionConversation,
-            workspaceRoot: input.workspacePath,
-            avoidGroupingEdits: input.avoidGroupingEdits
-          })
-        : { conversation: null, detail: null },
-    [
-      input.activeTimelineItems,
-      input.avoidGroupingEdits,
-      input.workspacePath,
-      projectionConversation
-    ]
-  );
+  const conversationModels = useMemo(() => {
+    if (!projectionConversation) {
+      return { conversation: null, detail: null };
+    }
+    const rootSessionId = projectionConversation.id.trim();
+    const childSessions = input.agentActivitySnapshot.sessions.filter(
+      (session) =>
+        session.kind === "child" && session.rootAgentSessionId === rootSessionId
+    );
+    return buildAgentGUIConversationModels({
+      timelineItems: input.activeTimelineItems,
+      conversation: projectionConversation,
+      childSessions,
+      childMessagesBySessionId: input.agentActivitySnapshot.sessionMessagesById,
+      workspaceRoot: input.workspacePath,
+      avoidGroupingEdits: input.avoidGroupingEdits
+    });
+  }, [
+    input.activeTimelineItems,
+    input.agentActivitySnapshot.sessionMessagesById,
+    input.agentActivitySnapshot.sessions,
+    input.avoidGroupingEdits,
+    input.workspacePath,
+    projectionConversation
+  ]);
   const conversationDetail = useStableConversationDetail(
     conversationModels.detail
   );

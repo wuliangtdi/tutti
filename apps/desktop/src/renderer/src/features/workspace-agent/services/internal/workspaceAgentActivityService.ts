@@ -655,13 +655,13 @@ export class WorkspaceAgentActivityService
     workspaceId: string,
     agentSessionId: string
   ): Promise<AgentActivitySession> {
-    const activitySession = await this.fetchActivitySession(
+    const detail = await this.fetchActivitySessionDetail(
       workspaceId,
       agentSessionId,
       "get_session"
     );
-    this.upsertAuthoritativeSession(activitySession, "get_session_result");
-    return activitySession;
+    this.upsertAuthoritativeSessionDetail(detail, "get_session_result");
+    return detail.session;
   }
 
   async getComposerOptions(input: {

@@ -96,26 +96,48 @@ func (r *ReportSessionStateReply) UnmarshalJSON(data []byte) error {
 }
 
 type WorkspaceAgentSessionStateUpdate struct {
-	AgentTargetID         string                               `json:"agentTargetId,omitempty"`
-	DeviceID              string                               `json:"deviceId,omitempty"`
-	Provider              string                               `json:"provider,omitempty"`
-	ProviderSessionID     string                               `json:"providerSessionId,omitempty"`
-	Model                 string                               `json:"model,omitempty"`
-	Settings              map[string]any                       `json:"settings,omitempty"`
-	RuntimeContext        map[string]any                       `json:"runtimeContext,omitempty"`
-	TurnLifecycle         *WorkspaceAgentTurnLifecycle         `json:"turnLifecycle,omitempty"`
-	SubmitAvailability    *WorkspaceAgentSubmitAvailability    `json:"submitAvailability,omitempty"`
-	InteractionTransition *WorkspaceAgentInteractionTransition `json:"interactionTransition,omitempty"`
-	CWD                   string                               `json:"cwd,omitempty"`
-	Title                 string                               `json:"title,omitempty"`
-	LifecycleStatus       string                               `json:"lifecycleStatus,omitempty"`
-	CurrentPhase          string                               `json:"currentPhase,omitempty"`
-	LastError             string                               `json:"lastError,omitempty"`
-	OccurredAtUnixMS      int64                                `json:"occurredAtUnixMs,omitempty"`
-	StartedAtUnixMS       int64                                `json:"startedAtUnixMs,omitempty"`
-	EndedAtUnixMS         int64                                `json:"endedAtUnixMs,omitempty"`
-	Turn                  *WorkspaceAgentTurnStateUpdate       `json:"turn,omitempty"`
+	Kind                  string                                    `json:"kind,omitempty"`
+	RootAgentSessionID    string                                    `json:"rootAgentSessionId,omitempty"`
+	RootTurnID            string                                    `json:"rootTurnId,omitempty"`
+	ParentAgentSessionID  string                                    `json:"parentAgentSessionId,omitempty"`
+	ParentTurnID          string                                    `json:"parentTurnId,omitempty"`
+	ParentToolCallID      string                                    `json:"parentToolCallId,omitempty"`
+	AgentTargetID         string                                    `json:"agentTargetId,omitempty"`
+	DeviceID              string                                    `json:"deviceId,omitempty"`
+	Provider              string                                    `json:"provider,omitempty"`
+	ProviderSessionID     string                                    `json:"providerSessionId,omitempty"`
+	Model                 string                                    `json:"model,omitempty"`
+	Settings              map[string]any                            `json:"settings,omitempty"`
+	RuntimeContext        map[string]any                            `json:"runtimeContext,omitempty"`
+	TurnLifecycle         *WorkspaceAgentTurnLifecycle              `json:"turnLifecycle,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
+	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
+	CWD                   string                                    `json:"cwd,omitempty"`
+	Title                 string                                    `json:"title,omitempty"`
+	LifecycleStatus       string                                    `json:"lifecycleStatus,omitempty"`
+	CurrentPhase          string                                    `json:"currentPhase,omitempty"`
+	LastError             string                                    `json:"lastError,omitempty"`
+	OccurredAtUnixMS      int64                                     `json:"occurredAtUnixMs,omitempty"`
+	StartedAtUnixMS       int64                                     `json:"startedAtUnixMs,omitempty"`
+	EndedAtUnixMS         int64                                     `json:"endedAtUnixMs,omitempty"`
+	Turn                  *WorkspaceAgentTurnStateUpdate            `json:"turn,omitempty"`
+	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
 }
+
+type WorkspaceAgentRootProviderTurnTransition struct {
+	RootTurnID       string                          `json:"rootTurnId"`
+	ProviderTurnID   string                          `json:"providerTurnId"`
+	Phase            string                          `json:"phase"`
+	Outcome          string                          `json:"outcome,omitempty"`
+	CompletedCommand *WorkspaceAgentCompletedCommand `json:"completedCommand,omitempty"`
+	ErrorMessage     string                          `json:"errorMessage,omitempty"`
+	ErrorCode        string                          `json:"errorCode,omitempty"`
+}
+
+const (
+	RootProviderTurnPhaseRunning   = "running"
+	RootProviderTurnPhaseCompleted = "completed"
+)
 
 type WorkspaceAgentTurnStateUpdate struct {
 	TurnID             string                            `json:"turnId"`
@@ -353,26 +375,33 @@ type EventSource struct {
 }
 
 type WorkspaceAgentStatePatch struct {
-	AgentSessionID        string                               `json:"agentSessionId"`
-	AgentTargetID         string                               `json:"agentTargetId,omitempty"`
-	DeviceID              string                               `json:"deviceId,omitempty"`
-	Provider              string                               `json:"provider,omitempty"`
-	ProviderSessionID     string                               `json:"providerSessionId,omitempty"`
-	Model                 string                               `json:"model,omitempty"`
-	PermissionModeID      string                               `json:"permissionModeId,omitempty"`
-	Settings              map[string]any                       `json:"settings,omitempty"`
-	RuntimeContext        map[string]any                       `json:"runtimeContext,omitempty"`
-	TurnLifecycle         *WorkspaceAgentTurnLifecycle         `json:"turnLifecycle,omitempty"`
-	SubmitAvailability    *WorkspaceAgentSubmitAvailability    `json:"submitAvailability,omitempty"`
-	InteractionTransition *WorkspaceAgentInteractionTransition `json:"interactionTransition,omitempty"`
-	CWD                   string                               `json:"cwd,omitempty"`
-	Title                 string                               `json:"title,omitempty"`
-	LifecycleStatus       string                               `json:"lifecycleStatus,omitempty"`
-	CurrentPhase          string                               `json:"currentPhase,omitempty"`
-	LastError             string                               `json:"lastError,omitempty"`
-	OccurredAtUnixMS      int64                                `json:"occurredAtUnixMs,omitempty"`
-	Turn                  *WorkspaceAgentTurnPatch             `json:"turn,omitempty"`
-	Entities              []WorkspaceAgentEntityPatch          `json:"entities,omitempty"`
+	AgentSessionID        string                                    `json:"agentSessionId"`
+	Kind                  string                                    `json:"kind,omitempty"`
+	RootAgentSessionID    string                                    `json:"rootAgentSessionId,omitempty"`
+	RootTurnID            string                                    `json:"rootTurnId,omitempty"`
+	ParentAgentSessionID  string                                    `json:"parentAgentSessionId,omitempty"`
+	ParentTurnID          string                                    `json:"parentTurnId,omitempty"`
+	ParentToolCallID      string                                    `json:"parentToolCallId,omitempty"`
+	AgentTargetID         string                                    `json:"agentTargetId,omitempty"`
+	DeviceID              string                                    `json:"deviceId,omitempty"`
+	Provider              string                                    `json:"provider,omitempty"`
+	ProviderSessionID     string                                    `json:"providerSessionId,omitempty"`
+	Model                 string                                    `json:"model,omitempty"`
+	PermissionModeID      string                                    `json:"permissionModeId,omitempty"`
+	Settings              map[string]any                            `json:"settings,omitempty"`
+	RuntimeContext        map[string]any                            `json:"runtimeContext,omitempty"`
+	TurnLifecycle         *WorkspaceAgentTurnLifecycle              `json:"turnLifecycle,omitempty"`
+	SubmitAvailability    *WorkspaceAgentSubmitAvailability         `json:"submitAvailability,omitempty"`
+	InteractionTransition *WorkspaceAgentInteractionTransition      `json:"interactionTransition,omitempty"`
+	CWD                   string                                    `json:"cwd,omitempty"`
+	Title                 string                                    `json:"title,omitempty"`
+	LifecycleStatus       string                                    `json:"lifecycleStatus,omitempty"`
+	CurrentPhase          string                                    `json:"currentPhase,omitempty"`
+	LastError             string                                    `json:"lastError,omitempty"`
+	OccurredAtUnixMS      int64                                     `json:"occurredAtUnixMs,omitempty"`
+	Turn                  *WorkspaceAgentTurnPatch                  `json:"turn,omitempty"`
+	RootProviderTurn      *WorkspaceAgentRootProviderTurnTransition `json:"rootProviderTurn,omitempty"`
+	Entities              []WorkspaceAgentEntityPatch               `json:"entities,omitempty"`
 }
 
 type WorkspaceAgentTurnPatch struct {

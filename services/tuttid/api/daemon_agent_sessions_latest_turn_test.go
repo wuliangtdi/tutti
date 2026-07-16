@@ -33,6 +33,7 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 	}
 	generated := generatedAgentSession(agentservice.Session{
 		ID:                     "session-1",
+		Kind:                   agentactivitybiz.SessionKindRoot,
 		Provider:               "codex",
 		CreatedAt:              time.UnixMilli(10),
 		LatestTurn:             &latest,
@@ -43,9 +44,8 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 				ContextWindow: &agentactivitybiz.SessionUsageContextWindow{UsedTokens: 7_460, TotalTokens: 200_000},
 				Quotas:        []agentactivitybiz.SessionUsageQuota{},
 			},
-			BackgroundAgents: &agentactivitybiz.SessionBackgroundAgents{Count: 0, Items: []agentactivitybiz.SessionBackgroundAgentItem{}},
-			Goal:             &agentactivitybiz.SessionGoal{Objective: "ship", Status: "active"},
-			Imported:         true,
+			Goal:     &agentactivitybiz.SessionGoal{Objective: "ship", Status: "active"},
+			Imported: true,
 		},
 	})
 	if generated.ActiveTurn != nil || generated.ActiveTurnId != nil {
@@ -61,7 +61,7 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 	}
 	if generated.PendingInteractions == nil || generated.Capabilities == nil || !generated.Capabilities.PlanMode ||
 		generated.Usage == nil || generated.Usage.ContextWindow == nil || generated.Usage.ContextWindow.UsedTokens != 7_460 ||
-		generated.BackgroundAgents == nil || generated.Goal == nil || !generated.Imported {
+		generated.Goal == nil || !generated.Imported {
 		t.Fatalf("v2 session fields = %#v", generated)
 	}
 	encoded, err := json.Marshal(generated)

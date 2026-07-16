@@ -97,11 +97,6 @@ func cloneSessionMetadata(metadata agentactivitybiz.SessionMetadata) agentactivi
 		}
 		cloned.Usage = &value
 	}
-	if metadata.BackgroundAgents != nil {
-		value := *metadata.BackgroundAgents
-		value.Items = append([]agentactivitybiz.SessionBackgroundAgentItem(nil), metadata.BackgroundAgents.Items...)
-		cloned.BackgroundAgents = &value
-	}
 	if metadata.Goal != nil {
 		value := *metadata.Goal
 		cloned.Goal = &value

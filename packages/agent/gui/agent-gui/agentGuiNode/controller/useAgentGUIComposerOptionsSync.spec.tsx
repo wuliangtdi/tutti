@@ -71,6 +71,7 @@ describe("useAgentGUIComposerOptionsSync", () => {
         expect.objectContaining({
           agentTargetId: "local:codex",
           cwd: "/workspace/project",
+          force: true,
           provider: "codex",
           workspaceId: "workspace-1"
         })

@@ -5,7 +5,7 @@ import type {
 } from "../types.ts";
 import {
   selectEngineInteractionsForSession,
-  selectWorkspaceAgentConsumerSessions
+  selectAllWorkspaceAgentConsumerSessions
 } from "./sessionLifecycle.selectors.ts";
 import type { AgentSessionEngineState } from "./types.ts";
 
@@ -24,7 +24,7 @@ export function createAgentActivitySnapshotProjector(
     if (state === previousState && previousSnapshot) return previousSnapshot;
     const snapshot: AgentActivitySnapshot = {
       workspaceId,
-      sessions: selectWorkspaceAgentConsumerSessions(state).map((item) =>
+      sessions: selectAllWorkspaceAgentConsumerSessions(state).map((item) =>
         projectSession(
           item.session,
           item.activeTurn,

@@ -105,6 +105,7 @@ export function mentionItemToAttrs(
   if (item.kind === "custom") {
     return {
       name: item.name,
+      sourceLabel: item.sourceLabel,
       kind: item.kind,
       customKind: item.customKind,
       href: item.href,
@@ -186,6 +187,10 @@ export function attrsToMentionItem(
       typeof attrs.targetId === "string" ? attrs.targetId.trim() : "";
     const customKind =
       typeof attrs.customKind === "string" ? attrs.customKind.trim() : "";
+    const sourceLabel =
+      typeof attrs.sourceLabel === "string" && attrs.sourceLabel.trim()
+        ? attrs.sourceLabel.trim()
+        : name;
     const summary =
       typeof attrs.preview === "string" && attrs.preview.trim()
         ? attrs.preview.trim()
@@ -196,6 +201,7 @@ export function attrsToMentionItem(
       href,
       workspaceId,
       targetId,
+      sourceLabel,
       name,
       summary
     };

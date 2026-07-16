@@ -80,11 +80,15 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		}, nil
 	}
 
-	_, err = s.ensureRuntimeSessionResult(ctx, workspaceID, agentSessionID)
+	route, err := s.resolveRuntimeControlRoute(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return CancelTurnResult{}, err
 	}
-	operation, err := s.prepareCancelRuntimeOperation(ctx, workspaceID, agentSessionID, turnID)
+	targets, err := s.cancelTargetsForTurn(ctx, workspaceID, route, turnID)
+	if err != nil {
+		return CancelTurnResult{}, err
+	}
+	operation, err := s.prepareCancelRuntimeOperation(ctx, workspaceID, agentSessionID, turnID, route.RootAgentSessionID, targets)
 	if err != nil {
 		return CancelTurnResult{}, err
 	}

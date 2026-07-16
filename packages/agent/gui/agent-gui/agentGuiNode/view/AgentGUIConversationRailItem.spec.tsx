@@ -5,6 +5,86 @@ import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 
 describe("AgentGUIConversationRailItem interaction lock", () => {
+  it("keeps the provider icon and plain title while adding a monochrome task icon", () => {
+    const { container } = renderRailItem({
+      isRailInteractionLocked: () => false,
+      item: {
+        title: "@看看最新的代码提交 111",
+        titleLeadingMentionKind: "task"
+      }
+    });
+
+    expect(
+      container.querySelector(".agent-gui-node__conversation-provider-icon")
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-agent-gui-conversation-title-mention-icon="task"]'
+      )
+    ).not.toBeNull();
+    expect(container.textContent).toContain("看看最新的代码提交 111");
+    expect(container.textContent).not.toContain("@看看最新的代码提交 111");
+    expect(container.querySelector(".agent-rich-text-readonly")).toBeNull();
+  });
+
+  it("adds the conversation icon only for a projected session reference", () => {
+    const { container } = renderRailItem({
+      isRailInteractionLocked: () => false,
+      item: {
+        title: "@读一下我本地的桌面",
+        titleLeadingMentionKind: "session"
+      }
+    });
+
+    expect(
+      container.querySelector(
+        '[data-agent-gui-conversation-title-mention-icon="session"]'
+      )
+    ).not.toBeNull();
+    expect(
+      container.querySelectorAll(
+        "[data-agent-gui-conversation-title-mention-icon]"
+      )
+    ).toHaveLength(1);
+    expect(container.textContent).toContain("读一下我本地的桌面");
+    expect(container.textContent).not.toContain("@读一下我本地的桌面");
+  });
+
+  it.each(["app", "file", "agent"] as const)(
+    "adds the %s icon for that projected reference",
+    (kind) => {
+      const { container } = renderRailItem({
+        isRailInteractionLocked: () => false,
+        item: {
+          title: "Inspect reference",
+          titleLeadingMentionKind: kind
+        }
+      });
+
+      expect(
+        container.querySelector(
+          `[data-agent-gui-conversation-title-mention-icon="${kind}"]`
+        )
+      ).not.toBeNull();
+    }
+  );
+
+  it("leaves an ordinary conversation row unchanged", () => {
+    const { container } = renderRailItem({
+      isRailInteractionLocked: () => false
+    });
+
+    expect(
+      container.querySelector(".agent-gui-node__conversation-provider-icon")
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        "[data-agent-gui-conversation-title-mention-icon]"
+      )
+    ).toBeNull();
+    expect(container.textContent).toContain("Session 1");
+  });
+
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {
     const onSelectConversation = vi.fn();
     renderRailItem({
@@ -43,6 +123,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
 
 function renderRailItem(overrides: {
   isRailInteractionLocked: () => boolean;
+  item?: Partial<AgentGUIConversationSummary>;
   onRequestRenameConversation?: (
     conversation: AgentGUIConversationSummary
   ) => void;
@@ -61,7 +142,8 @@ function renderRailItem(overrides: {
         provider: "codex",
         status: "ready",
         title: "Session 1",
-        updatedAtUnixMs: 1
+        updatedAtUnixMs: 1,
+        ...overrides.item
       }}
       labels={RAIL_ITEM_LABELS}
       previewMode={false}

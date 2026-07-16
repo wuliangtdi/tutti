@@ -222,6 +222,44 @@ test("metadata-only session updates do not prove a queued turn completed", () =>
   assert.equal(completed.state.recordsBySessionId["session-1"]?.inFlight, null);
 });
 
+test("Claude goal completion does not drain prompts while the canonical root waits", () => {
+  const running = session("running", 1);
+  const waiting = {
+    ...running,
+    activeTurn: { ...running.activeTurn!, phase: "waiting" as const },
+    goal: { objective: "ship it", status: "active" as const },
+    provider: "claude-code"
+  };
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [waiting]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+
+  const goalCompleted = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...waiting,
+        goal: { objective: "ship it", status: "complete" as const },
+        updatedAtUnixMs: 2
+      }
+    ]
+  });
+
+  assert.equal(goalCompleted.commands.length, 0);
+  assert.equal(
+    goalCompleted.state.recordsBySessionId["session-1"]?.availability.state,
+    "blocked"
+  );
+  assert.deepEqual(
+    goalCompleted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-1"]
+  );
+});
+
 test("native guidance uses the current running turn despite a stale settled snapshot", () => {
   let state = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",

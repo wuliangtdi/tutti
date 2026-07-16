@@ -73,14 +73,6 @@ func generatedAgentSessionUsage(raw *agentactivitybiz.SessionUsage) *tuttigenera
 	return &result
 }
 
-func generatedAgentSessionBackgroundAgents(raw *agentactivitybiz.SessionBackgroundAgents) *tuttigenerated.WorkspaceAgentBackgroundAgents {
-	var result tuttigenerated.WorkspaceAgentBackgroundAgents
-	if !decodeTypedAgentSessionField(raw, &result) || result.Count < 0 || result.Items == nil {
-		return nil
-	}
-	return &result
-}
-
 func generatedAgentSessionGoal(raw *agentactivitybiz.SessionGoal) *tuttigenerated.WorkspaceAgentSessionGoal {
 	var result tuttigenerated.WorkspaceAgentSessionGoal
 	if !decodeTypedAgentSessionField(raw, &result) || strings.TrimSpace(result.Objective) == "" || !result.Status.Valid() {

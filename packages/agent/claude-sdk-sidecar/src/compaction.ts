@@ -111,11 +111,13 @@ export class CompactionTracker {
     }
     if (compactResult === "failed" && this.inProgress) {
       this.inProgress = false;
+      const turnId = this.activeTurnId();
       const reason = collapseRepeatedText(stringValue(message.compact_error));
       this.emit({
         type: "compact_failed",
         payload: {
-          turnId: this.activeTurnId(),
+          turnId,
+          reason,
           content: reason
             ? `Compacting failed: ${reason}`
             : "Compacting failed."

@@ -19,7 +19,13 @@ type ActivityProjection struct {
 	sessionMessageObserver SessionMessageObserver
 	sessionStateObserver   SessionStateObserver
 	agentTargetResolver    AgentTargetResolver
+	rootTurnObserver       RootTurnObserver
 }
+
+var (
+	_ SessionReader         = (*ActivityProjection)(nil)
+	_ SessionSectionsReader = (*ActivityProjection)(nil)
+)
 
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
 	return &ActivityProjection{repo: repo}
@@ -41,6 +47,10 @@ type SessionStateObserver interface {
 
 type SessionMessageObserver interface {
 	ObserveAgentSessionMessages(context.Context, agentsessionstore.ReportSessionMessagesInput, agentsessionstore.ReportSessionMessagesReply)
+}
+
+type RootTurnObserver interface {
+	ObserveRootTurnSettled(context.Context, string, string, agentactivitybiz.Turn)
 }
 
 func (p *ActivityProjection) SetPublisher(publisher ActivityUpdatePublisher) {
@@ -69,6 +79,13 @@ func (p *ActivityProjection) SetSessionStateObserver(observer SessionStateObserv
 		return
 	}
 	p.sessionStateObserver = observer
+}
+
+func (p *ActivityProjection) SetRootTurnObserver(observer RootTurnObserver) {
+	if p == nil {
+		return
+	}
+	p.rootTurnObserver = observer
 }
 
 func normalizeReportSessionOrigins(
@@ -124,9 +141,15 @@ func (p *ActivityProjection) ReportSessionState(
 		input.State.RuntimeContext,
 	)
 	stateReport := agentactivitybiz.SessionStateReport{
-		WorkspaceID:    strings.TrimSpace(input.WorkspaceID),
-		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
-		Origin:         strings.TrimSpace(input.SessionOrigin),
+		WorkspaceID:          strings.TrimSpace(input.WorkspaceID),
+		AgentSessionID:       strings.TrimSpace(input.AgentSessionID),
+		Kind:                 strings.TrimSpace(input.State.Kind),
+		RootAgentSessionID:   strings.TrimSpace(input.State.RootAgentSessionID),
+		RootTurnID:           strings.TrimSpace(input.State.RootTurnID),
+		ParentAgentSessionID: strings.TrimSpace(input.State.ParentAgentSessionID),
+		ParentTurnID:         strings.TrimSpace(input.State.ParentTurnID),
+		ParentToolCallID:     strings.TrimSpace(input.State.ParentToolCallID),
+		Origin:               strings.TrimSpace(input.SessionOrigin),
 		// Tutti local workspaces intentionally leave Source.UserID empty. Cloud
 		// collaboration hosts may provide real account user ids on this wire.
 		UserID:            strings.TrimSpace(input.Source.UserID),
@@ -148,6 +171,9 @@ func (p *ActivityProjection) ReportSessionState(
 	activityReport := agentactivitybiz.ActivityStateReport{Session: stateReport}
 	if transition, ok := turnTransitionFromStateInput(input); ok {
 		activityReport.Turn = &transition
+	}
+	if transition, ok := rootProviderTurnTransitionFromStateInput(input); ok {
+		activityReport.RootProviderTurn = &transition
 	}
 	interaction, err := interactionTransitionFromStateInput(input)
 	if err != nil {
@@ -372,27 +398,43 @@ func (p *ActivityProjection) ListSessions(workspaceID string) ([]PersistedSessio
 	return out, true
 }
 
+func (p *ActivityProjection) ListChildSessions(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) ([]PersistedSession, error) {
+	if p == nil || p.repo == nil {
+		return []PersistedSession{}, nil
+	}
+	sessions, err := p.repo.ListChildSessions(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PersistedSession, 0, len(sessions))
+	for _, session := range sessions {
+		out = append(out, p.projectPersistedSession(ctx, persistedSessionFromActivity(session)))
+	}
+	return out, nil
+}
+
 func (p *ActivityProjection) ListSessionSection(
 	ctx context.Context,
 	input agentactivitybiz.ListSessionSectionInput,
-) (agentactivitybiz.SessionSectionPage, bool) {
+) (agentactivitybiz.SessionSectionPage, bool, error) {
 	if p == nil || p.repo == nil {
-		return agentactivitybiz.SessionSectionPage{}, false
+		return agentactivitybiz.SessionSectionPage{}, false, nil
 	}
-	page, ok, err := p.repo.ListSessionSection(ctx, input)
-	if err != nil {
-		slog.Warn("list workspace agent session section failed",
-			"event", "workspace.agent_session.section.list_failed",
-			"workspace_id", input.WorkspaceID,
-			"section_key", input.SectionKey,
-			"error", err,
-		)
-		return agentactivitybiz.SessionSectionPage{}, false
+	return p.repo.ListSessionSection(ctx, input)
+}
+
+func (p *ActivityProjection) ListSessionSections(
+	ctx context.Context,
+	input agentactivitybiz.ListSessionSectionsInput,
+) (agentactivitybiz.SessionSectionsPage, bool, error) {
+	if p == nil || p.repo == nil {
+		return agentactivitybiz.SessionSectionsPage{}, false, nil
 	}
-	if !ok {
-		return agentactivitybiz.SessionSectionPage{}, false
-	}
-	return page, true
+	return p.repo.ListSessionSections(ctx, input)
 }
 
 func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -487,6 +529,30 @@ func (p *ActivityProjection) UpdateSessionPinned(ctx context.Context, workspaceI
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
 	session, ok, err := p.repo.UpdateSessionPinned(ctx, workspaceID, agentSessionID, pinned)
+	if err != nil {
+		return PersistedSession{}, false, err
+	}
+	if !ok {
+		return PersistedSession{}, false, nil
+	}
+	persisted := persistedSessionFromActivity(session)
+	p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_reconcile_required", activitySessionUpdateEventPayload(workspaceID, agentSessionID, persisted.UpdatedAtUnixMS))
+	return persisted, true, nil
+}
+
+func (p *ActivityProjection) UpdateSessionSettings(ctx context.Context, workspaceID string, agentSessionID string, settings ComposerSettings) (PersistedSession, bool, error) {
+	if p == nil || p.repo == nil {
+		return PersistedSession{}, false, nil
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	session, ok, err := p.repo.UpdateSessionSettings(
+		ctx,
+		workspaceID,
+		agentSessionID,
+		settings.Model,
+		ComposerSettingsToMap(settings),
+	)
 	if err != nil {
 		return PersistedSession{}, false, err
 	}

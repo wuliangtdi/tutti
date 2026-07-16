@@ -1,8 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
-import type { AgentComposerDraftFile } from "@tutti-os/agent-gui";
-import type { DesktopBrowserApi, DesktopHostFilesApi } from "@preload/types";
+import type { DesktopBrowserApi } from "@preload/types";
 import {
   createStandaloneAgentBrowserToolFeature,
   standaloneAgentBrowserDefaultUrl
@@ -20,9 +19,8 @@ export function StandaloneAgentBrowserToolPanel({
   browserApi,
   elementContextCopy,
   hidden,
-  hostFilesApi,
   loadingLabel,
-  onAppendBrowserElementFile,
+  onAppendBrowserElementMention,
   onBrowserElementError,
   workspaceId
 }: {
@@ -34,9 +32,8 @@ export function StandaloneAgentBrowserToolPanel({
     select: string;
   };
   hidden: boolean;
-  hostFilesApi: Pick<DesktopHostFilesApi, "archiveAgentPromptFile">;
   loadingLabel: string;
-  onAppendBrowserElementFile: (file: AgentComposerDraftFile) => void;
+  onAppendBrowserElementMention: (mention: string) => void;
   onBrowserElementError: (message: string) => void;
   workspaceId: string;
 }): ReactNode {
@@ -66,10 +63,9 @@ export function StandaloneAgentBrowserToolPanel({
           navigationActions={
             <BrowserElementContextAction
               copy={elementContextCopy}
-              hostFilesApi={hostFilesApi}
               surfaceId={nodeId}
               workspaceId={workspaceId}
-              onAppendFile={onAppendBrowserElementFile}
+              onAppendMention={onAppendBrowserElementMention}
               onError={onBrowserElementError}
             />
           }

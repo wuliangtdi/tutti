@@ -126,6 +126,7 @@ export function fakeNestedApprovalQuery(
         "Bash",
         { command: "ls" },
         testCanUseToolOptions({
+          agentID: "agent-parent",
           requestId: "request-nested-bash",
           toolUseID: "toolu-nested-bash"
         })

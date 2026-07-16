@@ -11,6 +11,7 @@ import type {
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { isApprovalToolCall } from "./agentToolRendererKind";
+import { resolveAgentTranscriptPresentationKind } from "./agentTranscriptPresentation";
 import { projectAgentToolCall } from "./agentToolProjection";
 import { projectConversationUserRow } from "./agentConversationUserProjection";
 
@@ -173,6 +174,9 @@ function projectMessage(
     id: message.id,
     turnId: message.turnId ?? turnId,
     body: message.body,
+    presentationKind: resolveAgentTranscriptPresentationKind(
+      message.systemNotice ?? null
+    ),
     statusKind: message.statusKind ?? null,
     occurredAtUnixMs: message.occurredAtUnixMs ?? null,
     visibleError: message.visibleError ?? null,

@@ -9,9 +9,9 @@ import (
 // liveModelOptionsFromPersistedSessions returns the most recent model list a
 // past provider session persisted in its runtime context. It restores the
 // composer's model picker when both the live runtime session and the
-// in-memory cache are gone (typically after a daemon restart): providers such
-// as Cursor have no probe session, so without this the picker stays pinned to
-// the single selected model until the user starts a new conversation.
+// in-memory cache are gone (typically after a daemon restart). Reusing this
+// durable last-known-good catalog avoids an unnecessary hidden probe and keeps
+// the picker from collapsing to the single selected model.
 func (s *Service) liveModelOptionsFromPersistedSessions(workspaceID string, provider string, agentTargetIDs ...string) []ComposerConfigOptionValue {
 	if s.SessionReader == nil {
 		return nil

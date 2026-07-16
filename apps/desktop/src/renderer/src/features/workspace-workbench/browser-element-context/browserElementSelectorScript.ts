@@ -116,6 +116,7 @@ function runTuttiBrowserElementSelector(): Promise<unknown> {
             y: rect.y
           },
           classes: [...target.classList].slice(0, 24),
+          domPath: domPathFor(target),
           html: rawHtml.slice(0, 32_000),
           htmlTruncated: rawHtml.length > 32_000,
           id: target.id || null,
@@ -238,6 +239,35 @@ function runTuttiBrowserElementSelector(): Promise<unknown> {
         current = parentElement;
       }
       return segments.join(" > ");
+    }
+
+    function domPathFor(element: Element): string {
+      const appRoot = document.querySelector("#app");
+      const root =
+        appRoot?.contains(element) === true
+          ? appRoot
+          : (document.body ?? document.documentElement);
+      const segments: string[] = [];
+      let current: Element | null = element;
+      while (current) {
+        segments.unshift(domPathSegment(current, current === root));
+        if (current === root) break;
+        current = current.parentElement;
+      }
+      return segments.join(" > ").slice(0, 4_000);
+    }
+
+    function domPathSegment(element: Element, isRoot: boolean): string {
+      if (isRoot && element.id === "app") return "#app";
+      const tagName = element.tagName.toLowerCase();
+      const classNames = [...element.classList]
+        .filter(Boolean)
+        .slice(0, 6)
+        .map((name) => `.${name}`)
+        .join("");
+      if (classNames) return `${tagName}${classNames}`;
+      if (element.id) return `${tagName}#${element.id}`;
+      return tagName;
     }
 
     function escapeCss(value: string): string {

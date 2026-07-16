@@ -41,6 +41,7 @@ function projectUserMessageContentParts(
       id: `${message.id}:images:0`,
       turnId,
       body: "",
+      presentationKind: "content",
       contentKind: "image-grid",
       images: imageBlocks.map((image, index) => ({
         id: `${message.id}:image:${index}`,
@@ -64,6 +65,7 @@ function projectUserMessageContentParts(
       id: `${message.id}:text:${index}`,
       turnId,
       body: block.text,
+      presentationKind: "content",
       contentKind: "text",
       occurredAtUnixMs: message.occurredAtUnixMs ?? null,
       sourceTimelineItems: message.sourceTimelineItems
@@ -81,6 +83,7 @@ function textPart(
     id: message.id,
     turnId,
     body: message.body,
+    presentationKind: "content",
     contentKind: "text",
     occurredAtUnixMs: message.occurredAtUnixMs ?? null,
     sourceTimelineItems: message.sourceTimelineItems

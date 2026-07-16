@@ -65,6 +65,7 @@ export class SDKMessageRouter {
 
   async handle(message: SDKMessage): Promise<void> {
     const parentToolUseID = readSDKParentToolUseID(message);
+    this.emitLifecycleObservation(message, parentToolUseID);
     const sessionId = readSDKSessionID(message);
     if (sessionId && sessionId !== this.getProviderSessionId()) {
       this.setProviderSessionId(sessionId);
@@ -123,6 +124,65 @@ export class SDKMessageRouter {
     if (message.type === "result") {
       await this.handleResult(message, parentToolUseID);
     }
+  }
+
+  private emitLifecycleObservation(
+    message: SDKMessage,
+    parentToolUseID: string
+  ): void {
+    const raw = message as unknown as Record<string, unknown>;
+    const messageType = stringValue(raw.type);
+    const messageSubtype = stringValue(raw.subtype);
+    const notificationText =
+      messageType === "user"
+        ? readUserMessageNotificationText(
+            message as { message?: { content?: unknown } }
+          )
+        : "";
+    const taskNotification = notificationText.includes("<task-notification>");
+    const systemTaskLifecycle =
+      messageType === "system" &&
+      (messageSubtype === "task_started" ||
+        messageSubtype === "task_progress" ||
+        messageSubtype === "task_notification" ||
+        messageSubtype === "task_updated");
+    const rootContinuationCandidate =
+      messageType === "assistant" &&
+      !parentToolUseID &&
+      (!this.turns.activeId || this.turns.awaitingContinuation);
+    const result = messageType === "result";
+    if (
+      !taskNotification &&
+      !systemTaskLifecycle &&
+      !rootContinuationCandidate &&
+      !result
+    ) {
+      return;
+    }
+
+    this.emit({
+      type: "sdk_lifecycle_observed",
+      payload: {
+        sdkMessageType: messageType,
+        ...(messageSubtype ? { sdkMessageSubtype: messageSubtype } : {}),
+        ...(taskNotification ? { taskNotification: true } : {}),
+        ...(rootContinuationCandidate
+          ? { rootContinuationCandidate: true }
+          : {}),
+        activeTurnIdBefore: this.turns.activeId,
+        ...(parentToolUseID ? { parentToolUseId: parentToolUseID } : {}),
+        ...(stringValue(raw.task_id)
+          ? { taskId: stringValue(raw.task_id) }
+          : {}),
+        ...(stringValue(raw.agent_id)
+          ? { agentId: stringValue(raw.agent_id) }
+          : {}),
+        ...(stringValue(raw.tool_use_id)
+          ? { toolUseId: stringValue(raw.tool_use_id) }
+          : {}),
+        ...(stringValue(raw.status) ? { status: stringValue(raw.status) } : {})
+      }
+    });
   }
 
   private handleStreamEvent(
@@ -284,6 +344,7 @@ export class SDKMessageRouter {
       (message as unknown as Record<string, unknown>).fast_mode_state
     );
     if (
+      this.turns.consumeTimedOutContinuationResult() ||
       this.turns.consumePendingOrphan() ||
       !this.turns.ensureActive("result")
     ) {

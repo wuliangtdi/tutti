@@ -161,7 +161,7 @@ Hosts should return `submitAvailability` as the authoritative wire state when a
 session knows whether normal input is allowed. Consumers that need an effective
 decision should call `resolveSubmitAvailability()`: explicit wire
 `state: "available"` stays available, unknown wire blocked reasons stay
-blocked, and locally derived `active_turn`, `waiting`, or `background_agent`
+blocked, and locally derived `active_turn` or `waiting`
 blocks fill missing or stale derived states.
 
 `turnLifecycle.activeTurnId` should be cleared when a turn settles. The selector

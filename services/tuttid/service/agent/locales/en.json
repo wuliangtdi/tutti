@@ -35,7 +35,7 @@
     "cursor": {
       "read-only": {
         "label": "Read-only",
-        "description": "Cursor plans and reads only. Proposes changes without making them."
+        "description": "Cursor explores and reads with search tools, without making changes."
       },
       "agent": {
         "label": "Ask for approval",

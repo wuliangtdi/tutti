@@ -96,6 +96,22 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity turn transition was rejected")
 		}
 	}
+	if accepted && input.RootProviderTurn != nil {
+		result.RootTurn, result.RootTurnAccepted, err = s.applyRootProviderTurnTransitionTx(ctx, tx, *input.RootProviderTurn, now)
+		if err != nil {
+			return ActivityStateReportResult{}, err
+		}
+	}
+	if result.TurnAccepted && result.Turn.Phase == TurnPhaseSettled {
+		rootTurn, rootAccepted, err := s.reconcileRootTurnAfterChildTerminalTx(ctx, tx, result.Turn, now)
+		if err != nil {
+			return ActivityStateReportResult{}, err
+		}
+		if rootTurn.TurnID != "" {
+			result.RootTurn = rootTurn
+			result.RootTurnAccepted = rootAccepted
+		}
+	}
 	// Interaction transitions have their own monotonic identity/state machine.
 	// Always validate and apply them even when the enclosing session report is
 	// an exact replay; otherwise an immutable-identity conflict could hide
@@ -134,6 +150,10 @@ func validateActivityStateChildScope(workspaceID string, agentSessionID string, 
 	if input.Turn != nil && (strings.TrimSpace(input.Turn.WorkspaceID) != workspaceID ||
 		strings.TrimSpace(input.Turn.AgentSessionID) != agentSessionID) {
 		return errors.New("turn workspace and agent session must match the activity state report")
+	}
+	if input.RootProviderTurn != nil && (strings.TrimSpace(input.RootProviderTurn.WorkspaceID) != workspaceID ||
+		strings.TrimSpace(input.RootProviderTurn.RootAgentSessionID) != agentSessionID) {
+		return errors.New("root provider turn workspace and root session must match the activity state report")
 	}
 	if input.Interaction != nil && (strings.TrimSpace(input.Interaction.WorkspaceID) != workspaceID ||
 		strings.TrimSpace(input.Interaction.AgentSessionID) != agentSessionID) {

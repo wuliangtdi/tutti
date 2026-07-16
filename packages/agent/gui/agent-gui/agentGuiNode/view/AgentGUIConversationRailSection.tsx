@@ -340,13 +340,13 @@ export const AgentGUIConversationRailSection = memo(
                     </DropdownMenuTrigger>
                   ) : (
                     <Tooltip>
-                      <DropdownMenuTrigger asChild>
-                        <TooltipTrigger asChild>
-                          <span
-                            className={
-                              styles.conversationSectionActionTooltipWrap
-                            }
-                          >
+                      <TooltipTrigger asChild>
+                        <span
+                          className={
+                            styles.conversationSectionActionTooltipWrap
+                          }
+                        >
+                          <DropdownMenuTrigger asChild>
                             <BareIconButton
                               className={styles.conversationSectionMoreButton}
                               aria-label={labels.projectSectionMoreActions}
@@ -354,9 +354,9 @@ export const AgentGUIConversationRailSection = memo(
                             >
                               <MoreHorizontalIcon aria-hidden="true" />
                             </BareIconButton>
-                          </span>
-                        </TooltipTrigger>
-                      </DropdownMenuTrigger>
+                          </DropdownMenuTrigger>
+                        </span>
+                      </TooltipTrigger>
                       <TooltipContent
                         side="right"
                         sideOffset={6}
@@ -439,13 +439,13 @@ export const AgentGUIConversationRailSection = memo(
                     </DropdownMenuTrigger>
                   ) : (
                     <Tooltip>
-                      <DropdownMenuTrigger asChild>
-                        <TooltipTrigger asChild>
-                          <span
-                            className={
-                              styles.conversationSectionActionTooltipWrap
-                            }
-                          >
+                      <TooltipTrigger asChild>
+                        <span
+                          className={
+                            styles.conversationSectionActionTooltipWrap
+                          }
+                        >
+                          <DropdownMenuTrigger asChild>
                             <BareIconButton
                               className={styles.conversationSectionMoreButton}
                               aria-label={
@@ -455,9 +455,9 @@ export const AgentGUIConversationRailSection = memo(
                             >
                               <MoreHorizontalIcon aria-hidden="true" />
                             </BareIconButton>
-                          </span>
-                        </TooltipTrigger>
-                      </DropdownMenuTrigger>
+                          </DropdownMenuTrigger>
+                        </span>
+                      </TooltipTrigger>
                       <TooltipContent
                         side="right"
                         sideOffset={6}

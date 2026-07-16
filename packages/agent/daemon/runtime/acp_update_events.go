@@ -399,6 +399,8 @@ func acpSystemNoticeEvent(session Session, turnID string, update map[string]any,
 	copyStringPayload(payload, notice, "title")
 	copyStringPayload(payload, notice, "detail")
 	copyStringPayload(payload, notice, "code")
+	copyStringPayload(payload, notice, "noticeCommand")
+	copyStringPayload(payload, notice, "noticeCommandStatus")
 	// A caller-provided messageId lets related notices (e.g. compaction
 	// started/completed) share one transcript row instead of stacking.
 	copyStringPayload(payload, notice, "messageId")

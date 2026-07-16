@@ -28,8 +28,12 @@ type composerProfile struct {
 	LiveModelDiscoveryKind providerregistry.LiveModelDiscoveryKind
 	// LiveModelProbeSession: with no running session to reuse, model
 	// discovery may spawn a short-lived hidden provider session. Opt-in
-	// because the probe is a real session (Claude Code only today).
+	// because the probe is a real provider session.
 	LiveModelProbeSession bool
+	// LiveModelAccountScoped: the advertised catalog is credential-scoped,
+	// not workspace/cwd-scoped. Hidden discovery and caching share one scope
+	// per agent target when enabled.
+	LiveModelAccountScoped bool
 	// UsesModelCatalog: model options come from the daemon-side
 	// AgentModelCatalog (CLI/schema-backed lists).
 	UsesModelCatalog bool
@@ -103,6 +107,7 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 		LiveModelDiscovery:       descriptor.LiveModelDiscovery.Kind != "",
 		LiveModelDiscoveryKind:   descriptor.LiveModelDiscovery.Kind,
 		LiveModelProbeSession:    descriptor.LiveModelDiscovery.HiddenProbe,
+		LiveModelAccountScoped:   descriptor.LiveModelDiscovery.AccountScoped,
 		UsesModelCatalog:         strings.TrimSpace(string(descriptor.ModelCatalog)) != "",
 		ModelCatalog:             descriptor.ModelCatalog,
 		CapabilityCatalogKind:    descriptor.CapabilityCatalog.Kind,

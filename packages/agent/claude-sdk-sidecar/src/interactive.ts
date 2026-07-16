@@ -1,4 +1,5 @@
 import type {
+  CanUseTool,
   PermissionMode,
   PermissionResult,
   PermissionUpdate
@@ -16,11 +17,13 @@ import {
   type SidecarSessionSettings
 } from "./sessionSettings.ts";
 
-export type ToolPermissionOptions = {
-  readonly signal: AbortSignal;
-  readonly suggestions?: PermissionUpdate[];
-  readonly toolUseID?: string;
-};
+type ClaudeSDKToolPermissionOptions = Parameters<CanUseTool>[2];
+
+export type ToolPermissionOptions = Pick<
+  ClaudeSDKToolPermissionOptions,
+  "signal"
+> &
+  Partial<Omit<ClaudeSDKToolPermissionOptions, "signal">>;
 
 type InteractiveSubmission = {
   readonly requestId: string;
@@ -242,6 +245,7 @@ export class InteractiveCoordinator {
   ): Promise<InteractiveSubmission> {
     const requestId = crypto.randomUUID();
     const toolUseID = callbackOptions.toolUseID || requestId;
+    const agentId = stringValue(callbackOptions.agentID);
     const turnId =
       this.resolveTurnId(callbackOptions) || this.activateSyntheticTurn();
     const request = new Promise<InteractiveSubmission>((resolve, reject) => {
@@ -267,6 +271,7 @@ export class InteractiveCoordinator {
         requestId,
         toolCallId: toolUseID,
         toolName,
+        ...(agentId ? { agentId } : {}),
         input: toolInput,
         options,
         toolCall: {
