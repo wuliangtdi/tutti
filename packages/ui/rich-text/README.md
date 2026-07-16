@@ -92,18 +92,28 @@ interface RichTextTriggerProvider<TItem = unknown> {
   trigger: RichTextTrigger;
   boundary?: RichTextTriggerBoundary;
   query: (
-    input: RichTextTriggerQueryInput
+    input: RichTextTriggerQueryInput,
   ) => Promise<readonly TItem[]> | readonly TItem[];
+  queryGroups?: (
+    input: RichTextTriggerQueryInput,
+  ) =>
+    | Promise<RichTextTriggerGroupedQueryResult<TItem>>
+    | RichTextTriggerGroupedQueryResult<TItem>;
+  queryGroupPage?: (
+    input: RichTextTriggerGroupPageQueryInput,
+  ) =>
+    | Promise<RichTextTriggerQueryGroup<TItem>>
+    | RichTextTriggerQueryGroup<TItem>;
   getItemKey: (item: TItem) => string;
   getItemLabel: (item: TItem) => string;
   getItemSubtitle?: (item: TItem) => string | null | undefined;
   getItemIconUrl?: (
-    item: TItem
+    item: TItem,
   ) => string | null | undefined | Promise<string | null | undefined>;
   getItemKeywords?: (item: TItem) => readonly string[] | undefined;
   toInsertResult: (item: TItem) => RichTextTriggerInsertResult;
   resolveMention?: (
-    identity: RichTextMentionIdentity
+    identity: RichTextMentionIdentity,
   ) => Promise<RichTextMentionResolved | null> | RichTextMentionResolved | null;
 }
 ```
@@ -111,11 +121,16 @@ interface RichTextTriggerProvider<TItem = unknown> {
 Interpretation:
 
 - `query` decides what a trigger can mention
+- `queryGroups` optionally returns provider-owned groups with stable ids,
+  labels, query-scoped totals, and independent cursors; `queryGroupPage`
+  appends one cursor page without re-querying sibling groups
 - `getItemLabel` and `getItemSubtitle` decide the suggestion copy
 - `toInsertResult` maps a chosen item into a mention, markdown-link, or text
   insertion
 - `resolveMention` restores editor-only label or presentation data from the
   stored mention identity
+- group ids, labels, totals, and cursors are candidate-panel metadata only;
+  they must not be copied into mention identity, href, or persisted scope
 
 Mention data:
 
@@ -184,7 +199,7 @@ import { createTuttiExternalAtRichTextTriggerProviders } from "@tutti-os/workspa
 
 const providers = createTuttiExternalAtRichTextTriggerProviders({
   bridge: window.tuttiExternal,
-  providerIds: ["workspace-app", "agent-session"]
+  providerIds: ["workspace-app", "agent-session"],
 });
 ```
 
@@ -223,10 +238,10 @@ Minimum integration checklist:
          mention: {
            entityId: record.id,
            label: record.title,
-           scope: { ownerId: record.ownerId }
-         }
-       })
-     }
+           scope: { ownerId: record.ownerId },
+         },
+       }),
+     },
    ];
    ```
 
@@ -253,20 +268,20 @@ Minimum integration checklist:
          {
            id: "recent",
            label: t("mentions.recent"),
-           matches: (match) => match.item.bucket === "recent"
+           matches: (match) => match.item.bucket === "recent",
          },
          {
            id: "all",
            label: t("mentions.all"),
-           matches: (match) => match.item.bucket !== "recent"
-         }
-       ]
+           matches: (match) => match.item.bucket !== "recent",
+         },
+       ],
      },
      {
        id: "secondary",
        label: t("mentions.secondary"),
-       providerIds: ["secondary-record"]
-     }
+       providerIds: ["secondary-record"],
+     },
    ];
    ```
 
@@ -277,7 +292,7 @@ Minimum integration checklist:
      MentionPaletteFromState,
      buildMentionPaletteModelFromTriggerMatches,
      renderMentionRow,
-     richTextTriggerQueryMatchToMentionRowItem
+     richTextTriggerQueryMatchToMentionRowItem,
    } from "@tutti-os/ui-rich-text/at-panel";
 
    const state = buildMentionPaletteModelFromTriggerMatches({
@@ -285,7 +300,7 @@ Minimum integration checklist:
      categories,
      matches,
      loading,
-     query
+     query,
    });
 
    <MentionPaletteFromState
@@ -295,23 +310,23 @@ Minimum integration checklist:
      callbacks={{
        onActiveCategoryIdChange: setActiveCategoryId,
        onHighlightChange: setHighlightedKey,
-       onSelectItem: commitMatch
+       onSelectItem: commitMatch,
      }}
      labels={{
        empty: t("mentions.empty"),
-       loading: t("mentions.loading")
+       loading: t("mentions.loading"),
      }}
      hintLabels={{
        cycleFilter: t("mentions.switchCategory"),
-       moveSelection: t("mentions.switchSelection")
+       moveSelection: t("mentions.switchSelection"),
      }}
      maxHeightPx={360}
      renderItem={(match) =>
        renderMentionRow(
          richTextTriggerQueryMatchToMentionRowItem(match, {
            getDescription: (candidate) => candidate.subtitle,
-           renderLeading: (ctx) => renderAppSpecificLeading(ctx)
-         })
+           renderLeading: (ctx) => renderAppSpecificLeading(ctx),
+         }),
        )
      }
    />;

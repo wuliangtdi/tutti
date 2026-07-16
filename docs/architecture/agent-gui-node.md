@@ -3091,6 +3091,34 @@ App ids, descriptions, scopes, and CLI command metadata may enrich presentation
 or routing, but they must not produce search results that the visible app name
 cannot explain.
 
+Workspace-issue candidates use the rich-text provider's optional grouped query
+contract. The desktop provider first lists every daemon-ordered issue topic,
+loads each topic's first page with bounded concurrency, and returns one
+provider-owned group per non-empty topic. AgentGUI encodes the opaque topic id
+into a dynamic `issue-topic:*` presentation key, then atomically replaces the
+ordered group list for each debounced search. Each group owns its items,
+query-scoped total, cursor, and load-more status; loading or retrying one topic
+must not replace sibling groups or put the whole palette into loading state.
+
+```text
+Agent mention query identity
+  -> desktop workspace-issue grouped provider
+  -> daemon-ordered topic list
+  -> bounded first-page issue queries
+  -> atomic AgentGUI topic-group projection
+  -> one-topic cursor requests from expand actions
+```
+
+Browse topic groups participate in the existing 30-second
+stale-while-revalidate cache and shared in-flight dedupe. Successful browse
+pages merge into the cached topic group so reopening the palette preserves
+appended rows. Search groups remain request-scoped. Query, filter, workspace,
+close, and dispose transitions invalidate old first-page and page requests;
+`AbortSignal` is propagated through the desktop provider to the tuttid topic
+and issue-list requests, while request identity and cursor checks remain the
+final stale-response defense. Group metadata never changes the persisted
+`workspace-issue` mention URI or scope.
+
 Quick check:
 
 ```sh

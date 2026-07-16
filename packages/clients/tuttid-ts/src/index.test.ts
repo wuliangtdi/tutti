@@ -516,6 +516,46 @@ test("shared tuttid client lists workspace agent sessions with query params", as
   });
 });
 
+test("shared tuttid client forwards AbortSignal for issue topic and issue list requests", async () => {
+  const requests: Request[] = [];
+  const client = createTuttidClient({
+    fetch: async (input, init) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      const path = new URL(request.url).pathname;
+      return new Response(
+        JSON.stringify(
+          path.endsWith("/issue-topics")
+            ? { topics: [] }
+            : { issues: [], statusCounts: {}, totalCount: 0 }
+        ),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+  });
+  const abortController = new AbortController();
+
+  await client.listWorkspaceIssueTopics("ws-1", {
+    signal: abortController.signal
+  });
+  await client.listWorkspaceIssues(
+    "ws-1",
+    { pageSize: 10, searchQuery: "task", topicId: "topic-1" },
+    { signal: abortController.signal }
+  );
+
+  assert.deepEqual(
+    requests.map((request) => new URL(request.url).pathname),
+    ["/v1/workspaces/ws-1/issue-topics", "/v1/workspaces/ws-1/issues"]
+  );
+  abortController.abort();
+  assert.equal(
+    requests.every((request) => request.signal.aborted),
+    true
+  );
+});
+
 test("shared tuttid client lists section deletion candidates with pinned exclusion", async () => {
   let requestPath = "";
   let requestQueryEntries: Record<string, string> = {};

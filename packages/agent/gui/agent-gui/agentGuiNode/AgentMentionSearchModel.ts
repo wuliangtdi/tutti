@@ -8,6 +8,7 @@ import type {
   AgentMentionFilterId,
   AgentMentionGroup,
   AgentMentionGroupId,
+  AgentMentionIssueTopicGroup,
   AgentMentionRawGroups,
   AgentMentionTotalCounts
 } from "./AgentMentionSearchContracts";
@@ -38,9 +39,21 @@ export function buildAgentMentionGroups(input: {
   currentFilter: AgentMentionFilterId;
   currentQuery: string;
   expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
+  issueTopicGroups: readonly AgentMentionIssueTopicGroup[] | null;
   rawGroups: AgentMentionRawGroups;
   totalCounts: AgentMentionTotalCounts;
 }): AgentMentionGroup[] {
+  if (input.currentFilter === "issue" && input.issueTopicGroups !== null) {
+    return input.issueTopicGroups.map((group) => ({
+      id: group.id,
+      label: group.label,
+      items: group.items,
+      totalCount: group.totalCount,
+      visibleCount: group.items.length,
+      hasMore: group.nextPageToken !== null,
+      expandStatus: group.loadMoreStatus
+    }));
+  }
   const orderedGroupIds = groupIdsForFilter(input.currentFilter);
   return orderedGroupIds
     .map((groupId) => {
@@ -91,6 +104,48 @@ export function buildAgentMentionGroups(input: {
       } satisfies AgentMentionGroup;
     })
     .filter((group): group is AgentMentionGroup => group !== null);
+}
+
+export function cloneAgentMentionIssueTopicGroups(
+  groups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] | null {
+  return (
+    groups?.map((group) => ({ ...group, items: [...group.items] })) ?? null
+  );
+}
+
+export function issueTopicPaginationChanges(
+  groupsAtStart: readonly AgentMentionIssueTopicGroup[] | null,
+  currentGroups: readonly AgentMentionIssueTopicGroup[] | null
+): AgentMentionIssueTopicGroup[] {
+  if (!groupsAtStart || !currentGroups) {
+    return [];
+  }
+  const startingGroups = new Map(
+    groupsAtStart.map((group) => [group.id, group] as const)
+  );
+  return currentGroups.flatMap((group) => {
+    const startingGroup = startingGroups.get(group.id);
+    if (!startingGroup) {
+      return [];
+    }
+    const startingIssueIds = new Set(
+      startingGroup.items
+        .filter((item) => item.kind === "workspace-issue")
+        .map((item) => item.targetId)
+    );
+    const appendedItems = group.items.filter(
+      (item) =>
+        item.kind !== "workspace-issue" || !startingIssueIds.has(item.targetId)
+    );
+    if (
+      appendedItems.length === 0 &&
+      group.nextPageToken === startingGroup.nextPageToken
+    ) {
+      return [];
+    }
+    return [{ ...group, items: appendedItems }];
+  });
 }
 
 export function emptyAgentMentionRawGroups(): AgentMentionRawGroups {
