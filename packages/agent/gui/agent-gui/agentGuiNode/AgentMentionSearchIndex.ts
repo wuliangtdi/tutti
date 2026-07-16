@@ -20,7 +20,10 @@ import {
   WORKSPACE_ISSUE_PROVIDER_ID
 } from "./AgentMentionSearchContracts";
 import type { AgentMentionBrowseFetchResult } from "./AgentMentionSearchCache";
-import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import { referenceProvenanceFilterIsActive } from "@tutti-os/workspace-file-reference/core";
 
 export interface AgentMentionProviderQueryInput {
@@ -47,6 +50,7 @@ export async function fetchAgentMentionFilterResult(input: {
   fileLimit: number;
   currentFileSearchLimit: number;
   currentIssueSearchLimit: number;
+  provenanceCatalog?: ReferenceProvenanceCatalog | null;
   provenanceFilter: ReferenceProvenanceFilter | null;
   queryProviderMentionItemsById: (
     input: AgentMentionProviderQueryInput
@@ -110,7 +114,12 @@ export async function fetchAgentMentionFilterResult(input: {
         workspaceId: input.workspaceId,
         currentUserId: input.currentUserId,
         query: input.query,
-        limit: DEFAULT_SESSION_LIMIT,
+        // A provenance-aware host owns a room-scoped directory snapshot and
+        // grouping must see that complete snapshot. Legacy providers retain
+        // the bounded query contract.
+        limit: input.provenanceCatalog?.enabledDimensions.includes("agent")
+          ? undefined
+          : DEFAULT_SESSION_LIMIT,
         sessionCwd: input.sessionCwd,
         diagnostics: providerDiagnostics,
         provenanceFilter: input.provenanceFilter

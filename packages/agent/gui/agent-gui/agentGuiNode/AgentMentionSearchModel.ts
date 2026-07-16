@@ -23,7 +23,10 @@ import {
   type AgentMentionLifecycleDiagnosticLog
 } from "./AgentMentionSearchContracts";
 import { presentAgentGeneratedFileMentionItems } from "./agentMentionAgentGeneratedFilesPresentation";
-import type { ReferenceProvenanceCatalog } from "@tutti-os/workspace-file-reference/contracts";
+import type {
+  ReferenceProvenanceCatalog,
+  ReferenceProvenanceFilter
+} from "@tutti-os/workspace-file-reference/contracts";
 import {
   buildEmptyGroup,
   compactText,
@@ -44,6 +47,7 @@ export function buildAgentMentionGroups(input: {
   rawGroups: AgentMentionRawGroups;
   totalCounts: AgentMentionTotalCounts;
   provenanceCatalog: ReferenceProvenanceCatalog | null;
+  provenanceFilter: ReferenceProvenanceFilter | null;
 }): AgentMentionGroup[] {
   if (input.currentFilter === "issue" && input.issueTopicGroups !== null) {
     return input.issueTopicGroups.map((group) => ({
@@ -158,6 +162,7 @@ function buildSessionProvenanceGroups(input: {
   currentFilter: AgentMentionFilterId;
   expandedCounts: Partial<Record<AgentMentionGroupId, number>>;
   provenanceCatalog: ReferenceProvenanceCatalog | null;
+  provenanceFilter: ReferenceProvenanceFilter | null;
   rawGroups: AgentMentionRawGroups;
 }): AgentMentionGroup[] | null {
   if (
@@ -166,33 +171,98 @@ function buildSessionProvenanceGroups(input: {
   ) {
     return null;
   }
+  const selectedAgentTargetIds = input.provenanceFilter?.agentTargetIds ?? null;
+  const selectedAgentTargetIdSet =
+    selectedAgentTargetIds === null ? null : new Set(selectedAgentTargetIds);
   const sessionItems = input.rawGroups.sessions.filter(
-    (item) => item.kind === "session"
+    (item) =>
+      item.kind === "session" &&
+      (selectedAgentTargetIdSet === null ||
+        (item.agentTargetId
+          ? selectedAgentTargetIdSet.has(item.agentTargetId)
+          : false))
   );
-  return input.provenanceCatalog.agentOptions.flatMap((option) => {
-    const items = sessionItems.filter(
-      (item) => item.kind === "session" && item.agentTargetId === option.id
-    );
-    if (items.length === 0) {
-      return [];
-    }
-    const groupId = agentProvenanceMentionGroupId(option.id);
-    const pageSize = mentionGroupPageSize(input.currentFilter, groupId);
-    const visibleCount = Math.min(
-      items.length,
-      input.expandedCounts[groupId] ?? pageSize
-    );
-    return [
-      {
-        id: groupId,
-        label: option.label,
-        items: items.slice(0, visibleCount),
-        totalCount: items.length,
-        visibleCount,
-        hasMore: items.length > visibleCount
+  const catalogAgentTargetIds = new Set(
+    input.provenanceCatalog.agentOptions.map((option) => option.id)
+  );
+  const catalogGroups = input.provenanceCatalog.agentOptions.flatMap(
+    (option) => {
+      const items = sessionItems.filter(
+        (item) => item.kind === "session" && item.agentTargetId === option.id
+      );
+      if (items.length === 0) {
+        return [];
       }
-    ];
-  });
+      const groupId = agentProvenanceMentionGroupId(option.id);
+      const pageSize = mentionGroupPageSize(input.currentFilter, groupId);
+      const visibleCount = Math.min(
+        items.length,
+        input.expandedCounts[groupId] ?? pageSize
+      );
+      return [
+        {
+          id: groupId,
+          label: option.label,
+          items: items.slice(0, visibleCount),
+          totalCount: items.length,
+          visibleCount,
+          hasMore: items.length > visibleCount
+        }
+      ];
+    }
+  );
+  if (selectedAgentTargetIdSet !== null) {
+    return catalogGroups;
+  }
+  const unmatchedGroups = new Map<
+    string,
+    { id: `agent:${string}`; label: string; items: AgentContextMentionItem[] }
+  >();
+  for (const item of sessionItems) {
+    if (
+      item.kind !== "session" ||
+      (item.agentTargetId && catalogAgentTargetIds.has(item.agentTargetId))
+    ) {
+      continue;
+    }
+    const identity =
+      item.agentTargetId?.trim() ||
+      item.agentName.trim() ||
+      item.initiatorName.trim() ||
+      item.targetId;
+    const key = `uncatalogued:${identity}`;
+    const existing = unmatchedGroups.get(key);
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+    unmatchedGroups.set(key, {
+      id: agentProvenanceMentionGroupId(key),
+      label:
+        item.agentName.trim() ||
+        item.initiatorName.trim() ||
+        item.agentTargetId?.trim() ||
+        item.title,
+      items: [item]
+    });
+  }
+  return [
+    ...catalogGroups,
+    ...[...unmatchedGroups.values()].map((group) => {
+      const pageSize = mentionGroupPageSize(input.currentFilter, group.id);
+      const visibleCount = Math.min(
+        group.items.length,
+        input.expandedCounts[group.id] ?? pageSize
+      );
+      return {
+        ...group,
+        items: group.items.slice(0, visibleCount),
+        totalCount: group.items.length,
+        visibleCount,
+        hasMore: group.items.length > visibleCount
+      };
+    })
+  ];
 }
 
 export function agentProvenanceMentionGroupId(

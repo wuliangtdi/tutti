@@ -678,7 +678,8 @@ export class AgentMentionSearchControllerBase {
       rawGroups: this.rawGroups,
       totalCounts: this.totalCounts,
       issueTopicGroups: this.issueTopicGroups,
-      provenanceCatalog: this.currentProvenanceCatalog
+      provenanceCatalog: this.currentProvenanceCatalog,
+      provenanceFilter: this.currentProvenanceFilter
     });
   }
 
@@ -755,6 +756,7 @@ export class AgentMentionSearchControllerBase {
       fileLimit: this.fileLimit,
       currentFileSearchLimit: this.currentFileSearchLimit,
       currentIssueSearchLimit: this.currentIssueSearchLimit,
+      provenanceCatalog: this.currentProvenanceCatalog,
       provenanceFilter,
       queryProviderMentionGroupsById: (queryInput) =>
         this.queryProviderMentionGroupsById({ ...queryInput, abortSignal }),

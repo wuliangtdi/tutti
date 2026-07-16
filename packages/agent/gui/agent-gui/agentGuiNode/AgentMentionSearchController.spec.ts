@@ -297,7 +297,11 @@ function createTestSessionProvider(
         workspaceId,
         sessionOrigin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME"
       });
-      const sessions = (snapshot.sessions ?? []).slice(0, maxResults);
+      const allSessions = snapshot.sessions ?? [];
+      const sessions =
+        maxResults === undefined
+          ? allSessions
+          : allSessions.slice(0, maxResults);
       const userIds = [
         ...new Set(
           sessions
@@ -560,6 +564,13 @@ describe("AgentMentionSearchController", () => {
     const controller = new AgentMentionSearchController({
       querySessions: vi.fn().mockResolvedValue({
         sessions: [
+          ...Array.from({ length: 31 }, (_, index) => ({
+            agentSessionId: `session-local-${index}`,
+            agentTargetId: "codex-main",
+            provider: "codex",
+            title: `Local build ${index}`,
+            userId: "user-1"
+          })),
           {
             agentSessionId: "session-shared",
             agentTargetId: "shared-agent:shared-codex",
@@ -568,11 +579,11 @@ describe("AgentMentionSearchController", () => {
             userId: "user-2"
           },
           {
-            agentSessionId: "session-local",
-            agentTargetId: "codex-main",
-            provider: "codex",
-            title: "Local build",
-            userId: "user-1"
+            agentSessionId: "session-uncatalogued",
+            agentTargetId: "legacy-gemini",
+            provider: "gemini",
+            title: "Legacy build",
+            userId: "user-3"
           }
         ]
       })
@@ -605,11 +616,43 @@ describe("AgentMentionSearchController", () => {
           {
             id: "agent:codex-main",
             label: "Me · Codex",
-            items: [expect.objectContaining({ targetId: "session-local" })]
+            items: expect.arrayContaining([
+              expect.objectContaining({ targetId: "session-local-0" })
+            ]),
+            totalCount: 31,
+            hasMore: true
           },
           {
             id: "agent:shared-agent%3Ashared-codex",
             label: "Lin · Codex",
+            items: [expect.objectContaining({ targetId: "session-shared" })]
+          },
+          {
+            id: "agent:uncatalogued%3Alegacy-gemini",
+            label: "gemini",
+            items: [
+              expect.objectContaining({ targetId: "session-uncatalogued" })
+            ]
+          }
+        ]
+      })
+    );
+    controller.expandGroup("agent:codex-main");
+    expect(
+      (
+        states.at(-1) as { groups: Array<{ id: string; items: unknown[] }> }
+      ).groups.find((group) => group.id === "agent:codex-main")?.items
+    ).toHaveLength(20);
+    controller.setProvenanceFilter({
+      agentTargetIds: ["shared-agent:shared-codex"],
+      memberIds: null
+    });
+    await vi.waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        groups: [
+          {
+            id: "agent:shared-agent%3Ashared-codex",
             items: [expect.objectContaining({ targetId: "session-shared" })]
           }
         ]
