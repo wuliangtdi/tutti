@@ -104,7 +104,7 @@ func TestSQLiteStoreReadsCommittedDataWhileWriterConnectionIsBusy(t *testing.T) 
 	if err != nil {
 		t.Fatalf("BeginTx() error = %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, "UPDATE workspaces SET name = ? WHERE id = ?", "Uncommitted", workspaceID); err != nil {
 		t.Fatalf("hold writer transaction: %v", err)
 	}

@@ -23,7 +23,7 @@ var _ agentactivitybiz.Repository = (*SQLiteStore)(nil)
 const legacyIDLocalCodex = "local-codex"
 const legacyIDLocalClaudeCode = "local-claude-code"
 
-func (s *SQLiteStore) newAgentStore(db *sql.DB) *agentstore.Store {
+func newAgentStore(db *sql.DB) *agentstore.Store {
 	return agentstore.New(db, agentstore.Options{
 		WorkspaceExists: func(ctx context.Context, workspaceID string) error {
 			return ensureWorkspaceExistsOn(ctx, db, workspaceID)
