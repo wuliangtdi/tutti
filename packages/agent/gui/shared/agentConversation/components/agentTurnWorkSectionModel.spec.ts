@@ -61,7 +61,10 @@ describe("agentTurnWorkSectionModel", () => {
         userRow(),
         assistantRow({
           id: "assistant-row",
-          messages: [message("draft", null), message("final", "Final answer")],
+          messages: [
+            message("draft", null),
+            message("final", "Final answer", true)
+          ],
           thinking: [thinking("Inspecting files")]
         }),
         toolRow(),
@@ -83,9 +86,65 @@ describe("agentTurnWorkSectionModel", () => {
     const finalRow = model.finalRows[0]?.row;
     expect(finalRow?.kind).toBe("message");
     if (finalRow?.kind === "message") {
+      expect(finalRow.id).toBe("assistant-row");
       expect(finalRow.messages.map((item) => item.body)).toEqual(["final"]);
       expect(finalRow.thinking).toEqual([]);
     }
+    expect(model.workRowsBeforeFinal[0]?.renderKey).toBe(
+      "assistant-row:turn-work-before"
+    );
+    expect(model.finalRows[0]?.renderKey).toBe("assistant-row:turn-final");
+  });
+
+  it("uses an explicit final-text marker instead of copy availability", () => {
+    const model = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow(),
+        toolRow(),
+        assistantRow({
+          messages: [message("Visible final answer", null, true)]
+        })
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        settledAtUnixMs: 15_000
+      })
+    );
+
+    expect(model.collapseEligible).toBe(true);
+    expect(model.finalRows).toHaveLength(1);
+    expect(model.finalRows[0]?.row.kind).toBe("message");
+  });
+
+  it("fails open when no visible final text is explicitly marked", () => {
+    const copyOnly = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow(),
+        toolRow(),
+        assistantRow({ messages: [message("Copy only", "Copy only")] })
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        settledAtUnixMs: 15_000
+      })
+    );
+    const blankMarked = buildAgentTurnWorkSectionModel(
+      turnGroup([
+        userRow(),
+        toolRow(),
+        assistantRow({ messages: [message("   ", null, true)] })
+      ]),
+      canonicalTurn({
+        phase: "settled",
+        outcome: "completed",
+        settledAtUnixMs: 15_000
+      })
+    );
+
+    expect(copyOnly.collapseEligible).toBe(false);
+    expect(blankMarked.collapseEligible).toBe(false);
   });
 
   it("does not offer auto-collapse for abnormal or artifact-first turns", () => {
@@ -129,7 +188,7 @@ describe("agentTurnWorkSectionModel", () => {
                   retryable: false
                 }
               },
-              message("final", "Final answer")
+              message("final", "Final answer", true)
             ]
           })
         ]),
@@ -200,14 +259,18 @@ function assistantRow(
     id: "assistant-row",
     turnId: "turn-1",
     speaker: "assistant",
-    messages: [message("Final answer", "Final answer")],
+    messages: [message("Final answer", "Final answer", true)],
     thinking: [],
     occurredAtUnixMs: 14_000,
     ...overrides
   };
 }
 
-function message(body: string, copyText: string | null) {
+function message(
+  body: string,
+  copyText: string | null,
+  isTurnFinalText = false
+) {
   return {
     kind: "message-content" as const,
     id: `message:${body}`,
@@ -215,6 +278,7 @@ function message(body: string, copyText: string | null) {
     body,
     presentationKind: "content" as const,
     copyText,
+    ...(isTurnFinalText ? { isTurnFinalText: true as const } : {}),
     occurredAtUnixMs: 14_000
   };
 }
