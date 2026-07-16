@@ -233,7 +233,7 @@ describe("useAgentGuiConversationList", () => {
     expect(result.current?.conversations[0]).toEqual(
       expect.objectContaining({
         title: "@Previous chat 看看",
-        titleLeadingMentionKind: "session"
+        titleLeadingMentionKind: null
       })
     );
   });

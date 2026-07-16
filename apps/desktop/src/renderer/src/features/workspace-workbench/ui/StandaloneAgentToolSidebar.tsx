@@ -161,6 +161,7 @@ export function StandaloneAgentToolSidebar({
     activeTabId !== null && contentReadyTabIds.includes(activeTabId);
   const shouldAnimateSidebarLayout =
     state.mountedTabs.length === 0 || isActivePanelContentReady;
+  const shouldAnimateSidebarWidth = isEmptySidebarSurface;
   const {
     activePanelLayoutWidth,
     activePanelMaxWidth,
@@ -541,7 +542,7 @@ export function StandaloneAgentToolSidebar({
             aria-hidden={!isSidebarOpen}
             className={cn(
               "relative h-full min-h-0 shrink-0 overflow-hidden [contain:layout_paint]",
-              shouldAnimateSidebarLayout &&
+              shouldAnimateSidebarWidth &&
                 "motion-safe:transition-[width] motion-safe:duration-[260ms] motion-safe:ease-in-out motion-reduce:transition-none",
               isActivePanelExpanded && "border-l border-[var(--line-1)]",
               !isSidebarOpen && "pointer-events-none"

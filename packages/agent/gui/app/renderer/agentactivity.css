@@ -3616,6 +3616,9 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-send-button
   .agent-gui-conversation__interactive-option-spinner {
   position: static;
+  top: auto;
+  right: auto;
+  transform: none;
 }
 
 .agent-gui-conversation__interactive-prompt-footer {
@@ -3930,6 +3933,14 @@ aside.workspace-agents-status-panel
 .workspace-agents-status-panel__detail-user-message .tsh-agent-object-token {
   font-size: inherit;
   overflow: visible;
+}
+
+.workspace-agents-status-panel__detail-user-message
+  .agent-rich-text-mention-node {
+  /* Avoid a percentage max-width feeding the mention's untruncated intrinsic
+     width back into the fit-content message bubble. The nested pill still
+     shrinks against this wrapper when the available line is narrower. */
+  max-width: var(--agent-mention-max-width, 16rem);
 }
 
 .workspace-agents-status-panel__detail-user-message

@@ -13,11 +13,8 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
-  AgentSessionsIcon,
   FileIcon,
   IssueIcon,
-  NavAgentsIcon,
-  NavApplicationsLinedIcon,
   NewWorkspaceLinedIcon,
   cn
 } from "@tutti-os/ui-system";
@@ -43,6 +40,10 @@ import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import styles from "../AgentGUINode.styles";
 import { conversationPlainTitle } from "./agentGUIViewUtils";
+import {
+  isAgentGUIConversationTitleIconMentionKind,
+  type AgentGUIConversationTitleIconMentionKind
+} from "../../../shared/agentConversationTitleProjection";
 
 function agentGUIConversationIconUrl(
   provider: string | undefined,
@@ -68,7 +69,11 @@ function agentGUIConversationRailTitle(
   uiLanguage: UiLanguage
 ): string {
   const title = conversationPlainTitle(item, labels, uiLanguage);
-  return item.titleLeadingMentionKind ? title.replace(/^@\s*/, "") : title;
+  return isAgentGUIConversationTitleIconMentionKind(
+    item.titleLeadingMentionKind
+  )
+    ? title.replace(/^@\s*/, "")
+    : title;
 }
 
 interface AgentGUIConversationRailItemProps {
@@ -299,7 +304,9 @@ export const AgentGUIConversationRailItem = memo(
                 }
               />
             ) : null}
-            {item.titleLeadingMentionKind ? (
+            {isAgentGUIConversationTitleIconMentionKind(
+              item.titleLeadingMentionKind
+            ) ? (
               <span
                 aria-hidden="true"
                 className={styles.conversationTitleMentionIcon}
@@ -469,15 +476,10 @@ export const AgentGUIConversationRailItem = memo(
 function ConversationTitleMentionIcon({
   kind
 }: {
-  kind: NonNullable<
-    AgentGUINodeViewModel["rail"]["conversations"][number]["titleLeadingMentionKind"]
-  >;
+  kind: AgentGUIConversationTitleIconMentionKind;
 }): ReactNode {
   if (kind === "task") return <IssueIcon />;
-  if (kind === "app") return <NavApplicationsLinedIcon />;
-  if (kind === "file") return <FileIcon />;
-  if (kind === "agent") return <NavAgentsIcon />;
-  return <AgentSessionsIcon />;
+  return <FileIcon />;
 }
 
 export function AgentGUIProjectRailHeader({

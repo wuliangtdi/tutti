@@ -383,14 +383,22 @@ test("standalone Agent hides internal open-with actions without changing the OS 
   );
 });
 
-test("standalone Agent right sidebar reserves layout animation for empty or ready content", () => {
+test("standalone Agent right sidebar keeps tool-switch layout width stable", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
     /const shouldAnimateSidebarLayout =\s*state\.mountedTabs\.length === 0 \|\| isActivePanelContentReady/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /shouldAnimateSidebarLayout &&\s+"motion-safe:transition-\[width\] motion-safe:duration-\[260ms\] motion-safe:ease-in-out motion-reduce:transition-none"/
+    /const shouldAnimateSidebarWidth = isEmptySidebarSurface;/
+  );
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /shouldAnimateSidebarWidth &&\s+"motion-safe:transition-\[width\] motion-safe:duration-\[260ms\] motion-safe:ease-in-out motion-reduce:transition-none"/
+  );
+  assert.doesNotMatch(
+    standaloneAgentToolSidebarSource,
+    /shouldAnimateSidebarLayout &&\s+"motion-safe:transition-\[width\]/
   );
   assert.match(
     standaloneAgentToolSidebarSource,

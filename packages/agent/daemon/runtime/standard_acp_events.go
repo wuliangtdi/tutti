@@ -299,6 +299,9 @@ func standardACPPermissionRequested(
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return nil, nil, fmt.Errorf("invalid permission request: %w", err)
 	}
+	if adapter != nil && adapter.config.filterPermissionOptions != nil {
+		params.Options = adapter.config.filterPermissionOptions(params.Options)
+	}
 	requestID := acpRequestID(rawRequestID)
 	if requestID == "" {
 		return nil, nil, errors.New("permission request id is required")
@@ -328,6 +331,10 @@ func standardACPPermissionRequested(
 	rawToolCallID := asString(params.ToolCall["toolCallId"])
 	knownInput := normalizer.KnownToolCallInput(rawToolCallID)
 	input := normalizedApprovalInput(params.ToolCall, params.Options, requestID, knownInput)
+	approvalPurpose := ""
+	if interactivePrompt == nil {
+		approvalPurpose = normalizedApprovalPurpose(params.ToolCall)
+	}
 	payload := map[string]any{
 		"callId":   callID,
 		"callType": "approval",
@@ -335,6 +342,9 @@ func standardACPPermissionRequested(
 		"toolName": "Approval",
 		"status":   status,
 		"input":    input,
+	}
+	if approvalPurpose != "" {
+		payload["approvalPurpose"] = approvalPurpose
 	}
 	if interactivePrompt != nil {
 		callType = "interactive"
@@ -361,19 +371,20 @@ func standardACPPermissionRequested(
 		}
 	}
 	pending := &pendingACPApproval{
-		agentSessionID: strings.TrimSpace(session.AgentSessionID),
-		turnID:         strings.TrimSpace(turnID),
-		requestID:      requestID,
-		eventID:        newID(),
-		callID:         callID,
-		callType:       callType,
-		input:          input,
-		kind:           firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
-		name:           title,
-		toolName:       firstNonEmpty(asString(payload["toolName"]), title),
-		prompt:         interactivePrompt,
-		options:        params.Options,
-		response:       make(chan pendingInteractiveResponse, 1),
+		agentSessionID:  strings.TrimSpace(session.AgentSessionID),
+		turnID:          strings.TrimSpace(turnID),
+		requestID:       requestID,
+		eventID:         newID(),
+		callID:          callID,
+		callType:        callType,
+		input:           input,
+		kind:            firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
+		approvalPurpose: approvalPurpose,
+		name:            title,
+		toolName:        firstNonEmpty(asString(payload["toolName"]), title),
+		prompt:          interactivePrompt,
+		options:         params.Options,
+		response:        make(chan pendingInteractiveResponse, 1),
 	}
 	adapter.storePendingApproval(pending)
 	return []activityshared.Event{

@@ -309,6 +309,38 @@ export function resolveStandaloneAgentToolSidebarWidth(input: {
   });
 }
 
+export function resolveStandaloneAgentToolPanelPreferredWidth(input: {
+  isExpanded: boolean;
+  manuallyResizedWidth?: number | null;
+  panelWidth: number;
+}): number {
+  if (
+    !input.isExpanded &&
+    typeof input.manuallyResizedWidth === "number" &&
+    Number.isFinite(input.manuallyResizedWidth)
+  ) {
+    return input.manuallyResizedWidth;
+  }
+  return input.panelWidth;
+}
+
+export function shouldResizeStandaloneAgentToolWindow(input: {
+  currentWidth: number;
+  lastResize?: {
+    actualWidth: number;
+    requestedWidth: number;
+  } | null;
+  requestedWidth: number;
+}): boolean {
+  if (input.currentWidth === input.requestedWidth) {
+    return false;
+  }
+  return !(
+    input.lastResize?.requestedWidth === input.requestedWidth &&
+    input.lastResize.actualWidth === input.currentWidth
+  );
+}
+
 export function resolveStandaloneAgentToolSidebarLayoutWidth(input: {
   baselineViewportWidth: number;
   panelWidth: number;

@@ -659,6 +659,14 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   `rail_visible_session_count` as the target-scoped total across requested
   sections and `returned_session_count` as only the bounded first-page rows;
   neither requires another full-workspace count query.
+  For provider switching, inspect `agent_gui.provider_switch.completed` or
+  `agent_gui.provider_switch.failed`. They report source/target ids, fresh/stale/
+  miss cache status, request time, controller-apply time, and total controller
+  readiness time. Correlate target and timestamp with
+  `agent.composer_options.load`, which records composer transport duration and
+  status. A fresh rail hit with no composer transport indicates both caches were
+  reused; a long rail request isolates section loading, while a long composer
+  event isolates target option discovery.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
@@ -884,6 +892,45 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
   [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
+### Cursor deleted files appear as created or modified
+
+- Symptom:
+  After Cursor deletes a file, the settled turn's changed-files summary or tool
+  detail labels it as created or modified instead of deleted.
+- Quick checks:
+  Inspect the original completed ACP tool payload, its following `turn.updated`
+  event, and the durable turn row. Cursor reports deletion with ACP
+  `kind = delete`, but its canonical tool name is still `Write`. The
+  `turn.updated.metadata.fileChanges.files[]` entry and durable
+  `file_changes_json` must both say `change = deleted`.
+- Root cause:
+  The canonical tool name describes the file-writing tool family, not the
+  change direction. Inferring every `Write` as creation discards Cursor's
+  explicit ACP delete semantic. A second failure mode is normalizing the tool
+  call correctly but omitting canonical `fileChanges` from the subsequent turn
+  state patch, leaving AgentGUI without its authoritative response-tail input.
+- Fix:
+  Normalize recognized provider change kinds inside the shared runtime
+  file-change projector, accumulate the result per turn, and persist it through
+  `turn.updated`. The session-detail response must return all durable root turns,
+  and the desktop reconcile bridge must insert them into the existing activity
+  engine turn store. AgentGUI reads only the matching canonical turn's
+  `fileChanges`; do not add Cursor/ACP/Codex/Claude field inference to
+  conversation projection. Keep tool `changes` payloads independently for
+  Undo/Reapply patch batches. Do not backfill sessions whose historical turns
+  have no canonical file changes.
+- Validation:
+  Cover the Cursor completed-call to `turn.updated` path, durable turn state,
+  and canonical AgentGUI projection. Also cover Codex `changes[].kind.type` and
+  Claude Code started/completed tool merging because all three providers share
+  the same turn-level contract.
+- References:
+  [tool_file_changes.go](../../../packages/agent/daemon/runtime/tool_file_changes.go)
+  [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
+  [reporter_message.go](../../../packages/agent/daemon/runtime/reporter_message.go)
+  [reporter_state.go](../../../packages/agent/daemon/runtime/reporter_state.go)
+  [agentTurnSummaryProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts)
+
 ### Remote agent cancel does not stop the local turn
 
 - Symptom:
@@ -963,6 +1010,47 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_turn_state.go](../../../packages/agent/daemon/runtime/controller_turn_state.go)
   [acp_turn_normalizer.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer.go)
   [acp_turn_normalizer_snapshots.go](../../../packages/agent/daemon/runtime/acp_turn_normalizer_snapshots.go)
+
+### Claude Code starts another command after Stop
+
+- Symptom:
+  User stops a Claude Code turn after a Bash command becomes a background task.
+  The turn settles as canceled, but background completion is followed by a new
+  assistant continuation, approval, or Bash command such as `ls`. The new
+  provider id may be synthetic even though no sub-agent exists.
+- Quick checks:
+  Correlate provider session id, canonical root turn id, and sidecar events. If
+  a background `task_notification` arrives after `turn_canceled`, followed by
+  synthetic `turn_started` or `approval_requested`, inspect SDK Query lifetime.
+  Confirm the exported session has no child-session relation before classifying
+  the continuation as a sub-agent.
+- Root cause:
+  Claude Agent SDK `interrupt()` stops current query execution but does not
+  terminate the Query or all background resources. Reusing that Query lets a
+  late background completion trigger another root inference. Filtering the
+  synthetic event in AgentGUI or daemon persistence is too late: provider code
+  may already have requested or executed the tool, especially under
+  `bypassPermissions`.
+- Fix:
+  Treat each SDK Query as an execution generation. Cancel revokes the generation
+  before calling the SDK, rejects its pending interactions, awaits the interrupt
+  acknowledgment, then closes it in cleanup. Fence messages, hooks, and
+  `canUseTool` by generation identity. Give the next real user prompt a fresh
+  prompt queue and Query using `resume: providerSessionId`. Consume a canceled
+  generation's replayed terminal task notification and paired result before
+  they can settle the new canonical Turn. Keep normal non-canceled child
+  completion continuations enabled. As defense in depth, reject a new pending
+  Interaction whose canonical owning Turn is already settled.
+- Validation:
+  Run `pnpm --filter @tutti-os/claude-sdk-sidecar test` and
+  `go test ./packages/agent/store-sqlite -run 'TestUpsertInteractionRejectsNewPendingRequestOnSettledTurn'`.
+  Cover default and `bypassPermissions`, assert no synthetic turn, approval, or
+  tool permission after cancel, then assert a new real prompt resumes the same
+  provider session.
+- References:
+  [sessionRuntime.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.ts)
+  [queryGeneration.ts](../../../packages/agent/claude-sdk-sidecar/src/queryGeneration.ts)
+  [activity_turns.go](../../../packages/agent/store-sqlite/activity_turns.go)
 
 ### AgentGUI freezes when session history is large
 
@@ -1262,6 +1350,79 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [controller_session_lifecycle.go](../../packages/agent/daemon/runtime/controller_session_lifecycle.go)
   [agent_runtime_adapter.go](../../services/tuttid/agent_runtime_adapter.go)
 
+### AgentGUI cannot stop Cursor immediately after the first message
+
+- Symptom:
+  The first Cursor message enters an activating state, but Stop is absent or
+  does nothing until a canonical session and Turn appear. Codex and Claude Code
+  often appear unaffected because their startup completes before a user can hit
+  the same window.
+- Quick checks:
+  Correlate the activation request with process spawn, ACP `initialize`,
+  `session/new`, and the first Turn. If Stop becomes available only after the
+  Turn id is known, the UI and engine are treating cancellation as turn-only.
+  Also inspect failed-create cleanup after request cancellation for provisional
+  runtime state left under the session id.
+- Root cause:
+  New-session activation is an abortable engine command before it becomes a
+  canonical Turn. A turn-only Stop gate cannot target that command, and a cancel
+  operation stored only under existing session entities is lost on an empty
+  reconciliation snapshot. Cleanup that reuses the canceled request context
+  can then fail to close the provisional runtime.
+- Fix:
+  Dispatch one provider-neutral session Stop intent. Abort the exact activation
+  command by command id, preserve a detached workspace/session-scoped
+  `awaitingTurn` cancel through snapshots, and convert it to exact-turn cancel
+  when the first Turn arrives. Expire the detached operation after a bounded
+  window. Run failed-create close and cleanup with a bounded context detached
+  from request cancellation.
+- Validation:
+  Cover immediate activation abort, empty-snapshot preservation, late first-Turn
+  cancel, expiry before an unrelated future Turn, and identical lifecycle
+  behavior for Cursor, Codex, and Claude Code. Verify AgentGUI exposes Stop
+  while new-conversation activation is still submitting.
+- References:
+  [createAgentSessionEngine.ts](../../../packages/agent/activity-core/src/engine/createAgentSessionEngine.ts)
+  [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [useAgentGUIDetailModel.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUIDetailModel.tsx)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+
+### Cursor session/new is canceled before its 30-second timeout
+
+- Symptom:
+  Sending the first message to Cursor leaves AgentGUI activating until Tutti
+  reports a timeout. Cursor logs show `session/new` started, but it is canceled
+  substantially before the ACP runtime's configured 30-second deadline.
+- Quick checks:
+  Correlate `service.create.entered`, provider-status completion,
+  `runtime_start_requested`, ACP `initialize`, and `session/new`. If a full
+  provider-status probe runs inside `Service.Create`, or the renderer activation
+  expires 30 seconds after the click rather than 30 seconds after `session/new`
+  starts, the protocol call is receiving only a leftover budget.
+- Root cause:
+  Provider readiness was treated as a per-session precondition even though it
+  performs application-scoped binary, version, and auth detection. Cursor auth
+  fallback commands can consume several seconds before ACP starts. An outer
+  30-second activation timer then propagates cancellation into the daemon and
+  truncates the independent 30-second `session/new` timeout.
+- Fix:
+  Cache provider readiness in `tuttid` per provider with completion-time TTL and
+  single-flight refresh. Explicit setup refreshes bypass that cache; ordinary
+  session creation does not run status, version, auth, network, or hidden model
+  discovery. Let the actual process spawn and ACP handshake be authoritative.
+  Give new-session activation a larger outer safety deadline while preserving
+  the ACP runtime's own 30-second `session/new` deadline.
+- Validation:
+  Cover cache reuse across all-provider and single-provider requests, forced
+  refresh, concurrent single-flight reads, absence of availability checks from
+  `Service.Create`, and a new-session activation timeout larger than 30 seconds.
+- References:
+  [status_cache.go](../../../services/tuttid/service/agentstatus/status_cache.go)
+  [service.go](../../../services/tuttid/service/agent/service.go)
+  [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
+  [acp_shared.go](../../../packages/agent/daemon/runtime/acp_shared.go)
+
 ### Cursor auto-continue invents interrupted work after a network drop
 
 - Symptom:
@@ -1361,7 +1522,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   The Agent GUI composer never shows context usage even though provider usage
   logs are present. Alternatively, Claude Code GUI usage shows a 200k context
   window for a model that should have 1M context, or a 200k model keeps showing
-  the prior 1M total after a model switch.
+  the prior 1M total after a model switch. After one Claude Code request runs
+  several tools, the used-token count may also jump from the latest iteration's
+  value to nearly the sum of every iteration in that turn.
 - Quick checks:
   Trace the provider update first: use
   `agent_session.claude_sdk.usage_update` for Claude SDK and
@@ -1377,7 +1540,10 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   model-usage context window. If `previous_context_model` and
   `current_context_model` differ but `current_total_tokens` equals
   `previous_total_tokens`, daemon usage normalization reused a stale context
-  window across models.
+  window across models. For a tool-loop spike, compare the streamed
+  `normalized_used_tokens` values with the final Result update. If the final
+  value equals their sum, the cumulative Result usage was mistaken for current
+  context occupancy.
 - Root cause:
   Protocol v2 intentionally removed raw `runtimeContext` from the public
   session model. If the refactor removes that legacy field without adding a
@@ -1388,7 +1554,13 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   keyed by model id, for example
   `modelUsage["claude-sonnet-5"].contextWindow`. If either sidecar or daemon
   only parses array-shaped `modelUsage`, the context-window total is missing and
-  daemon normalization falls back to 200k.
+  daemon normalization falls back to 200k. Claude SDK Result `usage` is
+  cumulative across the model iterations in a client-side tool loop, whereas
+  each streamed usage update describes one iteration. The authoritative
+  `Query.getContextUsage()` snapshot must therefore win at Result time. Calling
+  that method after detaching it from the Query object loses its `this` binding;
+  if the best-effort error is swallowed, the cumulative fallback remains
+  visible as a false context spike.
 - Fix:
   Define usage in the protocol-v2 OpenAPI contract and carry it as typed durable
   session metadata through the generated client, desktop adapter, canonical
@@ -1397,15 +1569,21 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   Parse `modelUsage` recursively as both arrays and maps before using fallback
   context-window values. Track the model associated with a cached context
   window, and only reuse the previous total for the same model or when the model
-  is unknown. Do not hard-code alias-to-model mappings in Tutti.
+  is unknown. Do not hard-code alias-to-model mappings in Tutti. Invoke
+  `getContextUsage()` through its owning Query object and emit that snapshot
+  before considering Result usage as a fallback, so cumulative billing totals
+  never overwrite an available context snapshot.
 - Validation:
   Cover runtime-context splitting and metadata persistence, generated API
   projection, desktop canonical-session adaptation, activity-core usage
   resolution, and the composer hook.
   Add sidecar and daemon coverage with map-shaped `modelUsage` carrying
   `contextWindow: 1_000_000`, plus daemon coverage for Haiku -> Sonnet5 -> Haiku
-  usage updates where the last payload lacks `totalTokens`. Then run the Claude
-  SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
+  usage updates where the last payload lacks `totalTokens`. Add a sidecar query
+  fixture whose `getContextUsage()` depends on `this`, and give its Result a
+  multi-iteration cumulative usage total; assert that only the authoritative
+  context snapshot is emitted. Then run the Claude SDK sidecar tests, daemon Go
+  tests, AgentGUI tests, and typechecks.
 - References:
   [agent-activity-packages.md](../architecture/agent-activity-packages.md)
   [session_metadata.go](../../packages/agent/store-sqlite/session_metadata.go)
@@ -1413,6 +1591,9 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+  [compaction.ts](../../../packages/agent/claude-sdk-sidecar/src/compaction.ts)
+  [messageRouter.ts](../../../packages/agent/claude-sdk-sidecar/src/messageRouter.ts)
+  [sessionRuntime.session.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionRuntime.session.test.ts)
 
 ### AgentActivity replication repeatedly rejects message batches as invalid
 

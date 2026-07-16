@@ -27,7 +27,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     expect(container.querySelector(".agent-rich-text-readonly")).toBeNull();
   });
 
-  it("adds the conversation icon only for a projected session reference", () => {
+  it("keeps a projected session reference as @ text without a mention icon", () => {
     const { container } = renderRailItem({
       isRailInteractionLocked: () => false,
       item: {
@@ -40,23 +40,22 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       container.querySelector(
         '[data-agent-gui-conversation-title-mention-icon="session"]'
       )
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       container.querySelectorAll(
         "[data-agent-gui-conversation-title-mention-icon]"
       )
-    ).toHaveLength(1);
-    expect(container.textContent).toContain("读一下我本地的桌面");
-    expect(container.textContent).not.toContain("@读一下我本地的桌面");
+    ).toHaveLength(0);
+    expect(container.textContent).toContain("@读一下我本地的桌面");
   });
 
-  it.each(["app", "file", "agent"] as const)(
-    "adds the %s icon for that projected reference",
+  it.each(["app", "agent"] as const)(
+    "keeps a projected %s reference as @ text without a mention icon",
     (kind) => {
       const { container } = renderRailItem({
         isRailInteractionLocked: () => false,
         item: {
-          title: "Inspect reference",
+          title: "@Inspect reference",
           titleLeadingMentionKind: kind
         }
       });
@@ -65,9 +64,28 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
         container.querySelector(
           `[data-agent-gui-conversation-title-mention-icon="${kind}"]`
         )
-      ).not.toBeNull();
+      ).toBeNull();
+      expect(container.textContent).toContain("@Inspect reference");
     }
   );
+
+  it("keeps the file marker for a projected file reference", () => {
+    const { container } = renderRailItem({
+      isRailInteractionLocked: () => false,
+      item: {
+        title: "@notes.md inspect",
+        titleLeadingMentionKind: "file"
+      }
+    });
+
+    expect(
+      container.querySelector(
+        '[data-agent-gui-conversation-title-mention-icon="file"]'
+      )
+    ).not.toBeNull();
+    expect(container.textContent).toContain("notes.md inspect");
+    expect(container.textContent).not.toContain("@notes.md inspect");
+  });
 
   it("leaves an ordinary conversation row unchanged", () => {
     const { container } = renderRailItem({

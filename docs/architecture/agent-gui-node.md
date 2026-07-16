@@ -42,6 +42,15 @@ provider-specific payloads.
 - goal state and long-running workflow state
 - durable event ordering and recovery
 
+Durable transcript messages carry two independent order values. `sequence` is
+assigned from the durable message row identity when that row is first created
+and never changes, so historical pulls, realtime updates, and Agent GUI
+projections use it for presentation order. `version` is the mutable per-session
+change cursor: updating an existing streaming message advances `version` but
+must not move that message in the transcript. Lifecycle timestamps describe
+when work started, occurred, or completed and are only compatibility fallbacks
+when an older producer has no durable sequence.
+
 Session and turn are separate entities. A session may exist without a running
 turn and may contain many settled turns. Running, waiting, completed, failed,
 and canceled are turn lifecycle states; they must not be copied onto the
@@ -184,13 +193,16 @@ older stored values, but the desktop host pins it to `unified`. Unified is the
 only Agent dock presentation: it exposes one Agent dock entry, and every
 AgentGUI launch result and persisted Workbench node uses
 `agent-gui:unified` as its stable `dockEntryId`. Launches still create
-provider-specific multi-instance AgentGUI nodes; provider identity belongs in
-the launch payload, `agentTargetId`, provider-specific `instanceId`, and node or
-session state rather than the Dock identity. The unified entry may choose a
-default target or provider for its launch payload; that selection must not
-synthesize a provider or replace the provider identity recorded on the
-node/session. Legacy persisted AgentGUI Dock identities are normalized by the
-daemon snapshot migration instead of renderer-side fallback matching.
+multi-instance AgentGUI nodes, but `instanceId` is an opaque Workbench lifecycle
+token (`agent-gui:instance:<nonce>`). It must never encode or be parsed for a
+provider, target, session, or surface kind. `agentTargetId` is the canonical
+node selection and launch identity; provider is execution metadata resolved
+from that target or from the durable session. The unified entry may choose a
+default ready target for its launch payload, but that selection must not
+synthesize a provider or replace the target recorded on the node/session.
+Legacy persisted Dock identities are normalized, and AgentGUI cache nodes with
+no currently valid `agentTargetId` are removed, by daemon snapshot migrations
+instead of renderer-side fallback matching.
 Workspace Launchpad is a broad launcher surface, not a mirror of the dock
 entry list; it should show one generic Agent tile that resolves to the default
 or first ready provider instead of duplicating provider-specific Agent dock
@@ -199,17 +211,18 @@ Agent launches from Launchpad/All must still use the unified Agent dock entry
 identity (`agent-gui:unified`) so the resulting AgentGUI node appears under the
 same Dock icon as direct Dock launches.
 The unified dock identity is a reserved aggregate identifier, not a provider
-identifier. Provider extraction parses the provider-specific
-`agent-gui:<provider>` instance namespace and must not use `dockEntryId`, even
-though provider metadata accepts extension-defined strings. Provider-specific
-dock status must never override the unified entry's visibility; an aggregate
-status, if needed, must be modeled explicitly instead of synthesizing an
-`unified` provider.
+identifier. Neither Dock identity nor instance identity is a provider parser
+surface. Provider-specific dock status must never override the unified entry's
+visibility; an aggregate status, if needed, must be modeled explicitly instead
+of synthesizing an `unified` provider.
 Empty launches from the unified Agent dock entry should set dock-entry reuse so
 the second dock click restores/focuses the existing AgentGUI node; draft
-prefill launches and explicit session launches keep their narrower reuse rules
-so generated drafts and session navigation do not overwrite an unrelated
-window.
+prefill launches always create a fresh opaque node, while explicit session
+launches may reuse only a node whose current state names that exact session.
+Agent target identity must not select a workbench instance: targets describe
+node content, not canvas-container identity. These mutually exclusive reuse
+rules keep generated drafts and session navigation from overwriting an
+unrelated window.
 The Dock popup's New window card is a distinct launch source and must bypass
 dock-entry reuse for AgentGUI, otherwise it collapses into the normal
 restore/focus behavior instead of opening a fresh Agent window.
@@ -230,7 +243,11 @@ gap, the pending activation record in `AgentSessionEngine` owns one optimistic
 title projected from the submitted visible prompt; the rail and every header
 read that same record. Optimistic projection and daemon persistence use the same
 whitespace and Markdown-link-label normalization so engine reconciliation does
-not visibly rewrite valid rich-prompt titles. The localized untitled label is
+not visibly rewrite valid rich-prompt titles. In header and conversation-rail
+titles, Agent handoff/session, Agent-target, and workspace-app mentions render
+as normalized `@label` text without a second mention glyph; the active Agent's
+identity icon remains separate, while task and file references may keep their
+compact title markers. The localized untitled label is
 used only when this projection is unavailable, while canonical `session.title`
 remains empty until the daemon establishes it and then takes precedence. Runtime
 owns the initial-title-established bit and persists it in private runtime
@@ -333,7 +350,16 @@ A provider's read-only tier must map to its actual non-writing execution mode,
 not to a planning workflow that can advance into implementation. For Cursor,
 the durable `read-only` tier maps to ACP `ask`, while the independent
 `planMode` flag maps to ACP `plan`; leaving plan mode restores the runtime mode
-derived from the durable permission tier.
+derived from the durable permission tier. OpenCode keeps ACP `build` and `plan`
+exclusively as workflow modes controlled by `planMode`. Its `read-only`, `ask`,
+and `full-access` permission tiers resolve OpenCode ACP permission requests and
+must never call `session/set_mode`. OpenCode's plan agent must retain its edit
+denial even when the independent permission tier is `full-access`; one-shot
+approval choices keep a later live switch to `read-only` enforceable. For
+OpenCode processes launched by AgentGUI, the selected tier is authoritative:
+the adapter merges unrelated `OPENCODE_CONFIG_CONTENT` fields but replaces its
+permission policy and neutralizes `OPENCODE_PERMISSION` so external overrides
+cannot collapse the permission/workflow boundary.
 Host feature switches that disable an agent for new conversations should keep
 the entry present with a non-ready `availability.status` when another surface
 still needs to show it. Filter the entry out only for surfaces that should
@@ -342,6 +368,10 @@ selected agent's availability so coming-soon entries remain inspectable but
 cannot start sessions. Hosts may use `renderAgentUnavailableState` and
 `renderAgentReadinessState` for product-specific presentation, with actions
 routed through `onAgentAvailabilityAction`.
+`disabled` is interaction state, not an availability classification. A disabled
+target is coming soon only when its explicit availability is `coming_soon` (or
+the host's explicit coming-soon catalog says so); unavailable, not-installed,
+auth-required, and checking targets retain their own readiness state.
 Daemon-managed extension targets use this same host-projected availability.
 Their signed target name, icon URL, and open provider identity flow through the
 host `agents` array; AgentGUI must not add extension keys, provider fallbacks,
@@ -519,12 +549,15 @@ the current Tutti workspace surface: `DesktopAgentGUIWorkbenchBody` calls
 `host.launchNode`, and AgentGUI opens the requested session through an
 `agent-gui:open-session` activation. Normal session launches may reuse an
 already-open node only when workbench node state says that node is currently
-showing the requested session. A session-keyed instance id from older snapshots
-is only a legacy window identity hint, not proof of the node's current session.
-If no current-session match exists, the launch should use a provider target or
-panel-scoped AgentGUI container and then activate the durable session. The
+showing the requested session. An instance id from older snapshots is only a
+legacy window identity hint, not proof of the node's current session or target.
+If no current-session match exists, the launch creates a fresh opaque AgentGUI
+container, writes the requested target into that node's state, and then
+activates the durable session. AgentGUI must not maintain a parallel
+target-to-instance index because multiple sessions for the same target are
+valid and the Workbench host already owns live canvas-node lookup. The
 explicit new-window action must pass `openInNewWindow` so the descriptor creates
-a fresh panel-scoped AgentGUI instance while still activating the same durable
+a fresh opaque AgentGUI instance while still activating the same durable
 session.
 The detached Agent button in desktop chrome is a different window boundary: it
 asks main to create an Electron `BrowserWindow` with the `view=agent` renderer
@@ -544,10 +577,12 @@ When the conversation rail collapses, the standalone Agent header remains a
 full-width window control surface and keeps its secondary tool actions anchored
 to the right window edge. Content-width caps belong to the conversation body,
 not to the header control row.
-Standalone Agent window state may keep a minimal UI-local workbench node
-context, but durable conversations, session activation, login, provider
-readiness, and file/project data must still flow through the shared desktop
-AgentGUI host input and activity runtime.
+Standalone Agent windows mount the shared desktop AgentGUI surface through a
+standalone adapter. They must not fabricate a Workbench node/context or mirror
+Workbench runtime and snapshot setters. Their minimal window state is UI-local;
+durable conversations, session activation, login, provider readiness, and
+file/project data still flow through the shared desktop AgentGUI host input and
+activity runtime.
 Standalone-window tools are desktop host chrome, not AgentGUI state.
 The desktop host owns tool identity, toolbar buttons and reminder badges,
 Browser/Terminal grouping, panel placement, lazy mounting, and tool content
@@ -566,7 +601,11 @@ enough for their embedded location, list, and detail columns. Browser and Apps
 share the same roomy default width so switching between them does not move the
 panel boundary. Message Center aligns its default host width with its standard
 embedded content width so it neither clips card content nor leaves unused
-right-side space. Browser and Terminal share one dropdown trigger in the header:
+right-side space. After the user manually resizes any right-sidebar tool, that
+latest manual width becomes the shared preferred width for subsequent tool
+switches; a Browser opened after Files therefore keeps the user's width instead
+of restoring Browser's default. Browser and Terminal share one dropdown trigger
+in the header:
 the entire tool control opens the menu, and choosing an item opens that tool.
 Do not split the control into a primary action and a separate menu-arrow action.
 The standalone
@@ -605,6 +644,10 @@ the host-window resize request until the next animation frame. Do not await
 native IPC before showing the panel. Commit the sidebar's final layout width in
 one step; do not animate `width`, `flex-basis`, or another layout property,
 because that repeatedly reflows both the panel and the adjacent conversation.
+When a tool switch resolves to the current native content width, the host-window
+resize request must be skipped; a previously clamped native width must also be
+treated as settled for the same target so tool switching does not cause a
+redundant resize pulse.
 The sidebar may animate only its fixed-size inner surface with a short
 right-to-left `transform` and opacity entrance. Files, Browser, Apps, and other expensive first-use
 bodies mount after that short compositor entrance, then remain mounted while
@@ -659,6 +702,13 @@ desktop shell entry. Both the OS workspace route and standalone Agent route
 statically own the body inside their already-lazy route chunks. This avoids a
 second body-level import waterfall after either route begins rendering while
 keeping non-workspace desktop routes outside the AgentGUI graph.
+Before `createRoot().render`, the desktop renderer bootstrap dynamically loads
+and creates exactly one workspace-window runtime for that Electron renderer
+realm. React route components only consume that runtime through props and DI
+context; render, Suspense retry, or route-body remount must not construct a
+second service graph. The runtime owns one event-stream client and releases its
+controllers, subscriptions, DI services, analytics leases, host listeners, and
+event-stream transport through one idempotent `dispose()` on window teardown.
 Every blocking boundary before the real AgentGUI controller mounts uses that
 same startup-shell geometry: the route-level Suspense fallback, workspace
 catalog hydration, and workbench host-session binding.
@@ -990,6 +1040,22 @@ sequencing transport calls in React effects.
 
 ## Submit And Startup Transactions
 
+Provider readiness is application-scoped daemon state, not a session-create
+precondition. `tuttid` caches each provider's resolved CLI/adapter, version, and
+auth snapshot independently of status request shape; concurrent reads share one
+probe, ordinary reads reuse the completed result, and explicit refresh or a
+runtime auth failure invalidates it. Desktop windows mirror that snapshot and
+must not force a full provider probe on every focus.
+
+Creating a session performs only request-scoped validation, cwd/runtime
+preparation, and the real provider handshake. It must not synchronously run CLI
+status, auth-status, version, network, or hidden model-discovery probes first.
+For Cursor, account-scoped model discovery may create one hidden ACP session and
+preserve its last-known-good catalog, but visible session creation never waits
+for that discovery: the visible session's own `session/new` can populate the
+same catalog. Process spawn, `initialize`, and `session/new` failures are the
+authoritative launch result and invalidate matching cached readiness data.
+
 `clientSubmitId` is the daemon-owned idempotency key, not merely a diagnostic
 field. Before invoking a provider, the daemon persists a submit claim scoped by
 workspace, session, and client submit ID. A duplicate accepted claim returns
@@ -1006,6 +1072,19 @@ The session engine owns activation deadlines. It passes one cancellation signal
 through the desktop command port and HTTP adapter. Adapters must not race the
 engine with an independent timeout budget; command timeout, cancellation, and
 uncertain-delivery reconciliation are one engine workflow.
+Stop is also engine-owned during activation. The provider-neutral
+`session/stopRequested` intent aborts the exact in-flight activation command and
+keeps a workspace/session-scoped `awaitingTurn` cancel until the first canonical
+Turn arrives. That transition then emits an exact `turn/cancel`; a bounded
+expiry removes the detached operation so a later, unrelated Turn cannot be
+canceled. Empty reconcile snapshots must preserve this detached operation.
+When request cancellation causes create to fail, daemon rollback uses a bounded
+context detached from the canceled request so provisional runtime state is
+still closed and removed.
+The outer new-session activation deadline must also leave room for process spawn
+and `initialize` before ACP `session/new` starts its own full 30-second timeout;
+an activation timer that starts at the user's click must not cancel
+`session/new` with only the leftover portion of that budget.
 
 ## Validation
 
@@ -1057,14 +1136,24 @@ agent fileChange/tool output
   -> git apply / git apply -R against the Git repository resolved from cwd
 ```
 
-The durable activity data is the original turn summary input:
+The response-tail presentation and executable patch actions have separate
+canonical inputs:
 
-- `patchBatches` with the tool call id, cwd, path, change type, and patch
-  payload needed to reconstruct per-batch diffs.
-- file-level unified diffs as a fallback for older or less structured activity.
-  This fallback also applies when recorded `patchBatches` exist but reconstruct
-  zero executable diffs; for absolute file paths with a synthetic `/` workspace
-  root, use the file's containing directory as the Git cwd.
+- `WorkspaceAgentSessionDetailResponse.turns[].fileChanges.files` owns each
+  turn's changed-file list and create/modify/delete semantics. The detail
+  response returns root-session turns in durable order; list responses keep
+  only active/latest turn projections.
+- completed tool-call `changes` payloads own executable `patchBatches`,
+  including tool call id, cwd, path, change type, and patch content used by
+  Undo/Reapply.
+
+AgentGUI may associate executable patch batches with files already present in
+the matching durable turn's `fileChanges`, but it must not reconstruct the
+changed-file list from tool calls, provider metadata, or activity-card
+`changedFiles`. The desktop reconcile bridge inserts detail turns into the
+existing activity engine `turnsById` store, and AgentGUI projects each settled
+turn's summary directly after that turn. Sessions written before this contract
+was enforced are not backfilled in the conversation UI.
 
 Claude SDK sidecars must not treat Edit/Write input text as authoritative patch
 data. They should collect the `PostToolUse` `tool_response.structuredPatch`
@@ -1074,15 +1163,17 @@ arrives. Provider diff metadata must be canonicalized at this adapter boundary
 before it becomes durable activity data. In particular, unified-diff control
 markers such as `\ No newline at end of file` must use Git's exact syntax;
 provider display formatting must not flow unchanged into executable
-`patchBatches`. AgentGUI also canonicalizes this marker while reading older
-persisted activity so pre-fix sessions remain reversible.
+`patchBatches`.
 
 Provider adapters that receive successful write/edit/apply_patch tool calls
-without a native turn-level diff event must still normalize the executed tool
-output into `fileChanges.files` and emit a `turn.updated` patch carrying those
-`fileChanges`. The AgentGUI turn summary reads the turn state as the shared
-source for the response-tail changed-file list; tool-only payloads are not a
-substitute for that state.
+without a native turn-level diff event must normalize the executed tool output
+into `fileChanges.files`, merge it with the current turn's canonical file set,
+and emit a `turn.updated` patch carrying the accumulated `fileChanges`. The
+shared runtime normalizer consumes provider semantics such as Cursor ACP
+`kind=delete`, Codex `changes[].kind.type`, and Claude Code structured patches;
+raw provider fields do not cross into AgentGUI business rules. The AgentGUI
+response-tail summary reads only the matching durable turn's `fileChanges`
+state from the session-detail turn collection.
 
 Approval transport calls may wrap pending Edit/Write input, but they are
 interaction plumbing rather than transcript content. Preserve that nested input
@@ -1155,6 +1246,14 @@ publishes its provider start and terminal facts, while `services/tuttid` keeps
 the root turn active until that provider turn and every nested child turn are
 terminal. AgentGUI must not turn a synthetic provider id into another
 `WorkspaceAgentTurn`.
+
+That continuation rule applies only while the canonical root remains live. A
+user cancel revokes the provider execution generation before the root settles;
+late background completion from that generation cannot reopen the root, create
+a pending Interaction, or run another tool. A later explicit user prompt may
+resume the durable provider session, but it owns a new canonical turn and a new
+provider execution generation. AgentGUI continues to read canonical Turn and
+Interaction entities; it does not hide late provider actions after execution.
 
 Claude Goal status is presentation metadata, not a lifecycle authority. A
 complete Goal may coexist with a waiting canonical root and running child.
@@ -1346,6 +1445,12 @@ current rail. Count, sort, and first-page trimming operate on narrow session-id
 rows; load full session entities only after that trimming. The query shape must
 not add one compound-select arm per requested section or inherit SQLite's
 compound-select term limit as a Rail project-count limit.
+Daemon rail reads use the shared SQLite read-only pool rather than the daemon's
+single write connection. Section pages and their turn/interaction hydration may
+therefore read committed WAL snapshots while an unrelated write transaction is
+in progress. Do not route these independent reads back through the write pool;
+queries that require read-after-write atomicity must instead remain inside the
+owning write transaction.
 When `agentTargetId` narrows the provider rail, use an exact target predicate
 and target-scoped ordinary/pinned composite indexes. An optional
 `(? = '' OR agent_target_id = ?)` predicate on an unscoped index only filters
@@ -1456,7 +1561,12 @@ place for short reloads. Provider/agent switching should not briefly unmount
 the project rail header or replace a populated rail with an empty/skeleton
 rail; if the new first page takes longer than the rail skeleton delay, show the
 skeleton so the user sees loading feedback. Only workspace changes may clear
-the section cache immediately. Local Show more/Show less expansion belongs to
+the section cache immediately. The desktop runtime shares bounded first-page
+query entries across AgentGUI controller mounts, keyed by workspace and exact
+rail scope. A fresh entry is restored without transport; a stale entry remains
+visible while one in-flight request is shared by every consumer. Cache entries
+contain membership, cursor, total, and section metadata only; canonical sessions
+remain in the workspace engine. Local Show more/Show less expansion belongs to
 the workspace-plus-filter query scope, not the backend section id alone. Reset
 its visible-item limit in the filter-change render so stale section chrome
 cannot flash pagination controls from the previous provider scope. Keep the
@@ -2412,12 +2522,14 @@ still fails the submit immediately, while a timed-out delivery keeps its
 uncertain reconciliation and terminal expiry behavior.
 
 A user stop is an intent, not just a turn cancel: `interruptCurrentTurn`
-suspends the session's prompt queue (`suspendReason: "user_stop"`) before
-issuing the cancel, so the drainer must not fire the next queued prompt the
-moment the session becomes available. Only an explicit user send lifts the
-hold — composer submit resumes the queue, and a send-now intent clears the
-suspension in the queue core. The send-now cancel path never suspends: intent is
-captured at its source, never inferred from the cancel outcome.
+dispatches one provider-neutral `session/stopRequested` intent. The engine
+atomically suspends the session's prompt queue (`suspendReason: "user_stop"`),
+aborts any matching activation command, and requests or awaits exact-turn
+cancel. The drainer therefore cannot fire the next queued prompt the moment the
+session becomes available. Only an explicit user send lifts the hold — composer
+submit resumes the queue, and a send-now intent clears the suspension in the
+queue core. The send-now cancel path never suspends: intent is captured at its
+source, never inferred from the cancel outcome.
 
 Queue suspension must also remain visible in the presentation projection.
 AgentGUI controllers map the queue record's `suspendReason` to the internal
@@ -3139,6 +3251,9 @@ into a dynamic `issue-topic:*` presentation key, then atomically replaces the
 ordered group list for each debounced search. Each group owns its items,
 query-scoped total, cursor, and load-more status; loading or retrying one topic
 must not replace sibling groups or put the whole palette into loading state.
+Search results in the Tasks tab match only the visible workspace-issue title.
+The daemon issue-list query owns that rule so its items, counts, and cursors all
+use the same title-only result set.
 
 ```text
 Agent mention query identity

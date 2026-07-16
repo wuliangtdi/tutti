@@ -1,7 +1,9 @@
 import { AGENT_PROVIDER_LABEL } from "../contexts/settings/domain/agentSettings.providerMeta.ts";
-import type {
-  AgentActivityMessage,
-  AgentPromptContentBlock
+import {
+  isPendingActivationViable,
+  type PendingActivationStatus,
+  type AgentActivityMessage,
+  type AgentPromptContentBlock
 } from "@tutti-os/agent-activity-core";
 import {
   extractRichTextLinksFromContent,
@@ -23,6 +25,10 @@ export type AgentGUIConversationTitleLeadingMentionKind =
   | "file"
   | "session"
   | "task";
+export type AgentGUIConversationTitleIconMentionKind = Extract<
+  AgentGUIConversationTitleLeadingMentionKind,
+  "file" | "task"
+>;
 
 const AGENT_GUI_UNRESOLVED_PROVIDER: AgentGUIResolvedProvider = "unknown";
 const AGENT_GUI_MAX_OPTIMISTIC_TITLE_CODE_POINTS = 120;
@@ -131,7 +137,7 @@ export function resolveAgentGUIConversationTitleDisplayPrompt(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   allowEmptyTitle?: boolean;
   firstUserDisplayPrompt?: string | null;
@@ -158,7 +164,7 @@ export function resolveAgentGUIConversationBrowserFreeTitle(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   allowEmptyTitle?: boolean;
   firstUserDisplayPrompt?: string | null;
@@ -189,11 +195,19 @@ export function resolveAgentGUIConversationTitleLeadingMentionKind(
   const mentionKind = firstMention
     ? agentGUIConversationTitleMentionKind(firstMention)
     : null;
-  if (mentionKind) return mentionKind;
+  if (isAgentGUIConversationTitleIconMentionKind(mentionKind)) {
+    return mentionKind;
+  }
   if (firstMention) return null;
   return extractRichTextLinksFromContent(displayPrompt).length > 0
     ? "file"
     : null;
+}
+
+export function isAgentGUIConversationTitleIconMentionKind(
+  kind: AgentGUIConversationTitleLeadingMentionKind | null | undefined
+): kind is AgentGUIConversationTitleIconMentionKind {
+  return kind === "file" || kind === "task";
 }
 
 function agentGUIConversationTitleMentionKind(
@@ -230,9 +244,14 @@ function isAgentGUIConversationTitleDisplayPromptEligible(
   const mentions = extractRichTextMentionsFromContent(displayPrompt);
   if (
     mentions.some(
-      (mention) =>
-        mention.providerId !== "browser-element" &&
-        agentGUIConversationTitleMentionKind(mention) === null
+      (mention) => {
+        if (mention.providerId === "browser-element") {
+          return false;
+        }
+        return !isAgentGUIConversationTitleIconMentionKind(
+          agentGUIConversationTitleMentionKind(mention)
+        );
+      }
     )
   ) {
     return false;
@@ -248,13 +267,14 @@ function resolveAgentGUIConversationTitlePrompt(input: {
     content: readonly AgentPromptContentBlock[];
     displayPrompt?: string;
     mode: "existing" | "new";
-    status: string;
+    status: PendingActivationStatus;
   } | null;
   firstUserDisplayPrompt?: string | null;
   messages?: readonly AgentActivityMessage[];
 }): string {
   const activationPrompt =
-    input.activation?.mode === "new" && input.activation.status !== "failed"
+    input.activation?.mode === "new" &&
+    isPendingActivationViable(input.activation)
       ? agentGUIActivationPromptText(
           input.activation.content,
           input.activation.displayPrompt ?? null
