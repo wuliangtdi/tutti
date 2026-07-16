@@ -503,6 +503,12 @@ func (s *Store) HideAgentSession(roomID string, agentSessionID string) {
 func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessionStateUpdate) WorkspaceAgentStatePatch {
 	patch := WorkspaceAgentStatePatch{
 		AgentSessionID:        strings.TrimSpace(agentSessionID),
+		Kind:                  strings.TrimSpace(state.Kind),
+		RootAgentSessionID:    strings.TrimSpace(state.RootAgentSessionID),
+		RootTurnID:            strings.TrimSpace(state.RootTurnID),
+		ParentAgentSessionID:  strings.TrimSpace(state.ParentAgentSessionID),
+		ParentTurnID:          strings.TrimSpace(state.ParentTurnID),
+		ParentToolCallID:      strings.TrimSpace(state.ParentToolCallID),
 		AgentTargetID:         strings.TrimSpace(state.AgentTargetID),
 		DeviceID:              strings.TrimSpace(state.DeviceID),
 		Provider:              strings.TrimSpace(state.Provider),
@@ -518,19 +524,24 @@ func statePatchFromSessionState(agentSessionID string, state WorkspaceAgentSessi
 		LifecycleStatus:       strings.TrimSpace(state.LifecycleStatus),
 		CurrentPhase:          strings.TrimSpace(state.CurrentPhase),
 		OccurredAtUnixMS:      state.OccurredAtUnixMS,
+		RootProviderTurn:      cloneRootProviderTurnTransition(state.RootProviderTurn),
 	}
 	if state.Turn != nil {
 		patch.Turn = &WorkspaceAgentTurnPatch{
-			TurnID:             strings.TrimSpace(state.Turn.TurnID),
-			ActiveTurnID:       cloneStringPointer(state.Turn.ActiveTurnID),
-			Phase:              strings.TrimSpace(state.Turn.Phase),
-			Outcome:            strings.TrimSpace(state.Turn.Outcome),
-			Settling:           state.Turn.Settling,
-			CompletedCommand:   cloneCompletedCommand(state.Turn.CompletedCommand),
-			SubmitAvailability: cloneSubmitAvailability(state.Turn.SubmitAvailability),
-			FileChanges:        clonePayloadMap(state.Turn.FileChanges),
-			StartedAtUnixMS:    state.Turn.StartedAtUnixMS,
-			CompletedAtUnixMS:  state.Turn.CompletedAtUnixMS,
+			TurnID:                strings.TrimSpace(state.Turn.TurnID),
+			Origin:                strings.TrimSpace(state.Turn.Origin),
+			SourceGoalOperationID: strings.TrimSpace(state.Turn.SourceGoalOperationID),
+			SourceGoalRevision:    state.Turn.SourceGoalRevision,
+			SourceGoalRepairEpoch: state.Turn.SourceGoalRepairEpoch,
+			ActiveTurnID:          cloneStringPointer(state.Turn.ActiveTurnID),
+			Phase:                 strings.TrimSpace(state.Turn.Phase),
+			Outcome:               strings.TrimSpace(state.Turn.Outcome),
+			Settling:              state.Turn.Settling,
+			CompletedCommand:      cloneCompletedCommand(state.Turn.CompletedCommand),
+			SubmitAvailability:    cloneSubmitAvailability(state.Turn.SubmitAvailability),
+			FileChanges:           clonePayloadMap(state.Turn.FileChanges),
+			StartedAtUnixMS:       state.Turn.StartedAtUnixMS,
+			CompletedAtUnixMS:     state.Turn.CompletedAtUnixMS,
 		}
 	}
 	return patch

@@ -16,7 +16,7 @@ export type AgentMentionFilterId =
   | "issue"
   | "agent"
   | "app";
-export type AgentMentionGroupId =
+export type AgentMentionStaticGroupId =
   | "apps"
   | "agents"
   | "files"
@@ -25,8 +25,14 @@ export type AgentMentionGroupId =
   | "my_sessions"
   | "collab_sessions"
   | "issues";
+export type AgentMentionGroupId =
+  | AgentMentionStaticGroupId
+  | `issue-topic:${string}`;
 
-export type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
+export type AgentMentionRawGroupId = Exclude<
+  AgentMentionStaticGroupId,
+  "files"
+>;
 export type AgentMentionRawGroups = Record<
   AgentMentionRawGroupId,
   AgentContextMentionItem[]
@@ -34,6 +40,17 @@ export type AgentMentionRawGroups = Record<
 export type AgentMentionTotalCounts = Partial<
   Record<AgentMentionGroupId, number>
 >;
+
+export interface AgentMentionIssueTopicGroup {
+  id: `issue-topic:${string}`;
+  providerGroupId: string;
+  label: string;
+  items: AgentContextMentionItem[];
+  totalCount: number;
+  nextPageToken: string | null;
+  loadMoreStatus: "idle" | "loading" | "error";
+  loadMoreError: string | null;
+}
 
 export interface AgentMentionBrowseCategory {
   id: AgentMentionFilterId;

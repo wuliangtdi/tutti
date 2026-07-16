@@ -42,6 +42,7 @@ import {
 } from "./AgentMentionSearchController";
 import { agentGeneratedMentionItemKey } from "./agentMentionAgentGeneratedFilesPresentation";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
+import type { ReactNode } from "react";
 
 export interface AgentMentionPaletteEntry {
   key: string;
@@ -73,6 +74,8 @@ export interface AgentFileMentionPaletteProps {
    * 仅 workspace-issue / workspace-app 行渲染该入口。
    */
   onOpenReferences?: (item: AgentContextMentionItem) => void;
+  /** Controlled provenance filter supplied by the AgentGUI orchestration layer. */
+  provenanceFilterControl?: ReactNode;
 }
 
 const AGENT_MENTION_PALETTE_THEME: MentionPaletteTheme = {
@@ -193,7 +196,8 @@ export function AgentFileMentionPalette({
   onExpandGroup,
   onNavigateHierarchy,
   onNavigateIntoItem,
-  onOpenReferences
+  onOpenReferences,
+  provenanceFilterControl
 }: AgentFileMentionPaletteProps): React.JSX.Element {
   "use memo";
   const openReferencesLabel = translate(
@@ -294,6 +298,11 @@ export function AgentFileMentionPalette({
         )
       }}
       maxHeightPx={maxHeightPx}
+      headerActions={
+        filter === "session" || filter === "file" || filter === "issue"
+          ? provenanceFilterControl
+          : undefined
+      }
       scrollHighlightedIntoViewCentered={shouldCenterHighlightedItem}
       theme={AGENT_MENTION_PALETTE_THEME}
       callbacks={{
@@ -340,7 +349,11 @@ function decorateMentionGroup(
   });
   return {
     ...group,
-    label: showLabel ? agentMentionGroupLabel(groupId) : undefined,
+    label: showLabel
+      ? groupId.startsWith("issue-topic:")
+        ? group.label
+        : agentMentionGroupLabel(groupId)
+      : undefined,
     emptyLabel: suppressChrome
       ? undefined
       : agentMentionEmptyGroupLabel(groupId, query),
@@ -349,6 +362,12 @@ function decorateMentionGroup(
           count: mentionGroupExpandCount(group, filter)
         })
       : undefined,
+    expandLoadingLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreLoading"
+    ),
+    expandErrorLabel: translate(
+      "agentHost.agentGui.contextPickerLoadMoreRetry"
+    ),
     sectionClassName: followsMySessions ? "mt-2" : undefined,
     hideTopDivider: suppressChrome
   };
@@ -468,7 +487,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? null
     };
   }
@@ -477,7 +496,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "app",
       name: item.name,
-      description: item.description ?? null,
+      description: mentionDescriptionWithoutTerminalPeriod(item.description),
       iconUrl: item.iconUrl ?? managedAgentRoundedIconUrl(item.agentProviderId),
       statusTag: agentTargetAvailableStatusTag()
     };
@@ -516,6 +535,15 @@ function agentMentionItemToRowItem(
     creatorName: item.creatorName ?? null,
     statusTag: agentIssueStatusTag(item.status)
   };
+}
+
+function mentionDescriptionWithoutTerminalPeriod(
+  description: string | null | undefined
+): string | null {
+  const normalizedDescription = description?.trimEnd();
+  return normalizedDescription
+    ? normalizedDescription.replace(/[。.]+$/u, "")
+    : null;
 }
 
 /**

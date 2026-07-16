@@ -26,18 +26,19 @@ import type {
   AgentGUINodeViewProps,
   AgentGUIViewLabels
 } from "../AgentGUINodeView";
+import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
-  groupConversations,
-  type ConversationSection
-} from "../agentGuiNodeViewConversation";
-import {
+  isConversationRailInitialLoadPending,
   projectConversationRailMemberships,
+  projectConversationRailSectionsByExactKey,
+  projectConversationRailSearchSections,
   projectConversationRailSectionsWithActiveConversation,
   projectConversationRailSectionsWithTransientConversations,
   resolveConversationRailActiveConversation,
   stabilizeConversationSectionItems,
   stabilizeConversationSections
 } from "../model/agentGuiConversationRail";
+import { preserveConversationRailSectionTemplates } from "../model/agentGuiConversationRailSectionTemplates";
 import type { useAgentGUIConversationRailQuery } from "../controller/useAgentGUIConversationRailQuery";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
 import { AgentGUIProjectRailHeader } from "./AgentGUIConversationRailItem";
@@ -212,6 +213,7 @@ export const AgentGUIConversationRailPane = memo(
     const groupedConversationsRef = useRef<ConversationSection[] | null>(null);
     const {
       loadMoreSectionConversations,
+      isInteractionLocked,
       runtimeSectionsEnabled,
       runtimeRailConversations,
       runtimeRailMemberships,
@@ -232,6 +234,7 @@ export const AgentGUIConversationRailPane = memo(
     const railConversationEntities = [...railConversationEntitiesById.values()];
     const hasConversationQuery = conversationQuery.trim().length > 0;
     const backendSearchActive = hasConversationQuery && railSearch.enabled;
+    const railInteractionsLocked = isInteractionLocked();
     const backendSearchConversations = backendSearchActive
       ? railSearch.sessionIds.flatMap((id) => {
           const conversation = railConversationEntitiesById.get(id);
@@ -272,7 +275,11 @@ export const AgentGUIConversationRailPane = memo(
         labels,
         sections: runtimeSectionsWithTransientConversations
       });
-    const runtimeDisplaySections = runtimeDisplayProjection.sections;
+    const runtimeDisplaySections = preserveConversationRailSectionTemplates({
+      labels,
+      sections: runtimeDisplayProjection.sections,
+      userProjects
+    });
     const railActiveOverlay = runtimeDisplayProjection.activeOverlay;
 
     useEffect(() => {
@@ -341,8 +348,10 @@ export const AgentGUIConversationRailPane = memo(
       const startedAtMs = agentGuiPerfNowMs();
       const query = conversationQuery.trim();
       const rawGroups = backendSearchActive
-        ? groupConversations(filteredConversations, labels, userProjects, {
-            includeEmptyConversations: false
+        ? projectConversationRailSearchSections({
+            conversations: filteredConversations,
+            labels,
+            sections: runtimeDisplaySections
           })
         : runtimeSectionsEnabled || runtimeRailSections
           ? runtimeDisplaySections.length > 0
@@ -368,8 +377,11 @@ export const AgentGUIConversationRailPane = memo(
                         ))
                   )
             : []
-          : groupConversations(filteredConversations, labels, userProjects, {
-              includeEmptyConversations: !query
+          : projectConversationRailSectionsByExactKey({
+              conversations: filteredConversations,
+              labels,
+              userProjects,
+              includeEmptySections: !query
             });
       const groups = stabilizeConversationSections(
         groupedConversationsRef.current,
@@ -424,7 +436,11 @@ export const AgentGUIConversationRailPane = memo(
         : (sectionAgentTargetFallbackId?.trim() ?? "");
     const requestSectionBatchDeletion = useCallback(
       (section: ConversationSection) => {
-        if (isDeletingProjectConversations || isRequestingBatchDeletion) {
+        if (
+          isInteractionLocked() ||
+          isDeletingProjectConversations ||
+          isRequestingBatchDeletion
+        ) {
           return;
         }
         setIsRequestingBatchDeletion(true);
@@ -433,7 +449,7 @@ export const AgentGUIConversationRailPane = memo(
           sectionAgentTargetId || undefined
         )
           .then((sessionIds) => {
-            if (sessionIds.length === 0) {
+            if (isInteractionLocked() || sessionIds.length === 0) {
               return;
             }
             setPendingProjectAction({
@@ -451,13 +467,16 @@ export const AgentGUIConversationRailPane = memo(
       [
         isDeletingProjectConversations,
         isRequestingBatchDeletion,
+        isInteractionLocked,
         onConfirmDeleteProjectConversations,
         sectionAgentTargetId
       ]
     );
-    const isRuntimeRailLoading =
-      runtimeSectionsEnabled &&
-      (runtimeRailSections === null || runtimeRailSectionsPending);
+    const isRuntimeRailLoading = isConversationRailInitialLoadPending({
+      pending: runtimeRailSectionsPending,
+      runtimeSectionsEnabled,
+      sections: runtimeRailMemberships
+    });
     const isConversationRailListLoading = backendSearchActive
       ? railSearch.pending
       : isRuntimeRailLoading ||
@@ -563,10 +582,7 @@ export const AgentGUIConversationRailPane = memo(
               </span>
             </div>
           ) : (
-            <fieldset
-              className="contents"
-              disabled={runtimeRailSectionsPending && !backendSearchActive}
-            >
+            <fieldset className="contents" disabled={railInteractionsLocked}>
               {groupedConversations.map((section, sectionIndex) => {
                 const projectPath =
                   section.kind === "project"
@@ -633,6 +649,7 @@ export const AgentGUIConversationRailPane = memo(
                   <Fragment key={section.id}>
                     {showProjectRailHeader ? (
                       <AgentGUIProjectRailHeader
+                        disabled={railInteractionsLocked}
                         labels={labels}
                         selectProjectDirectory={selectProjectDirectory}
                         workspaceUserProjectI18n={workspaceUserProjectI18n}
@@ -659,6 +676,7 @@ export const AgentGUIConversationRailPane = memo(
                           ? railSearch.loadingMore
                           : (sectionPageState?.isLoading ?? false)
                       }
+                      isRailInteractionLocked={isInteractionLocked}
                       isSectionCollapsed={isSectionCollapsed}
                       labels={labels}
                       pendingDeleteConversationId={pendingDeleteConversationId}
@@ -710,6 +728,7 @@ export const AgentGUIConversationRailPane = memo(
               pendingProjectAction?.kind === "batch-delete-conversations") &&
             isDeletingProjectConversations
           }
+          confirmDisabled={railInteractionsLocked}
           confirmLabel={
             pendingProjectAction?.kind === "batch-delete"
               ? labels.batchDeleteProjectSessionsConfirm
@@ -735,6 +754,7 @@ export const AgentGUIConversationRailPane = memo(
           }
           onCancel={() => setPendingProjectAction(null)}
           onConfirm={() => {
+            if (isInteractionLocked()) return;
             const action = pendingProjectAction;
             setPendingProjectAction(null);
             if (!action) {

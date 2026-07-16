@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -10,15 +11,23 @@ import (
 )
 
 func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResult, error) {
-	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
+	rootAgentSessionID := strings.TrimSpace(input.RootAgentSessionID)
+	if rootAgentSessionID == "" {
+		return CancelResult{}, fmt.Errorf("root agent session id is required")
+	}
+	targets, err := normalizeCancelTargets(input.Targets)
+	if err != nil {
+		return CancelResult{}, err
+	}
+	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, rootAgentSessionID)
 	defer releaseLifecycleLock()
 
-	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
+	session, adapter, err := c.sessionAndAdapter(input.RoomID, rootAgentSessionID)
 	if err != nil {
 		return CancelResult{}, err
 	}
 	reason := strings.TrimSpace(input.Reason)
-	requestedTurnID := strings.TrimSpace(input.TurnID)
+	requestedRootTurnID := cancelTargetTurnID(targets, rootAgentSessionID)
 	slog.Info("agent session cancel requested",
 		"event", "agent_session.cancel.requested",
 		"room_id", session.RoomID,
@@ -26,15 +35,17 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 		"provider", session.Provider,
 		"status", session.Status,
 		"reason", reason,
+		"target_count", len(targets),
 	)
 	active, ok := c.activeTurn(session.RoomID, session.AgentSessionID)
-	if requestedTurnID != "" && ok && active.turnID != requestedTurnID {
+	adapterTargets := targets
+	if requestedRootTurnID != "" && ok && active.turnID != requestedRootTurnID {
 		slog.Info("agent session exact turn cancel found a different active turn",
 			"event", "agent_session.cancel.turn_mismatch",
 			"room_id", session.RoomID,
 			"agent_session_id", session.AgentSessionID,
 			"provider", session.Provider,
-			"requested_turn_id", requestedTurnID,
+			"requested_turn_id", requestedRootTurnID,
 			"active_turn_id", func() string {
 				if ok {
 					return active.turnID
@@ -42,134 +53,133 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 				return ""
 			}(),
 		)
-		return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: false}, nil
+		adapterTargets = cancelTargetsWithoutSession(targets, rootAgentSessionID)
 	}
-	if !ok {
-		// No controller turn record - but the runtime may own cancellable
-		// work the registry does not know about (linked child agents that
-		// outlive their parent turn, or a desynced turn record). Reconcile
-		// with the adapter instead of skipping: the turn machine answers
-		// no-op cancels safely, and anything it actually stopped surfaces
-		// as events.
-		events, err := adapter.Cancel(ctx, session, reason)
-		if err != nil && errors.Is(err, ErrSessionNoActiveTurn) {
-			// The adapter's way of answering "nothing was running" - the
-			// reconcile found no runtime work either.
-			err = nil
-		}
-		if err != nil {
-			slog.Warn("agent session cancel adapter failed without active turn",
-				"event", "agent_session.cancel.reconcile_failed",
-				"room_id", session.RoomID,
-				"agent_session_id", session.AgentSessionID,
-				"provider", session.Provider,
-				"reason", reason,
-				"error", err.Error(),
-			)
-			return CancelResult{}, err
-		}
-		if len(events) > 0 {
-			// Apply to the CURRENT stored session (atomic read-apply-store):
-			// the turn may have settled and stored a newer session while
-			// adapter.Cancel blocked; applying to this call's pre-cancel
-			// snapshot would resurrect the working/running state and wedge
-			// the GUI in a permanent spinner.
-			c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
-			slog.Info("agent session cancel reconciled runtime work without a turn record",
-				"event", "agent_session.cancel.reconciled",
-				"room_id", session.RoomID,
-				"agent_session_id", session.AgentSessionID,
-				"provider", session.Provider,
-				"reason", reason,
-				"event_count", len(events),
-			)
-			return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: true}, nil
-		}
-		slog.Info("agent session cancel found nothing to stop",
-			"event", "agent_session.cancel.nothing_to_stop",
-			"room_id", session.RoomID,
-			"agent_session_id", session.AgentSessionID,
-			"provider", session.Provider,
-			"status", session.Status,
-			"reason", reason,
-		)
-		// The runtime holds no active turn, yet the GUI-facing view may still
-		// show a blocked composer / running turn if a prior turn-completed
-		// update failed to reach the persisted session state. Pressing stop is
-		// the user's recovery gesture, so reconcile the stale view by force
-		// settling the turn here instead of leaving it stuck forever.
-		if requestedTurnID == "" {
-			c.reconcileStuckTurnView(ctx, session, reason)
-		}
+	cancelLocalActiveTurn := ok && requestedRootTurnID != "" && active.turnID == requestedRootTurnID && active.cancel != nil
+	if len(adapterTargets) == 0 {
 		return CancelResult{
 			AgentSessionID: session.AgentSessionID,
-			Canceled:       false,
-			TargetAbsent:   requestedTurnID != "",
+			TargetAbsent:   true,
 		}, nil
 	}
-	if active.cancel != nil {
+	adapterResult, err := cancelAdapterTargets(ctx, adapter, session, adapterTargets, reason)
+	// Provider cancellation must run while the adapter still owns the live
+	// root turn handle. Canceling the controller context first can make an
+	// adapter settle and unregister its local turn before it sends the native
+	// interrupt, leaving the provider turn running after the canonical turn is
+	// canceled. Once the bounded provider call returns, cancel the local Exec
+	// context as cleanup regardless of provider success.
+	if cancelLocalActiveTurn {
 		active.cancel()
 	}
-	events, err := adapter.Cancel(ctx, session, reason)
 	if err != nil {
 		if errors.Is(err, ErrSessionNoActiveTurn) {
-			c.clearActiveTurnIfMatches(session.RoomID, session.AgentSessionID, active.turnID)
-			current, ok := c.get(session.RoomID, session.AgentSessionID)
-			if !ok {
-				current = session
+			if ok {
+				c.clearActiveTurnIfMatches(session.RoomID, session.AgentSessionID, active.turnID)
 			}
-			reconciled := c.reconcileStuckTurnView(ctx, current, reason)
-			canceled := sessionCancelAlreadySettledCanceled(current)
-			slog.Info("agent session cancel raced with settled turn",
-				"event", "agent_session.cancel.settle_race",
-				"room_id", session.RoomID,
-				"agent_session_id", session.AgentSessionID,
-				"provider", session.Provider,
-				"turn_id", active.turnID,
-				"reason", reason,
-				"reconciled", reconciled,
-				"canceled", canceled,
-			)
-			return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: canceled}, nil
+			return CancelResult{AgentSessionID: session.AgentSessionID, TargetAbsent: true}, nil
 		}
 		slog.Warn("agent session cancel adapter failed",
 			"event", "agent_session.cancel.adapter_failed",
 			"room_id", session.RoomID,
 			"agent_session_id", session.AgentSessionID,
 			"provider", session.Provider,
-			"turn_id", active.turnID,
+			"turn_id", requestedRootTurnID,
 			"reason", reason,
 			"error", err.Error(),
 		)
 		return CancelResult{}, err
 	}
-	if len(events) > 0 {
-		// interruptActiveTurn returns only after the turn actually settled,
-		// so the turn's terminal store always lands during adapter.Cancel;
-		// apply these events to the CURRENT stored session instead of this
-		// call's pre-cancel snapshot (which would resurrect working state).
-		c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	if len(adapterResult.Events) > 0 {
+		c.applySessionEventsByAgentSessionID(session.AgentSessionID, adapterResult.Events)
 	}
+	confirmedTargets := confirmedCancelTargets(adapterTargets, adapterResult.ConfirmedTargets)
 	slog.Info("agent session cancel accepted",
 		"event", "agent_session.cancel.accepted",
 		"room_id", session.RoomID,
 		"agent_session_id", session.AgentSessionID,
 		"provider", session.Provider,
-		"turn_id", active.turnID,
+		"turn_id", requestedRootTurnID,
+		"confirmed_target_count", len(confirmedTargets),
 		"reason", reason,
 	)
-	return CancelResult{AgentSessionID: session.AgentSessionID, Canceled: true}, nil
+	return CancelResult{
+		AgentSessionID:   session.AgentSessionID,
+		Canceled:         len(confirmedTargets) > 0,
+		TargetAbsent:     len(confirmedTargets) == 0,
+		ConfirmedTargets: confirmedTargets,
+	}, nil
 }
 
-func sessionCancelAlreadySettledCanceled(session Session) bool {
-	if strings.TrimSpace(session.Status) == SessionStatusCanceled {
-		return true
+func normalizeCancelTargets(targets []CancelTarget) ([]CancelTarget, error) {
+	result := make([]CancelTarget, 0, len(targets))
+	seen := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		target.AgentSessionID = strings.TrimSpace(target.AgentSessionID)
+		target.TurnID = strings.TrimSpace(target.TurnID)
+		if target.AgentSessionID == "" || target.TurnID == "" {
+			return nil, fmt.Errorf("cancel target session and turn ids are required")
+		}
+		key := target.AgentSessionID + "\x00" + target.TurnID
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, target)
 	}
-	if session.TurnLifecycle != nil && session.TurnLifecycle.Outcome != nil {
-		outcome := strings.ToLower(strings.TrimSpace(*session.TurnLifecycle.Outcome))
-		return outcome == "canceled" || outcome == "cancelled" || outcome == string(activityshared.TurnOutcomeInterrupted)
+	if len(result) == 0 {
+		return nil, fmt.Errorf("at least one cancel target is required")
 	}
-	return false
+	return result, nil
+}
+
+func cancelTargetTurnID(targets []CancelTarget, agentSessionID string) string {
+	for _, target := range targets {
+		if target.AgentSessionID == agentSessionID {
+			return target.TurnID
+		}
+	}
+	return ""
+}
+
+func cancelTargetsWithoutSession(targets []CancelTarget, agentSessionID string) []CancelTarget {
+	result := make([]CancelTarget, 0, len(targets))
+	for _, target := range targets {
+		if target.AgentSessionID != agentSessionID {
+			result = append(result, target)
+		}
+	}
+	return result
+}
+
+func cancelAdapterTargets(ctx context.Context, adapter Adapter, rootSession Session, targets []CancelTarget, reason string) (TargetedCancelResult, error) {
+	if targeted, ok := adapter.(TargetedCancelAdapter); ok {
+		return targeted.CancelTargets(ctx, rootSession, targets, reason)
+	}
+	if len(targets) != 1 || targets[0].AgentSessionID != rootSession.AgentSessionID {
+		return TargetedCancelResult{}, fmt.Errorf("agent provider %q does not support child turn cancellation", rootSession.Provider)
+	}
+	events, err := adapter.Cancel(ctx, rootSession, reason)
+	if err != nil {
+		return TargetedCancelResult{}, err
+	}
+	return TargetedCancelResult{Events: events, ConfirmedTargets: append([]CancelTarget(nil), targets...)}, nil
+}
+
+func confirmedCancelTargets(requested []CancelTarget, confirmed []CancelTarget) []CancelTarget {
+	confirmedSet := make(map[string]struct{}, len(confirmed))
+	for _, target := range confirmed {
+		key := strings.TrimSpace(target.AgentSessionID) + "\x00" + strings.TrimSpace(target.TurnID)
+		confirmedSet[key] = struct{}{}
+	}
+	result := make([]CancelTarget, 0, len(requested))
+	for _, target := range requested {
+		key := target.AgentSessionID + "\x00" + target.TurnID
+		if _, ok := confirmedSet[key]; ok {
+			result = append(result, target)
+		}
+	}
+	return result
 }
 
 func (c *Controller) cancelActiveTurn(roomID, agentSessionID string) {
@@ -224,11 +234,6 @@ func (c *Controller) reconcileSessionStatusLocked(key string, session Session) S
 
 func reconcileFinishedTurnStatus(session Session) Session {
 	if sessionHasLiveTurnLifecycle(session) {
-		return session
-	}
-	if sessionHasLiveBackgroundAgents(session) {
-		session.Status = SessionStatusWorking
-		session.SubmitAvailability = blockedSubmitAvailability("background_agent")
 		return session
 	}
 	if sessionStatusShouldReconcileToReady(session.Status) {

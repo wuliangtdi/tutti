@@ -14,6 +14,7 @@ import {
   canonicalInteractionKey,
   canonicalTurnKey
 } from "./sessionEntityKeys.ts";
+import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
 
 export interface WorkspaceAgentConsumerSession {
   activeTurn: AgentActivityTurn | null;
@@ -289,6 +290,14 @@ export function selectEngineSessionError(
 export function selectWorkspaceAgentConsumerSessions(
   state: AgentSessionEngineState
 ): readonly WorkspaceAgentConsumerSession[] {
+  return selectAllWorkspaceAgentConsumerSessions(state).filter(
+    (item) => item.session.kind === "root"
+  );
+}
+
+export function selectAllWorkspaceAgentConsumerSessions(
+  state: AgentSessionEngineState
+): readonly WorkspaceAgentConsumerSession[] {
   return Object.values(state.sessionLifecycle.sessionsById).map((session) => {
     const activeTurn = selectEngineActiveTurn(state, session.agentSessionId);
     const latestTurn = selectEngineLatestTurn(state, session.agentSessionId);
@@ -300,6 +309,11 @@ export function selectWorkspaceAgentConsumerSessions(
       activeTurn,
       displayStatus: displayStatusFromCanonicalState({
         activeTurn,
+        initialActivationTurnPending: initialActivationTurnIsPending(
+          state,
+          session.agentSessionId,
+          latestTurn
+        ),
         latestTurn,
         pendingInteractions
       }),
@@ -324,6 +338,11 @@ export function selectWorkspaceAgentConsumerSession(
     activeTurn,
     displayStatus: displayStatusFromCanonicalState({
       activeTurn,
+      initialActivationTurnPending: initialActivationTurnIsPending(
+        state,
+        id,
+        latestTurn
+      ),
       latestTurn,
       pendingInteractions
     }),
@@ -347,6 +366,7 @@ export function selectWorkspaceAgentConsumerCounts(
 
 function displayStatusFromCanonicalState(state: {
   activeTurn: AgentActivityTurn | null;
+  initialActivationTurnPending: boolean;
   latestTurn: AgentActivityTurn | null;
   pendingInteractions: readonly AgentActivityInteraction[];
 }): AgentActivityDisplayStatus {
@@ -354,7 +374,10 @@ function displayStatusFromCanonicalState(state: {
   if (state.activeTurn && state.activeTurn.phase !== "settled") {
     return state.activeTurn.phase === "waiting" ? "waiting" : "working";
   }
-  if (!state.latestTurn || state.latestTurn.phase !== "settled") return "idle";
+  if (!state.latestTurn) {
+    return state.initialActivationTurnPending ? "working" : "idle";
+  }
+  if (state.latestTurn.phase !== "settled") return "idle";
   switch (state.latestTurn.outcome) {
     case "failed":
       return "failed";
@@ -366,4 +389,18 @@ function displayStatusFromCanonicalState(state: {
     default:
       return "idle";
   }
+}
+
+function initialActivationTurnIsPending(
+  state: AgentSessionEngineState,
+  agentSessionId: string,
+  latestTurn: AgentActivityTurn | null
+): boolean {
+  if (latestTurn) return false;
+  const activation = selectLatestActivationForSession(state, agentSessionId);
+  return (
+    activation?.mode === "new" &&
+    activation.initialTurnExpected &&
+    activation.status !== "failed"
+  );
 }

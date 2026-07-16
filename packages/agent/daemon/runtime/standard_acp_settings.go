@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func (a *standardACPAdapter) applyPermissionMode(ctx context.Context, client *acpClient, session Session) error {
@@ -474,7 +472,6 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	}
 	state := snapshotACPLiveState(acpSession.acpLiveState)
 	agentInfo := clonePayload(acpSession.agentInfo)
-	backgroundAgents := standardACPBackgroundAgentsRuntimeContext(acpSession.backgroundAgents)
 	promptImage := acpSession.promptImage
 	var prompt *SessionInteractivePrompt
 	for _, pending := range acpSession.pendingApprovals {
@@ -511,9 +508,6 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 	if len(state.goal) > 0 {
 		snapshot.RuntimeContext["goal"] = state.goal
 	}
-	if len(backgroundAgents) > 0 {
-		snapshot.RuntimeContext["backgroundAgents"] = backgroundAgents
-	}
 	capabilities := standardACPCapabilities(a.config.provider, promptImage, state)
 	capabilities = appendBrowserUseCapability(capabilities, session.Env)
 	capabilities = appendComputerUseCapability(capabilities, session.Env)
@@ -537,77 +531,6 @@ func (a *standardACPAdapter) SessionState(session Session) SessionStateSnapshot 
 		snapshot.PendingInteractive = prompt
 	}
 	return snapshot
-}
-
-func cloneStandardACPBackgroundAgents(value map[string]standardACPBackgroundAgent) map[string]standardACPBackgroundAgent {
-	if len(value) == 0 {
-		return make(map[string]standardACPBackgroundAgent)
-	}
-	out := make(map[string]standardACPBackgroundAgent, len(value))
-	for key, agent := range value {
-		out[key] = agent
-	}
-	return out
-}
-
-func standardACPBackgroundAgentsRuntimeContext(value map[string]standardACPBackgroundAgent) map[string]any {
-	if len(value) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(value))
-	for taskID := range value {
-		keys = append(keys, taskID)
-	}
-	sort.Strings(keys)
-	items := make([]any, 0, len(keys))
-	runningCount := 0
-	for _, taskID := range keys {
-		agent := value[taskID]
-		status := strings.TrimSpace(agent.Status)
-		if status == "" {
-			status = string(activityshared.ActivityStatusRunning)
-		}
-		if !standardACPBackgroundAgentStatusIsTerminal(status) {
-			runningCount++
-		}
-		item := map[string]any{
-			"taskId":      agent.TaskID,
-			"description": agent.Description,
-			"status":      status,
-		}
-		if agent.Summary != "" {
-			item["summary"] = agent.Summary
-		}
-		if agent.LastToolName != "" {
-			item["lastToolName"] = agent.LastToolName
-		}
-		if agent.TaskType != "" {
-			item["taskType"] = agent.TaskType
-		}
-		if agent.StartedAtUnixMS > 0 {
-			item["startedAtUnixMs"] = agent.StartedAtUnixMS
-		}
-		if agent.UpdatedAtUnixMS > 0 {
-			item["updatedAtUnixMs"] = agent.UpdatedAtUnixMS
-		}
-		if agent.CompletedAtUnixMS > 0 {
-			item["completedAtUnixMs"] = agent.CompletedAtUnixMS
-		}
-		items = append(items, item)
-	}
-	return map[string]any{
-		"count": runningCount,
-		"items": items,
-	}
-}
-
-func standardACPBackgroundAgentStatusIsTerminal(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case string(activityshared.ActivityStatusCompleted), string(activityshared.ActivityStatusFailed), "cancelled", "canceled":
-		return true
-	default:
-		return false
-	}
 }
 
 func acpConfigOptionIDs(raw json.RawMessage) map[string]bool {

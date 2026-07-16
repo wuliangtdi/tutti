@@ -16,6 +16,8 @@ import type {
   WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
+  GetWorkspaceAgentSessionGoalResponse,
+  ReconcileWorkspaceAgentSessionGoalResponse,
   WorkspaceAgentSessionGoalControlRequest,
   CliCapabilitiesResponse,
   AgentSessionComposerSettings,
@@ -101,6 +103,7 @@ import type {
   WriteWorkspaceFileTextRequest,
   WorkbenchSnapshot,
   WorkspaceAgentSession,
+  WorkspaceAgentSessionDetailResponse,
   WorkspaceAgentPlanDecisionResponse,
   WorkspaceAgentProvider,
   WorkspaceAgentSessionAttachmentResponse,
@@ -292,7 +295,7 @@ export interface TuttidClient {
   getWorkspaceAgentSession(
     workspaceID: string,
     agentSessionID: string
-  ): Promise<WorkspaceAgentSession>;
+  ): Promise<WorkspaceAgentSessionDetailResponse>;
   getAgentProviderComposerOptions(
     provider: WorkspaceAgentProvider,
     request?: GetAgentProviderComposerOptionsRequest,
@@ -472,10 +475,12 @@ export interface TuttidClient {
       searchQuery?: string;
       statusFilter?: IssueManagerStatus | "all";
       topicId: string;
-    }
+    },
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerIssueListResponse>;
   listWorkspaceIssueTopics(
-    workspaceID: string
+    workspaceID: string,
+    requestOptions?: TuttidRequestOptions
   ): Promise<IssueManagerTopicListResponse>;
   listWorkspaceIssueTaskRuns(
     workspaceID: string,
@@ -548,6 +553,7 @@ export interface TuttidClient {
   listWorkspaceAgentGeneratedFiles(
     workspaceID: string,
     request?: {
+      agentTargetIds?: string[];
       limit?: number;
       query?: string;
       sessionCwd?: string;
@@ -656,6 +662,14 @@ export interface TuttidClient {
     agentSessionID: string,
     request: WorkspaceAgentSessionGoalControlRequest
   ): Promise<GoalControlWorkspaceAgentSessionResponse>;
+  getWorkspaceAgentSessionGoal(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<GetWorkspaceAgentSessionGoalResponse>;
+  reconcileWorkspaceAgentSessionGoal(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<ReconcileWorkspaceAgentSessionGoalResponse>;
   sendWorkspaceAgentSessionInput(
     workspaceID: string,
     agentSessionID: string,

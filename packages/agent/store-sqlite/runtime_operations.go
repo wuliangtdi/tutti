@@ -301,9 +301,9 @@ INSERT OR IGNORE INTO workspace_agent_messages (
   status, payload_json, occurred_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
 ) VALUES (?, ?, ?,
   COALESCE((SELECT MAX(version) + 1 FROM workspace_agent_messages WHERE workspace_id = ? AND agent_session_id = ?), 1),
-  NULL, 'system', 'system', 'running', ?, ?, ?, ?)
+  ?, 'system', 'system', 'running', ?, ?, ?, ?)
 `, operation.WorkspaceID, operation.AgentSessionID, planDecisionNoticeMessageID(operation.OperationID),
-		operation.WorkspaceID, operation.AgentSessionID, payloadJSON, now, now, now)
+		operation.WorkspaceID, operation.AgentSessionID, operation.TurnID, payloadJSON, now, now, now)
 	if err != nil {
 		return fmt.Errorf("insert plan decision unknown notice: %w", err)
 	}
@@ -399,6 +399,9 @@ func validateRuntimeOperationPrepare(input RuntimeOperationPrepare) error {
 		if input.RequestID != "" {
 			return errors.New("cancel runtime operation must not have a request id")
 		}
+		if _, err := cancelTargetsFromPayload(input.AgentSessionID, input.TurnID, input.Payload); err != nil {
+			return err
+		}
 	case RuntimeOperationKindPlanDecision:
 		if input.RequestID == "" || input.RequestID != input.TurnID {
 			return errors.New("plan decision request id must equal its plan turn id")
@@ -415,6 +418,50 @@ func validateRuntimeOperationPrepare(input RuntimeOperationPrepare) error {
 	return nil
 }
 
+func cancelTargetsFromRuntimeOperation(operation RuntimeOperation) ([]runtimeCancelTarget, error) {
+	return cancelTargetsFromPayload(operation.AgentSessionID, operation.TurnID, operation.Payload)
+}
+
+func cancelTargetsFromPayload(agentSessionID string, turnID string, payload map[string]any) ([]runtimeCancelTarget, error) {
+	rootAgentSessionID := payloadString(payload, "rootAgentSessionId")
+	if rootAgentSessionID == "" {
+		return nil, errors.New("cancel runtime operation root agent session id is required")
+	}
+	rawTargets, ok := payload["targets"].([]any)
+	if !ok || len(rawTargets) == 0 {
+		return nil, errors.New("cancel runtime operation targets are required")
+	}
+	result := make([]runtimeCancelTarget, 0, len(rawTargets))
+	seen := make(map[string]struct{}, len(rawTargets))
+	subjectFound := false
+	for _, raw := range rawTargets {
+		value, ok := raw.(map[string]any)
+		if !ok {
+			return nil, errors.New("cancel runtime operation target must be an object")
+		}
+		target := runtimeCancelTarget{
+			AgentSessionID: payloadString(value, "agentSessionId"),
+			TurnID:         payloadString(value, "turnId"),
+		}
+		if target.AgentSessionID == "" || target.TurnID == "" {
+			return nil, errors.New("cancel runtime operation target session and turn ids are required")
+		}
+		key := target.AgentSessionID + "\x00" + target.TurnID
+		if _, exists := seen[key]; exists {
+			return nil, errors.New("cancel runtime operation targets must be unique")
+		}
+		seen[key] = struct{}{}
+		if target.AgentSessionID == agentSessionID && target.TurnID == turnID {
+			subjectFound = true
+		}
+		result = append(result, target)
+	}
+	if !subjectFound {
+		return nil, errors.New("cancel runtime operation targets must include the operation subject")
+	}
+	return result, nil
+}
+
 func validateRuntimeOperationSubjectTx(ctx context.Context, tx *sql.Tx, input RuntimeOperationPrepare) error {
 	turn, found, err := getAgentTurnTx(ctx, tx, input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if err != nil {
@@ -424,15 +471,43 @@ func validateRuntimeOperationSubjectTx(ctx context.Context, tx *sql.Tx, input Ru
 		return ErrRuntimeOperationSubjectState
 	}
 	if input.Kind == RuntimeOperationKindCancelTurn {
-		if turn.Phase == TurnPhaseSettled {
-			return nil
+		targets, err := cancelTargetsFromPayload(input.AgentSessionID, input.TurnID, input.Payload)
+		if err != nil {
+			return err
 		}
-		var active sql.NullString
-		if err := tx.QueryRowContext(ctx, `SELECT active_turn_id FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = ?`, input.WorkspaceID, input.AgentSessionID).Scan(&active); err != nil {
-			return fmt.Errorf("read runtime operation session subject: %w", err)
-		}
-		if !active.Valid || active.String != input.TurnID {
-			return ErrRuntimeOperationSubjectState
+		rootAgentSessionID := payloadString(input.Payload, "rootAgentSessionId")
+		for _, target := range targets {
+			targetTurn, targetFound, err := getAgentTurnTx(ctx, tx, input.WorkspaceID, target.AgentSessionID, target.TurnID)
+			if err != nil {
+				return err
+			}
+			if !targetFound {
+				return ErrRuntimeOperationSubjectState
+			}
+			var kind string
+			var recordedRoot sql.NullString
+			if err := tx.QueryRowContext(ctx, `
+SELECT session_kind, root_agent_session_id
+FROM workspace_agent_sessions
+WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+`, input.WorkspaceID, target.AgentSessionID).Scan(&kind, &recordedRoot); err != nil {
+				return fmt.Errorf("read cancel target session relation: %w", err)
+			}
+			if (kind == SessionKindRoot && target.AgentSessionID != rootAgentSessionID) ||
+				(kind == SessionKindChild && strings.TrimSpace(recordedRoot.String) != rootAgentSessionID) ||
+				(kind != SessionKindRoot && kind != SessionKindChild) {
+				return ErrRuntimeOperationSubjectState
+			}
+			if targetTurn.Phase == TurnPhaseSettled {
+				continue
+			}
+			var active sql.NullString
+			if err := tx.QueryRowContext(ctx, `SELECT active_turn_id FROM workspace_agent_sessions WHERE workspace_id = ? AND agent_session_id = ?`, input.WorkspaceID, target.AgentSessionID).Scan(&active); err != nil {
+				return fmt.Errorf("read runtime operation target: %w", err)
+			}
+			if !active.Valid || active.String != target.TurnID {
+				return ErrRuntimeOperationSubjectState
+			}
 		}
 		return nil
 	}

@@ -19,6 +19,7 @@ interface AgentGUIActivateInputBase {
   agentSessionId: string;
   cwd?: string;
   initialContent?: AgentPromptContentBlock[];
+  initialTurnExpected?: boolean;
   initialDisplayPrompt?: string;
   runtimeContent?: AgentPromptContentBlock[];
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
@@ -32,11 +33,13 @@ type AgentGUIActivateInput =
       agentTargetId: string;
       clientSubmitId: string;
       mode: "new";
+      optimisticTitle?: string;
     })
   | (AgentGUIActivateInputBase & {
       agentTargetId?: string | null;
       clientSubmitId?: never;
       mode: "existing";
+      optimisticTitle?: never;
     });
 
 interface UseAgentGUIActivationInput {
@@ -116,6 +119,9 @@ export function useAgentGUIActivation({
         ...(input.initialContent ? { content: input.initialContent } : {}),
         ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
         expiresAtUnixMs: requestedAtUnixMs + ACTIVATION_EXPIRY_MS,
+        ...(input.initialTurnExpected !== undefined
+          ? { initialTurnExpected: input.initialTurnExpected }
+          : {}),
         ...(input.initialDisplayPrompt
           ? { initialDisplayPrompt: input.initialDisplayPrompt }
           : {}),
@@ -141,7 +147,10 @@ export function useAgentGUIActivation({
           ...sharedIntent,
           agentTargetId,
           clientSubmitId,
-          mode: "new"
+          mode: "new",
+          ...(input.optimisticTitle
+            ? { optimisticTitle: input.optimisticTitle }
+            : {})
         });
       } else {
         engine.dispatch({

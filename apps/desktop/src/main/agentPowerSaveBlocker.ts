@@ -117,14 +117,14 @@ export function connectAgentPowerSaveBlocker(
   ): Promise<void> {
     const { workspaceId, agentSessionId } = event.payload;
     try {
-      const session = await deps.tuttidClient.getWorkspaceAgentSession(
+      const detail = await deps.tuttidClient.getWorkspaceAgentSession(
         workspaceId,
         agentSessionId
       );
       if (disposed) {
         return;
       }
-      updateSessionActiveState(workspaceId, session);
+      updateSessionActiveState(workspaceId, detail.session);
       updateBlocker();
     } catch (error) {
       deps.logger.warn("failed to sync agent session power save state", {

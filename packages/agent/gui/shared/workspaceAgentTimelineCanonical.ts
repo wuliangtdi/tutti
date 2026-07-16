@@ -19,9 +19,9 @@ import {
   messageStatusKind,
   normalizedMessageBody,
   stripReviewProcessSummaryTitle,
-  thinkingStatusKind
+  thinkingStatusKind,
+  userMessageProjectionKey
 } from "./workspaceAgentTimelineMessageHelpers";
-import { timelineItemOwnerThreadId } from "./agentConversation/projection/subAgentTimelinePartition";
 import {
   compareToolCallsAscending,
   delegatedToolStepFromCall,
@@ -59,25 +59,19 @@ export function buildCanonicalWorkspaceAgentDetailView({
     suppressedUnavailableAskUserQuestionCallIds(sortedTimelineItems);
 
   for (const item of sortedTimelineItems) {
-    // Sub-agent child-thread rows (payload.ownerThreadId) belong to the
-    // delegated thread, not the parent transcript. They surface through the
-    // parent's collab tool card lanes instead of interleaving here — even
-    // when no matching card has arrived yet.
-    if (timelineItemOwnerThreadId(item)) {
-      continue;
-    }
     const role = messageRole(item);
     const body = messageBody(item);
     const explicitTurnId = item.turnId?.trim();
 
     if (role === "user") {
       const turnId = explicitTurnId || `seq:${item.seq || item.id}`;
-      if (!body) {
+      const projectionKey = userMessageProjectionKey(item, body);
+      if (!projectionKey) {
         continue;
       }
       if (
         isRecentDuplicateUserMessage(
-          recentUserMessages.get(normalizedMessageBody(body)),
+          recentUserMessages.get(projectionKey),
           item
         )
       ) {
@@ -97,7 +91,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
       );
       turn.userMessages.push(message);
       turn.userMessage ??= message;
-      recentUserMessages.set(normalizedMessageBody(body), item);
+      recentUserMessages.set(projectionKey, item);
       continue;
     }
 
@@ -164,7 +158,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
     if (role === "agent" && body) {
       const payload = normalizedPayload(item.payload);
       const visibleError = visibleErrorFromPayload(payload);
-      const systemNotice = systemNoticeFromPayload(payload);
+      const systemNotice = systemNoticeFromPayload(payload, item);
       const status = firstPresentString(
         item.status,
         stringRecordValue(payload, "status")
@@ -194,14 +188,9 @@ export function buildCanonicalWorkspaceAgentDetailView({
   );
   nestDelegatedToolCallsAcrossTurns(visibleTurns);
   visibleTurns.forEach(mergeBackgroundTerminalContinuations);
-  const allowTrailingToolGrouping = !isSessionWorking(session);
-
-  visibleTurns.forEach((turn, index) => {
+  visibleTurns.forEach((turn) => {
     turn.rawAgentItems = [...turn.agentItems];
-    turn.agentItems = regroupAgentItems(
-      turn.agentItems,
-      allowTrailingToolGrouping || index < visibleTurns.length - 1
-    );
+    turn.agentItems = regroupAgentItems(turn.agentItems);
   });
 
   return {
@@ -404,20 +393,19 @@ function refreshToolCallAgentItem(
 }
 
 function regroupAgentItems(
-  items: readonly WorkspaceAgentSessionDetailAgentItem[],
-  allowTrailingFinalization: boolean
+  items: readonly WorkspaceAgentSessionDetailAgentItem[]
 ): WorkspaceAgentSessionDetailAgentItem[] {
   const regrouped: WorkspaceAgentSessionDetailAgentItem[] = [];
   let pending: Array<
     Extract<WorkspaceAgentSessionDetailAgentItem, { kind: "tool-calls" }>
   > = [];
 
-  const flushPending = (finalize: boolean) => {
+  const flushPending = () => {
     if (pending.length === 0) {
       return;
     }
     const groupedCalls = pending.flatMap((item) => item.toolCalls);
-    if (finalize && groupedCalls.length >= 2) {
+    if (groupedCalls.length >= 2) {
       regrouped.push({
         kind: "tool-calls",
         id: pending.map((item) => item.id).join("+"),
@@ -443,11 +431,11 @@ function regroupAgentItems(
       pending.push(item);
       continue;
     }
-    flushPending(true);
+    flushPending();
     regrouped.push(item);
   }
 
-  flushPending(allowTrailingFinalization);
+  flushPending();
   return regrouped;
 }
 
@@ -456,10 +444,7 @@ function isGroupableToolCallItem(
 ): boolean {
   return (
     item.toolCalls.length === 1 &&
-    item.toolCalls.every((call) => isGroupableToolCall(call)) &&
-    item.toolCalls.every(
-      (call) => call.statusKind !== "working" && call.statusKind !== "waiting"
-    )
+    item.toolCalls.every((call) => isGroupableToolCall(call))
   );
 }
 
@@ -785,10 +770,4 @@ function normalizeToolName(name: string | null): string {
     .trim()
     .replace(/[_\s-]+/g, "")
     .toLowerCase();
-}
-
-function isSessionWorking(
-  session: BuildWorkspaceAgentSessionDetailInput["session"]
-): boolean {
-  return session.activeTurn ? session.activeTurn.phase !== "settled" : false;
 }

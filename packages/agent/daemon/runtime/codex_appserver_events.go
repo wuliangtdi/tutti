@@ -35,7 +35,7 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			appServerMethodRequestUserInput,
 			appServerMethodExecApprovalV1,
 			appServerMethodPatchApprovalV1:
-			return a.appServerServerRequest(ctx, client, session, turnID, message, emit)
+			return a.appServerServerRequest(ctx, client, session, turnID, message, normalizer, emit)
 		default:
 			err := fmt.Errorf("server request method %q is not supported", message.Method)
 			if codexproto.IsKnownServerRequestMethod(message.Method) {
@@ -55,8 +55,39 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 			return nil, nil
 		}
 	}
+	var processingTurn *codexAppServerActiveTurn
+	if appServerNotificationUsesNormalizer(message.Method) {
+		processingTurn = a.activeTurnForNormalizer(session.AgentSessionID, normalizer)
+		if processingTurn != nil {
+			processingTurn.processMu.Lock()
+			defer processingTurn.processMu.Unlock()
+		}
+	}
 	reduction := newCodexAppServerReducer(a).ReduceNotification(client, session, turnID, message, normalizer, emitCommands)
 	return reduction.Events, nil
+}
+
+func appServerNotificationUsesNormalizer(method string) bool {
+	switch method {
+	case appServerNotifyAgentMessageDelta, appServerNotifyReasoningDelta, appServerNotifyReasoningSummary,
+		appServerNotifyItemStarted, appServerNotifyItemCompleted, appServerNotifyPlanUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *CodexAppServerAdapter) activeTurnForNormalizer(agentSessionID string, normalizer *acpTurnNormalizer) *codexAppServerActiveTurn {
+	if a == nil || normalizer == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[agentSessionID]
+	if session == nil || session.activeTurn == nil || session.activeTurn.normalizer != normalizer {
+		return nil
+	}
+	return session.activeTurn
 }
 
 // appServerNoticeItems maps review thread items to a one-line system-notice

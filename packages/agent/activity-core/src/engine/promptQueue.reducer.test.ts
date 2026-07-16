@@ -37,6 +37,47 @@ test("queued prompt waits for a busy turn and sends when canonical lifecycle set
   assert.equal(settled.commands[0]?.commandId, "queue:send:session-1:1");
 });
 
+test("queued capability submit preserves its required settings through delivery", () => {
+  const loaded = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [session("running", 1)]
+  });
+  const queued = reduce(loaded.state, {
+    ...submit("prompt-capability"),
+    requiredSettingsPatch: { computerUse: true }
+  });
+
+  assert.equal(queued.commands.length, 0);
+  assert.deepEqual(
+    queued.state.recordsBySessionId["session-1"]?.prompts[0]
+      ?.requiredSettingsPatch,
+    { computerUse: true }
+  );
+
+  const settled = reduce(queued.state, {
+    type: "session/snapshotReceived",
+    sessions: [session("settled", 2)]
+  });
+  assert.deepEqual(
+    settled.commands[0]?.type === "queue/sendPrompt"
+      ? settled.commands[0].requiredSettingsPatch
+      : null,
+    { computerUse: true }
+  );
+
+  const failed = reduce(
+    settled.state,
+    commandResult(commandId(settled.commands[0]), "queue/sendPrompt", "failed")
+  );
+  const retried = reduce(failed.state, sendNow("prompt-capability"));
+  assert.deepEqual(
+    retried.commands[0]?.type === "queue/sendPrompt"
+      ? retried.commands[0].requiredSettingsPatch
+      : null,
+    { computerUse: true }
+  );
+});
+
 test("enqueue drains immediately against the engine's available snapshot", () => {
   const loaded = reduce(createInitialPromptQueueState(), {
     type: "session/snapshotReceived",
@@ -179,6 +220,44 @@ test("metadata-only session updates do not prove a queued turn completed", () =>
   );
   assert.equal(completed.commands.length, 0);
   assert.equal(completed.state.recordsBySessionId["session-1"]?.inFlight, null);
+});
+
+test("Claude goal completion does not drain prompts while the canonical root waits", () => {
+  const running = session("running", 1);
+  const waiting = {
+    ...running,
+    activeTurn: { ...running.activeTurn!, phase: "waiting" as const },
+    goal: { objective: "ship it", status: "active" as const },
+    provider: "claude-code"
+  };
+  let state = reduce(createInitialPromptQueueState(), {
+    type: "session/snapshotReceived",
+    sessions: [waiting]
+  }).state;
+  state = reduce(state, enqueue("prompt-1")).state;
+
+  const goalCompleted = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...waiting,
+        goal: { objective: "ship it", status: "complete" as const },
+        updatedAtUnixMs: 2
+      }
+    ]
+  });
+
+  assert.equal(goalCompleted.commands.length, 0);
+  assert.equal(
+    goalCompleted.state.recordsBySessionId["session-1"]?.availability.state,
+    "blocked"
+  );
+  assert.deepEqual(
+    goalCompleted.state.recordsBySessionId["session-1"]?.prompts.map(
+      (prompt) => prompt.id
+    ),
+    ["prompt-1"]
+  );
 });
 
 test("native guidance uses the current running turn despite a stale settled snapshot", () => {
@@ -682,6 +761,7 @@ function session(
         ? {
             turnId: "turn-1",
             agentSessionId: "session-1",
+            origin: "user_prompt",
             phase,
             startedAtUnixMs: 1,
             updatedAtUnixMs

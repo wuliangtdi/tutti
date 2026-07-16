@@ -2,7 +2,37 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
-Turn state, loading, cancel, restore, rail projection, event updates, imports, and performance.
+Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
+
+### Codex WebSocket reconnect rejects a long prompt metadata header
+
+- Symptom:
+  A long-running Codex turn disconnects, then its WebSocket reconnect fails with
+  `did not receive a valid HTTP request; Separator is found, but chunk is longer than limit`.
+  The same prompt may succeed when the original connection stays open.
+- Quick checks:
+  Inspect the Codex app-server `turn/start` params without logging prompt text.
+  Compare prompt byte count with any client metadata byte count. An unbounded
+  prompt copy in `responsesapiClientMetadata` can cross a WebSocket HTTP
+  parser's roughly 32 KiB line limit during reconnect.
+- Root cause:
+  Codex may forward Responses API client metadata through the WebSocket HTTP
+  handshake. Duplicating the full prompt into that metadata turns prompt size
+  into header size. Reconnect then fails before the provider can process the
+  normal `input` payload.
+- Fix:
+  Keep the full materialized prompt in `turn/start.input`. Do not duplicate it
+  into auxiliary metadata, truncate it in AgentGUI, or compensate with reconnect
+  retries. Provider-specific metadata stays inside the provider adapter and must
+  follow a demonstrated provider contract.
+- Validation:
+  Cover a prompt larger than 32 KiB. Assert `turn/start.input` preserves it
+  exactly and `responsesapiClientMetadata` contains no prompt copy. Run
+  `go test ./packages/agent/daemon/runtime`.
+- References:
+  [codex_appserver_event_params.go](../../../packages/agent/daemon/runtime/codex_appserver_event_params.go)
+  [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
 ### AgentGUI turn actions return plain-text route 404s
 
@@ -227,6 +257,63 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
+### Cursor or OpenCode turn settles before late ACP activity arrives
+
+- Symptom:
+  A Cursor or OpenCode turn appears complete, then a delayed tool or permission
+  event is projected onto the old turn; the composer may relock, persistence
+  may reject a settled-to-running transition, or a synthetic turn may appear.
+  A Cursor background Task may also appear launched successfully while its
+  detached child later requests permissions that never reach the UI.
+- Quick checks:
+  Correlate `session/prompt` response timing with later `session/update` or
+  `session/request_permission` messages. If the prompt response arrived first,
+  the late event no longer has an active canonical turn owner. Also verify the
+  terminal report is `root_provider_turn.completed`, not a direct canonical
+  `turn.completed` from the ACP adapter. For Cursor Task/subagent probes,
+  correlate `agent_session.cursor.task_tool_update` with
+  `agent_session.cursor.task_extension`; the latter records only redacted
+  identity, ordering, field-presence, and duration facts. A background Task
+  tool result with `isBackground=true` and a very short duration is a launch
+  acknowledgement, not child terminal evidence. Permission requests arriving
+  after the root prompt result confirm the child is still running out of scope.
+- Root cause:
+  Standard ACP has one active prompt handler and a session-level fallback
+  handler. Reusing a recent turn ID in the fallback path treats temporal
+  proximity as ownership. That can reopen a settled root or fabricate a turn,
+  and ordinary tool display fields do not supply the stable child identity and
+  terminal lifecycle required for a provider-native child session. Cursor's
+  background Task implementation records eventual completion in an internal
+  work registry, but Cursor ACP `2026.07.01-41b2de7` does not expose that
+  terminal to Tutti.
+- Fix:
+  Route every Standard ACP prompt terminal through the daemon-owned root
+  provider lifecycle. Drop turn-scoped tool/message updates outside the active
+  prompt call and reject out-of-band permission callbacks; never synthesize a
+  canonical turn. Keep Cursor/OpenCode root-only until their ACP transports
+  expose stable child, parent, and child-terminal facts. Cursor Agent
+  `2026.07.01-41b2de7` does not merge `--plugin-dir` hooks into ACP, so the
+  dormant `preToolUse` Task guard is deliberately not advertised or
+  materialized. Do not treat background Task as supported or blocked, do not
+  write hooks into user/project configuration, and do not settle a detached
+  child from a guessed timeout.
+- Validation:
+  Cover Cursor and OpenCode normal completion with
+  `root_provider_turn.started/completed` and no canonical terminal from the
+  adapter. Deliver a late tool update and late permission after prompt return
+  and verify neither creates a turn, interaction, or child session. Make a
+  `session/cancel` write fail and verify the error reaches the caller. Also
+  fail an automatic permission-response write and verify the adapter does not
+  report a false approval while the provider is still waiting. Verify the
+  dormant Cursor hook allows foreground Task inputs, rejects snake-case and
+  camel-case background flags, does not match flag-like text inside the Task
+  prompt, and fails closed for malformed input; separately verify the current
+  ACP plugin manifest does not advertise or materialize that hook.
+- References:
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [standard_acp_stream.go](../../../packages/agent/daemon/runtime/standard_acp_stream.go)
+  [provider-native subagents](../../specs/2026-07-15-provider-native-subagents.md)
+
 ### Codex goal stops after a turn while the goal remains active
 
 - Symptom:
@@ -287,6 +374,58 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [codex_appserver_events.go](../../../packages/agent/daemon/runtime/codex_appserver_events.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Clearing a goal hides Stop or appends a provider acknowledgement
+
+- Symptom:
+  Clearing a goal while its current turn is still running leaves the composer
+  on a non-clickable send spinner. The transcript shows `/goal clear` followed
+  by a new processing row even though no new user turn started. Claude Code may
+  instead append a native `Goal cleared: …` assistant message at the bottom of
+  the transcript after the interrupted turn.
+- Quick checks:
+  Inspect the AgentGUI clear handler and the engine pending-submit records. If
+  clear calls `executePrompt` with an immediate `/goal clear`, the control has
+  entered the normal message pipeline and received a pseudo turn identity. For
+  Claude Code, correlate the bottom assistant message's turn ID with the
+  adapter-generated turn carrying the native clear command.
+- Root cause:
+  Goal clear changes thread metadata rather than submitting user work. For a
+  provider such as Codex that leaves the active turn running, submitting clear
+  as a prompt creates a pending submit without a real provider turn. That local
+  submit owns the send spinner and its visible user message becomes the last
+  timeline turn, so canonical processing is projected under the wrong item.
+  Claude Code instead interrupts the live goal turn and requires a separate
+  native command turn to execute clear; projecting that control turn's provider
+  acknowledgement as ordinary assistant content creates an unrelated transcript
+  row at the bottom.
+- Fix:
+  Route every goal action, including clear, through the dedicated runtime
+  goal-control API. Do not create a user message, pending submit, or pseudo turn.
+  If the provider needs an internal clear-command turn, register its generated
+  turn ID and suppress only that turn's assistant/thinking acknowledgement at
+  the runtime-adapter boundary before persistence. Do not filter by localized
+  acknowledgement text and do not move the message into the interrupted turn.
+  Preserve goal/session updates and terminal cleanup, but do not register the
+  internal command as a root provider turn or feed its terminal into canonical
+  root settlement.
+  Keep Stop and processing derived from the canonical active turn, and report a
+  successful clear with a localized transient toast. Render that toast in an
+  AgentGUI detail-scoped viewport and use UI System themed surface, foreground,
+  and border tokens so it centers within the content area and follows the
+  active light or dark theme instead of using the inverted neutral toast style.
+- Validation:
+  Clear a goal while a turn is running and verify the goal-control API is called
+  without an engine submit dispatch. The clear command must not appear in the
+  transcript, the original processing row must remain in place, and Stop must
+  remain clickable until the active turn settles or is interrupted. For Claude
+  Code, verify the native acknowledgement is absent both live and after reload,
+  while identical text from an ordinary assistant turn remains visible.
+- References:
+  [useAgentGUISubmitInteractionActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUISubmitInteractionActions.ts)
+  [claude_sdk_goal.go](../../../packages/agent/daemon/runtime/claude_sdk_goal.go)
+  [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent session stays loading after a completed turn
 
 - Symptom:
@@ -320,6 +459,58 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session_list.go](../../../services/tuttid/service/agent/service_session_list.go)
+
+### AgentGUI pin or unpin appears stuck for a live session
+
+- Symptom:
+  Pinning or unpinning a conversation backed by a live runtime succeeds in the
+  daemon, but the rail does not move the row or update its action until a later
+  list refresh. Old conversations without a live runtime update immediately. In
+  another variant, the pin command completes quickly but the whole rail becomes
+  disabled or changes to a skeleton while section membership refreshes.
+- Quick checks:
+  Correlate `pin_result` with `agent.activity.store.session_version_regression`.
+  Compare the command response's `updatedAtUnixMs` with the engine's current
+  session version, then inspect the exported session for a newer
+  `pinnedAtUnixMs`. A fast command carrying the new pin value but an older
+  `updatedAtUnixMs` identifies a stale runtime projection, not a slow database
+  write. If the pin value applies promptly, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`. The renderer event should report
+  `refreshReason=membership_change`; the daemon event separates
+  `projects_ms`, `store_ms`, and `hydrate_ms` and reports current/non-empty
+  project counts, target-scoped visible sessions, and returned first-page rows.
+- Root cause:
+  Durable metadata updates advance the persisted session timestamp. When a live
+  runtime session is also present, the service merges persisted metadata such
+  as `pinnedAtUnixMs` into the runtime projection. If that merge keeps the older
+  runtime timestamp, the frontend's monotonic session reducer correctly rejects
+  the whole stale response, including the new pin value.
+  When the entity update is accepted, pin membership still requires an
+  authoritative section refresh. Treating every pending section request as an
+  unresolved list load turns that same-scope background refresh into a blocking
+  skeleton even though valid membership is already available.
+- Fix:
+  Merge session freshness monotonically across runtime and persistence using
+  the newer timestamp. Pin responses that advance the session version must also
+  include protocol-v2 active/latest turn state so accepting the metadata update
+  cannot clear a running turn. Do not weaken frontend version checks or hide the
+  mismatch behind delayed refetches. For an accepted membership update, keep the
+  resolved section page visible during the same-scope refresh and reveal the rail
+  skeleton only when no first page has resolved. Lock scope-sensitive actions
+  only while the displayed membership belongs to a different or unresolved
+  scope; do not patch daemon-owned membership locally.
+- Validation:
+  Cover a live runtime session whose persisted pin update is newer, a newer
+  runtime snapshot that must not regress, and a running turn that remains
+  attached to the pin response. Run `go test ./services/tuttid/service/agent`
+  plus daemon lint, tests, and build. Add controller coverage for initial load,
+  same-scope membership refresh, scope change, and stale request cancellation.
+- References:
+  [service.go](../../../services/tuttid/service/agent/service.go)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+  [AgentGUIConversationRailQueryController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.ts)
 
 ### AgentGUI model switch changes defaults but not the active session
 
@@ -385,12 +576,54 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [codex_appserver_adapter.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter.go)
 
+### Historical AgentGUI permission changes time out or stop responding
+
+- Symptom:
+  Changing permission mode in a historical conversation appears to do nothing,
+  or the first selection times out and later selections are ignored. Logs may
+  show a 30-second settings request with no provider settings application.
+- Quick checks:
+  Confirm the selected session is absent from the live runtime but present in
+  `workspace_agent_sessions`. Check whether one menu choice emitted two settings
+  requests. After a timeout, inspect the engine settings operation: `unknown`
+  plus a later request without `retry` explains a silent drop.
+- Root cause:
+  Historical settings were routed through runtime preparation, so a metadata
+  change could block on provider resume and sidecar startup. The permission
+  menu also handled both item pointer-down and Select value-change, duplicating
+  one user action. When the first command timed out, the engine correctly kept
+  uncertainty but the controller did not mark a later explicit choice as a
+  retry.
+- Fix:
+  Send one settings intent from Select value-change. Read the current engine
+  operation at action time and mark an explicit choice as retry when its status
+  is `unknown`. In the daemon, update inactive-session settings through the
+  durable activity projection and publish reconciliation; reserve provider
+  runtime updates for sessions that are already live. Serialize runtime resume
+  with durable settings read-modify-write per session, preventing stale resume
+  inputs and lost concurrent partial patches. Do not copy an active session
+  setting into target defaults.
+- Validation:
+  Cover one pointer selection producing one callback, timeout followed by an
+  explicit retry, and a historical Claude Code settings update that persists
+  while runtime resume and live adapter update counts remain zero. Run the
+  AgentGUI, activity-core, store-sqlite, and agent-service focused tests.
+- References:
+  [AgentComposerSettingsMenus.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentComposerSettingsMenus.tsx)
+  [useAgentGUIComposerSettingsActions.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIComposerSettingsActions.ts)
+  [service_settings.go](../../../services/tuttid/service/agent/service_settings.go)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Agent GUI provider tab shows fused or stale conversations
 
 - Symptom:
   Switching the Agent GUI aggregation rail between All, Cursor, Codex, or Claude
   makes the selected row disappear, collapses a loaded page, or briefly flashes
-  missing Show more controls. Five page rows plus one selected overlay may show
+  missing Show more controls. The same switch may remain visibly blocked even
+  when each individual session query takes only tens of milliseconds, because
+  the first-page bootstrap repeats count, sort, entity projection, and turn /
+  interaction hydration once per current project section. Five page rows plus
+  one selected overlay may show
   Show more/Show less even when only six sessions exist, or a nine-session
   section may ignore the first Show more click. Restart can reproduce the same
   selected-row loss.
@@ -400,21 +633,63 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   and responses preserve `totalCount`, `hasMore`, and `nextCursor`. In the
   renderer, distinguish daemon-owned section membership ids from engine-owned
   session entities; activating or hydrating one session must not rewrite the
-  loaded membership page.
+  loaded membership page. For latency, count repository section reads per
+  bootstrap: production must issue one `ListSessionSections` batch read, not one
+  `ListSessionSection` call per project plus pinned and Chats. Run
+  `EXPLAIN QUERY PLAN` and confirm ordinary branches use
+  `idx_workspace_agent_sessions_rail_section_page`, pinned branches use
+  `idx_workspace_agent_sessions_pinned_page`, and selected page entities load
+  by the session primary key after narrow id trimming. A target-filtered rail
+  must instead use `idx_workspace_agent_sessions_rail_section_target_page` and
+  `idx_workspace_agent_sessions_pinned_target_page` with an exact target
+  predicate; an optional `OR` predicate cannot narrow the index range. For a
+  rail that shows only the active/new session, inspect `*_failed` events for
+  `no such index`, then compare those required indexes with `sqlite_master`
+  even when their migration markers exist. Store startup must idempotently
+  restore missing rail pagination indexes; do not weaken `INDEXED BY` or fall
+  back to a full session scan. For a reported slow switch, correlate
+  `agent_gui.conversation_rail.first_pages_slow` with
+  `workspace.agent_session.sections.list_slow`: the renderer event separates
+  request and controller-apply time, while the daemon event separates current
+  projects, store, and hydration time. Corresponding `*_failed` events record
+  real failures. Successful requests below 250 ms, aborted requests, and stale
+  responses are intentionally silent; these diagnostics must not log project
+  paths, section keys, session titles, or prompts. Use `refreshReason` to
+  distinguish attach, scope change, and membership invalidation. Interpret
+  `rail_visible_session_count` as the target-scoped total across requested
+  sections and `returned_session_count` as only the bounded first-page rows;
+  neither requires another full-workspace count query.
 - Root cause:
   A second React summary cache mixed entity data, section membership, active
   selection, and visible-item limits. Effects manually patched section rows
   from changing conversation summaries, so provider/detail reconciliation could
   collapse pages or synthesize membership. Counting the active overlay as a
   pageable row also corrupted Show more decisions. Bounded engine snapshots can
-  recreate the loss if omission is treated as deletion.
+  recreate the loss if omission is treated as deletion. The latency variant is
+  an N-section daemon read: current projects are a small requested set, while
+  the workspace DB retains history for removed projects. Scanning that full
+  history or repeating canonical turn / interaction hydration per section makes
+  the rail wait scale with project count even when every leaf query looks fast.
+  A database opened by different worktrees or intermediate builds can retain a
+  migration marker after a required physical index disappears; treating the
+  marker alone as proof of the schema invariant makes every section bootstrap
+  fail while an active-session overlay can misleadingly remain visible.
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
   engine entities with a pure model projection. Keep active and pending sessions
   as display overlays outside pagination. Preserve old scope chrome and metadata
   atomically while a provider refetch is pending. Engine snapshots merge
-  monotonically; only explicit `session/removed` owns deletion.
+  monotonically; only explicit `session/removed` owns deletion. Keep first-page
+  bootstrap as a required narrow repository seam: one requested-section-driven
+  batch query, independent pinned and ordinary index branches, count/sort/limit
+  on narrow session ids, then one cross-section canonical entity hydration.
+  Reassert required rail indexes with idempotent `CREATE INDEX IF NOT EXISTS`
+  during every store migration pass, including when the corresponding marker is
+  already recorded, so schema drift repairs itself without rewriting session
+  data.
+  Do not add one `UNION ALL` arm per section; that restores section-count scaling
+  and inherits SQLite's compound-select term limit.
 - Validation:
   Run `pnpm --filter @tutti-os/agent-gui test`,
   `pnpm --filter @tutti-os/agent-activity-core test`, and
@@ -422,7 +697,10 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   `cd packages/agent/store-sqlite && go test ./... -run 'SessionSection|TurnsBackfill'`
   and
   `cd services/tuttid && go test ./service/agent ./api -run 'ListPage|SessionList|SessionSection'`
-  so cursor metadata and daemon ordering are covered. Cover Codex -> All -> Codex,
+  so cursor metadata and daemon ordering are covered. Run
+  `cd packages/agent/store-sqlite && go test -run '^$' -bench 'BenchmarkStoreListSessionSectionsLargeRemovedProjectHistory' -benchmem`
+  to compare the batch reader with the serial reference across sparse and dense
+  requested-section histories. Cover Codex -> All -> Codex,
   client restart restore, active row outside first page, five-plus-active totals,
   nine-session Show more, slow provider refetch, and bounded snapshot omission.
 - References:
@@ -454,17 +732,14 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   record its own scratch cwd under
   `Documents/Codex/<yyyy-mm-dd>/<conversation>`.
 - Root cause:
-  Conversation project grouping is a view-model join of `cwd x userProjects`.
-  If a generated no-project cwd is not recognized before prefix/parent project
-  matching, the longest-parent project match can assign the session to a broad
-  project such as `$HOME`. Keep generated-path recognition in the host
-  `isNoProjectPath` callback because it has the user home-directory context;
-  a package-level suffix check would misclassify real projects that contain a
-  `Documents/tutti/session-<uuid>` subdirectory. External import has a similar
-  trap because provider transcripts may record `$HOME` or a provider-owned
-  scratch working directory as the cwd when no project was selected; that intent
-  must be persisted as session metadata rather than inferred later from
-  user-project prefix matching. A second loss point is runtime state projection:
+  Rail membership is classified once by the daemon when the session is first
+  persisted, using `cwd`, runtime no-project markers, and current user projects.
+  If a generated no-project marker is lost before that write, longest-parent
+  matching can assign the immutable `railSectionKey` to a broad project such as
+  `$HOME`. External import has a similar trap because provider transcripts may
+  record `$HOME` or a provider-owned scratch working directory as the cwd when
+  no project was selected; that intent must reach initial persistence as session
+  metadata. A second loss point is runtime state projection:
   rebuilding `runtimeContext` from only `cwd`, title, permissions, and visibility,
   or replacing it wholesale with `StateAdapter` output, drops launch-scoped
   markers such as `noProject` before durable rail classification runs.
@@ -479,8 +754,12 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   upsert should both use that classifier, matching exact user projects first,
   then preserving no-project/provider scratch cwd shapes as conversations, then
   applying longest parent-project matches. Do not rederive historical rail
-  assignment from the current user-project list during read pagination; keep
-  existing rail fields stable when a session's final cwd has not changed.
+  assignment from the current user-project list or a later cwd observation;
+  preserve every valid existing rail key unconditionally. A successful Create
+  response must synchronously read back the persisted session and its nonblank
+  key rather than racing the runtime's asynchronous activity reporter. AgentGUI
+  must project sessions only by exact key equality and must not retain a cwd-based
+  grouping fallback.
 - Validation:
   Run
   `pnpm --filter @tutti-os/agent-gui test -- agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`,
@@ -569,6 +848,41 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - References:
   [catalog.go](../../../services/tuttid/service/eventstream/catalog.go)
   [activity.updated.event.json](../../../packages/events/protocol/definitions/agent/activity.updated.event.json)
+
+### AgentGUI file-change undo reports a generic failure
+
+- Symptom:
+  Clicking Undo on a changed-files summary shows a failure even though the
+  target directory is a Git repository and the file appears unchanged since
+  the agent edit.
+- Quick checks:
+  Search desktop and daemon logs for the `agent-git-patch` diagnostic family.
+  Inspect `errorCode`, Git `stderr`, the diff byte count and hash, and the
+  affected paths. For `invalid-patch`, inspect the durable tool output for
+  malformed unified-diff control markers. A no-newline marker must begin with
+  `\`, not a leading context-space followed by `\`. For
+  `patch-does-not-apply`, compare the recorded after-state with the current
+  file rather than assuming the original turn is still the latest writer.
+- Root cause:
+  Provider display diffs can contain syntax that a viewer tolerates but
+  `git apply` rejects. Treating that display payload as executable patch data
+  produces corrupt hunks. A separate failure occurs when the patch is valid
+  but later edits changed its context.
+- Fix:
+  Canonicalize provider file-change metadata at the runtime adapter boundary
+  before persistence, and canonicalize historical no-newline markers on read.
+  The daemon must preflight with `git apply --check` using the same execution
+  options, return `invalid-patch` for syntax failures and
+  `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
+  either result.
+- Validation:
+  Cover leading-whitespace no-newline markers, historical activity projection,
+  corrupt-patch preflight without mutation, worktree divergence, reverse
+  application, and the existing untracked-created-file behavior.
+- References:
+  [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
+  [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
+  [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
 ### Remote agent cancel does not stop the local turn
 
@@ -1099,3 +1413,70 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
   [main.ts](../../packages/agent/claude-sdk-sidecar/src/main.ts)
   [main.test.ts](../../packages/agent/claude-sdk-sidecar/src/main.test.ts)
   [claude_sdk_adapter.go](../../packages/agent/daemon/runtime/claude_sdk_adapter.go)
+
+### AgentActivity replication repeatedly rejects message batches as invalid
+
+- Symptom:
+  A downstream AgentActivity replica repeatedly returns `INVALID_ARGUMENT` for
+  the same message batch. The source session has a higher `messageVersion`, but
+  the destination has no messages or stops at an earlier version.
+- Quick checks:
+  Compare the session watermark with the current message rows. Values such as
+  `1,3` or `1,5` are valid when an intermediate snapshot of the same
+  `messageId` was overwritten. Check whether the destination requires
+  `incomingVersion == maxStoredVersion + 1` or treats a message version as
+  immutable identity.
+- Root cause:
+  `Message.Version` is a per-session change cursor on a mutable snapshot. Each
+  accepted update advances the cursor, and updating the same `messageId`
+  replaces its prior row. Current rows therefore need not contain every cursor
+  value, and the same message identity legitimately moves to a higher version.
+- Fix:
+  Replicas must accept any positive version for a new message, accept a higher
+  version for an existing `messageId`, and ignore or reject only stale lower
+  versions. Use a version-guarded atomic upsert so concurrent stale snapshots
+  cannot overwrite newer state. Do not add an event-history table merely to
+  make the current snapshot appear contiguous.
+- Validation:
+  Record message A at v1, message B at v2, then update B to v3. Verify the
+  current snapshot is `A@1,B@3`, `afterVersion=1` returns B at v3, and a
+  rejected projection does not consume another cursor. Downstream replication
+  coverage should also accept an initial v3, update it to v5, and preserve v5
+  when v4 arrives later.
+- References:
+  [activity_messages.go](../../../packages/agent/store-sqlite/activity_messages.go)
+  [activity_message_read.go](../../../packages/agent/store-sqlite/activity_message_read.go)
+  [repository.go](../../../packages/agent/store-sqlite/repository.go)
+
+### Goal clear stays planning and leaves the session running
+
+- Symptom:
+  Immediately clearing a newly set Goal leaves the first response in thinking,
+  `/goal clear` in planning, or the conversation permanently running.
+- Quick checks:
+  Inspect the Goal control response: its Turn ID must be empty. List persisted
+  Turns and verify no Turn was created solely for the clear action. Inspect the
+  Goal state endpoint for `desired`, `observed`, `revision`, `syncStatus`, and
+  `pendingOperationId`. For any real Goal Turn, verify `origin` and source Goal
+  operation/revision are present.
+- Root cause:
+  The prompt path allocated a Turn ID before classifying `/goal`. Provider Goal
+  control is session-level and did not start that Turn, but message persistence
+  manufactured a row for the unknown ID. With no real `turn_started` or
+  terminal event, loading and session-running projections never settled.
+- Fix:
+  Route Goal controls through the typed Goal API before Turn allocation. Persist
+  desired/observed Goal state and an independent operation, reject messages that
+  reference unknown Turns, and adopt only provider-started continuation Turns.
+  Use durable origin and revision correlation so clear does not cancel unrelated
+  user work and stale continuation timers cannot revive an older Goal.
+- Validation:
+  Set then immediately clear a Goal and assert that no control Turn exists, the
+  operation reaches a terminal state, and the session has no phantom active
+  Turn. Cover unknown-Turn message rejection, Claude goal-arm quiescing, Codex
+  adopted continuation provenance, stale observation protection, and revision-
+  guarded continuation nudges.
+- References:
+  [Agent Goal Control Design](../../specs/2026-07-15-agent-goal-control-design.md)
+  [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
+  [goal_state.go](../../../packages/agent/store-sqlite/goal_state.go)

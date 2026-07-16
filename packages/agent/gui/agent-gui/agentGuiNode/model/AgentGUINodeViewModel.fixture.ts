@@ -50,7 +50,6 @@ export function groupAgentGUINodeViewModelFixture(
       isLoadingOlderMessages: flat.isLoadingOlderMessages,
       hasOlderMessages: flat.hasOlderMessages,
       usage: flat.usage,
-      backgroundAgentCount: flat.backgroundAgentCount,
       hasSentUserMessage: flat.hasSentUserMessage,
       avoidGroupingEdits: flat.avoidGroupingEdits,
       conversation: flat.conversation,
@@ -90,6 +89,7 @@ export function groupAgentGUINodeViewModelFixture(
       providerReadinessGate: flat.providerReadinessGate
     },
     operations: {
+      goalClearNoticeSequence: flat.goalClearNoticeSequence ?? 0,
       isDeletingConversation: flat.isDeletingConversation,
       isDeletingProjectConversations: flat.isDeletingProjectConversations,
       pendingDeleteConversation: flat.pendingDeleteConversation,

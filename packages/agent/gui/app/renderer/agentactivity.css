@@ -103,7 +103,7 @@
 .tsh-zoom-dialog[data-rmiz-modal] {
   position: fixed;
   inset: 0;
-  z-index: 100300;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1697,10 +1697,6 @@ aside.workspace-agents-status-panel
   font-weight: 600;
 }
 
-.workspace-agents-status-panel__detail-tool-count-status {
-  font-weight: 400;
-}
-
 .workspace-agents-status-panel__detail-tool-count svg {
   flex: 0 0 auto;
 }
@@ -2581,11 +2577,74 @@ aside.workspace-agents-status-panel
   --agent-mention-file-icon-size: 16px;
 }
 
+@container (max-width: 520px) {
+  .agent-gui-node__mention-palette .rich-text-at-mention-palette__shell {
+    overflow: visible;
+  }
+
+  .agent-gui-node__mention-palette-hint {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .agent-gui-node__mention-palette-hint-item {
+    position: relative;
+  }
+
+  .agent-gui-node__mention-palette-hint-item > span:last-child {
+    display: none;
+  }
+
+  .agent-gui-node__mention-palette-hint-item::after {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 20;
+    width: max-content;
+    max-width: min(240px, calc(100cqw - 16px));
+    padding: 5px 8px;
+    border: 1px solid var(--line-2, var(--tutti-line-2));
+    border-radius: 6px;
+    background: var(--background-fronted, var(--background-panel));
+    box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+    color: var(--text-primary);
+    content: attr(data-tooltip);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(2px);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease;
+    white-space: normal;
+  }
+
+  .agent-gui-node__mention-palette-hint-item:hover::after,
+  .agent-gui-node__mention-palette-hint-item:focus-within::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .agent-gui-node__mention-palette-hint-item:last-child::after {
+    right: 0;
+    left: auto;
+    transform: translateY(2px);
+  }
+
+  .agent-gui-node__mention-palette-hint-item:last-child:hover::after,
+  .agent-gui-node__mention-palette-hint-item:last-child:focus-within::after {
+    transform: translateY(0);
+  }
+}
+
 .agent-gui-node__mention-palette .rich-text-at-mention-palette__row-button,
 .agent-gui-node__mention-palette .rich-text-at-mention-palette__expand-button {
   min-height: 28px;
   padding-top: 4px;
   padding-bottom: 4px;
+  padding-right: 4px;
 }
 
 .agent-gui-node__mention-palette
@@ -3283,6 +3342,11 @@ aside.workspace-agents-status-panel
   gap: 12px;
 }
 
+.agent-gui-conversation__interactive-prompt-lead-content {
+  display: grid;
+  gap: 4px;
+}
+
 .agent-gui-conversation__interactive-prompt-lead {
   color: var(--text-primary);
   font-size: 15px;
@@ -3464,8 +3528,15 @@ aside.workspace-agents-status-panel
 .agent-gui-conversation__interactive-feedback-composer {
   position: relative;
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
+  min-height: 80px;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--background-fronted);
+  padding-bottom: 44px;
 }
 
 .agent-gui-conversation__interactive-prompt-textarea {
@@ -3485,17 +3556,18 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-composer
   .agent-gui-conversation__interactive-prompt-textarea {
+  display: block;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 42px;
+  min-height: 36px;
   max-height: 132px;
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  background: var(--background-fronted);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.45;
-  padding: 9px 48px 42px 10px;
+  padding: 9px 10px;
   resize: vertical;
 }
 
@@ -3506,14 +3578,14 @@ aside.workspace-agents-status-panel
 
 .agent-gui-conversation__interactive-feedback-send-button {
   position: absolute;
-  right: 8px;
-  bottom: 8px;
+  right: 12px;
+  bottom: 12px;
   display: grid;
   place-items: center;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
   border: 0;
   border-radius: 999px;
   background: var(--text-primary);
@@ -4174,7 +4246,7 @@ aside.workspace-agents-status-panel
   .tsh-agent-object-token__main {
   padding: 0 6px;
   border-radius: 6px;
-  background: var(--tutti-purple-bg);
+  background: transparent;
 }
 
 [data-agent-mention-kind="skill"].tsh-agent-object-token--entity.ProseMirror-selectednode
@@ -4215,10 +4287,19 @@ aside.workspace-agents-status-panel
 .agent-gui-node__composer-textarea .agent-rich-text-mention-node {
   display: inline-flex;
   align-items: center;
+  top: 1px;
   height: 24px;
   min-height: 24px;
   line-height: 24px;
   vertical-align: middle;
+}
+
+.agent-gui-node__composer-textarea
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  top: 0;
+  height: auto;
+  min-height: 0;
+  line-height: inherit;
 }
 
 .agent-gui-node__composer-textarea
@@ -4238,7 +4319,7 @@ aside.workspace-agents-status-panel
   padding-left: 4px;
   border-radius: 4px;
   line-height: 24px;
-  transform: none;
+  transform: translateY(1px);
   transition: background-color 140ms ease-in-out;
   vertical-align: middle;
 }
@@ -4247,6 +4328,32 @@ aside.workspace-agents-status-panel
   .agent-rich-text-mention-node
   [data-slot="mention-pill"] {
   height: 24px;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity {
+  top: 1px;
+  height: 24px;
+  min-height: 24px;
+  box-sizing: border-box;
+  line-height: 24px;
+  vertical-align: middle;
+}
+
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="skill"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main,
+.agent-gui-node__composer-textarea
+  [data-agent-mention-kind="capability"].tsh-agent-object-token--entity
+  .tsh-agent-object-token__main {
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 24px;
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -4726,6 +4833,20 @@ aside.workspace-agents-status-panel
   padding-right: 0;
 }
 
+/* Keep the standalone tool header on the same right edge as its body panel.
+   The body panel is right-anchored independently of the Agent header's rail
+   grid; leaving this accessory in the grid makes its left edge drift when the
+   panel expands to the available width. */
+.agent-gui-workbench-header[data-agent-gui-standalone-window-header="true"]
+  .agent-gui-workbench-header__secondary-accessory:has(
+    [data-standalone-agent-tool-sidebar-header="true"]
+  ) {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin-left: 0;
+}
+
 /*
  * In the collapsed empty state there is no session title to anchor the control
  * cluster, so the detached-window button's margin-left:auto would strand the
@@ -4913,6 +5034,77 @@ aside.workspace-agents-status-panel
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Mention typography and icons use the same 24px row as the plain title, so
+   the whole rich title can share the Agent icon's vertical center directly. */
+.agent-gui-workbench-header__rich-title {
+  display: block;
+  width: 0;
+  min-width: 0;
+  height: 24px;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+
+.agent-gui-workbench-header__rich-title > div,
+.agent-gui-workbench-header__rich-title .ProseMirror {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  overflow: visible;
+}
+
+.agent-gui-workbench-header__rich-title p {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  height: 24px;
+  align-items: center;
+  margin: 0;
+  overflow: visible;
+  overflow-wrap: normal;
+  line-height: 24px;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.agent-gui-workbench-header__rich-title .agent-rich-text-mention-node,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file,
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--entity,
+.agent-gui-workbench-header__rich-title [data-slot="mention-pill"] {
+  top: 0;
+  align-items: center;
+  transform: none;
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title
+  .agent-rich-text-mention-node[data-agent-custom-mention="true"] {
+  display: inline-flex;
+  max-width: min(100%, var(--agent-mention-max-width, 20rem));
+  height: 24px;
+  align-items: center;
+  margin-right: 4px;
+  transform: translateY(-1.5px);
+  vertical-align: middle;
+}
+
+.agent-gui-workbench-header__rich-title .tsh-agent-object-token--file {
+  height: 24px;
+  min-height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 24px;
+}
+
+.agent-gui-workbench-header__rich-title
+  .tsh-agent-object-token--file
+  .tsh-agent-object-token__main {
+  transform: translateY(-1.25px);
 }
 
 .agent-gui-workbench-header__agent-name {
@@ -6237,6 +6429,21 @@ button.agent-gui-node__conversation-section-toggle:hover
     no-repeat;
 }
 
+.agent-gui-node__conversation-title-mention-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+
+.agent-gui-node__conversation-title-mention-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+
 .agent-gui-node__conversation-actions
   > button.agent-gui-node__conversation-open-window-button:not(:disabled):hover,
 .agent-gui-node__conversation-actions
@@ -7102,41 +7309,6 @@ button.agent-gui-node__conversation-section-toggle:hover
   outline: none;
 }
 
-.agent-gui-node__provider-setup-notice {
-  position: absolute;
-  top: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  box-sizing: border-box;
-  width: max-content;
-  max-width: min(calc(100% - (var(--agent-gui-detail-padding-x) * 2)), 420px);
-  margin: 0;
-  /* The pill sizes to its content (width: max-content), so the action button's
-     margin-left:auto has no free space to absorb and the message text would butt
-     directly against "Set up". Space the message and action explicitly. */
-  column-gap: 6px;
-  pointer-events: none;
-}
-
-.agent-gui-node__detail-header + .agent-gui-node__provider-setup-notice {
-  top: calc(64px + 16px);
-}
-
-.agent-gui-node__provider-setup-notice-action {
-  flex: 0 0 auto;
-  margin-left: auto;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: currentColor;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
 .agent-gui-node__layout [data-slot="status-dot"],
 [data-testid="workspace-agent-message-center"] [data-slot="status-dot"] {
   --agent-gui-status-dot-color: var(
@@ -7442,6 +7614,9 @@ button.agent-gui-node__conversation-section-toggle:hover
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-prompt-input-area {
   display: grid;
+  /* Keep the input shadow above the following footer row. Both rows otherwise
+     share z-index: 1, so the later-painted footer visually clips the shadow. */
+  z-index: 2;
   grid-template-rows: minmax(0, 1fr);
   box-sizing: border-box;
   height: var(--agent-gui-composer-input-height, 56px);
@@ -7503,7 +7678,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 54px;
   max-height: 118px;
   min-width: 0;
-  padding: 12px 0;
+  padding: 0 0 12px;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -7875,6 +8050,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-list {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 0;
   max-height: 36px;
   overflow: hidden;
@@ -7885,6 +8062,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-panel {
   display: grid;
+  min-width: 0;
   gap: 4px;
   position: relative;
   z-index: 1;
@@ -7910,13 +8088,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   gap: 4px;
   min-height: 20px;
 }
 
 .agent-gui-node__composer-queued-prompt-expand-cue {
+  display: block;
   flex: 0 0 auto;
   color: var(--agent-gui-accent-strong);
   opacity: 0;
@@ -7947,6 +8126,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-row {
   display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
@@ -7959,13 +8141,16 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-main {
   display: block;
+  width: 100%;
   min-width: 0;
 }
 
 .agent-gui-node__composer-queued-prompt-body {
   display: flex;
+  width: 100%;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
   gap: 6px;
 }
 
@@ -8012,32 +8197,52 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-queued-prompt-text {
+  position: relative;
+  width: 0;
+  max-width: 100%;
+  flex: 1 1 0;
   min-width: 0;
   margin: 0;
   color: var(--agent-gui-text-secondary, var(--text-secondary));
   font-size: 13px;
   line-height: 28px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   word-break: break-word;
   white-space: nowrap;
 }
 
+.agent-gui-node__composer-queued-prompt-text[data-overflowing="true"]::after {
+  content: "…";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(90deg, transparent, var(--background-panel) 52%);
+  color: var(--agent-gui-text-secondary, var(--text-secondary));
+  line-height: 28px;
+  text-align: right;
+  pointer-events: none;
+}
+
 .agent-gui-node__composer-queued-prompt-markdown {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   color: inherit;
   font-size: inherit;
   line-height: inherit;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown-shell="true"] {
   display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -8048,7 +8253,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-workspace-agent-markdown="true"] {
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -8059,7 +8264,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
 .agent-gui-node__composer-queued-prompt-markdown
   [data-agent-file-mention="true"] {
-  max-width: 100%;
+  width: max-content;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   color: inherit;
   vertical-align: baseline;
 }
@@ -8068,20 +8274,20 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   [data-agent-file-mention="true"].tsh-agent-object-token--entity {
   color: inherit;
   top: 3px;
+  max-width: min(100%, var(--agent-mention-max-width, 16rem));
   min-height: 24px;
   padding: 2px 4px;
   border: 1px solid transparent;
   border-radius: 4px;
   line-height: 20px;
-  transition:
-    background-color 140ms ease-in-out,
-    border-color 140ms ease-in-out;
+  transition: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
-  [data-agent-file-mention="true"].tsh-agent-object-token--entity:hover {
+  [data-agent-file-mention="true"].tsh-agent-object-token:hover {
   border-color: transparent;
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: transparent;
+  text-decoration: none;
 }
 
 .agent-gui-node__composer-queued-prompt-markdown
@@ -8119,7 +8325,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-queued-prompt-panel[data-expanded="true"]
   .agent-gui-node__composer-queued-prompt-text {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -8132,12 +8338,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-queued-prompt-markdown
   [data-workspace-agent-markdown="true"] {
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
 .agent-gui-node__composer-queued-prompt-actions {
   display: inline-flex;
+  justify-self: end;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
 }
@@ -8146,7 +8354,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   color: var(--text-secondary);
 }
 
-.agent-gui-node__composer textarea,
+.agent-gui-node__composer-prompt-input-area textarea,
 .agent-gui-node__composer-textarea {
   --agent-gui-composer-text-line-height: 24px;
   --agent-gui-composer-text-max-visible-lines: 3.5;
@@ -8173,7 +8381,9 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   -ms-overflow-style: auto;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea {
   display: block;
@@ -8183,6 +8393,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   overflow-x: hidden;
   overflow-y: auto;
   overflow-wrap: anywhere;
+  padding-top: 12px;
   scrollbar-gutter: stable;
   /* Keep the scrollbar persistently visible (not hover/focus-only) once the
      draft overflows the visible viewport: a long pasted/dictated block of
@@ -8199,9 +8410,12 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
   .agent-gui-node__composer-textarea {
   max-height: var(--agent-gui-composer-text-viewport-height);
+  padding-top: 0;
 }
 
-.agent-gui-node__composer[data-layout="dock"] textarea::-webkit-scrollbar,
+.agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-prompt-input-area
+  textarea::-webkit-scrollbar,
 .agent-gui-node__composer[data-layout="dock"]
   .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
@@ -8209,21 +8423,21 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar,
 .agent-gui-node__composer-textarea::-webkit-scrollbar {
   display: block;
   width: 4px;
   height: 4px;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-track,
-.agent-gui-node__composer textarea::-webkit-scrollbar-corner,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-track,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-corner,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-track,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.agent-gui-node__composer textarea::-webkit-scrollbar-thumb,
+.agent-gui-node__composer-prompt-input-area textarea::-webkit-scrollbar-thumb,
 .agent-gui-node__composer-textarea::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--transparency-hover);
@@ -8251,7 +8465,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   font-size: 13px;
   line-height: 24px;
-  min-height: 1.4em;
+  min-height: 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8260,7 +8474,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   display: block;
   width: auto;
   min-width: 0;
-  min-height: 24px;
+  min-height: 0;
   overflow: visible;
   overflow-wrap: anywhere;
   text-overflow: clip;
@@ -8280,6 +8494,19 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   p:empty:not(.agent-rich-text-placeholder-node) {
   min-height: 0;
   line-height: 0;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty) {
+  position: relative;
+  top: 0;
+  line-height: 20px;
+}
+
+.agent-gui-node__composer-textarea
+  p:not(.agent-rich-text-placeholder-node):not(:empty)
+  .agent-rich-text-mention-node {
+  transform: translateY(-2px);
 }
 
 .agent-gui-node__composer-textarea
@@ -8306,7 +8533,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   white-space: nowrap;
 }
 
-.agent-gui-node__composer textarea::placeholder,
+.agent-gui-node__composer-prompt-input-area textarea::placeholder,
 .agent-gui-node__composer-textarea::placeholder {
   color: var(--agent-gui-text-tertiary);
   line-height: 24px;
@@ -8643,6 +8870,14 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 .agent-gui-node__composer-menu-item > span:last-child > span {
   width: 100%;
   min-width: 0;
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-plan-mode-badge="true"] {
+  color: var(--state-warning);
+}
+
+.agent-gui-node__composer-menu-trigger[data-agent-goal-badge="true"] {
+  color: var(--tutti-purple);
 }
 
 .agent-gui-node__composer-menu-trigger:hover:not(:disabled) {
@@ -9292,6 +9527,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 
   display: grid;
   width: min(820px, 100%);
+  min-width: 0;
   block-size: var(--agent-gui-empty-hero-anchor-block-size);
   align-content: start;
   gap: var(--agent-gui-empty-hero-gap);
@@ -9312,6 +9548,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 ),
 .agent-gui-node__empty-hero-icon-slot[data-carousel-placeholder="true"] {
   width: min(400px, 100%);
+  min-width: 320px;
   height: 112px;
 }
 
@@ -9326,17 +9563,30 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   position: absolute;
   z-index: 1;
 
+  --agent-gui-hero-carousel-scale: 0.8;
+
   /* The stage measures the body's placeholder slot and pins the layer to it;
      the calc() remains only as the first-paint estimate. */
   top: var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px));
   left: 50%;
   width: round(nearest, min(400px, calc(100% - 64px)), 1px);
-  transform: translateX(-50%) scale(0.8);
+  min-width: 320px;
+  transform: translateX(-50%) scale(var(--agent-gui-hero-carousel-scale));
   transform-origin: center center;
+}
+
+@media (max-height: 639px) {
+  .agent-gui-node__empty-hero-carousel-layer {
+    --agent-gui-hero-carousel-scale: 0.64;
+    top: calc(
+      var(--agent-gui-hero-carousel-slot-top, calc(50% - 210px)) - 16px
+    );
+  }
 }
 
 .agent-gui-node__empty-hero-carousel-placeholder {
   width: min(400px, 100%);
+  min-width: 320px;
   height: 112px;
   flex: 0 0 auto;
 }
@@ -9649,7 +9899,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   margin: 0;
   text-align: center;
   color: var(--text-primary);
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1.3;
   font-weight: 500;
   animation: agent-gui-empty-hero-enter 280ms cubic-bezier(0.16, 1, 0.3, 1)
@@ -9788,7 +10038,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 6px 14px;
   color: var(--text-secondary);
   font: inherit;
-  font-size: 13px;
+  font-size: 11px;
   line-height: 1.2;
   cursor: pointer;
   transition:
@@ -9810,8 +10060,8 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__empty-hero-suggestions-chip-icon {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   opacity: 0.8;
 }
@@ -10205,7 +10455,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .workspace-agents-status-panel__detail-subagent-name {
-  color: var(--tutti-text-primary, rgba(0, 0, 0, 0.85));
+  color: var(--text-primary);
   margin-left: 4px;
 }
 

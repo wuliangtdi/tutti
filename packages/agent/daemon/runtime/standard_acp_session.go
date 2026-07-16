@@ -53,7 +53,6 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		sessionClose:     standardACPSessionCloseSupported(initializeResult),
 		acpLiveState:     standardACPInitialLiveState(),
 		pendingApprovals: make(map[string]*pendingACPApproval),
-		backgroundAgents: make(map[string]standardACPBackgroundAgent),
 		permissionModeID: strings.TrimSpace(session.PermissionModeID),
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
@@ -179,12 +178,10 @@ func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error 
 		sessionClose:      standardACPSessionCloseSupported(initializeResult),
 		acpLiveState:      standardACPInitialLiveState(),
 		pendingApprovals:  make(map[string]*pendingACPApproval),
-		backgroundAgents:  make(map[string]standardACPBackgroundAgent),
 		permissionModeID:  strings.TrimSpace(session.PermissionModeID),
 	}
 	if previousSession != nil {
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)
-		acpSession.backgroundAgents = cloneStandardACPBackgroundAgents(previousSession.backgroundAgents)
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
 

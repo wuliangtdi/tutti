@@ -331,8 +331,9 @@ const (
 )
 
 type LiveModelDiscoveryDescriptor struct {
-	Kind        LiveModelDiscoveryKind
-	HiddenProbe bool
+	Kind          LiveModelDiscoveryKind
+	HiddenProbe   bool
+	AccountScoped bool
 }
 
 type ComposerBehaviorDescriptor struct {

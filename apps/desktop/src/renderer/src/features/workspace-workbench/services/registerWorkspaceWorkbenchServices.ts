@@ -1,4 +1,5 @@
 import { SyncDescriptor, type ServiceRegistry } from "@tutti-os/infra/di";
+import { WorkbenchHostCoordinator } from "@tutti-os/workbench-host";
 import type {
   TuttidClient,
   TuttidEventStreamClient
@@ -20,11 +21,11 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import { createDesktopWorkspaceSettingsClient } from "./internal/adapters/desktopWorkspaceSettingsClient";
 import { AccountService } from "./internal/accountService";
 import { WorkspaceWorkbenchHostService } from "./internal/workspaceWorkbenchHostService";
-import { WorkbenchHostCoordinator } from "./internal/workbenchHostCoordinator.ts";
 import { WorkspaceSettingsService } from "./internal/workspaceSettingsService";
 import { IAccountService } from "./accountService.interface";
 import { IWorkbenchHostCoordinator } from "./workbenchHostCoordinator.interface.ts";
 import { IWorkspaceWorkbenchHostService } from "./workspaceWorkbenchHostService.interface";
+import type { DesktopWorkspaceWorkbenchRepository } from "./internal/adapters/desktopWorkspaceWorkbenchRepository.ts";
 import { IWorkspaceSettingsService } from "./workspaceSettingsService.interface";
 
 export interface WorkspaceWorkbenchServiceRegistrationInput {
@@ -52,6 +53,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
   >;
   reporterService?: Pick<IReporterService, "trackEvents">;
   runtimeApi: DesktopRuntimeApi;
+  snapshotRepository: DesktopWorkspaceWorkbenchRepository;
   wallpaperApi: DesktopWallpaperApi;
   onAgentTargetsChanged?: () => void | Promise<void>;
 }
@@ -92,6 +94,7 @@ export function registerWorkspaceWorkbenchServices(
         platformApi: input.platformApi,
         reporterService: input.reporterService,
         runtimeApi: input.runtimeApi,
+        snapshotRepository: input.snapshotRepository,
         wallpaperApi: input.wallpaperApi
       }
     ])

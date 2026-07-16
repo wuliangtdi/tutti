@@ -49,8 +49,8 @@ function changedGroup<Group extends "composer" | "detail" | "rail">(
   if (group === "detail") {
     return {
       ...current,
-      backgroundAgentCount:
-        (current as AgentGUINodeViewModel["detail"]).backgroundAgentCount + 1
+      hasSentUserMessage: !(current as AgentGUINodeViewModel["detail"])
+        .hasSentUserMessage
     } as AgentGUINodeViewModel[Group];
   }
   if (group === "rail") {
@@ -95,7 +95,6 @@ function createViewModel(): AgentGUINodeViewModel {
       isLoadingOlderMessages: false,
       hasOlderMessages: false,
       usage: null,
-      backgroundAgentCount: 0,
       hasSentUserMessage: false,
       avoidGroupingEdits: false,
       conversation: null,

@@ -13,7 +13,10 @@ import {
   MenuSurface,
   MoreHorizontalIcon,
   PauseIcon,
-  PlayIcon
+  PlayIcon,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
 } from "@tutti-os/ui-system";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
@@ -224,26 +227,32 @@ export function BrowserNodeActionsMenu({
 
   return (
     <>
-      <Button
-        ref={menuTriggerRef}
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        aria-label={feature.i18n.t("actions.more")}
-        className="rounded-md"
-        size="icon-sm"
-        title={feature.i18n.t("actions.more")}
-        type="button"
-        variant="chrome"
-        onClick={() => {
-          if (menuOpen) {
-            dismissMenu();
-            return;
-          }
-          openMenu();
-        }}
-      >
-        <MoreHorizontalIcon className="size-[15px] rotate-90" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            ref={menuTriggerRef}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label={feature.i18n.t("actions.more")}
+            className="rounded-md"
+            size="icon-sm"
+            type="button"
+            variant="chrome"
+            onClick={() => {
+              if (menuOpen) {
+                dismissMenu();
+                return;
+              }
+              openMenu();
+            }}
+          >
+            <MoreHorizontalIcon className="size-[15px] rotate-90" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {feature.i18n.t("actions.more")}
+        </TooltipContent>
+      </Tooltip>
       {menuOpen ? (
         <MenuSurface
           ref={menuSurfaceRef}

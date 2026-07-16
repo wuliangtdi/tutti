@@ -362,6 +362,9 @@ export function useAgentGUIViewLabels(input: {
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
+      untitledConversationTitle: t(
+        "agentHost.workspaceAgentsUntitledConversation"
+      ),
       sectionToday: t("agentHost.agentGui.sectionToday"),
       sectionYesterday: t("agentHost.agentGui.sectionYesterday"),
       sectionEarlier: t("agentHost.agentGui.sectionEarlier"),
@@ -440,6 +443,7 @@ export function useAgentGUIViewLabels(input: {
       goalPauseAction: t("agentHost.agentGui.goalPauseAction"),
       goalResumeAction: t("agentHost.agentGui.goalResumeAction"),
       goalClearAction: t("agentHost.agentGui.goalClearAction"),
+      goalRemoved: t("agentHost.agentGui.goalRemoved"),
       processing: t("agentHost.agentGui.processing"),
       turnSummary: t("agentHost.agentGui.turnSummary"),
       userMessageLocator: t("agentHost.agentGui.userMessageLocator"),
@@ -474,13 +478,6 @@ export function useAgentGUIViewLabels(input: {
       submitAnswers: t("agentHost.agentGui.submitAnswers"),
       answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
       waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
-      waitingForBackgroundAgent: (count: number) => {
-        const pluralKey =
-          count === 1
-            ? "agentHost.agentGui.waitingForBackgroundAgent_one"
-            : "agentHost.agentGui.waitingForBackgroundAgent_other";
-        return t(pluralKey, { count });
-      },
       thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),

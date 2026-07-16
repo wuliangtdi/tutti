@@ -69,3 +69,14 @@ test("Browser Node selected tab uses the fronted background and line-2 border", 
     /active\s*\? "border-\[var\(--line-2\)\] bg-\[var\(--background-fronted\)\] text-\[var\(--text-primary\)\] shadow-sm"/
   );
 });
+
+test("Browser Node address-bar icon actions use shared hover tooltips", () => {
+  assert.match(
+    browserNodeChromeSource,
+    /<TooltipTrigger asChild>[\s\S]*?<Button[\s\S]*?<TooltipContent side="bottom">\{label\}<\/TooltipContent>/
+  );
+  assert.match(
+    actionsMenuSource,
+    /<TooltipTrigger asChild>[\s\S]*?<Button[\s\S]*?<TooltipContent side="bottom">[\s\S]*?actions\.more/
+  );
+});

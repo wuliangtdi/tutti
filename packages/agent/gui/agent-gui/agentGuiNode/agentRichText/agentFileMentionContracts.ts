@@ -122,6 +122,8 @@ export interface AgentMentionCustomItem {
   href: string;
   workspaceId: string;
   targetId: string;
+  /** Canonical Markdown label, kept separate from the host's chip presentation. */
+  sourceLabel: string;
   /** chip 第一行。 */
   name: string;
   /** chip 第二行(通用双行卡)。 */

@@ -1,15 +1,95 @@
-import { describe, expect, it } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { createAgentSessionEngine } from "@tutti-os/agent-activity-core";
+import { describe, expect, it, vi } from "vitest";
+import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
 import {
   clearSubmittedAgentGUIHomeDraft,
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
+import { useAgentGUISubmitInteractionActions } from "./useAgentGUISubmitInteractionActions";
 
 const draftKey = "node-default:codex:local:codex";
 
 function draft(prompt: string): AgentComposerDraft {
   return [{ type: "text", text: prompt }];
+}
+
+function createGoalControlInput(
+  goalControl: AgentActivityRuntime["goalControl"]
+) {
+  const sessionEngine = createAgentSessionEngine({
+    clock: { nowUnixMs: () => 1 },
+    commandPort: { execute: async () => undefined },
+    identity: { origin: "test", workspaceId: "workspace-1" },
+    scheduler: { schedule: () => ({ cancel() {} }) }
+  });
+  const setDetailError = vi.fn();
+  const setGoalClearNoticeSequence = vi.fn();
+  const draftByScopeKeyRef = {
+    current: {} as Record<string, AgentComposerDraft>
+  };
+  const setDraftByScopeKey = vi.fn(
+    (
+      update:
+        | Record<string, AgentComposerDraft>
+        | ((
+            current: Record<string, AgentComposerDraft>
+          ) => Record<string, AgentComposerDraft>)
+    ) => {
+      draftByScopeKeyRef.current =
+        typeof update === "function"
+          ? update(draftByScopeKeyRef.current)
+          : update;
+    }
+  );
+  const input = {
+    activation: {
+      activate: vi.fn(),
+      codeFor: vi.fn(() => null),
+      errorFor: vi.fn(() => null)
+    },
+    activeConversationIdRef: { current: "session-1" },
+    activeEngineActiveTurn: null,
+    activeEnginePendingInteractions: [],
+    agentActivityRuntime: { goalControl } as AgentActivityRuntime,
+    conversationListQuery: {},
+    conversationsRef: { current: [] },
+    dataRef: { current: {} },
+    draftByScopeKeyRef,
+    executePromptRef: { current: vi.fn() },
+    isComposerHomeRef: { current: false },
+    isCurrentConversation: (agentSessionId: string) =>
+      agentSessionId === "session-1",
+    isRespondingToInteraction: false,
+    isSessionMarkedNonResumable: () => false,
+    persistActiveConversation: vi.fn(),
+    planActionsRef: {
+      current: { implement: vi.fn(), feedback: vi.fn(), skip: vi.fn() }
+    },
+    previewMode: false,
+    promptImagesSupported: true,
+    sessionEngine,
+    setActiveConversationId: vi.fn(),
+    setDetailError,
+    setDraftByScopeKey,
+    setGoalClearNoticeSequence,
+    setIntent: vi.fn(),
+    submittedDraftSnapshotsRef: { current: {} },
+    startConversation: vi.fn(() => null),
+    submitPromptRef: { current: vi.fn() },
+    transientConversation: null,
+    workspaceId: "workspace-1"
+  } as unknown as Parameters<typeof useAgentGUISubmitInteractionActions>[0];
+  return {
+    input,
+    draftByScopeKeyRef,
+    sessionEngine,
+    setDetailError,
+    setDraftByScopeKey,
+    setGoalClearNoticeSequence
+  };
 }
 
 describe("new-conversation home draft lifecycle", () => {
@@ -53,5 +133,138 @@ describe("new-conversation home draft lifecycle", () => {
     expect(
       restoreFailedAgentGUIHomeDraft({ ...failure, drafts: changed })
     ).toBe(changed);
+  });
+});
+
+describe("goal controls", () => {
+  it("clears a submitted goal draft after the control API accepts it", async () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const sessionDraftKey = "session:session-1";
+    draftByScopeKeyRef.current = {
+      [sessionDraftKey]: draft("/goal count to ten")
+    };
+    const dispatch = vi.spyOn(sessionEngine, "dispatch");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+
+    await waitFor(() => expect(goalControl).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        agentComposerDraftPrompt(draftByScopeKeyRef.current[sessionDraftKey]!)
+      ).toBe("")
+    );
+    expect(setDraftByScopeKey).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("preserves a newer draft edit while a goal control request is pending", async () => {
+    let acceptGoalControl: (() => void) | null = null;
+    const goalControl = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          acceptGoalControl = resolve;
+        })
+    );
+    const { input, draftByScopeKeyRef } = createGoalControlInput(
+      goalControl as never
+    );
+    const sessionDraftKey = "session:session-1";
+    draftByScopeKeyRef.current = {
+      [sessionDraftKey]: draft("/goal count to ten")
+    };
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+    await waitFor(() => expect(goalControl).toHaveBeenCalledTimes(1));
+    draftByScopeKeyRef.current = {
+      [sessionDraftKey]: draft("new message")
+    };
+    await act(async () => acceptGoalControl?.());
+
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current[sessionDraftKey]!)
+    ).toBe("new message");
+  });
+
+  it("keeps the submitted goal draft when the control API rejects it", async () => {
+    const goalControl = vi.fn(async () =>
+      Promise.reject(new Error("goal failed"))
+    );
+    const { input, draftByScopeKeyRef, setDetailError, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const sessionDraftKey = "session:session-1";
+    draftByScopeKeyRef.current = {
+      [sessionDraftKey]: draft("/goal count to ten")
+    };
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+
+    await waitFor(() =>
+      expect(setDetailError).toHaveBeenCalledWith("goal failed")
+    );
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current[sessionDraftKey]!)
+    ).toBe("/goal count to ten");
+    expect(setDraftByScopeKey).not.toHaveBeenCalled();
+  });
+
+  it("clears through the control API without creating a prompt submit", async () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine, setGoalClearNoticeSequence } =
+      createGoalControlInput(goalControl as never);
+    const dispatch = vi.spyOn(sessionEngine, "dispatch");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() => result.current.goalControl("clear"));
+
+    await waitFor(() => expect(goalControl).toHaveBeenCalledTimes(1));
+    expect(goalControl).toHaveBeenCalledWith({
+      action: "clear",
+      agentSessionId: "session-1",
+      workspaceId: "workspace-1"
+    });
+    expect(setGoalClearNoticeSequence).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("reports a clear failure without showing a success toast", async () => {
+    const error = new Error("clear failed");
+    const goalControl = vi.fn(async () => Promise.reject(error));
+    const { input, setDetailError, setGoalClearNoticeSequence } =
+      createGoalControlInput(goalControl as never);
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() => result.current.goalControl("clear"));
+
+    await waitFor(() =>
+      expect(setDetailError).toHaveBeenCalledWith("clear failed")
+    );
+    expect(setGoalClearNoticeSequence).not.toHaveBeenCalled();
   });
 });

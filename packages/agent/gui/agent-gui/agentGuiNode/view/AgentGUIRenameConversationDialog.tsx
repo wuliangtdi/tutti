@@ -3,14 +3,11 @@ import { ConfirmationDialog } from "@tutti-os/ui-system";
 import { Button } from "../../../app/renderer/components/ui/button";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
-import { conversationPlainTitle } from "./agentGUIViewUtils";
-import type { UiLanguage } from "../../../contexts/settings/domain/uiSettings";
 
 interface AgentGUIRenameConversationDialogProps {
   conversation: AgentGUINodeViewModel["rail"]["conversations"][number] | null;
   open: boolean;
   labels: AgentGUIViewLabels;
-  uiLanguage: UiLanguage;
   onOpenChange: (open: boolean) => void;
   onRename: (agentSessionId: string, title: string) => Promise<void>;
 }
@@ -20,7 +17,6 @@ export const AgentGUIRenameConversationDialog = memo(
     conversation,
     open,
     labels,
-    uiLanguage,
     onOpenChange,
     onRename
   }: AgentGUIRenameConversationDialogProps): React.JSX.Element {
@@ -28,19 +24,19 @@ export const AgentGUIRenameConversationDialog = memo(
     const [title, setTitle] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const isSavingRef = useRef(false);
-    const keyboardActivationRef = useRef(false);
+    const armedPointerActionRef = useRef<"cancel" | "confirm" | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const trimmedTitle = title.trim();
     useEffect(() => {
       if (!open || !conversation) {
         isSavingRef.current = false;
-        keyboardActivationRef.current = false;
+        armedPointerActionRef.current = null;
         setTitle("");
         setIsSaving(false);
         return;
       }
-      setTitle(conversationPlainTitle(conversation, labels, uiLanguage));
-    }, [conversation, labels, open, uiLanguage]);
+      setTitle(conversation.title);
+    }, [conversation, open]);
     useEffect(() => {
       if (!open) {
         return;
@@ -72,7 +68,6 @@ export const AgentGUIRenameConversationDialog = memo(
         })
         .finally(() => {
           isSavingRef.current = false;
-          keyboardActivationRef.current = false;
           setIsSaving(false);
         });
     }, [conversation, onOpenChange, onRename, trimmedTitle]);
@@ -92,8 +87,30 @@ export const AgentGUIRenameConversationDialog = memo(
               type="button"
               variant="ghost"
               onClick={closeRenameDialog}
-              onPointerUp={(event) => {
+              onLostPointerCapture={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerCancel={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerDown={(event) => {
                 if (event.button === 0) {
+                  armedPointerActionRef.current = "cancel";
+                }
+              }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "cancel") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerUp={(event) => {
+                const isArmed = armedPointerActionRef.current === "cancel";
+                armedPointerActionRef.current = null;
+                if (event.button === 0 && isArmed) {
                   closeRenameDialog();
                 }
               }}
@@ -110,10 +127,6 @@ export const AgentGUIRenameConversationDialog = memo(
                 if (event.detail !== 0) {
                   return;
                 }
-                if (keyboardActivationRef.current) {
-                  keyboardActivationRef.current = false;
-                  return;
-                }
                 confirmRename();
               }}
               onKeyDown={(event) => {
@@ -122,12 +135,33 @@ export const AgentGUIRenameConversationDialog = memo(
                   !event.repeat
                 ) {
                   event.preventDefault();
-                  keyboardActivationRef.current = true;
                   confirmRename();
                 }
               }}
-              onPointerUp={(event) => {
+              onLostPointerCapture={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerCancel={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerDown={(event) => {
                 if (event.button === 0) {
+                  armedPointerActionRef.current = "confirm";
+                }
+              }}
+              onPointerLeave={() => {
+                if (armedPointerActionRef.current === "confirm") {
+                  armedPointerActionRef.current = null;
+                }
+              }}
+              onPointerUp={(event) => {
+                const isArmed = armedPointerActionRef.current === "confirm";
+                armedPointerActionRef.current = null;
+                if (event.button === 0 && isArmed) {
                   confirmRename();
                 }
               }}

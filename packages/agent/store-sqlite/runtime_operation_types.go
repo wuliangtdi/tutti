@@ -64,6 +64,11 @@ type RuntimeOperationPrepare struct {
 	OccurredAtMS   int64
 }
 
+type runtimeCancelTarget struct {
+	AgentSessionID string
+	TurnID         string
+}
+
 type ListClaimableRuntimeOperationsInput struct {
 	// WorkspaceID scopes recovery when non-empty; empty lists all workspaces.
 	WorkspaceID string
@@ -107,10 +112,17 @@ type CompleteInteractiveRuntimeOperationInput struct {
 }
 
 type CompleteCancelRuntimeOperationInput struct {
-	WorkspaceID string
-	OperationID string
-	LeaseOwner  string
-	NowUnixMS   int64
+	WorkspaceID    string
+	OperationID    string
+	LeaseOwner     string
+	TargetOutcomes []CancelRuntimeOperationTargetOutcome
+	NowUnixMS      int64
+}
+
+type CancelRuntimeOperationTargetOutcome struct {
+	AgentSessionID string
+	TurnID         string
+	Outcome        string
 }
 
 type CompletePlanDecisionRuntimeOperationInput struct {

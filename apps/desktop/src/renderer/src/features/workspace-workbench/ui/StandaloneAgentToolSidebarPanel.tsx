@@ -64,6 +64,8 @@ export function StandaloneAgentToolSidebarPanel({
   i18n,
   locale,
   messageCenterOpen,
+  onAppendBrowserElementMention,
+  onBrowserElementError,
   onCloseMessageCenter,
   onOpenMessageCenterChat,
   tab,
@@ -81,6 +83,8 @@ export function StandaloneAgentToolSidebarPanel({
   i18n: I18nRuntime<string>;
   locale: ReturnType<typeof useTranslation>["locale"];
   messageCenterOpen: boolean;
+  onAppendBrowserElementMention: (mention: string) => void;
+  onBrowserElementError: (message: string) => void;
   onCloseMessageCenter: () => void;
   onOpenMessageCenterChat: (input: {
     agentSessionId: string;
@@ -172,8 +176,16 @@ export function StandaloneAgentToolSidebarPanel({
       <StandaloneAgentBrowserToolPanel
         appI18n={appI18n}
         browserApi={browserApi}
+        elementContextCopy={{
+          cancel: i18n.t("workspace.agentGui.browserElementContext.cancel"),
+          failed: i18n.t("workspace.agentGui.browserElementContext.failed"),
+          select: i18n.t("workspace.agentGui.browserElementContext.select")
+        }}
         hidden={!active}
         loadingLabel={i18n.t("common.loading")}
+        workspaceId={workspaceId}
+        onAppendBrowserElementMention={onAppendBrowserElementMention}
+        onBrowserElementError={onBrowserElementError}
       />
     ) : null;
   }

@@ -18,8 +18,7 @@ import {
   agentPromptContentHasImage,
   emptyAgentComposerDraft,
   normalizeAgentPromptContentBlocks,
-  snapshotAgentComposerDraft,
-  textPromptContent
+  snapshotAgentComposerDraft
 } from "../model/agentComposerDraft";
 import type {
   AgentComposerDraft,
@@ -27,6 +26,7 @@ import type {
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 import {
   PLAN_IMPLEMENTATION_ACTION_FEEDBACK,
   PLAN_IMPLEMENTATION_ACTION_IMPLEMENT,
@@ -35,7 +35,6 @@ import {
 import {
   clearSubmittedDraftIfUnchanged,
   deleteUnacceptedSubmittedDraftSnapshot,
-  GOAL_CLEAR_PROMPT,
   toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
 import { clearSubmittedAgentGUIHomeDraft } from "./agentGuiController.homeDraftHelpers";
@@ -56,6 +55,7 @@ import {
   reportAgentSubmitTraceDiagnostic,
   scheduleAgentSubmitTracePaint
 } from "./agentGuiController.reporting";
+import { resolveAgentGUIInteractionTarget } from "./agentGuiController.interactionHelpers";
 import {
   resolveConversationSummaryById,
   type ConversationIntent
@@ -80,6 +80,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
       displayPrompt?: string,
       options?: {
         immediate?: boolean;
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -104,17 +105,53 @@ interface UseAgentGUISubmitInteractionActionsInput {
   setDraftByScopeKey: Dispatch<
     SetStateAction<Record<string, AgentComposerDraft>>
   >;
+  setGoalClearNoticeSequence: Dispatch<SetStateAction<number>>;
   setIntent: Dispatch<SetStateAction<ConversationIntent>>;
   submittedDraftSnapshotsRef: RefObject<Record<string, SubmittedDraftSnapshot>>;
   startConversation(
     content: AgentPromptContentBlock[],
-    displayPrompt?: string
+    displayPrompt?: string,
+    options?: AgentComposerSubmitOptions,
+    initialTurnExpected?: boolean
   ): AgentGUINewConversationActivationResult | null;
   submitPromptRef: RefObject<
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => void
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => void
   >;
   transientConversation: AgentGUIConversationSummary | null;
   workspaceId: string;
+}
+
+export function typedGoalControlFromComposer(
+  content: AgentPromptContentBlock[],
+  _displayPrompt?: string
+): { action: AgentActivityGoalControlAction; objective?: string } | null {
+  if (content.length !== 1 || content[0]?.type !== "text") {
+    return null;
+  }
+  // Structured content owns command semantics. displayPrompt may collapse a
+  // bundle into a chip, but it must neither hide nor manufacture a control.
+  const prompt = (content[0].text ?? "").trim();
+  const match = /^\/goal(?:\s+([\s\S]+))?$/iu.exec(prompt);
+  const args = match?.[1]?.trim() ?? "";
+  if (!match || !args) {
+    return null;
+  }
+  switch (args.toLowerCase()) {
+    case "clear":
+    case "reset":
+      return { action: "clear" };
+    case "pause":
+      return { action: "pause" };
+    case "resume":
+    case "active":
+      return { action: "resume" };
+    default:
+      return { action: "set", objective: args };
+  }
 }
 
 export function useAgentGUISubmitInteractionActions(
@@ -143,6 +180,7 @@ export function useAgentGUISubmitInteractionActions(
     setActiveConversationId,
     setDetailError,
     setDraftByScopeKey,
+    setGoalClearNoticeSequence,
     setIntent,
     submittedDraftSnapshotsRef,
     startConversation,
@@ -178,6 +216,7 @@ export function useAgentGUISubmitInteractionActions(
       displayPrompt?: string,
       options?: {
         immediate?: boolean;
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -242,6 +281,13 @@ export function useAgentGUISubmitInteractionActions(
         ...(displayPrompt && displayPrompt.trim() ? { displayPrompt } : {}),
         submitDiagnostics: agentSubmitTraceDiagnostics(submitTrace),
         requestedAtUnixMs: submittedAtUnixMs,
+        ...(options?.requiredSettingsPatch
+          ? {
+              requiredSettingsPatch: {
+                ...options.requiredSettingsPatch
+              }
+            }
+          : {}),
         ...(options?.immediate === true
           ? { routing: "immediate" as const }
           : options?.sendNow === true
@@ -333,6 +379,7 @@ export function useAgentGUISubmitInteractionActions(
       normalizedContent: AgentPromptContentBlock[],
       displayPromptText?: string,
       options?: {
+        requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -360,6 +407,7 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       executePrompt(agentSessionId, normalizedContent, displayPromptText, {
+        requiredSettingsPatch: options?.requiredSettingsPatch,
         sendNow: options?.sendNow === true,
         sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
@@ -368,18 +416,12 @@ export function useAgentGUISubmitInteractionActions(
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
   );
 
-  // Goal control commands (/goal clear|paused|active) act on the running
-  // thread immediately; the local prompt queue would defer them until the
-  // turn ends, defeating their purpose (e.g. stopping a runaway goal).
-  // Clearing sends a visible "/goal clear" prompt so the transcript shows
-  // what was sent: executePrompt skips the local queue (and its resume
-  // side effect), and mid-turn the daemon steers the command as a
-  // thread-level exec instead of opening a competing turn. The remaining
-  // controls (set/pause/resume) stay on the dedicated control API — no
-  // prompt, no queue, no transcript entry — matching the codex desktop
-  // goal bar.
   const goalControl = useCallback(
-    (action: AgentActivityGoalControlAction, objective?: string) => {
+    (
+      action: AgentActivityGoalControlAction,
+      objective?: string,
+      submittedDraftScopeKey?: string
+    ) => {
       if (previewMode) {
         return;
       }
@@ -387,22 +429,39 @@ export function useAgentGUISubmitInteractionActions(
       if (!agentSessionId) {
         return;
       }
+      const submittedDraftSnapshot = submittedDraftScopeKey
+        ? {
+            sourceScopeKey: submittedDraftScopeKey,
+            content: snapshotAgentComposerDraft(
+              draftByScopeKeyRef.current[submittedDraftScopeKey] ??
+                emptyAgentComposerDraft()
+            ),
+            targetAgentSessionId: agentSessionId
+          }
+        : null;
       setDetailError(null);
-      if (action === "clear") {
-        executePrompt(
-          agentSessionId,
-          textPromptContent(GOAL_CLEAR_PROMPT),
-          GOAL_CLEAR_PROMPT,
-          { immediate: true }
-        );
-        return;
-      }
       void agentActivityRuntime
         .goalControl({
           workspaceId,
           agentSessionId,
           action,
           ...(objective !== undefined ? { objective } : {})
+        })
+        .then(() => {
+          if (submittedDraftSnapshot) {
+            setDraftByScopeKey((current) => {
+              const next = clearSubmittedDraftIfUnchanged({
+                drafts: current,
+                snapshot: submittedDraftSnapshot
+              });
+              draftByScopeKeyRef.current = next;
+              return next;
+            });
+          }
+          if (action !== "clear" || !isCurrentConversation(agentSessionId)) {
+            return;
+          }
+          setGoalClearNoticeSequence((current) => current + 1);
         })
         .catch((error: unknown) => {
           if (!isCurrentConversation(agentSessionId)) {
@@ -413,16 +472,21 @@ export function useAgentGUISubmitInteractionActions(
     },
     [
       agentActivityRuntime,
-      executePrompt,
       isCurrentConversation,
       previewMode,
+      setDraftByScopeKey,
       setDetailError,
+      setGoalClearNoticeSequence,
       workspaceId
     ]
   );
 
   const submitPrompt = useCallback(
-    (content: AgentPromptContentBlock[], displayPrompt?: string) => {
+    (
+      content: AgentPromptContentBlock[],
+      displayPrompt?: string,
+      options?: AgentComposerSubmitOptions
+    ) => {
       if (previewMode) {
         return;
       }
@@ -433,6 +497,10 @@ export function useAgentGUISubmitInteractionActions(
       }
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
+      const typedGoal = typedGoalControlFromComposer(
+        normalizedContent,
+        displayPromptText
+      );
       if (
         !promptImagesSupported &&
         agentPromptContentHasImage(normalizedContent)
@@ -473,11 +541,20 @@ export function useAgentGUISubmitInteractionActions(
             setActiveConversationId(recoveredAgentSessionId);
             setIntent({ tag: "active", id: recoveredAgentSessionId });
             persistActiveConversation(recoveredAgentSessionId);
+            if (typedGoal) {
+              goalControl(
+                typedGoal.action,
+                typedGoal.objective,
+                resolveAgentComposerDraftScopeKey({})
+              );
+              return;
+            }
             submitExistingPrompt(
               recoveredAgentSessionId,
               normalizedContent,
               displayPromptText,
               {
+                requiredSettingsPatch: options?.requiredSettingsPatch,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
               }
@@ -491,7 +568,9 @@ export function useAgentGUISubmitInteractionActions(
         );
         const activationResult = startConversation(
           normalizedContent,
-          displayPromptText
+          displayPromptText,
+          options,
+          typedGoal ? false : undefined
         );
         if (activationResult) {
           draftByScopeKeyRef.current = clearSubmittedAgentGUIHomeDraft({
@@ -509,11 +588,22 @@ export function useAgentGUISubmitInteractionActions(
         }
         return;
       }
+      if (typedGoal) {
+        goalControl(
+          typedGoal.action,
+          typedGoal.objective,
+          resolveAgentComposerDraftScopeKey({ agentSessionId })
+        );
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,
         displayPromptText,
-        { trackDraft: true }
+        {
+          requiredSettingsPatch: options?.requiredSettingsPatch,
+          trackDraft: true
+        }
       );
     },
     [
@@ -521,6 +611,7 @@ export function useAgentGUISubmitInteractionActions(
       conversationListQuery,
       previewMode,
       promptImagesSupported,
+      goalControl,
       persistActiveConversation,
       startConversation,
       submitExistingPrompt,
@@ -594,13 +685,14 @@ export function useAgentGUISubmitInteractionActions(
         planActionsRef.current.skip();
         return;
       }
-      const agentSessionId = activeConversationIdRef.current;
       const normalizedRequestId = input.requestId.trim();
       const normalizedOptionId = input.optionId?.trim() ?? "";
-      const turnId =
-        activeEnginePendingInteractions.find(
-          (interaction) => interaction.requestId === normalizedRequestId
-        )?.turnId ?? "";
+      const target = resolveAgentGUIInteractionTarget(
+        activeEnginePendingInteractions,
+        normalizedRequestId
+      );
+      const agentSessionId = target?.agentSessionId ?? "";
+      const turnId = target?.turnId ?? "";
       if (
         !agentSessionId ||
         !normalizedRequestId ||

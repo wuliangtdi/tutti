@@ -3,7 +3,7 @@ import {
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { RefObject } from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import { subscribeCoalesced } from "../../../host/agentHostEventBus";
 import type {
@@ -54,6 +54,10 @@ export function useAgentGUIComposerOptionsSync(input: {
   workspaceId: string;
   workspacePath: string;
 }) {
+  const previousActiveConversationIdRef = useRef(input.activeConversationId);
+  const previousIsCreatingConversationRef = useRef(
+    input.isCreatingConversation
+  );
   const loadComposerOptionsForTarget = useCallback(
     (targetData: AgentGUIComposerTargetData, options?: { force?: boolean }) => {
       if (input.isCreatingConversation || !targetData.agentTargetId) return;
@@ -158,9 +162,24 @@ export function useAgentGUIComposerOptionsSync(input: {
 
   useEffect(() => {
     if (input.previewMode) return;
+    // Session creation can finish after an earlier request cached the
+    // provider's selected-model-only fallback. Once activation or creation
+    // settles, bypass request-signature deduplication so runtime-discovered
+    // model options replace that bootstrap snapshot.
+    const conversationActivated =
+      input.activeConversationId !== null &&
+      previousActiveConversationIdRef.current !== input.activeConversationId;
+    const conversationCreationSettled =
+      previousIsCreatingConversationRef.current &&
+      !input.isCreatingConversation;
+    previousActiveConversationIdRef.current = input.activeConversationId;
+    previousIsCreatingConversationRef.current = input.isCreatingConversation;
     loadDraftComposerOptions(
-      input.providerComposerOptions?.behavior?.prewarmDraftSession === true &&
-        input.isComposerHome
+      conversationActivated ||
+        conversationCreationSettled ||
+        (input.providerComposerOptions?.behavior?.prewarmDraftSession ===
+          true &&
+          input.isComposerHome)
         ? { force: true }
         : undefined
     );

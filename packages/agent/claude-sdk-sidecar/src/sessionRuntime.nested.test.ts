@@ -179,6 +179,7 @@ test("nested approval after parent task completed still carries a turn id", asyn
 
     const request = events.find((event) => event.type === "approval_requested");
     assert.equal(request?.payload?.turnId, "turn-1");
+    assert.equal(request?.payload?.agentId, "agent-parent");
 
     session.submitInteractive(
       "turn-1",

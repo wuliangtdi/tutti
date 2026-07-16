@@ -8,10 +8,6 @@ import {
   useRef,
   useState
 } from "react";
-import {
-  ReferenceSourcePicker,
-  WorkspaceFileReferencePicker
-} from "@tutti-os/workspace-file-reference/ui";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { openAgentEnvPanel } from "../../shared/agentEnv/agentEnvPanelStore";
 import { resolveAgentGUIProviderCatalogIdentity } from "../../providerIdentityCatalog";
@@ -41,9 +37,11 @@ import {
   mergeWorkspaceAppIconsFromCommands
 } from "./view/AgentGUIDetailPane";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
+import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
 import { useAgentGUIWorkspaceReferencePicker } from "./view/useAgentGUIWorkspaceReferencePicker";
 import type { AgentGUINodeViewProps } from "./view/AgentGUINodeView.types";
 import { useAgentGUINodeEngagement } from "./engagement/useAgentGUINodeEngagement";
+import { isAgentGUIProviderReady } from "./model/agentGuiProviderReadiness";
 export type {
   AgentGUINodeViewProps,
   AgentGUIAgentsEmptyRenderer,
@@ -73,6 +71,7 @@ export {
 
 export function AgentGUINodeView({
   viewModel,
+  referenceProvenanceFilter = null,
   renderSidebarFooter,
   renderProviderRailEmpty,
   renderProviderUnavailableState,
@@ -86,7 +85,6 @@ export function AgentGUINodeView({
   onEngagementEvent,
   composerFocusRequestSequence = null,
   newConversationRequestSequence = null,
-  isAgentProviderReady,
   slashStatusLimits = [],
   slashStatusLimitsLoading = false,
   slashStatusLimitsUnavailable = false,
@@ -128,6 +126,9 @@ export function AgentGUINodeView({
   workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS
 }: AgentGUINodeViewProps): React.JSX.Element {
   "use memo";
+  const isAgentProviderReady = isAgentGUIProviderReady(
+    viewModel.readiness.providerReadinessGate
+  );
   const { composerEngagement, layoutElementRef } = useAgentGUINodeEngagement({
     composerReady: isAgentProviderReady,
     isActive,
@@ -716,6 +717,7 @@ export function AgentGUINodeView({
         <section id="agent-gui-detail" className={styles.detailPanel}>
           <AgentGUIDetailPane
             viewModel={viewModel}
+            referenceProvenanceFilter={referenceProvenanceFilter}
             composerEngagement={composerEngagement}
             actions={actions}
             labels={labels}
@@ -724,7 +726,6 @@ export function AgentGUINodeView({
             isActive={isActive}
             workspaceReferencePickerOpen={workspaceReferencePickerOpen}
             composerFocusRequestSequence={detailComposerFocusRequestSequence}
-            isAgentProviderReady={isAgentProviderReady}
             slashStatusLimits={slashStatusLimits}
             slashStatusLimitsLoading={slashStatusLimitsLoading}
             slashStatusLimitsUnavailable={slashStatusLimitsUnavailable}
@@ -747,41 +748,26 @@ export function AgentGUINodeView({
           />
         </section>
       </div>
-      {referenceSourceAggregator ? (
-        <ReferenceSourcePicker
-          aggregator={referenceSourceAggregator}
-          copy={
-            workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
-          }
-          initialTarget={workspaceReferencePickerTarget}
-          isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
-          fileManagerCopy={workspaceFileManagerCopy ?? undefined}
-          open={workspaceReferencePickerOpen}
-          resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
-          workspaceId={viewModel.shell.workspaceId}
-          onClose={closeWorkspaceReferencePicker}
-          onConfirm={confirmWorkspaceReferencePicker}
-          onConfirmBundles={confirmWorkspaceReferenceBundles}
-        />
-      ) : (
-        <WorkspaceFileReferencePicker
-          copy={
-            workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy
-          }
-          fileAdapter={workspaceFileReferenceAdapter ?? undefined}
-          initialPath={viewModel.composer.composerSettings.selectedProjectPath}
-          open={workspaceReferencePickerOpen}
-          scoped
-          workspaceId={viewModel.shell.workspaceId}
-          onClose={closeWorkspaceReferencePicker}
-          onConfirm={confirmWorkspaceReferencePicker}
-        />
-      )}
+      <AgentGUIReferencePickerSurface
+        aggregator={referenceSourceAggregator}
+        copy={workspaceFileReferenceCopy ?? fallbackWorkspaceFileReferenceCopy}
+        fileAdapter={workspaceFileReferenceAdapter}
+        fileManagerCopy={workspaceFileManagerCopy}
+        initialPath={viewModel.composer.composerSettings.selectedProjectPath}
+        initialTarget={workspaceReferencePickerTarget}
+        isNodeSelectable={isWorkspaceReferencePickerNodeSelectable}
+        open={workspaceReferencePickerOpen}
+        provenanceFilter={referenceProvenanceFilter}
+        resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
+        workspaceId={viewModel.shell.workspaceId}
+        onClose={closeWorkspaceReferencePicker}
+        onConfirm={confirmWorkspaceReferencePicker}
+        onConfirmBundles={confirmWorkspaceReferenceBundles}
+      />
       <AgentGUIRenameConversationDialog
         conversation={renameConversationTarget}
         open={renameConversationDialogOpen && renameConversationTarget !== null}
         labels={labels}
-        uiLanguage={uiLanguage}
         onOpenChange={(open) => {
           setRenameConversationDialogOpen(open);
           if (!open) {

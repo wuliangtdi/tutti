@@ -39,6 +39,7 @@ function message(id: string, ts: number | null = null): AgentMessageContentVM {
     id,
     turnId: TURN,
     body: id,
+    presentationKind: "content",
     occurredAtUnixMs: ts
   };
 }
@@ -185,7 +186,7 @@ describe("computeAgentToolGroups", () => {
         toolItem("c2"),
         toolItem("c3")
       ],
-      { allowTrailingFinalization: true }
+      {}
     );
 
     expect(

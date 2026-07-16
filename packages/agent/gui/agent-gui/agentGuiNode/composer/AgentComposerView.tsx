@@ -8,7 +8,6 @@ import { createPortal } from "react-dom";
 import {
   Popover,
   PopoverAnchor,
-  Spinner,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -28,6 +27,7 @@ import {
   type AgentRichTextEditorHandle
 } from "../agentRichText/AgentRichTextEditor";
 import { AgentFileMentionPalette } from "../AgentFileMentionPalette";
+import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
 import type { AgentMentionSearchController } from "../AgentMentionSearchController";
 import { AgentSlashCommandPalette } from "../AgentSlashCommandPalette";
 import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
@@ -108,6 +108,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     engagement,
     availableSkills = EMPTY_PROVIDER_SKILLS,
     composerSettings,
+    workspaceId,
     queueStatus = "active",
     queuedPrompts,
     drainingQueuedPromptId,
@@ -117,7 +118,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     previewMode = false,
     layoutMode = "dock",
     providerSelectLabel = "",
-    backgroundAgentStatusText = null,
     labels,
     workspaceUserProjectI18n,
     isSubmittingPrompt,
@@ -126,6 +126,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onEditQueuedPrompt,
     onPromptImagesUnsupported,
     onRequestWorkspaceReferences,
+    referenceProvenanceFilter,
     selectProjectDirectory,
     onProjectPathChange = () => {},
     onSettingsChange,
@@ -136,6 +137,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     hasCompactableContext = true
   } = input.props;
   const draftImages = agentComposerDraftImages(draftContent);
+  const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const { availableCapabilities, slashPaletteEntries, slashQuery } =
     input.paletteCatalog;
   const { mentionPaletteFrame, mentionPaletteHeightPx, mentionPaletteStyle } =
@@ -283,7 +285,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onSendQueuedPromptNext={onSendQueuedPromptNext}
             onRemoveQueuedPrompt={onRemoveQueuedPrompt}
             onEditQueuedPrompt={onEditQueuedPrompt}
+            agentSessionId={slashStatusAgentSessionId}
             onLinkClick={handleLinkClick}
+            workspaceId={workspaceId}
             workspaceAppIcons={workspaceAppIcons}
           />
         </div>
@@ -301,15 +305,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
         )}
         data-edge-glow={showEdgeGlow ? "true" : undefined}
       >
-        {backgroundAgentStatusText ? (
-          <AgentChromeNotice
-            tone="muted"
-            role="status"
-            testId="agent-gui-composer-background-agent-status"
-            title={backgroundAgentStatusText}
-            icon={<Spinner className="h-3.5 w-3.5" />}
-          />
-        ) : null}
         {input.isSelectedProjectMissing ? (
           <AgentChromeNotice
             tone="danger"
@@ -458,6 +453,13 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                           ? handleOpenReferencesForEntity
                           : undefined
                       }
+                      provenanceFilterControl={
+                        referenceProvenanceFilter ? (
+                          <AgentReferenceProvenanceFilterControl
+                            filter={referenceProvenanceFilter}
+                          />
+                        ) : undefined
+                      }
                     />
                   </div>,
                   mentionPaletteFrame.portalTarget
@@ -465,7 +467,10 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               : null}
             <ComposerFloatingMenuSurface
               anchorRef={input.inputShellRef}
-              className="max-h-[320px] border-0 p-0"
+              className={cn(
+                composerStyles.dropdownSurface,
+                "max-h-[320px] overflow-hidden border-[var(--line-1)] p-0"
+              )}
               contentClassName="h-full min-h-0"
               dismissBoundaryRef={input.promptInputAreaRef}
               maxHeight={SLASH_PALETTE_HEIGHT_PX}

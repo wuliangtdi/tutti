@@ -459,19 +459,41 @@ export function agentComposerDraftSubmittedText(
 export function agentComposerDraftDisplayPrompt(
   draft: AgentComposerDraft
 ): string | undefined {
+  const prompt = agentComposerDraftPrompt(draft).trim();
   const largeTexts = agentComposerDraftLargeTexts(draft).filter(
     (item) => Boolean(item.path) && !item.uploading && !item.uploadError
   );
   if (!largeTexts.length) {
-    return undefined;
+    return prompt.includes("](mention://") ? prompt : undefined;
   }
-  const parts = [agentComposerDraftPrompt(draft).trim()].filter(Boolean);
+  const parts = [prompt].filter(Boolean);
   parts.push(
     ...largeTexts
       .map((item, index) => pastedTextMentionMarkdown(item, index))
       .filter(Boolean)
   );
   return parts.join("\n");
+}
+
+export function projectAgentComposerDraftSubmission(input: {
+  draft: AgentComposerDraft;
+  skills: readonly AgentGUIProviderSkillOption[];
+}): {
+  content: AgentPromptContentBlock[];
+  displayPrompt?: string;
+} {
+  const content = agentComposerDraftToPromptContent(input);
+  const explicitDisplayPrompt = agentComposerDraftDisplayPrompt(input.draft);
+  const visibleText = agentComposerDraftSubmittedText(input.draft);
+  const runtimeText = agentPromptContentDisplayText(content);
+  const displayPrompt =
+    explicitDisplayPrompt ??
+    (visibleText !== runtimeText ? visibleText : undefined);
+
+  return {
+    content,
+    ...(displayPrompt ? { displayPrompt } : {})
+  };
 }
 
 function agentPromptFileBlocks(

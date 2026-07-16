@@ -3,6 +3,7 @@ package storesqlite
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -205,19 +206,43 @@ func TestCompleteCancelRuntimeOperationSettlesExactTurnAndSupersedesPending(t *t
 	_, created, err := store.PrepareRuntimeOperation(context.Background(), RuntimeOperationPrepare{
 		OperationID: "cancel-1", WorkspaceID: "ws-1", AgentSessionID: "session-1",
 		Kind: RuntimeOperationKindCancelTurn, TurnID: "turn-1", OccurredAtMS: 10,
+		Payload: map[string]any{"rootAgentSessionId": "session-1", "targets": []any{
+			map[string]any{"agentSessionId": "session-1", "turnId": "turn-1"},
+		}},
 	})
 	if err != nil || !created {
 		t.Fatalf("prepare cancel created=%v err=%v", created, err)
 	}
 	claimRuntimeOperation(t, store, "cancel-1", "worker-a")
+	// The runtime's local context can finish first and report its transport
+	// error before the durable cancel operation commits. User cancellation is
+	// still the canonical outcome, so completion must remove this error even
+	// when the target turn is already settled.
+	if _, err := store.ReportActivityState(context.Background(), ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", Kind: SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 25,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseSettled, Outcome: TurnOutcomeCanceled,
+			ErrorMessage: "context canceled", OccurredAtUnixMS: 25,
+		},
+	}); err != nil {
+		t.Fatalf("report local cancel terminal: %v", err)
+	}
 	completion, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
-		WorkspaceID: "ws-1", OperationID: "cancel-1", LeaseOwner: "worker-a", NowUnixMS: 30,
+		WorkspaceID: "ws-1", OperationID: "cancel-1", LeaseOwner: "worker-a",
+		TargetOutcomes: []CancelRuntimeOperationTargetOutcome{{
+			AgentSessionID: "session-1", TurnID: "turn-1", Outcome: TurnOutcomeCanceled,
+		}},
+		NowUnixMS: 30,
 	})
 	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultCanceled {
 		t.Fatalf("cancel completion=%#v changed=%v err=%v", completion, changed, err)
 	}
 	turn, found, err := store.GetTurn(context.Background(), "ws-1", "session-1", "turn-1")
-	if err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCanceled {
+	if err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCanceled || turn.ErrorMessage != "" {
 		t.Fatalf("turn=%#v found=%v err=%v", turn, found, err)
 	}
 	session, found, err := store.GetSession(context.Background(), "ws-1", "session-1")
@@ -228,6 +253,152 @@ func TestCompleteCancelRuntimeOperationSettlesExactTurnAndSupersedesPending(t *t
 	_ = store.db.QueryRow(`SELECT status FROM workspace_agent_interactions WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND request_id = 'request-1'`).Scan(&status)
 	if status != InteractionStatusSuperseded {
 		t.Fatalf("interaction status=%q", status)
+	}
+}
+
+func TestCompleteCancelRuntimeOperationSettlesRootAndUnconfirmedChildAtomically(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "child", Kind: SessionKindChild,
+		RootAgentSessionID: "root", RootTurnID: "root-turn",
+		ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "spawn-1",
+		Provider: "codex", OccurredAtUnixMS: 20,
+	}, "child-turn", 20)
+
+	_, created, err := store.PrepareRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "cancel-tree", WorkspaceID: "ws-1", AgentSessionID: "root",
+		Kind: RuntimeOperationKindCancelTurn, TurnID: "root-turn", OccurredAtMS: 20,
+		Payload: map[string]any{"rootAgentSessionId": "root", "targets": []any{
+			map[string]any{"agentSessionId": "child", "turnId": "child-turn"},
+			map[string]any{"agentSessionId": "root", "turnId": "root-turn"},
+		}},
+	})
+	if err != nil || !created {
+		t.Fatalf("prepare aggregate cancel created=%v err=%v", created, err)
+	}
+	claimRuntimeOperation(t, store, "cancel-tree", "worker-a")
+	if _, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: "cancel-tree", LeaseOwner: "worker-a",
+		TargetOutcomes: []CancelRuntimeOperationTargetOutcome{
+			{AgentSessionID: "child", TurnID: "child-turn", Outcome: TurnOutcomeInterrupted},
+			{AgentSessionID: "root", TurnID: "root-turn", Outcome: TurnOutcomeCanceled},
+		},
+		NowUnixMS: 30,
+	}); err != nil || !changed {
+		t.Fatalf("complete aggregate cancel changed=%v err=%v", changed, err)
+	}
+	for sessionID, expected := range map[string]struct {
+		turnID  string
+		outcome string
+	}{
+		"root":  {turnID: "root-turn", outcome: TurnOutcomeCanceled},
+		"child": {turnID: "child-turn", outcome: TurnOutcomeInterrupted},
+	} {
+		turnID := expected.turnID
+		turn, found, err := store.GetTurn(context.Background(), "ws-1", sessionID, turnID)
+		if err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != expected.outcome {
+			t.Fatalf("target %s/%s turn=%#v found=%v err=%v", sessionID, turnID, turn, found, err)
+		}
+		session, found, err := store.GetSession(context.Background(), "ws-1", sessionID)
+		if err != nil || !found || session.ActiveTurnID != "" {
+			t.Fatalf("target %s session=%#v found=%v err=%v", sessionID, session, found, err)
+		}
+	}
+}
+
+func TestPreparedRootCancelRejectsLateChildCreation(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+
+	if _, created, err := store.PrepareRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "cancel-root", WorkspaceID: "ws-1", AgentSessionID: "root",
+		Kind: RuntimeOperationKindCancelTurn, TurnID: "root-turn", OccurredAtMS: 20,
+		Payload: map[string]any{"rootAgentSessionId": "root", "targets": []any{
+			map[string]any{"agentSessionId": "root", "turnId": "root-turn"},
+		}},
+	}); err != nil || !created {
+		t.Fatalf("prepare root cancel created=%v err=%v", created, err)
+	}
+
+	_, err := store.ReportActivityState(context.Background(), ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "late-child", Kind: SessionKindChild,
+			RootAgentSessionID: "root", RootTurnID: "root-turn",
+			ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "spawn-late",
+			Provider: "codex", OccurredAtUnixMS: 21,
+		},
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "late-child", TurnID: "late-child-turn",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: 21,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "root turn cancellation started") {
+		t.Fatalf("late child creation error = %v, want durable cancel boundary rejection", err)
+	}
+	if _, found, err := store.GetSession(context.Background(), "ws-1", "late-child"); err != nil || found {
+		t.Fatalf("late child persisted found=%v err=%v", found, err)
+	}
+}
+
+func TestCompleteChildCancelRuntimeOperationSettlesCompletedRootInSameTransaction(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "child", Kind: SessionKindChild,
+		RootAgentSessionID: "root", RootTurnID: "root-turn",
+		ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "spawn-1",
+		Provider: "codex", OccurredAtUnixMS: 20,
+	}, "child-turn", 20)
+	providerCompleted := reportRootProviderTurn(t, store, "root", "root-turn", "provider-turn", RootProviderTurnPhaseCompleted, 30)
+	if providerCompleted.RootTurn.Phase != TurnPhaseWaiting {
+		t.Fatalf("root provider completion=%#v", providerCompleted)
+	}
+
+	_, created, err := store.PrepareRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "cancel-child", WorkspaceID: "ws-1", AgentSessionID: "child",
+		Kind: RuntimeOperationKindCancelTurn, TurnID: "child-turn", OccurredAtMS: 20,
+		Payload: map[string]any{"rootAgentSessionId": "root", "targets": []any{
+			map[string]any{"agentSessionId": "child", "turnId": "child-turn"},
+		}},
+	})
+	if err != nil || !created {
+		t.Fatalf("prepare child cancel created=%v err=%v", created, err)
+	}
+	claimRuntimeOperation(t, store, "cancel-child", "worker-a")
+	if _, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: "cancel-child", LeaseOwner: "worker-a",
+		TargetOutcomes: []CancelRuntimeOperationTargetOutcome{{
+			AgentSessionID: "child", TurnID: "child-turn", Outcome: TurnOutcomeCanceled,
+		}},
+		NowUnixMS: 30,
+	}); err != nil || !changed {
+		t.Fatalf("complete child cancel changed=%v err=%v", changed, err)
+	}
+
+	root, found, err := store.GetTurn(context.Background(), "ws-1", "root", "root-turn")
+	if err != nil || !found || root.Phase != TurnPhaseSettled || root.Outcome != TurnOutcomeCompleted {
+		t.Fatalf("root=%#v found=%v err=%v", root, found, err)
+	}
+	events, err := store.ListPendingRuntimeOperationEvents(context.Background(), "ws-1", 10)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events=%#v err=%v", events, err)
+	}
+	reconciledRoot, ok := events[0].Payload["reconciledRoot"].(map[string]any)
+	if !ok || payloadString(reconciledRoot, "agentSessionId") != "root" || payloadString(reconciledRoot, "turnId") != "root-turn" {
+		t.Fatalf("reconciled root payload=%#v", events[0].Payload)
 	}
 }
 

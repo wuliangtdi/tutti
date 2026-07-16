@@ -9,46 +9,90 @@ import (
 
 func (a *CodexAppServerAdapter) appServerNotificationRoute(
 	session Session,
+	rootTurnID string,
 	method string,
 	params map[string]any,
 ) appServerNotificationRoute {
 	parentThreadID := strings.TrimSpace(session.ProviderSessionID)
 	eventThreadID := strings.TrimSpace(asString(params["threadId"]))
 	if parentThreadID == "" || eventThreadID == "" || eventThreadID == parentThreadID {
-		if added := a.rememberAppServerChildThreads(session.AgentSessionID, parentThreadID, payloadObject(params["item"])); len(added) > 0 {
+		rootTurnID = firstNonEmpty(strings.TrimSpace(rootTurnID), a.sessionMarkerTurnID(session.AgentSessionID))
+		added, events := a.rememberAppServerChildThreads(
+			session,
+			parentThreadID,
+			session.AgentSessionID,
+			rootTurnID,
+			session.AgentSessionID,
+			rootTurnID,
+			payloadObject(params["item"]),
+		)
+		if len(added) > 0 {
 			a.scheduleChildNicknameFetches(session, added)
 		}
-		return appServerNotificationRoute{}
+		return appServerNotificationRoute{events: events}
 	}
 
 	child, ok := a.appServerChildThread(session.AgentSessionID, eventThreadID)
 	if !ok {
+		if a.canceledProviderThread(session.AgentSessionID, eventThreadID) {
+			if method == appServerNotifyTurnStarted {
+				providerTurnID := strings.TrimSpace(asString(payloadObject(params["turn"])["id"]))
+				if appSession := a.getSession(session.AgentSessionID); appSession != nil && appSession.client != nil {
+					go a.sendThreadInterrupt(appSession.client, session, eventThreadID, providerTurnID, "root turn canceled")
+				}
+			}
+			return appServerNotificationRoute{drop: true}
+		}
 		a.recordForeignThreadDrop(session.AgentSessionID, eventThreadID)
 		a.logAppServerForeignThreadDrop(session, method, params, eventThreadID)
 		return appServerNotificationRoute{drop: true}
 	}
-	if event := appServerChildTerminalStatusEvent(session, eventThreadID, method, params); event.Type != "" {
-		return appServerNotificationRoute{
-			ownerThreadID: eventThreadID,
-			ownerCallID:   child.parentItemID,
-			turnID:        event.Payload.TurnID,
-			events:        []activityshared.Event{event},
-			drop:          true,
-		}
+	eventSession := appServerChildSession(session, eventThreadID, child)
+	added, prefixEvents := a.rememberAppServerChildThreads(
+		eventSession,
+		eventThreadID,
+		child.rootAgentSessionID,
+		child.rootTurnID,
+		child.agentSessionID,
+		child.turnID,
+		payloadObject(params["item"]),
+	)
+	if len(added) > 0 {
+		a.scheduleChildNicknameFetches(session, added)
+	}
+	if terminalEvents := appServerChildTerminalEvents(eventSession, child, method, params); len(terminalEvents) > 0 {
+		terminalEvents = appServerEventsForChild(terminalEvents, child)
+		return appServerNotificationRoute{events: append(prefixEvents, terminalEvents...), drop: true}
 	}
 	if appServerSuppressChildNotification(method) {
-		return appServerNotificationRoute{drop: true}
+		return appServerNotificationRoute{events: prefixEvents, drop: true}
 	}
 	if child.normalizer == nil {
 		child.normalizer = newACPTurnNormalizer()
 		a.storeAppServerChildThread(session.AgentSessionID, eventThreadID, child)
 	}
 	return appServerNotificationRoute{
-		ownerThreadID: eventThreadID,
-		ownerCallID:   child.parentItemID,
-		turnID:        firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"])),
-		normalizer:    child.normalizer,
+		session:    eventSession,
+		child:      child,
+		turnID:     child.turnID,
+		normalizer: child.normalizer,
+		events:     prefixEvents,
 	}
+}
+
+func appServerEventsForChild(events []activityshared.Event, child *codexAppServerThreadContext) []activityshared.Event {
+	if child == nil {
+		return events
+	}
+	for index := range events {
+		events[index].SessionKind = "child"
+		events[index].RootAgentSessionID = child.rootAgentSessionID
+		events[index].RootTurnID = child.rootTurnID
+		events[index].ParentAgentSessionID = child.parentAgentSessionID
+		events[index].ParentTurnID = child.parentTurnID
+		events[index].ParentToolCallID = child.parentItemID
+	}
+	return events
 }
 
 const appServerForeignDropTrackerCap = 64
@@ -78,66 +122,122 @@ func (a *CodexAppServerAdapter) recordForeignThreadDrop(agentSessionID string, t
 	appSession.recentForeignDrops[threadID]++
 }
 
-func (a *CodexAppServerAdapter) rememberAppServerChildThreads(agentSessionID string, parentThreadID string, item map[string]any) []string {
+func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
+	session Session,
+	parentThreadID string,
+	rootAgentSessionID string,
+	rootTurnID string,
+	parentAgentSessionID string,
+	parentTurnID string,
+	item map[string]any,
+) ([]string, []activityshared.Event) {
 	if asString(item["type"]) != "collabAgentToolCall" {
-		return nil
+		return nil, nil
 	}
 	childThreadIDs := appServerReceiverThreadIDs(item["receiverThreadIds"])
 	if len(childThreadIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 	parentThreadID = strings.TrimSpace(parentThreadID)
 	parentItemID := strings.TrimSpace(asString(item["id"]))
-	// Only the spawn card owns the children it declares. Wait/close control
-	// cards also list receiverThreadIds and must register the thread for
-	// routing, but must never claim lane ownership: parentItemID is
-	// first-wins below, and it becomes each child row's ownerCallId
-	// (ADR 0007).
+	// Wait/close cards reference existing children but are not delegation
+	// edges. A durable child is created only from the spawn card that supplies
+	// its immutable parent tool-call id.
 	if appServerAgentControlToolName(asString(item["tool"])) != "" {
-		parentItemID = ""
+		return nil, nil
+	}
+	rootAgentSessionID = strings.TrimSpace(rootAgentSessionID)
+	rootTurnID = strings.TrimSpace(rootTurnID)
+	parentAgentSessionID = strings.TrimSpace(parentAgentSessionID)
+	parentTurnID = strings.TrimSpace(parentTurnID)
+	if parentItemID == "" || rootAgentSessionID == "" || rootTurnID == "" || parentAgentSessionID == "" || parentTurnID == "" {
+		return nil, nil
 	}
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	appSession := a.sessions[rootAgentSessionID]
 	if appSession == nil {
-		return nil
+		a.mu.Unlock()
+		return nil, nil
+	}
+	if strings.TrimSpace(appSession.canceledRootTurnID) != "" {
+		if appSession.canceledProviderThreads == nil {
+			appSession.canceledProviderThreads = make(map[string]struct{})
+		}
+		lateChildThreadIDs := make([]string, 0, len(childThreadIDs))
+		for _, childThreadID := range childThreadIDs {
+			if childThreadID == "" || childThreadID == parentThreadID {
+				continue
+			}
+			appSession.canceledProviderThreads[childThreadID] = struct{}{}
+			lateChildThreadIDs = append(lateChildThreadIDs, childThreadID)
+		}
+		client := appSession.client
+		canceledRootTurnID := appSession.canceledRootTurnID
+		a.mu.Unlock()
+		cancelSession := session
+		cancelSession.AgentSessionID = rootAgentSessionID
+		for _, childThreadID := range lateChildThreadIDs {
+			if client != nil {
+				go a.sendThreadInterrupt(client, cancelSession, childThreadID, "", "root turn canceled")
+			}
+		}
+		if len(lateChildThreadIDs) > 0 {
+			slog.Warn(
+				"agent session app-server interrupting child threads discovered after root cancellation",
+				"event", "agent_session.app_server.child.late_after_cancel",
+				"agent_session_id", rootAgentSessionID,
+				"root_turn_id", canceledRootTurnID,
+				"child_thread_count", len(lateChildThreadIDs),
+			)
+		}
+		return nil, nil
 	}
 	if appSession.childThreads == nil {
 		appSession.childThreads = make(map[string]*codexAppServerThreadContext)
 	}
 	added := make([]string, 0, len(childThreadIDs))
+	addedContexts := make([]*codexAppServerThreadContext, 0, len(childThreadIDs))
 	for _, childThreadID := range childThreadIDs {
 		if childThreadID == "" || childThreadID == parentThreadID {
 			continue
 		}
 		if existing := appSession.childThreads[childThreadID]; existing != nil {
-			if existing.parentItemID == "" {
-				existing.parentItemID = parentItemID
-			}
-			if existing.parentThreadID == "" {
-				existing.parentThreadID = parentThreadID
-			}
 			continue
 		}
 		context := &codexAppServerThreadContext{
-			parentThreadID: parentThreadID,
-			parentItemID:   parentItemID,
-			normalizer:     newACPTurnNormalizer(),
+			agentSessionID:       newID(),
+			turnID:               newID(),
+			rootAgentSessionID:   rootAgentSessionID,
+			rootTurnID:           rootTurnID,
+			parentAgentSessionID: parentAgentSessionID,
+			parentTurnID:         parentTurnID,
+			parentThreadID:       parentThreadID,
+			parentItemID:         parentItemID,
+			normalizer:           newACPTurnNormalizer(),
 		}
 		if dropped := appSession.recentForeignDrops[childThreadID]; dropped > 0 {
 			context.droppedBeforeRegistration = dropped
 			delete(appSession.recentForeignDrops, childThreadID)
 			slog.Warn(
 				"agent session app-server child events arrived before registration",
-				"agent_session_id", agentSessionID,
+				"agent_session_id", rootAgentSessionID,
 				"child_thread_id", childThreadID,
 				"dropped_events", dropped,
 			)
 		}
 		appSession.childThreads[childThreadID] = context
 		added = append(added, childThreadID)
+		addedContexts = append(addedContexts, context)
 	}
-	return added
+	a.mu.Unlock()
+	events := make([]activityshared.Event, 0, len(addedContexts))
+	for index, child := range addedContexts {
+		childSession := appServerChildSession(session, added[index], child)
+		if event := appServerChildStartedEvent(childSession, child); event.Type != "" {
+			events = append(events, event)
+		}
+	}
+	return added, events
 }
 
 func (a *CodexAppServerAdapter) appServerChildThread(agentSessionID string, childThreadID string) (*codexAppServerThreadContext, bool) {
@@ -152,6 +252,12 @@ func (a *CodexAppServerAdapter) appServerChildThread(agentSessionID string, chil
 		return nil, false
 	}
 	return &codexAppServerThreadContext{
+		agentSessionID:            child.agentSessionID,
+		turnID:                    child.turnID,
+		rootAgentSessionID:        child.rootAgentSessionID,
+		rootTurnID:                child.rootTurnID,
+		parentAgentSessionID:      child.parentAgentSessionID,
+		parentTurnID:              child.parentTurnID,
 		parentThreadID:            child.parentThreadID,
 		parentItemID:              child.parentItemID,
 		normalizer:                child.normalizer,
@@ -194,7 +300,6 @@ func appServerSuppressChildNotification(method string) bool {
 		// match) it would fail the parent's running turn. Child failures reach
 		// the transcript through the parent's collabAgentToolCall item.
 		appServerNotifyError,
-		appServerNotifyServerRequestResolved,
 		appServerNotifyPlanUpdated,
 		appServerNotifyTokenUsage,
 		appServerNotifyRateLimitsUpdated,
@@ -205,64 +310,119 @@ func appServerSuppressChildNotification(method string) bool {
 	}
 }
 
-func appServerChildTerminalStatusEvent(
+func appServerChildSession(root Session, providerThreadID string, child *codexAppServerThreadContext) Session {
+	if child == nil {
+		return Session{}
+	}
+	root.AgentSessionID = child.agentSessionID
+	root.ProviderSessionID = strings.TrimSpace(providerThreadID)
+	root.Title = ""
+	root.Status = SessionStatusWorking
+	root.TurnLifecycle = nil
+	root.SubmitAvailability = blockedSubmitAvailability("active_turn")
+	return root
+}
+
+func appServerChildEventContext(
 	session Session,
-	ownerThreadID string,
-	method string,
-	params map[string]any,
-) activityshared.Event {
-	ownerThreadID = strings.TrimSpace(ownerThreadID)
-	if ownerThreadID == "" {
+	child *codexAppServerThreadContext,
+	eventID string,
+) (activityshared.EventContext, bool) {
+	if child == nil {
+		return activityshared.EventContext{}, false
+	}
+	ctx, ok := activityEventContext(session, eventID, child.turnID)
+	if !ok {
+		return activityshared.EventContext{}, false
+	}
+	ctx.SessionKind = "child"
+	ctx.RootAgentSessionID = child.rootAgentSessionID
+	ctx.RootTurnID = child.rootTurnID
+	ctx.ParentAgentSessionID = child.parentAgentSessionID
+	ctx.ParentTurnID = child.parentTurnID
+	ctx.ParentToolCallID = child.parentItemID
+	return ctx, true
+}
+
+func appServerChildStartedEvent(session Session, child *codexAppServerThreadContext) activityshared.Event {
+	ctx, ok := appServerChildEventContext(session, child, "child-session-started:"+child.agentSessionID)
+	if !ok {
 		return activityshared.Event{}
 	}
+	return activityshared.NewChildSessionStarted(ctx, child.turnID)
+}
+
+func appServerChildTerminalEvents(
+	session Session,
+	child *codexAppServerThreadContext,
+	method string,
+	params map[string]any,
+) []activityshared.Event {
+	ctx, ok := appServerChildEventContext(session, child, strings.TrimSpace(method)+":"+newID())
+	if !ok {
+		return nil
+	}
 	switch method {
+	case appServerNotifyTurnStarted:
+		return []activityshared.Event{activityshared.NewTurnStarted(ctx, child.turnID)}
+	case appServerNotifyThreadNameUpdated:
+		name := strings.TrimSpace(asString(params["threadName"]))
+		if name == "" {
+			return nil
+		}
+		ctx.Title = name
+		return []activityshared.Event{activityshared.NewSessionTitleUpdated(ctx)}
 	case appServerNotifyTurnCompleted:
 		turn := payloadObject(params["turn"])
-		turnID := firstNonEmpty(asString(params["turnId"]), asString(turn["id"]))
 		status := appServerChildLifecycleStatus(asString(turn["status"]))
-		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, status, appServerChildFailureDetail(turn))
+		detail := appServerChildFailureDetail(turn)
+		return appServerChildSettledEvents(session, child, ctx, status, detail)
 	case appServerNotifyError:
 		if willRetry, _ := params["willRetry"].(bool); willRetry {
-			return activityshared.Event{}
+			return nil
 		}
-		turnID := firstNonEmpty(asString(params["turnId"]), asString(payloadObject(params["turn"])["id"]))
-		return appServerSubAgentLifecycleEvent(session, ownerThreadID, turnID, "failed", appServerChildFailureDetail(payloadObject(params["error"])))
-	case appServerNotifyThreadNameUpdated:
-		return appServerSubAgentNameEvent(session, ownerThreadID, asString(params["threadName"]))
+		return appServerChildSettledEvents(
+			session,
+			child,
+			ctx,
+			"failed",
+			appServerChildFailureDetail(payloadObject(params["error"])),
+		)
 	default:
-		return activityshared.Event{}
+		return nil
 	}
 }
 
-// appServerSubAgentNameEvent projects a child thread's name onto a hidden
-// ownerThreadId-tagged marker so the GUI can title the sub-agent lane with
-// the agent's real identity instead of the collab tool name.
-func appServerSubAgentNameEvent(session Session, ownerThreadID string, name string) activityshared.Event {
-	ownerThreadID = strings.TrimSpace(ownerThreadID)
-	name = strings.TrimSpace(name)
-	if ownerThreadID == "" || name == "" {
-		return activityshared.Event{}
+func appServerChildSettledEvents(
+	session Session,
+	child *codexAppServerThreadContext,
+	ctx activityshared.EventContext,
+	status string,
+	detail string,
+) []activityshared.Event {
+	var events []activityshared.Event
+	if child.normalizer == nil {
+		child.normalizer = newACPTurnNormalizer()
 	}
-	messageID := "subagent-name:" + ownerThreadID
-	payload := map[string]any{
-		"messageId":     messageID,
-		"contentMode":   messageContentModeSnapshot,
-		"messageKind":   "subAgentName",
-		"subAgentName":  name,
-		"ownerThreadId": ownerThreadID,
+	switch status {
+	case "failed":
+		events = child.normalizer.FinishFailed(session, child.turnID)
+		terminal := activityshared.NewTurnFailed(ctx, child.turnID)
+		if detail != "" {
+			terminal.Payload.Metadata = map[string]any{"error": detail}
+		}
+		return append(events, terminal)
+	case "canceled":
+		events = child.normalizer.FinishInterrupted(session, child.turnID, "interrupted")
+		terminal := activityshared.NewTurnCanceled(ctx, child.turnID)
+		if detail != "" {
+			terminal.Payload.Metadata = map[string]any{"error": detail}
+		}
+		return append(events, terminal)
+	default:
+		events = child.normalizer.FinishCompleted(session, child.turnID)
+		return append(events, activityshared.NewTurnCompleted(ctx, child.turnID, activityshared.TurnOutcomeCompleted))
 	}
-	event := newTurnActivityEventWithID(
-		session,
-		messageID,
-		EventMessage,
-		"",
-		"completed",
-		RoleAssistant,
-		"",
-		payload,
-	)
-	event.OwnerThreadID = ownerThreadID
-	return event
 }
 
 func appServerChildLifecycleStatus(status string) string {
@@ -283,38 +443,6 @@ func appServerChildFailureDetail(payload map[string]any) string {
 		asStringRaw(payload["error"]),
 		asStringRaw(payload["reason"]),
 	)
-}
-
-func appServerSubAgentLifecycleEvent(session Session, ownerThreadID string, turnID string, status string, detail string) activityshared.Event {
-	ownerThreadID = strings.TrimSpace(ownerThreadID)
-	status = strings.TrimSpace(status)
-	if ownerThreadID == "" || status == "" {
-		return activityshared.Event{}
-	}
-	messageID := "subagent-lifecycle:" + ownerThreadID + ":" + firstNonEmpty(strings.TrimSpace(turnID), newID())
-	payload := map[string]any{
-		"messageId":               messageID,
-		"contentMode":             messageContentModeSnapshot,
-		"streamState":             status,
-		"messageKind":             "subAgentLifecycle",
-		"subAgentLifecycleStatus": status,
-		"ownerThreadId":           ownerThreadID,
-	}
-	if detail != "" {
-		payload["detail"] = detail
-	}
-	event := newTurnActivityEventWithID(
-		session,
-		messageID,
-		EventMessage,
-		strings.TrimSpace(turnID),
-		status,
-		RoleAssistant,
-		"",
-		payload,
-	)
-	event.OwnerThreadID = ownerThreadID
-	return event
 }
 
 func appServerReceiverThreadIDs(value any) []string {
@@ -338,19 +466,6 @@ func appServerReceiverThreadIDs(value any) []string {
 		}
 	}
 	return out
-}
-
-func appServerEventsWithOwner(events []activityshared.Event, ownerThreadID string, ownerCallID string) []activityshared.Event {
-	ownerThreadID = strings.TrimSpace(ownerThreadID)
-	if ownerThreadID == "" || len(events) == 0 {
-		return events
-	}
-	ownerCallID = strings.TrimSpace(ownerCallID)
-	for index := range events {
-		events[index].OwnerThreadID = ownerThreadID
-		events[index].OwnerCallID = ownerCallID
-	}
-	return events
 }
 
 func (*CodexAppServerAdapter) logAppServerForeignThreadDrop(

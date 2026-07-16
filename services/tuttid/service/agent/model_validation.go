@@ -41,7 +41,7 @@ func (s *Service) validateComposerModelForCreate(
 	model string,
 ) error {
 	provider = agentprovider.Normalize(provider)
-	model = normalizeComposerModelForProvider(provider, clampComposerModelForProvider(provider, model))
+	model = clampComposerModelForProvider(provider, model)
 	if model == "" {
 		return nil
 	}
@@ -110,7 +110,7 @@ func (s *Service) availableComposerModelsForValidationProfile(
 		if s.ModelCatalog == nil {
 			return nil, false, nil
 		}
-		result, err := s.ModelCatalog.ListModels(ctx, provider)
+		result, err := s.ModelCatalog.ListModels(ctx, AgentModelCatalogInput{Provider: provider, Cwd: cwd})
 		if err != nil {
 			return nil, false, nil
 		}

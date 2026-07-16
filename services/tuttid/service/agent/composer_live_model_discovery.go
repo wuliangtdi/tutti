@@ -560,8 +560,9 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 				modelSource = runtimeLiveModelCatalogSource
 			}
 		default:
-			// No running session: prefer the cache, else one hidden discovery,
-			// else fall through to the static fallback below.
+			// No running session: prefer the cache, then the last catalog a
+			// persisted session advertised. Only bootstrap a hidden discovery
+			// session when neither source can populate the first composer.
 			if cached, ok := s.getLiveComposerModelOptionsForScope(scope, now); ok {
 				liveModels = cached
 				modelSource = runtimeLiveModelCatalogSource
@@ -573,6 +574,9 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 					"modelOptionValues": composerConfigOptionValuesDebugValues(cached),
 					"checkedAtUnixMs":   now.UnixMilli(),
 				})
+			} else if persisted, ok := s.persistedLiveModelFallback(input.WorkspaceID, input.Cwd, provider, now, input.AgentTargetID); ok {
+				liveModels = persisted
+				modelSource = runtimeLiveModelCatalogSource
 			} else {
 				discovered, err := s.discoverLiveComposerModels(ctx, input, effectiveSettings)
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -580,13 +584,6 @@ func (s *Service) mergeLiveComposerModelsForComposerOptions(
 				}
 				if err == nil && len(discovered) > 0 {
 					liveModels = discovered
-					modelSource = runtimeLiveModelCatalogSource
-				} else if persisted, ok := s.persistedLiveModelFallback(input.WorkspaceID, input.Cwd, provider, now, input.AgentTargetID); ok {
-					// No live session, no cache, and discovery could not run
-					// (Cursor never probes; Claude probes once per key). Restore
-					// the last list a past session persisted so the picker does
-					// not collapse to the single selected model.
-					liveModels = persisted
 					modelSource = runtimeLiveModelCatalogSource
 				}
 			}

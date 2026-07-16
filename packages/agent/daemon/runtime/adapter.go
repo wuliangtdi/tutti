@@ -65,8 +65,31 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// TargetedCancelAdapter maps canonical root/child targets onto provider-native
+// handles. The controller supplies the root live session and never asks the
+// adapter to discover the durable child tree itself.
+type TargetedCancelAdapter interface {
+	CancelTargets(context.Context, Session, []CancelTarget, string) (TargetedCancelResult, error)
+}
+
+// TargetedCancelResult separates provider-confirmed cancellation from the
+// normalized UI events produced while issuing the command. A missing target
+// is not confirmation: services/tuttid will settle an unconfirmed child turn
+// as interrupted after this bounded provider call returns.
+type TargetedCancelResult struct {
+	Events           []activityshared.Event
+	ConfirmedTargets []CancelTarget
+}
+
 type AsyncExecAdapter interface {
 	ExecAsync(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) error
+}
+
+// RootProviderTurnLifecycleAdapter reports provider-turn lifecycle facts
+// without claiming the canonical root WorkspaceAgentTurn is terminal. The
+// durable daemon settles that root turn after checking every child turn.
+type RootProviderTurnLifecycleAdapter interface {
+	UsesRootProviderTurnLifecycle() bool
 }
 
 type ActiveTurnGuidanceAdapter interface {
@@ -103,6 +126,45 @@ type SessionEventSinkAdapter interface {
 	SetSessionEventSink(SessionEventSink)
 }
 
+type GoalReconcileDurableRequest struct {
+	RequestID           string
+	Phase               string
+	ProviderTurnID      string
+	Reason              string
+	FenceMode           string
+	ExpectedOperationID string
+	ExpectedRevision    int64
+	ExpectedRepairEpoch int64
+	QuiesceSucceeded    bool
+	QuiesceError        string
+}
+
+type GoalReconcileDurableSink func(context.Context, Session, GoalReconcileDurableRequest) error
+
+type GoalReconcileDurableSinkAdapter interface {
+	SetGoalReconcileDurableSink(GoalReconcileDurableSink)
+}
+
+// GoalProvenanceBinding is the exact durable association between a
+// provider-authored Goal generation and the business operation that created
+// it. Ambiguous is a permanent tombstone: a reused fingerprint must never be
+// rebound to either operation.
+type GoalProvenanceBinding struct {
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
+	Ambiguous   bool
+}
+
+type GoalProvenanceDurableSink interface {
+	BindGoalProvenance(context.Context, Session, string, GoalProvenanceBinding) (GoalProvenanceBinding, error)
+	LookupGoalProvenance(context.Context, Session, string) (GoalProvenanceBinding, bool, error)
+}
+
+type GoalProvenanceDurableSinkAdapter interface {
+	SetGoalProvenanceDurableSink(GoalProvenanceDurableSink)
+}
+
 type ConfigOptionsUpdateSinkAdapter interface {
 	SetConfigOptionsUpdateSink(ConfigOptionsUpdateSink)
 }
@@ -113,6 +175,10 @@ type InteractiveAdapter interface {
 
 type InteractiveDispositionAdapter interface {
 	InteractiveDisposition(Session, string, string) InteractiveDisposition
+}
+
+type TargetedInteractiveDispositionAdapter interface {
+	InteractiveDispositionForTarget(Session, string, string, string) InteractiveDisposition
 }
 
 type InteractiveDispositionSink func(string, string, string, InteractiveDisposition)
@@ -152,17 +218,49 @@ const (
 	GoalControlSet    GoalControlAction = "set"
 )
 
-// GoalControlAdapter executes goal operations as thread-level calls without
-// opening a turn, so they keep working while another turn holds the session's
-// turn slot.
-type GoalControlAdapter interface {
-	// GoalControl performs a direct goal action (UI buttons). It returns the
-	// session events to apply/publish and the fresh goal snapshot (nil after
-	// clear).
-	GoalControl(ctx context.Context, session Session, action GoalControlAction, objective string) (events []activityshared.Event, goal map[string]any, err error)
-	// ExecGoalControl handles a typed "/goal …" prompt while a turn is
-	// active. handled reports whether the prompt was a goal command.
-	ExecGoalControl(ctx context.Context, session Session, content []PromptContentBlock, displayPrompt string, turnID string) (events []activityshared.Event, handled bool, err error)
+type GoalAdapterCapabilities struct {
+	QuerySupported        bool
+	ClearSupported        bool
+	PauseSupported        bool
+	QuiesceGoalTurns      bool
+	ReplaySetAfterRestart bool
+}
+
+type GoalAdapterResult struct {
+	Events      []activityshared.Event
+	Observation map[string]any
+	Evidence    map[string]any
+	// ProviderPhase separates transport acceptance from evidence that the
+	// provider actually consumed/applied the command.
+	ProviderPhase string
+}
+
+// GoalApplyInput carries the durable control identity allocated above the
+// provider boundary. It is not a Turn identity: providers copy it onto any
+// Turn they later create so activity can be traced back to the goal revision.
+type GoalApplyInput struct {
+	Action      GoalControlAction
+	Objective   string
+	OperationID string
+	Revision    int64
+	RepairEpoch int64
+	// SubmissionMetadata links a composer-originated control to its turnless
+	// audit message. It is intentionally independent of Turn identity.
+	SubmissionMetadata map[string]any
+}
+
+// GoalAdapter is the semantic provider boundary for goal state. Providers
+// return observations and evidence; only the upper persistence layer decides
+// desired/observed convergence and writes durable state.
+type GoalAdapter interface {
+	GoalCapabilities() GoalAdapterCapabilities
+	ApplyGoal(ctx context.Context, session Session, input GoalApplyInput) (GoalAdapterResult, error)
+	ReconcileGoal(ctx context.Context, session Session) (GoalAdapterResult, error)
+	NormalizeGoalObservation(raw map[string]any) map[string]any
+	// ExecGoalControl handles a typed "/goal …" prompt as a session-level
+	// operation. The controller calls it before allocating a turn identity;
+	// audit messages emitted by the adapter therefore remain turnless.
+	ExecGoalControl(ctx context.Context, session Session, content []PromptContentBlock, displayPrompt string) (events []activityshared.Event, handled bool, err error)
 }
 
 type PermissionModeAdapter interface {

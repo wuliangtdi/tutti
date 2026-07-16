@@ -165,11 +165,9 @@ func TestCursorAdapterAutoContinuesAfterRetriableTurnError(t *testing.T) {
 			asString(event.Payload.Metadata["noticeKind"]) == "transport_retry" {
 			sawRetryNotice = true
 		}
-		if event.Type == activityshared.EventTurnCompleted {
-			sawCompleted = true
-		}
-		if event.Type == activityshared.EventTurnFailed {
-			sawFailed = true
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			sawCompleted = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted)
+			sawFailed = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeFailed)
 		}
 	}
 	if !sawRetryNotice {
@@ -243,11 +241,9 @@ func TestCursorAdapterAutoContinueToolOnlyContinuationCompletes(t *testing.T) {
 
 	var sawCompleted, sawFailed bool
 	for _, event := range events {
-		if event.Type == activityshared.EventTurnCompleted {
-			sawCompleted = true
-		}
-		if event.Type == activityshared.EventTurnFailed {
-			sawFailed = true
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			sawCompleted = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted)
+			sawFailed = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeFailed)
 		}
 	}
 	if !sawCompleted || sawFailed {
@@ -284,11 +280,13 @@ func TestCursorAdapterAutoContinueExhaustedMarksTurnFailed(t *testing.T) {
 	var failedError string
 	var sawCompleted bool
 	for _, event := range events {
-		if event.Type == activityshared.EventTurnFailed {
-			failedError = asString(event.Payload.Metadata["error"])
-		}
-		if event.Type == activityshared.EventTurnCompleted {
-			sawCompleted = true
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			switch event.Payload.TurnOutcome {
+			case string(activityshared.TurnOutcomeFailed):
+				failedError = asString(event.Payload.Metadata["error"])
+			case string(activityshared.TurnOutcomeCompleted):
+				sawCompleted = true
+			}
 		}
 	}
 	if !strings.Contains(failedError, "RetriableError") {
@@ -325,7 +323,8 @@ func TestStandardACPAdapterWithoutOptInDoesNotAutoContinue(t *testing.T) {
 		t.Fatalf("prompt calls = %d, want no auto-continue without the opt-in", promptCalls)
 	}
 	for _, event := range events {
-		if event.Type == activityshared.EventTurnFailed {
+		if event.Type == activityshared.EventRootProviderTurnCompleted &&
+			event.Payload.TurnOutcome == string(activityshared.TurnOutcomeFailed) {
 			t.Fatalf("event = %#v, want the legacy completed turn", event)
 		}
 	}
@@ -356,13 +355,12 @@ func TestCursorAdapterSoftSettlesPlanLimitPromptError(t *testing.T) {
 	var noticeTitle string
 	for _, event := range events {
 		switch event.Type {
-		case activityshared.EventTurnCompleted:
-			sawCompleted = true
+		case activityshared.EventRootProviderTurnCompleted:
+			sawCompleted = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted)
+			sawFailed = event.Payload.TurnOutcome == string(activityshared.TurnOutcomeFailed)
 			if event.Payload.Metadata["planLimit"] != true {
 				t.Fatalf("completed metadata = %#v, want planLimit true", event.Payload.Metadata)
 			}
-		case activityshared.EventTurnFailed:
-			sawFailed = true
 		case activityshared.EventMessageAppended:
 			if asString(event.Payload.Metadata["kind"]) == "agent_system_notice" {
 				noticeTitle = asString(event.Payload.Metadata["title"])

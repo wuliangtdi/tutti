@@ -47,6 +47,7 @@ export function pendingIntentsReducer(
     settingsResultValidation?: ScopedSessionResultValidation | null;
     planFeedbackAccepted?: boolean;
     submitRequestAccepted?: boolean;
+    submitDeliveryIsQueuePending?: boolean;
   } = {
     deletedSessionIds: {},
     turnsById: {}
@@ -121,7 +122,11 @@ export function pendingIntentsReducer(
     case "engine/intentExpired":
       return intent.expiryId.startsWith("activation:")
         ? expireActivation(state, intent.expiryId)
-        : expireSubmit(state, intent.expiryId);
+        : expireSubmit(state, intent.expiryId, {
+            deliveryIsQueuePending:
+              context.submitDeliveryIsQueuePending === true,
+            dueAtUnixMs: intent.dueAtUnixMs
+          });
     case "session/removed":
       return removeSessionIntents(state, intent.agentSessionId);
     default:
@@ -186,6 +191,10 @@ function requestActivation(
   }
   const content = (intent.content ?? []).map((block) => ({ ...block }));
   const displayPrompt = intent.initialDisplayPrompt?.trim() || undefined;
+  const optimisticTitle =
+    intent.mode === "new"
+      ? intent.optimisticTitle?.trim() || undefined
+      : undefined;
   const runtimeContent = (intent.runtimeContent ?? content).map((block) => ({
     ...block
   }));
@@ -196,27 +205,41 @@ function requestActivation(
     )
     .map((record) => record.requestId);
   const baseState = supersededRequestIds.reduce(deleteActivation, state);
-  const record: PendingActivationIntentRecord = {
+  const recordBase = {
     agentSessionId,
-    agentTargetId,
-    clientSubmitId,
     content,
     cwd: intent.cwd?.trim() ?? "",
     ...(displayPrompt ? { displayPrompt } : {}),
     errorCode: null,
     errorMessage: null,
     expiresAtUnixMs: intent.expiresAtUnixMs,
+    initialTurnExpected:
+      intent.initialTurnExpected ?? runtimeContent.length > 0,
     ...(intent.submitDiagnostics
       ? { submitDiagnostics: { ...intent.submitDiagnostics } }
       : {}),
-    mode: intent.mode,
     requestedAtUnixMs: intent.requestedAtUnixMs,
     requestId,
     ...(intent.settings ? { settings: { ...intent.settings } } : {}),
-    status: "requested",
+    status: "requested" as const,
     title: intent.title?.trim() || null,
     workspaceId
   };
+  const record: PendingActivationIntentRecord =
+    intent.mode === "new"
+      ? {
+          ...recordBase,
+          agentTargetId: agentTargetId!,
+          clientSubmitId: clientSubmitId!,
+          mode: "new",
+          ...(optimisticTitle ? { optimisticTitle } : {})
+        }
+      : {
+          ...recordBase,
+          agentTargetId,
+          clientSubmitId: null,
+          mode: "existing"
+        };
   return {
     commands: [
       ...supersededRequestIds.map((id) => ({
@@ -308,6 +331,7 @@ function recordActivationFailure(
       errorCode: intent.errorCode?.trim() || null,
       errorMessage: intent.errorMessage.trim() || null,
       expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+      initialTurnExpected: false,
       mode: "existing",
       requestedAtUnixMs: intent.occurredAtUnixMs,
       requestId,

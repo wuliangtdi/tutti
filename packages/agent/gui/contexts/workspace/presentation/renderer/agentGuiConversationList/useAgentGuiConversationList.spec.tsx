@@ -5,6 +5,392 @@ import { createLocalAgentGUIAgentTarget } from "../../../../../agentTargets";
 import { useAgentGuiConversationList } from "./useAgentGuiConversationList";
 
 describe("useAgentGuiConversationList", () => {
+  it("projects a task marker from a matching mention-rich initial prompt", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const displayPrompt =
+      "[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) 看看";
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "activation/requested",
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        clientSubmitId: "submit-1",
+        content: [{ type: "text", text: displayPrompt }],
+        cwd: "/workspace",
+        expiresAtUnixMs: 100,
+        initialDisplayPrompt: displayPrompt,
+        mode: "new",
+        optimisticTitle: "@Task 看看",
+        requestedAtUnixMs: 1,
+        requestId: "activation-1",
+        workspaceId: "workspace-1"
+      });
+    });
+
+    expect(result.current?.conversations[0]).toEqual(
+      expect.objectContaining({
+        title: "@Task 看看",
+        titleLeadingMentionKind: "task"
+      })
+    );
+  });
+
+  it("shows only conversation text for a browser-element activation", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const displayPrompt =
+      "[@<div>](mention://browser-element/browser-element%3A1?tag=div&workspaceId=workspace-1) 这里说的什么";
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "activation/requested",
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        clientSubmitId: "submit-1",
+        content: [{ type: "text", text: displayPrompt }],
+        cwd: "/workspace",
+        expiresAtUnixMs: 100,
+        initialDisplayPrompt: displayPrompt,
+        mode: "new",
+        optimisticTitle: "@<div> 这里说的什么",
+        requestedAtUnixMs: 1,
+        requestId: "activation-1",
+        workspaceId: "workspace-1"
+      });
+    });
+
+    expect(result.current?.conversations[0]).toEqual(
+      expect.objectContaining({
+        title: "这里说的什么",
+        titleLeadingMentionKind: null,
+        titleFallback: null
+      })
+    );
+  });
+
+  it("shows only conversation text for a canonical browser-element session", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const displayPrompt =
+      "[@<div>](mention://browser-element/browser-element%3A1?tag=div&workspaceId=workspace-1) 这里说的什么";
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurnId: null,
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "@<div> 这里说的什么",
+            updatedAtUnixMs: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+      engine.dispatch({
+        type: "message/snapshotReceived",
+        messages: [
+          {
+            agentSessionId: "session-1",
+            kind: "text",
+            messageId: "message-1",
+            occurredAtUnixMs: 1,
+            payload: {
+              displayPrompt,
+              text: displayPrompt
+            },
+            role: "user",
+            status: null,
+            turnId: "turn-1",
+            version: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations[0]).toEqual(
+      expect.objectContaining({
+        title: "这里说的什么",
+        titleLeadingMentionKind: null,
+        titleFallback: null
+      })
+    );
+  });
+
+  it("shows a historical session marker after its first message is loaded", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const displayPrompt =
+      "[@Previous chat](mention://agent-session/session-previous?workspaceId=workspace-1) 看看";
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurnId: null,
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "@Previous chat 看看",
+            updatedAtUnixMs: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations[0]).toEqual(
+      expect.objectContaining({
+        title: "@Previous chat 看看",
+        titleLeadingMentionKind: null
+      })
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "message/snapshotReceived",
+        messages: [
+          {
+            agentSessionId: "session-1",
+            kind: "text",
+            messageId: "message-1",
+            occurredAtUnixMs: 1,
+            payload: { displayPrompt, text: displayPrompt },
+            role: "user",
+            status: null,
+            turnId: "turn-1",
+            version: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations[0]).toEqual(
+      expect.objectContaining({
+        title: "@Previous chat 看看",
+        titleLeadingMentionKind: "session"
+      })
+    );
+  });
+
+  it("keeps the projected list stable while an assistant message streams", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurnId: null,
+            agentSessionId: "session-1",
+            createdAtUnixMs: 1,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "@Task inspect",
+            updatedAtUnixMs: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+      const displayPrompt =
+        "[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) inspect";
+      engine.dispatch({
+        type: "message/snapshotReceived",
+        messages: [
+          {
+            agentSessionId: "session-1",
+            kind: "text",
+            messageId: "user-1",
+            occurredAtUnixMs: 1,
+            payload: { displayPrompt, text: displayPrompt },
+            role: "user",
+            status: null,
+            turnId: "turn-1",
+            version: 1,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+    const beforeStreaming = result.current;
+
+    act(() => {
+      engine.dispatch({
+        type: "message/snapshotReceived",
+        messages: [
+          {
+            agentSessionId: "session-1",
+            kind: "text",
+            messageId: "assistant-1",
+            occurredAtUnixMs: 2,
+            payload: { text: "partial response" },
+            role: "assistant",
+            status: "streaming",
+            turnId: "turn-1",
+            version: 2,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current).toBe(beforeStreaming);
+  });
+
+  it("keeps the optimistic activation title until canonical title arrives", () => {
+    const engine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: { execute: async () => ({}) },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const query = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      provider: "codex" as const,
+      sessionOrigin: "test"
+    };
+    const { result } = renderHook(() =>
+      useAgentGuiConversationList(engine, query)
+    );
+
+    act(() => {
+      engine.dispatch({
+        type: "activation/requested",
+        agentSessionId: "session-1",
+        agentTargetId: "local:codex",
+        clientSubmitId: "submit-1",
+        content: [{ type: "text", text: "test1" }],
+        cwd: "/workspace",
+        expiresAtUnixMs: 100,
+        mode: "new",
+        requestedAtUnixMs: 1,
+        requestId: "activation-1",
+        optimisticTitle: "test1",
+        workspaceId: "workspace-1"
+      });
+    });
+
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        provider: "codex",
+        title: "test1",
+        titleFallback: null
+      })
+    ]);
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurnId: null,
+            agentSessionId: "session-1",
+            createdAtUnixMs: 2,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "test1",
+            updatedAtUnixMs: 2,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        status: "working",
+        title: "test1",
+        titleFallback: null
+      })
+    ]);
+  });
+
   it("projects canonical sessions and pending activation records without a list store", () => {
     const engine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
@@ -206,6 +592,7 @@ describe("useAgentGuiConversationList", () => {
             cwd: "/workspace",
             latestTurn: {
               agentSessionId: "older-start-newer-update",
+              origin: "user_prompt",
               phase: "running",
               startedAtUnixMs: 2_000,
               turnId: "turn-older",
@@ -225,6 +612,7 @@ describe("useAgentGuiConversationList", () => {
             cwd: "/workspace",
             latestTurn: {
               agentSessionId: "newer-start-older-update",
+              origin: "user_prompt",
               phase: "running",
               startedAtUnixMs: 3_000,
               turnId: "turn-newer",

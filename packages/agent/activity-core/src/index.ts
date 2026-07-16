@@ -30,6 +30,7 @@ export {
 export {
   normalizeAgentActivityDisplayStatus,
   selectCanonicalAgentActivitySessions,
+  selectRootAgentActivitySessions,
   selectNeedsAttentionCount,
   selectNeedsAttentionItems
 } from "./selectors.ts";
@@ -118,7 +119,11 @@ export {
   selectWorkspaceAgentConsumerSession,
   selectWorkspaceAgentConsumerSessions
 } from "./engine/sessionLifecycle.selectors.ts";
-export { selectEngineSessionReconcile } from "./engine/sessionReconcile.selectors.ts";
+export {
+  selectEngineSessionDetailHydrated,
+  selectEngineSessionDetailLoading,
+  selectEngineSessionReconcile
+} from "./engine/sessionReconcile.selectors.ts";
 export {
   canonicalInteractionKey,
   canonicalTurnKey
@@ -252,11 +257,11 @@ export type {
   AgentActivitySendInput,
   AgentActivitySendInputResult,
   AgentActivitySession,
-  AgentActivitySessionBackgroundAgents,
   AgentActivitySessionCapabilities,
   AgentActivitySessionGoal,
   AgentActivitySessionPermissionConfig,
   AgentActivitySessionSettings,
+  AgentActivitySessionKind,
   AgentActivitySessionEventEnvelope,
   AgentActivitySessionList,
   AgentActivitySubmitInteractiveInput,
@@ -264,7 +269,9 @@ export type {
   AgentActivitySnapshot,
   AgentActivitySnapshotListener,
   AgentActivitySubmitDiagnostics,
+  AgentActivitySubmitSettingsPatch,
   AgentActivityTurn,
+  AgentActivityTurnOrigin,
   AgentActivityTurnCancelResponse,
   AgentActivityInteraction,
   AgentActivityUpdatedApplyResult,

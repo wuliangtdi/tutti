@@ -24,8 +24,7 @@ import type {
 } from "../model/agentSlashCommandProviderPolicy";
 import {
   resolveSlashCommandSelectionEffect,
-  resolveSlashCommandSubmitEffect,
-  resolveTuttiBrowserUseSubmitEffect
+  resolveSlashCommandSubmitEffect
 } from "../model/agentSlashCommandProviderPolicy";
 import {
   draftForProviderSkillTrigger,
@@ -34,11 +33,10 @@ import {
 import { skillTriggerForPrefix } from "../model/agentSkillOptions";
 import { moveSlashCommandHighlight } from "../model/agentSlashCommands";
 import {
-  agentComposerDraftDisplayPrompt,
   agentComposerDraftHasContent,
-  agentComposerDraftToPromptContent,
   buildAgentComposerDraft,
   emptyAgentComposerDraft,
+  projectAgentComposerDraftSubmission,
   textPromptContent,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -215,13 +213,17 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     (effect: SlashCommandSelectionEffect): void => {
       if (effect.kind === "submitPrompt") {
         clearSlashCommandDraft();
-        if (effect.enableBrowserUse && !settingsControlsDisabled) {
-          onSettingsChange({ browserUse: true });
-        }
+        const submitOptions = effect.requiredSettingsPatch
+          ? { requiredSettingsPatch: effect.requiredSettingsPatch }
+          : undefined;
         if (effect.displayPrompt) {
-          onSubmit(textPromptContent(effect.prompt), effect.displayPrompt);
+          onSubmit(
+            textPromptContent(effect.prompt),
+            effect.displayPrompt,
+            submitOptions
+          );
         } else {
-          onSubmit(textPromptContent(effect.prompt));
+          onSubmit(textPromptContent(effect.prompt), undefined, submitOptions);
         }
         return;
       }
@@ -439,20 +441,13 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         return;
       }
       if (options?.guidance !== true) {
-        const browserUseEffect = resolveTuttiBrowserUseSubmitEffect({
-          browserSupported: Boolean(composerSettings.supportsBrowser),
-          commands: resolvedSlashCommands,
-          draft: nextPrompt
-        });
-        if (browserUseEffect) {
-          executeSlashCommandEffect(browserUseEffect);
-          return;
-        }
         const slashCommandEffect = resolveSlashCommandSubmitEffect({
-          provider,
-          policy: slashCommandPolicy,
+          browserSupported: Boolean(composerSettings.supportsBrowser),
+          computerSupported: Boolean(composerSettings.supportsComputerUse),
           commands: resolvedSlashCommands,
-          draft: nextPrompt
+          draft: nextPrompt,
+          provider,
+          policy: slashCommandPolicy
         });
         if (slashCommandEffect) {
           executeSlashCommandEffect(slashCommandEffect);
@@ -461,26 +456,24 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
       }
       setIsPaletteOpen(false);
       // workspace-reference 保持为单条 mention，由 skill+CLI 按需解析。
-      const submitContent = agentComposerDraftToPromptContent({
+      const submission = projectAgentComposerDraftSubmission({
         draft: nextDraftContent,
         skills: availableSkills
       });
-      const submitDisplayPrompt =
-        agentComposerDraftDisplayPrompt(nextDraftContent);
       if (options?.guidance === true) {
         if (!onSubmitGuidance) {
           return;
         }
-        if (submitDisplayPrompt) {
-          onSubmitGuidance(submitContent, submitDisplayPrompt);
+        if (submission.displayPrompt) {
+          onSubmitGuidance(submission.content, submission.displayPrompt);
         } else {
-          onSubmitGuidance(submitContent);
+          onSubmitGuidance(submission.content);
         }
       } else {
-        if (submitDisplayPrompt) {
-          onSubmit(submitContent, submitDisplayPrompt);
+        if (submission.displayPrompt) {
+          onSubmit(submission.content, submission.displayPrompt);
         } else {
-          onSubmit(submitContent);
+          onSubmit(submission.content);
         }
       }
       // The controller owns draft clearing: an in-session send clears the

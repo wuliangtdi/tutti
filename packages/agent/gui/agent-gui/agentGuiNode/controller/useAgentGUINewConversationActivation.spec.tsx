@@ -18,8 +18,13 @@ describe("useAgentGUINewConversationActivation", () => {
     const activeConversationIdRef = { current: null as string | null };
     const isComposerHomeRef = { current: true };
     const activate = vi.fn(
-      (input: { agentSessionId: string }) =>
-        `activation:${input.agentSessionId}`
+      (input: {
+        agentSessionId: string;
+        initialContent?: Array<{ type: "text"; text: string }>;
+        initialDisplayPrompt?: string;
+        optimisticTitle?: string;
+        settings?: Record<string, unknown>;
+      }) => `activation:${input.agentSessionId}`
     );
     const activation = {
       activate,
@@ -86,7 +91,11 @@ describe("useAgentGUINewConversationActivation", () => {
 
     let firstResult: ReturnType<typeof result.current> = null;
     act(() => {
-      firstResult = result.current([{ type: "text", text: "first" }]);
+      firstResult = result.current(
+        [{ type: "text", text: "$review-code inspect this" }],
+        "/review-code inspect this",
+        { requiredSettingsPatch: { computerUse: true } }
+      );
     });
     const firstSessionId = activate.mock.calls[0]?.[0].agentSessionId;
     activeConversationIdRef.current = null;
@@ -98,6 +107,15 @@ describe("useAgentGUINewConversationActivation", () => {
     const secondSessionId = activate.mock.calls[1]?.[0].agentSessionId;
 
     expect(activate).toHaveBeenCalledTimes(2);
+    expect(activate.mock.calls[0]?.[0]).toMatchObject({
+      initialContent: [{ type: "text", text: "$review-code inspect this" }],
+      initialDisplayPrompt: "/review-code inspect this",
+      optimisticTitle: "/review-code inspect this"
+    });
+    expect(activate.mock.calls[0]?.[0].settings).toMatchObject({
+      computerUse: true
+    });
+    expect(activate.mock.calls[1]?.[0].optimisticTitle).toBe("second");
     expect(firstSessionId).toBeTruthy();
     expect(secondSessionId).toBeTruthy();
     expect(secondSessionId).not.toBe(firstSessionId);

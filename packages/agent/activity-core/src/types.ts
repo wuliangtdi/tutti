@@ -6,9 +6,17 @@ export type AgentActivityDisplayStatus =
   | "canceled"
   | "failed";
 
+export type AgentActivitySessionKind = "root" | "child";
+
 export interface AgentActivitySession {
   workspaceId: string;
   agentSessionId: string;
+  kind: AgentActivitySessionKind;
+  rootAgentSessionId: string | null;
+  rootTurnId: string | null;
+  parentAgentSessionId: string | null;
+  parentTurnId: string | null;
+  parentToolCallId: string | null;
   agentTargetId: string | null;
   provider: string;
   providerSessionId: string | null;
@@ -16,6 +24,8 @@ export interface AgentActivitySession {
   model?: string | null;
   noProject?: boolean | null;
   cwd: string;
+  /** Backend-owned conversation-rail membership; absent for non-rail runtimes. */
+  railSectionKey?: string;
   title: string;
   activeTurnId: string | null;
   activeTurn: AgentActivityTurn | null;
@@ -26,7 +36,6 @@ export interface AgentActivitySession {
   permissionConfig: AgentActivitySessionPermissionConfig;
   capabilities: AgentActivitySessionCapabilities | null;
   usage: AgentActivitySessionUsage | null;
-  backgroundAgents: AgentActivitySessionBackgroundAgents | null;
   goal: AgentActivitySessionGoal | null;
   imported: boolean;
   visible: boolean;
@@ -292,6 +301,7 @@ export type AgentActivitySnapshotListener = (
 export type AgentActivityUpdatedEvent =
   | AgentActivitySessionReconcileRequiredEvent
   | AgentActivitySessionDeletedEvent
+  | AgentActivitySessionAuditEvent
   | AgentActivityMessageUpdatedEvent
   | AgentActivityTurnUpdatedEvent
   | AgentActivityInteractionUpdatedEvent;
@@ -335,6 +345,24 @@ export interface AgentActivityMessageUpdatedEvent {
   };
 }
 
+export interface AgentActivitySessionAuditEvent {
+  workspaceId: string;
+  agentSessionId: string;
+  eventType: "session_audit";
+  data: {
+    workspaceId: string;
+    agentSessionId: string;
+    eventType: "session_audit";
+    audit: {
+      auditId: string;
+      role: string;
+      payload: Record<string, unknown>;
+      occurredAtUnixMs: number;
+      version: number;
+    };
+  };
+}
+
 export interface AgentActivityEventMessage {
   agentSessionId: string;
   kind: string;
@@ -369,7 +397,11 @@ export interface AgentActivityEventTurn {
   turnId: string;
   agentSessionId: string;
   phase: AgentActivityTurnPhase;
-  outcome: AgentActivityTurnOutcome;
+  origin: AgentActivityTurnOrigin;
+  sourceGoalOperationId?: string | null;
+  sourceGoalRevision?: number | null;
+  sourceGoalRepairEpoch?: number | null;
+  outcome: AgentActivityTurnOutcome | null;
   error: Record<string, unknown> | null;
   fileChanges: unknown;
   completedCommand: Record<string, unknown> | null;
@@ -393,7 +425,7 @@ export interface AgentActivityInteractionUpdatedEvent {
 
 export type AgentActivitySessionEventEnvelope = Extract<
   AgentActivityUpdatedEvent,
-  { eventType: "message_update" }
+  { eventType: "message_update" | "session_audit" }
 >;
 
 export interface AgentActivityUpdatedApplyResult {
@@ -435,6 +467,11 @@ export interface AgentActivitySendInput {
   signal?: AbortSignal;
 }
 
+export interface AgentActivitySubmitSettingsPatch {
+  browserUse?: boolean;
+  computerUse?: boolean;
+}
+
 export interface AgentActivitySubmitDiagnostics {
   submittedAtUnixMs?: number;
   blockCount?: number;
@@ -451,11 +488,19 @@ export interface AgentActivityMessageSemantics {
   noticeCommandStatus?: "running" | "completed" | "failed" | "canceled";
 }
 
-export interface AgentActivitySendInputResult {
-  session: AgentActivitySession;
-  turnId: string;
-  turn: AgentActivityTurn;
-}
+export type AgentActivitySendInputResult =
+  | {
+      /** Optional for compatibility with adapters predating the discriminator. */
+      kind?: "turn";
+      session: AgentActivitySession;
+      turnId: string;
+      turn: AgentActivityTurn;
+    }
+  | {
+      kind: "goalControl";
+      session: AgentActivitySession;
+      goal?: AgentActivitySessionGoal | null;
+    };
 
 export interface AgentPromptContentBlock {
   type: "text" | "image" | "file" | "skill" | "mention";
@@ -548,6 +593,17 @@ export type AgentActivityTurnOutcome =
   | "canceled"
   | "interrupted";
 
+/**
+ * Durable provenance assigned when the Turn is created. Historical Turns must
+ * remain `legacy_unknown`; clients must never infer an origin from later state.
+ */
+export type AgentActivityTurnOrigin =
+  | "user_prompt"
+  | "goal_arm"
+  | "goal_continuation"
+  | "provider_initiated"
+  | "legacy_unknown";
+
 export interface AgentActivityCompletedCommand {
   kind: "compact" | "review" | "undo" | "goal";
   status: "completed" | "failed" | "canceled";
@@ -559,7 +615,11 @@ export interface AgentActivityTurn {
   error?: { code?: string; message: string } | null;
   fileChanges?: Record<string, unknown> | null;
   outcome?: AgentActivityTurnOutcome | null;
+  origin: AgentActivityTurnOrigin;
   phase: AgentActivityTurnPhase;
+  sourceGoalOperationId?: string | null;
+  sourceGoalRevision?: number | null;
+  sourceGoalRepairEpoch?: number | null;
   settledAtUnixMs?: number | null;
   startedAtUnixMs: number;
   turnId: string;
@@ -584,6 +644,7 @@ export type AgentActivitySessionSettings = {
   permissionModeId?: string | null;
   planMode?: boolean | null;
   browserUse?: boolean | null;
+  computerUse?: boolean | null;
   reasoningEffort?: string | null;
   speed?: string | null;
 };
@@ -627,23 +688,6 @@ export interface AgentActivitySessionCapabilities {
   permissionModeChangeDeferred: boolean;
   review: boolean;
   resumeRunningTurn: boolean;
-}
-
-export interface AgentActivitySessionBackgroundAgentItem {
-  taskId: string;
-  description: string;
-  status: "running" | "completed" | "failed" | "canceled";
-  summary?: string;
-  lastToolName?: string;
-  taskType?: string;
-  startedAtUnixMs?: number;
-  updatedAtUnixMs?: number;
-  completedAtUnixMs?: number;
-}
-
-export interface AgentActivitySessionBackgroundAgents {
-  count: number;
-  items: AgentActivitySessionBackgroundAgentItem[];
 }
 
 export interface AgentActivitySessionGoal {

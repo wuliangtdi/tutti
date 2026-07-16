@@ -33,15 +33,17 @@ type GeneratedFileList = agentstore.GeneratedFileList
 
 type ListSessionSectionInput = agentstore.ListSessionSectionInput
 
+type ListSessionSectionsInput = agentstore.ListSessionSectionsInput
+
 type SessionSectionPage = agentstore.SessionSectionPage
+
+type SessionSectionsPage = agentstore.SessionSectionsPage
 
 type Session = agentstore.Session
 type SessionMetadata = agentstore.SessionMetadata
 type SessionUsage = agentstore.SessionUsage
 type SessionUsageContextWindow = agentstore.SessionUsageContextWindow
 type SessionUsageQuota = agentstore.SessionUsageQuota
-type SessionBackgroundAgents = agentstore.SessionBackgroundAgents
-type SessionBackgroundAgentItem = agentstore.SessionBackgroundAgentItem
 type SessionGoal = agentstore.SessionGoal
 
 func JoinSessionRuntimeContext(metadata SessionMetadata, internal map[string]any) map[string]any {
@@ -67,12 +69,14 @@ type MessageUpdate = agentstore.MessageUpdate
 type MessageReportResult = agentstore.MessageReportResult
 
 type Message = agentstore.Message
+type MessageSemantics = agentstore.MessageSemantics
 
 type MessagePage = agentstore.MessagePage
 
 type Turn = agentstore.Turn
 
 type TurnTransition = agentstore.TurnTransition
+type RootProviderTurnTransition = agentstore.RootProviderTurnTransition
 
 type Interaction = agentstore.Interaction
 
@@ -91,9 +95,30 @@ type ReleaseOrFailRuntimeOperationInput = agentstore.ReleaseOrFailRuntimeOperati
 type CheckpointRuntimeOperationInput = agentstore.CheckpointRuntimeOperationInput
 type CompleteInteractiveRuntimeOperationInput = agentstore.CompleteInteractiveRuntimeOperationInput
 type CompleteCancelRuntimeOperationInput = agentstore.CompleteCancelRuntimeOperationInput
+type CancelRuntimeOperationTargetOutcome = agentstore.CancelRuntimeOperationTargetOutcome
 type CompletePlanDecisionRuntimeOperationInput = agentstore.CompletePlanDecisionRuntimeOperationInput
 type RuntimeOperationEvent = agentstore.RuntimeOperationEvent
 type RuntimeOperationCompletion = agentstore.RuntimeOperationCompletion
+type SessionGoalState = agentstore.SessionGoalState
+type GoalControlOperation = agentstore.GoalControlOperation
+type GoalControlOperationPrepare = agentstore.GoalControlOperationPrepare
+type GoalControlOperationComplete = agentstore.GoalControlOperationComplete
+type GoalControlOperationAcknowledge = agentstore.GoalControlOperationAcknowledge
+type GoalObservationReconcile = agentstore.GoalObservationReconcile
+type GoalObservationFence = agentstore.GoalObservationFence
+type GoalTerminalIncidentInput = agentstore.GoalTerminalIncidentInput
+type ListClaimableGoalControlOperationsInput = agentstore.ListClaimableGoalControlOperationsInput
+type ClaimGoalControlOperationInput = agentstore.ClaimGoalControlOperationInput
+type ReleaseGoalControlOperationInput = agentstore.ReleaseGoalControlOperationInput
+type GoalControlOperationEvidence = agentstore.GoalControlOperationEvidence
+type WakeGoalControlOperationInput = agentstore.WakeGoalControlOperationInput
+type EnsureGoalRepairOperationInput = agentstore.EnsureGoalRepairOperationInput
+type GoalReconcileInboxItem = agentstore.GoalReconcileInboxItem
+type ClaimGoalReconcileInboxInput = agentstore.ClaimGoalReconcileInboxInput
+type ReleaseGoalReconcileInboxInput = agentstore.ReleaseGoalReconcileInboxInput
+type GoalProvenanceBinding = agentstore.GoalProvenanceBinding
+type BindGoalProvenanceInput = agentstore.BindGoalProvenanceInput
+type LookupGoalProvenanceInput = agentstore.LookupGoalProvenanceInput
 type SubmitClaim = agentstore.SubmitClaim
 type SubmitClaimPrepare = agentstore.SubmitClaimPrepare
 
@@ -102,6 +127,9 @@ var (
 	ErrRuntimeOperationNotClaimable = agentstore.ErrRuntimeOperationNotClaimable
 	ErrRuntimeOperationLeaseLost    = agentstore.ErrRuntimeOperationLeaseLost
 	ErrRuntimeOperationSubjectState = agentstore.ErrRuntimeOperationSubjectState
+	ErrGoalOperationConflict        = agentstore.ErrGoalOperationConflict
+	ErrGoalStateAbsent              = agentstore.ErrGoalStateAbsent
+	ErrGoalReconcileConflict        = agentstore.ErrGoalReconcileConflict
 )
 
 const (
@@ -115,6 +143,15 @@ const (
 	TurnOutcomeFailed      = agentstore.TurnOutcomeFailed
 	TurnOutcomeCanceled    = agentstore.TurnOutcomeCanceled
 	TurnOutcomeInterrupted = agentstore.TurnOutcomeInterrupted
+
+	SessionKindRoot  = agentstore.SessionKindRoot
+	SessionKindChild = agentstore.SessionKindChild
+
+	TurnOriginUserPrompt        = agentstore.TurnOriginUserPrompt
+	TurnOriginGoalArm           = agentstore.TurnOriginGoalArm
+	TurnOriginGoalContinuation  = agentstore.TurnOriginGoalContinuation
+	TurnOriginProviderInitiated = agentstore.TurnOriginProviderInitiated
+	TurnOriginLegacyUnknown     = agentstore.TurnOriginLegacyUnknown
 
 	InteractionKindApproval = agentstore.InteractionKindApproval
 	InteractionKindQuestion = agentstore.InteractionKindQuestion
@@ -145,4 +182,21 @@ const (
 	RuntimeOperationEventTurnCanceled          = agentstore.RuntimeOperationEventTurnCanceled
 	RuntimeOperationEventPlanDecisionPending   = agentstore.RuntimeOperationEventPlanDecisionPending
 	RuntimeOperationEventPlanDecisionCompleted = agentstore.RuntimeOperationEventPlanDecisionCompleted
+
+	GoalSyncStatusPending         = agentstore.GoalSyncStatusPending
+	GoalSyncStatusApplying        = agentstore.GoalSyncStatusApplying
+	GoalSyncStatusSynced          = agentstore.GoalSyncStatusSynced
+	GoalSyncStatusDiverged        = agentstore.GoalSyncStatusDiverged
+	GoalSyncStatusUnknown         = agentstore.GoalSyncStatusUnknown
+	GoalSyncStatusFailed          = agentstore.GoalSyncStatusFailed
+	GoalOperationStatusPrepared   = agentstore.GoalOperationStatusPrepared
+	GoalOperationStatusDispatched = agentstore.GoalOperationStatusDispatched
+	GoalOperationStatusCompleted  = agentstore.GoalOperationStatusCompleted
+	GoalOperationStatusFailed     = agentstore.GoalOperationStatusFailed
+	GoalOperationStatusSuperseded = agentstore.GoalOperationStatusSuperseded
+	GoalProviderPhasePrepared     = agentstore.GoalProviderPhasePrepared
+	GoalProviderPhaseDispatched   = agentstore.GoalProviderPhaseDispatched
+	GoalProviderPhaseAccepted     = agentstore.GoalProviderPhaseAccepted
+	GoalProviderPhaseApplied      = agentstore.GoalProviderPhaseApplied
+	GoalProviderPhaseUnknown      = agentstore.GoalProviderPhaseUnknown
 )

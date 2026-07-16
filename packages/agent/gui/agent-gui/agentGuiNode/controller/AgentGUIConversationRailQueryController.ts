@@ -7,7 +7,19 @@ import {
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityRuntime } from "../../../agentActivityRuntime";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
+import {
+  agentGuiScheduler,
+  type AgentGuiScheduledTask,
+  type AgentGuiScheduler
+} from "../agentGuiScheduler";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
+import {
+  CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS,
+  createConversationRailDiagnosticLogger,
+  emitConversationRailFirstPagesDiagnostic,
+  type ConversationRailDiagnosticLogger,
+  type ConversationRailRefreshReason
+} from "./agentGuiConversationRailDiagnostics";
 import {
   mergeConversationRailSessionIds,
   planRuntimeRailMembershipRefresh,
@@ -19,6 +31,7 @@ import {
 
 const SECTION_PAGE_SIZE = 5;
 const SEARCH_PAGE_SIZE = 100;
+export const CONVERSATION_SEARCH_DEBOUNCE_MS = 300;
 
 interface ConversationSearchQueryState {
   failed: boolean;
@@ -75,9 +88,13 @@ export interface AgentGUIConversationRailQuerySnapshot {
 }
 
 interface ControllerInput {
+  diagnosticLogger?: ConversationRailDiagnosticLogger;
+  diagnosticNow?: () => number;
+  diagnosticSlowThresholdMs?: number;
   engine: AgentSessionEngine;
   getActiveConversationId(): string | null;
   runtime: ConversationRailQueryRuntime;
+  scheduler?: AgentGuiScheduler;
   workspaceId: string;
 }
 
@@ -87,6 +104,7 @@ export type ConversationRailQueryRuntime = Pick<
   | "listSessionSectionPage"
   | "listSessionSections"
   | "listSessionsPage"
+  | "reportDiagnostic"
 >;
 
 type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
@@ -94,15 +112,23 @@ type Listener = (snapshot: AgentGUIConversationRailQuerySnapshot) => void;
 export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
+  readonly isInteractionLocked = (): boolean =>
+    this.queryState.pending &&
+    this.queryState.resolvedScopeKey !== this.railSectionQueryKey &&
+    !(this.searchQuery && this.snapshot.railSearch.enabled);
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
 
   private readonly engine: AgentSessionEngine;
+  private readonly diagnosticLogger: ConversationRailDiagnosticLogger;
+  private readonly diagnosticNow: () => number;
+  private readonly diagnosticSlowThresholdMs: number;
   private readonly getActiveConversationId: () => string | null;
   private readonly listeners = new Set<Listener>();
   private readonly runtime: ConversationRailQueryRuntime;
+  private readonly scheduler: AgentGuiScheduler;
   private readonly workspaceId: string;
   private readonly pagingAbortControllers = new Map<string, AbortController>();
   private queryState = EMPTY_QUERY_STATE;
@@ -114,6 +140,7 @@ export class AgentGUIConversationRailQueryController {
   private searchQuery = "";
   private searchRequestKey: string | null = null;
   private searchAbortController: AbortController | null = null;
+  private searchDebounceTask: AgentGuiScheduledTask | null = null;
   private pagingRequestSequence = 0;
   private searchRequestSequence = 0;
   private attached = false;
@@ -122,9 +149,17 @@ export class AgentGUIConversationRailQueryController {
   private unsubscribeEngine: (() => void) | null = null;
 
   constructor(input: ControllerInput) {
+    this.diagnosticLogger =
+      input.diagnosticLogger ??
+      createConversationRailDiagnosticLogger(input.runtime);
+    this.diagnosticNow = input.diagnosticNow ?? Date.now;
+    this.diagnosticSlowThresholdMs =
+      input.diagnosticSlowThresholdMs ??
+      CONVERSATION_RAIL_SLOW_DIAGNOSTIC_THRESHOLD_MS;
     this.engine = input.engine;
     this.getActiveConversationId = input.getActiveConversationId;
     this.runtime = input.runtime;
+    this.scheduler = input.scheduler ?? agentGuiScheduler;
     this.workspaceId = input.workspaceId;
     this.previousMembershipRecords = membershipRecords(
       this.engine.getSnapshot()
@@ -138,7 +173,7 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine = this.engine.subscribe((state) => {
       this.handleEngineState(state);
     });
-    if (this.scope) this.refreshFirstPages();
+    if (this.scope) this.refreshFirstPages("attach");
     if (this.searchQuery) this.requestSearch();
     return () => this.detach();
   }
@@ -175,7 +210,7 @@ export class AgentGUIConversationRailQueryController {
       reconcilingSessionIds: []
     };
     this.emit();
-    if (this.attached) this.refreshFirstPages();
+    if (this.attached) this.refreshFirstPages("scope_change");
     if (this.searchQuery) this.requestSearch();
   }
 
@@ -183,7 +218,7 @@ export class AgentGUIConversationRailQueryController {
     const query = value.trim();
     if (query === this.searchQuery) return;
     this.searchQuery = query;
-    this.requestSearch();
+    this.scheduleSearch();
   }
 
   readonly loadMoreSectionConversations = (
@@ -399,10 +434,12 @@ export class AgentGUIConversationRailQueryController {
       )
     };
     this.emit();
-    this.refreshFirstPages();
+    this.refreshFirstPages("membership_change");
   }
 
-  private refreshFirstPages(): void {
+  private refreshFirstPages(
+    refreshReason: ConversationRailRefreshReason
+  ): void {
     const listSections = this.runtime.listSessionSections;
     const scopeKey = this.railSectionQueryKey;
     if (!this.runtimeSectionsEnabled() || !listSections || !scopeKey) {
@@ -412,6 +449,7 @@ export class AgentGUIConversationRailQueryController {
     }
     this.pagingRequestSequence += 1;
     const requestSequence = this.pagingRequestSequence;
+    const requestStartedAt = this.diagnosticNow();
     const wasResolvedForScope =
       this.queryState.resolvedScopeKey === scopeKey &&
       this.queryState.sections !== null;
@@ -437,6 +475,7 @@ export class AgentGUIConversationRailQueryController {
         ) {
           return;
         }
+        const requestResolvedAt = this.diagnosticNow();
         const sections = projectRuntimeSectionsToConversationRailMemberships({
           pinned: page.pinned,
           sections: page.sections
@@ -463,8 +502,28 @@ export class AgentGUIConversationRailQueryController {
           sections
         };
         this.emit();
+        const completedAt = this.diagnosticNow();
+        emitConversationRailFirstPagesDiagnostic({
+          agentTargetId: this.sectionAgentTargetId || null,
+          controllerApplyMs: Math.max(0, completedAt - requestResolvedAt),
+          diagnosticLogger: this.diagnosticLogger,
+          diagnosticSlowThresholdMs: this.diagnosticSlowThresholdMs,
+          durationMs: Math.max(0, completedAt - requestStartedAt),
+          requestId: requestSequence,
+          requestMs: Math.max(0, requestResolvedAt - requestStartedAt),
+          refreshReason,
+          returnedSessionCount:
+            (page.pinned?.sessions.length ?? 0) +
+            page.sections.reduce(
+              (count, section) => count + section.sessions.length,
+              0
+            ),
+          sectionCount: page.sections.length + (page.pinned ? 1 : 0),
+          status: "ready",
+          workspaceId: this.workspaceId
+        });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (
           abortController.signal.aborted ||
           requestSequence !== this.pagingRequestSequence ||
@@ -472,6 +531,22 @@ export class AgentGUIConversationRailQueryController {
         ) {
           return;
         }
+        const failedAt = this.diagnosticNow();
+        emitConversationRailFirstPagesDiagnostic({
+          agentTargetId: this.sectionAgentTargetId || null,
+          controllerApplyMs: 0,
+          diagnosticLogger: this.diagnosticLogger,
+          diagnosticSlowThresholdMs: this.diagnosticSlowThresholdMs,
+          durationMs: Math.max(0, failedAt - requestStartedAt),
+          error,
+          requestId: requestSequence,
+          requestMs: Math.max(0, failedAt - requestStartedAt),
+          refreshReason,
+          returnedSessionCount: 0,
+          sectionCount: 0,
+          status: "error",
+          workspaceId: this.workspaceId
+        });
         this.queryState = wasResolvedForScope
           ? {
               ...this.queryState,
@@ -497,6 +572,7 @@ export class AgentGUIConversationRailQueryController {
   }
 
   private requestSearch(): void {
+    this.clearSearchDebounceTimer();
     this.searchRequestKey =
       this.searchEnabled() && this.searchQuery
         ? JSON.stringify([
@@ -571,6 +647,34 @@ export class AgentGUIConversationRailQueryController {
       });
   }
 
+  private scheduleSearch(): void {
+    this.clearSearchDebounceTimer();
+    this.searchRequestSequence += 1;
+    this.searchAbortController?.abort();
+    this.searchAbortController = null;
+
+    if (!this.searchQuery || !this.searchEnabled()) {
+      this.requestSearch();
+      return;
+    }
+
+    this.searchRequestKey = null;
+    this.emit();
+    // timing: wait for a quiet input window before querying conversation history
+    this.searchDebounceTask = this.scheduler.schedule(
+      CONVERSATION_SEARCH_DEBOUNCE_MS,
+      () => {
+        this.searchDebounceTask = null;
+        this.requestSearch();
+      }
+    );
+  }
+
+  private clearSearchDebounceTimer(): void {
+    this.searchDebounceTask?.cancel();
+    this.searchDebounceTask = null;
+  }
+
   private upsertSessions(sessions: readonly AgentActivitySession[]): void {
     this.ingestingSessions = true;
     try {
@@ -640,6 +744,7 @@ export class AgentGUIConversationRailQueryController {
     this.unsubscribeEngine?.();
     this.unsubscribeEngine = null;
     this.cancelPagingRequests();
+    this.clearSearchDebounceTimer();
     this.searchRequestSequence += 1;
     this.searchAbortController?.abort();
     this.searchAbortController = null;

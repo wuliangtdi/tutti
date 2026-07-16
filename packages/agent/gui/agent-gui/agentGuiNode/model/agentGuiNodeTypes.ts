@@ -53,7 +53,7 @@ export interface AgentGUISessionChrome {
         canRetry?: never;
       }
     | null;
-  rawState: CanonicalAgentSession | null;
+  rawState: Pick<CanonicalAgentSession, "agentSessionId" | "goal"> | null;
 }
 
 export interface AgentGUIInlineNotice {
@@ -325,7 +325,6 @@ export interface AgentGUIDetailViewModel {
   isLoadingOlderMessages: boolean;
   hasOlderMessages: boolean;
   usage: AgentActivityUsage | null;
-  backgroundAgentCount: number;
   hasSentUserMessage: boolean;
   avoidGroupingEdits: boolean;
   conversation?: AgentConversationVM | null;
@@ -370,6 +369,7 @@ export interface AgentGUIReadinessViewModel {
 }
 
 export interface AgentGUIOperationsViewModel {
+  goalClearNoticeSequence: number;
   isDeletingConversation: boolean;
   isDeletingProjectConversations: boolean;
   pendingDeleteConversation: AgentGUIConversationSummary | null;

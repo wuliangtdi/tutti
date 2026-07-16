@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func acpModeValue(update map[string]any) string {
@@ -400,6 +399,8 @@ func acpSystemNoticeEvent(session Session, turnID string, update map[string]any,
 	copyStringPayload(payload, notice, "title")
 	copyStringPayload(payload, notice, "detail")
 	copyStringPayload(payload, notice, "code")
+	copyStringPayload(payload, notice, "noticeCommand")
+	copyStringPayload(payload, notice, "noticeCommandStatus")
 	// A caller-provided messageId lets related notices (e.g. compaction
 	// started/completed) share one transcript row instead of stacking.
 	copyStringPayload(payload, notice, "messageId")
@@ -581,35 +582,4 @@ func newSessionTitleActivityEvent(session Session, title string) activityshared.
 	}
 	ctx.Title = strings.TrimSpace(title)
 	return activityshared.NewSessionTitleUpdated(ctx)
-}
-
-func fallbackAgentSessionTitle(currentTitle string, prompt string, fallbackTitles ...string) string {
-	if !shouldUseFallbackAgentTitle(currentTitle, fallbackTitles...) {
-		return ""
-	}
-	return promptTitleSnippet(prompt)
-}
-
-func shouldUseFallbackAgentTitle(title string, fallbackTitles ...string) bool {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(title))
-	for _, fallbackTitle := range fallbackTitles {
-		if normalizedTitle == strings.ToLower(strings.TrimSpace(fallbackTitle)) {
-			return true
-		}
-	}
-	return false
-}
-
-func promptTitleSnippet(prompt string) string {
-	fields := strings.Fields(titletext.Normalize(prompt))
-	if len(fields) == 0 {
-		return ""
-	}
-	title := strings.Join(fields, " ")
-	const maxRunes = 160
-	runes := []rune(title)
-	if len(runes) <= maxRunes {
-		return title
-	}
-	return strings.TrimSpace(string(runes[:maxRunes])) + "..."
 }

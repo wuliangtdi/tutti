@@ -76,7 +76,7 @@ func TestAppServerForeignThreadMismatch(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := adapter.appServerNotificationRoute(session, appServerNotifyItemStarted, tc.params).drop
+			got := adapter.appServerNotificationRoute(session, "turn-1", appServerNotifyItemStarted, tc.params).drop
 			if got != tc.want {
 				t.Fatalf("drop = %v, want %v", got, tc.want)
 			}

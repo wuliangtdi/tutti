@@ -87,6 +87,10 @@ func (s *Store) ReportActivityState(
 		LastEventUnixMS: lastEventUnixMS,
 		Session:         session,
 	}}
+	// Turn transitions have their own monotonic state machine and may be the
+	// first durable evidence attached to an otherwise exact-replay session
+	// snapshot (notably provider-initiated interactions). Apply them regardless
+	// of whether the enclosing session projection changed.
 	if accepted && input.Turn != nil {
 		result.Turn, result.TurnAccepted, err = s.recordTurnTransitionTx(ctx, tx, *input.Turn, now)
 		if err != nil {
@@ -96,11 +100,27 @@ func (s *Store) ReportActivityState(
 			return ActivityStateReportResult{}, errors.New("workspace agent activity turn transition was rejected")
 		}
 	}
+	if accepted && input.RootProviderTurn != nil {
+		result.RootTurn, result.RootTurnAccepted, err = s.applyRootProviderTurnTransitionTx(ctx, tx, *input.RootProviderTurn, now)
+		if err != nil {
+			return ActivityStateReportResult{}, err
+		}
+	}
+	if result.TurnAccepted && result.Turn.Phase == TurnPhaseSettled {
+		rootTurn, rootAccepted, err := s.reconcileRootTurnAfterChildTerminalTx(ctx, tx, result.Turn, now)
+		if err != nil {
+			return ActivityStateReportResult{}, err
+		}
+		if rootTurn.TurnID != "" {
+			result.RootTurn = rootTurn
+			result.RootTurnAccepted = rootAccepted
+		}
+	}
 	// Interaction transitions have their own monotonic identity/state machine.
 	// Always validate and apply them even when the enclosing session report is
 	// an exact replay; otherwise an immutable-identity conflict could hide
 	// behind a stale session timestamp.
-	if input.Interaction != nil {
+	if accepted && input.Interaction != nil {
 		result.Interaction, result.InteractionResult, err = s.upsertInteractionTx(ctx, tx, *input.Interaction, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
@@ -135,9 +155,17 @@ func validateActivityStateChildScope(workspaceID string, agentSessionID string, 
 		strings.TrimSpace(input.Turn.AgentSessionID) != agentSessionID) {
 		return errors.New("turn workspace and agent session must match the activity state report")
 	}
+	if input.RootProviderTurn != nil && (strings.TrimSpace(input.RootProviderTurn.WorkspaceID) != workspaceID ||
+		strings.TrimSpace(input.RootProviderTurn.RootAgentSessionID) != agentSessionID) {
+		return errors.New("root provider turn workspace and root session must match the activity state report")
+	}
 	if input.Interaction != nil && (strings.TrimSpace(input.Interaction.WorkspaceID) != workspaceID ||
 		strings.TrimSpace(input.Interaction.AgentSessionID) != agentSessionID) {
 		return errors.New("interaction workspace and agent session must match the activity state report")
+	}
+	if input.Turn != nil && input.Interaction != nil &&
+		strings.TrimSpace(input.Turn.TurnID) != strings.TrimSpace(input.Interaction.TurnID) {
+		return errors.New("interaction turn must match the activity state report turn")
 	}
 	return nil
 }
@@ -192,16 +220,13 @@ func (s *Store) ReportSessionMessages(
 	}
 
 	result := MessageReportResult{}
+	allowLegacyTurnless := input.HistoricalImport
 	for _, message := range input.Messages {
 		message.MessageID = strings.TrimSpace(message.MessageID)
 		if message.MessageID == "" {
 			continue
 		}
-		version, err := incrementAgentSessionMessageVersion(ctx, tx, workspaceID, agentSessionID)
-		if err != nil {
-			return MessageReportResult{}, err
-		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, version, message, now)
+		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless)
 		if err != nil {
 			return MessageReportResult{}, err
 		}
@@ -209,7 +234,7 @@ func (s *Store) ReportSessionMessages(
 			continue
 		}
 		result.AcceptedCount++
-		result.LatestVersion = version
+		result.LatestVersion = acceptedMessage.Version
 		result.Messages = append(result.Messages, acceptedMessage)
 	}
 

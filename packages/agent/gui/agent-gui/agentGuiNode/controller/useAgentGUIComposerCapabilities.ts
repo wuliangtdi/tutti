@@ -105,9 +105,13 @@ export function useAgentGUIComposerCapabilities(
     };
   }, [providerComposerOptions, sessionCapabilities]);
 
+  const usageSource = input.activeEngineSession?.usage ?? null;
+  const usage = useMemo(
+    () => resolveAgentActivityUsage({ sessionUsage: usageSource }),
+    [usageSource]
+  );
+
   return {
-    backgroundAgentCount:
-      input.activeEngineSession?.backgroundAgents?.count ?? 0,
     compactSupported:
       sessionCapabilities?.compact ??
       resolveAgentActivityCapability("compact", {
@@ -129,8 +133,6 @@ export function useAgentGUIComposerCapabilities(
       (resolvedPromptImagesSupported ?? true) &&
       selectedModelImageInputSupported,
     providerComposerOptions,
-    usage: resolveAgentActivityUsage({
-      sessionUsage: input.activeEngineSession?.usage ?? null
-    })
+    usage
   };
 }

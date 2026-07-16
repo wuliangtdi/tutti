@@ -96,14 +96,12 @@ describe("projectAgentConversationVM", () => {
     ]);
   });
 
-  it("keeps trailing tools split while the session is still processing without appending summary rows", () => {
+  it("groups trailing tools while the session is still processing without appending summary rows", () => {
     const detail = detailViewModel();
     const conversation = projectAgentConversationVM(detail);
 
     expect(conversation.rows.map((row) => row.kind)).toEqual([
       "message",
-      "message",
-      "tool-group",
       "message",
       "tool-group",
       "processing"
@@ -117,22 +115,14 @@ describe("projectAgentConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group"
     );
-    expect(toolRows).toHaveLength(2);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
-    const standaloneThinking = conversation.rows.find(
-      (
-        row
-      ): row is Extract<
-        (typeof conversation.rows)[number],
-        { kind: "message" }
-      > =>
-        row.kind === "message" &&
-        row.speaker === "assistant" &&
-        row.messages.length === 0
-    );
-    expect(standaloneThinking?.thinking[0]?.body).toBe(
-      "Need to inspect before editing."
-    );
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.grouped).toBe(true);
+    expect(toolRows[0]?.calls).toHaveLength(2);
+    expect(toolRows[0]?.entries.map((entry) => entry.kind)).toEqual([
+      "tool-call",
+      "thinking",
+      "tool-call"
+    ]);
   });
 
   const tailChainConversation = (latestTail: {
@@ -178,6 +168,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -218,41 +209,35 @@ describe("projectAgentConversationVM", () => {
     );
   };
 
-  it("keeps completed tail tools visible instead of collapsing to the latest", () => {
-    // Session still working, but the latest tail tool has finished: every
-    // completed tool stays visible as its own row rather than vanishing.
+  it("keeps completed tail tools in one stable group", () => {
     const toolRows = tailChainConversation({
       status: "Completed",
       statusKind: "completed"
     });
 
-    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.calls.map((call) => call.id)).toEqual([
       "call:1",
       "call:2",
       "call:3"
     ]);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows[0]?.grouped).toBe(true);
   });
 
-  it("keeps completed tail tools visible while the latest tail tool runs", () => {
-    // Regression for the Codex tool-rendering flicker: Codex emits long runs of
-    // short, sequential tool calls. Previously, while the newest tail tool was
-    // still active every already-completed predecessor was collapsed into a
-    // single live row, so the transcript jumped between showing one tool and
-    // many as the burst advanced (and again when interleaved reasoning broke the
-    // trailing run). Completed tools must stay visible alongside the live one so
-    // the streaming transcript only grows instead of toggling.
+  it("keeps the latest running tool in the same stable group", () => {
     const toolRows = tailChainConversation({
       status: "Running",
       statusKind: "working"
     });
 
-    expect(toolRows.map((row) => row.calls[0]?.id)).toEqual([
+    expect(toolRows).toHaveLength(1);
+    expect(toolRows[0]?.calls.map((call) => call.id)).toEqual([
       "call:1",
       "call:2",
       "call:3"
     ]);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows[0]?.calls.at(-1)?.statusKind).toBe("working");
+    expect(toolRows[0]?.grouped).toBe(true);
   });
 
   it("keeps Codex transport retry notices out of the working processing label", () => {
@@ -719,9 +704,18 @@ describe("projectAgentConversationVM", () => {
 
     expect("pendingApproval" in conversation).toBe(false);
     expect("pendingInteractivePrompt" in conversation).toBe(false);
+    expect(
+      conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      )
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toolName: "Approval" })
+      ])
+    );
   });
 
-  it("surfaces a pending approval nested inside a delegated subagent's steps", () => {
+  it("hides a pending approval nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({
       turns: [
         {
@@ -780,7 +774,71 @@ describe("projectAgentConversationVM", () => {
     const conversation = projectAgentConversationVM(detail);
 
     expect("pendingApproval" in conversation).toBe(false);
+    const taskCall = conversation.rows
+      .flatMap((row) => (row.kind === "tool-group" ? row.calls : []))
+      .find((call) => call.toolName === "Task");
+    expect(taskCall?.task?.steps).toEqual([]);
   });
+
+  it.each([
+    ["working", "working"],
+    ["completed", "completed"],
+    ["failed", "failed"]
+  ] as const)(
+    "hides %s approval tool calls without hiding neighboring tools",
+    (status, statusKind) => {
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              id: "turn-1",
+              userMessage: { id: "user-1", body: "Write it" },
+              userMessages: [{ id: "user-1", body: "Write it" }],
+              agentMessages: [],
+              toolCalls: [],
+              toolCallCount: 2,
+              hasFailedToolCall: statusKind === "failed",
+              agentItems: [
+                {
+                  kind: "tool-calls",
+                  id: "tools-1",
+                  toolCalls: [
+                    {
+                      id: "call:write-1",
+                      name: "Write file",
+                      toolName: "Write",
+                      callType: "tool",
+                      status: "completed",
+                      statusKind: "completed",
+                      summary: "hello.md",
+                      payload: null
+                    },
+                    {
+                      id: `call:approval-${status}`,
+                      name: "Approval",
+                      toolName: "Approval",
+                      callType: "approval",
+                      status,
+                      statusKind,
+                      summary: "/workspace/hello.md",
+                      payload: null
+                    }
+                  ],
+                  toolCallCount: 2,
+                  hasFailedToolCall: statusKind === "failed"
+                }
+              ]
+            }
+          ]
+        })
+      );
+
+      const visibleCalls = conversation.rows.flatMap((row) =>
+        row.kind === "tool-group" ? row.calls : []
+      );
+      expect(visibleCalls.map((call) => call.toolName)).toEqual(["Write"]);
+    }
+  );
 
   it("surfaces a pending ask-user prompt nested inside a delegated subagent's steps", () => {
     const detail = detailViewModel({
@@ -965,6 +1023,98 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("uses active semantic progress instead of appending generic processing", () => {
+    const baseTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...baseTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          }
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+      false
+    );
+    expect(
+      conversation.rows.some(
+        (row) =>
+          row.kind === "message" &&
+          row.messages.some(
+            (message) => message.presentationKind === "specific-progress"
+          )
+      )
+    ).toBe(true);
+  });
+
+  it.each(["completed", "failed", "canceled"] as const)(
+    "fails open to generic processing after compact is %s",
+    (commandStatus) => {
+      const baseTurn = detailViewModel().turns[0]!;
+      const compactNotice = compactNoticeMessage("turn-1", commandStatus);
+      const conversation = projectAgentConversationVM(
+        detailViewModel({
+          turns: [
+            {
+              ...baseTurn,
+              agentMessages: [compactNotice],
+              toolCalls: [],
+              toolCallCount: 0,
+              agentItems: [{ kind: "message", message: compactNotice }]
+            }
+          ],
+          showProcessingIndicator: true
+        })
+      );
+
+      expect(conversation.rows.some((row) => row.kind === "processing")).toBe(
+        true
+      );
+    }
+  );
+
+  it("does not let progress from an older turn suppress current processing", () => {
+    const firstTurn = detailViewModel().turns[0]!;
+    const compactNotice = compactNoticeMessage("turn-1", "running");
+    const secondTurn = {
+      id: "turn-2",
+      userMessage: { id: "user-2", body: "Follow-up", turnId: "turn-2" },
+      userMessages: [{ id: "user-2", body: "Follow-up", turnId: "turn-2" }],
+      agentMessages: [],
+      toolCalls: [],
+      toolCallCount: 0,
+      hasFailedToolCall: false,
+      agentItems: []
+    };
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...firstTurn,
+            agentMessages: [compactNotice],
+            toolCalls: [],
+            toolCallCount: 0,
+            agentItems: [{ kind: "message", message: compactNotice }]
+          },
+          secondTurn
+        ],
+        showProcessingIndicator: true
+      })
+    );
+
+    expect(conversation.rows.find((row) => row.kind === "processing")).toEqual(
+      expect.objectContaining({ turnId: "turn-2" })
+    );
+  });
+
   it("keeps Edit and Write tool calls as standalone rows when avoidGroupingEdits is enabled", () => {
     const detail = detailViewModel();
 
@@ -990,7 +1140,7 @@ describe("projectAgentConversationVM", () => {
       > => row.kind === "tool-group"
     );
     expect(toolRows).toHaveLength(2);
-    expect(toolRows.every((row) => row.grouped === false)).toBe(true);
+    expect(toolRows.map((row) => row.grouped)).toEqual([true, false]);
     expect(
       conversation.rows.some(
         (
@@ -1067,6 +1217,7 @@ describe("projectAgentConversationVM", () => {
           latestTurn: {
             agentSessionId: "session-1",
             outcome: "completed",
+            origin: "user_prompt",
             phase: "settled",
             settledAtUnixMs: 10,
             startedAtUnixMs: 1,
@@ -1148,6 +1299,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1222,6 +1374,7 @@ describe("projectAgentConversationVM", () => {
           activeTurn: {
             agentSessionId: "session-1",
             outcome: null,
+            origin: "user_prompt",
             phase: "running",
             settledAtUnixMs: null,
             startedAtUnixMs: 1,
@@ -1629,5 +1782,25 @@ function detailViewModel(
     ],
     showProcessingIndicator: true,
     ...overrides
+  };
+}
+
+function compactNoticeMessage(
+  turnId: string,
+  commandStatus: "running" | "completed" | "failed" | "canceled"
+): WorkspaceAgentSessionDetailViewModel["turns"][number]["agentMessages"][number] {
+  return {
+    id: `compact:${turnId}`,
+    body: "Compact notice",
+    turnId,
+    systemNotice: {
+      noticeKind: "system_notice",
+      severity: null,
+      command: "compact",
+      commandStatus,
+      title: "Compact notice",
+      detail: null,
+      retryable: null
+    }
   };
 }

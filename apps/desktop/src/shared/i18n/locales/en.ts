@@ -145,9 +145,15 @@ export const en = {
       newConversation: "New session",
       openDetachedWindow: "Open in detached window",
       openNewWindow: "Open new window",
+      untitledConversation: "Untitled conversation",
       openSessionUnavailableDescription:
         "This agent session no longer exists or cannot be opened.",
       openSessionUnavailableTitle: "Session unavailable",
+      browserElementContext: {
+        cancel: "Cancel element selection",
+        failed: "Unable to add this page element to the Agent input",
+        select: "Select page element"
+      },
       toolSidebar: {
         apps: "Apps",
         browser: "Browser",
@@ -382,7 +388,7 @@ export const en = {
       settingsAction: "Import",
       settingsDescription:
         "Bring local Codex and Claude Code history or Claude export conversations into Tutti",
-      settingsLabel: "Import AI chats",
+      settingsLabel: "Import session history",
       title: "Import from AI apps"
     },
     analyticsDebug: {
@@ -519,7 +525,7 @@ export const en = {
         workspaceUiModeSaveFailed:
           "We couldn't update the startup interface right now.",
         defaultAgentProviderDescription:
-          "Used for new app factory jobs, issue tasks, and workspace apps that ask for the host default",
+          "Used when a task or workspace app does not specify a provider",
         defaultAgentProviderLabel: "Default provider",
         defaultAgentProviderSaveFailed:
           "We couldn't update the default provider right now.",
@@ -654,7 +660,7 @@ export const en = {
         computerUseWizardDoneBody:
           "Computer use is ready — the agent can now operate your desktop.",
         browserUseConnectionModeDescription:
-          "Choose which browser the agent controls when it runs web tasks — the Chrome on your computer, or a separate browser Tutti launches for it.",
+          "Choose which browser the agent controls when it runs web tasks",
         browserUseConnectionModeLabel: "Browser connection",
         browserUseConnectionModeOptions: {
           autoConnect: "Reuse my Chrome",
@@ -760,7 +766,7 @@ export const en = {
           loadFailed: "We couldn't load model providers.",
           modelId: "Model ID",
           modelIdPlaceholder: "model-id",
-          models: "Models",
+          models: "{{provider}} models",
           presetLabels: {
             agnes: "Agnes",
             anthropicClaude: "Anthropic (Claude)",
@@ -854,6 +860,9 @@ export const en = {
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",
         releaseChannelLabel: "Release channel",
+        referenceProvenanceFilterDescription:
+          "Enable Agent source filtering in Agent conversation reference pickers.",
+        referenceProvenanceFilterLabel: "Agent source filter",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -930,8 +939,8 @@ export const en = {
       },
       filesLaunch: {
         openFailedDescription:
-          "This session's original working directory could no longer be found on this computer.",
-        openFailedTitle: "Couldn't open folder"
+          "The referenced file or folder could not be found at its original location.",
+        openFailedTitle: "File or folder no longer exists"
       },
       agentProviders: {
         checking: "Checking local CLI status...",

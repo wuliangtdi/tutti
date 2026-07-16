@@ -35,9 +35,6 @@ import { CanvasNodeGhostIconButton } from "../../../contexts/workspace/presentat
 import { AgentUserImageGrid } from "./AgentMessageImages";
 
 const MESSAGE_COPY_FEEDBACK_MS = 1400;
-const CONTEXT_COMPACTION_NOTICE_TITLE = "Context compacted.";
-const CONTEXT_COMPACTION_IN_PROGRESS_TITLE = "Compacting context.";
-const CONTEXT_COMPACTION_INTERRUPTED_TITLE = "Context compaction interrupted.";
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
 const SYSTEM_NOTICE_WARNING_CLASS_NAME =
@@ -201,7 +198,6 @@ export function AgentMessageBlock({
                 source: "agent-markdown"
               }}
               workspaceAppIcons={workspaceAppIcons}
-              deferLongContentRender
               enableImageZoom
               previewMode={previewMode}
               streaming={message.statusKind === "working"}
@@ -343,24 +339,25 @@ function AgentSystemNoticeMessage({
       </div>
     );
   }
-  if (isContextCompactionProgressNotice(message, title)) {
+  if (isContextCompactionProgressNotice(message)) {
     return (
       <ContextCompactionProgressDivider
         startedAtUnixMs={message.occurredAtUnixMs}
       />
     );
   }
-  if (isContextCompactionNotice(message, title)) {
+  if (isContextCompactionNotice(message)) {
     return (
       <ContextCompactionDivider
         text={translate("agentHost.agentGui.contextCompactionCompleted")}
       />
     );
   }
-  if (isContextCompactionInterruptedNotice(message, title)) {
+  if (isContextCompactionInterruptedNotice(message)) {
     return (
       <ContextCompactionDivider
         text={translate("agentHost.agentGui.contextCompactionInterrupted")}
+        detail={detail || null}
       />
     );
   }
@@ -440,58 +437,57 @@ function transportRetryProgressText(value: string): string | null {
   return match?.[1]?.replace(/\s+/g, " ").trim() || null;
 }
 
-function isContextCompactionNotice(
-  message: AgentMessageContentVM,
-  title: string
-): boolean {
+function isContextCompactionNotice(message: AgentMessageContentVM): boolean {
   const notice = message.systemNotice;
-  return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_NOTICE_TITLE
-  );
+  return notice?.command === "compact" && notice.commandStatus === "completed";
 }
 
 function isContextCompactionProgressNotice(
-  message: AgentMessageContentVM,
-  title: string
+  message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
-  return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_IN_PROGRESS_TITLE
-  );
+  return notice?.command === "compact" && notice.commandStatus === "running";
 }
 
 function isContextCompactionInterruptedNotice(
-  message: AgentMessageContentVM,
-  title: string
+  message: AgentMessageContentVM
 ): boolean {
   const notice = message.systemNotice;
   return (
-    notice?.noticeKind === "system_notice" &&
-    (notice.detail?.trim() ?? "") === "" &&
-    title.trim() === CONTEXT_COMPACTION_INTERRUPTED_TITLE
+    notice?.command === "compact" &&
+    (notice.commandStatus === "failed" || notice.commandStatus === "canceled")
   );
 }
 
-function ContextCompactionDivider({ text }: { text: string }): JSX.Element {
+function ContextCompactionDivider({
+  text,
+  detail = null
+}: {
+  text: string;
+  detail?: string | null;
+}): JSX.Element {
   "use memo";
   return (
     <div
       role="status"
-      className="box-border flex w-full min-w-0 items-center gap-3 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
+      className="box-border w-full min-w-0 py-2 text-[12px] leading-4 text-[var(--text-secondary)]"
     >
-      <span
-        aria-hidden="true"
-        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-      />
-      <span className="shrink-0 whitespace-nowrap">{text}</span>
-      <span
-        aria-hidden="true"
-        className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
-      />
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+        <span className="shrink-0 whitespace-nowrap">{text}</span>
+        <span
+          aria-hidden="true"
+          className="h-px min-w-4 flex-1 bg-[var(--line-1)]"
+        />
+      </div>
+      {detail ? (
+        <div className="mt-1 min-w-0 whitespace-pre-wrap break-words text-center leading-5">
+          {detail}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -566,7 +562,6 @@ function AgentPlanCardMessage({
           source: "agent-markdown"
         }}
         workspaceAppIcons={workspaceAppIcons}
-        deferLongContentRender
         enableImageZoom
         previewMode={previewMode}
       />

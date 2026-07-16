@@ -14,8 +14,8 @@ import (
 func (a *ClaudeCodeSDKAdapter) storeSession(agentSessionID string, session *claudeSDKAdapterSession) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if session != nil && session.backgroundAgents == nil {
-		session.backgroundAgents = make(map[string]claudeSDKBackgroundAgent)
+	if session != nil && session.childSessions == nil {
+		session.childSessions = make(map[string]claudeSDKChildSession)
 	}
 	a.sessions[agentSessionID] = session
 }
@@ -209,11 +209,6 @@ func claudeSDKRuntimeContext(session Session, adapterSession *claudeSDKAdapterSe
 	}
 	if usage := claudeSDKUsageRuntimeContext(liveState.usage); len(usage) > 0 {
 		context["usage"] = usage
-	}
-	if adapterSession != nil {
-		if backgroundAgents := claudeSDKBackgroundAgentsRuntimeContext(adapterSession.backgroundAgents); len(backgroundAgents) > 0 {
-			context["backgroundAgents"] = backgroundAgents
-		}
 	}
 	if resumeCursor := claudeSDKResumeCursor(session, adapterSession); len(resumeCursor) > 0 {
 		context["resumeCursor"] = resumeCursor

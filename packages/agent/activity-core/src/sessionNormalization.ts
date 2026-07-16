@@ -33,6 +33,12 @@ export function normalizeAgentActivitySession(
     source.updatedAtUnixMs ?? source.lastEventUnixMs ?? createdAtUnixMs;
   return {
     ...source,
+    kind: source.kind ?? "root",
+    rootAgentSessionId: source.rootAgentSessionId ?? null,
+    rootTurnId: source.rootTurnId ?? null,
+    parentAgentSessionId: source.parentAgentSessionId ?? null,
+    parentTurnId: source.parentTurnId ?? null,
+    parentToolCallId: source.parentToolCallId ?? null,
     agentTargetId: source.agentTargetId ?? null,
     providerSessionId: source.providerSessionId ?? null,
     activeTurnId: source.activeTurnId,
@@ -47,7 +53,6 @@ export function normalizeAgentActivitySession(
     },
     capabilities: source.capabilities ?? null,
     usage: source.usage ?? null,
-    backgroundAgents: source.backgroundAgents ?? null,
     goal: source.goal ?? null,
     imported: source.imported ?? false,
     visible: source.visible ?? true,

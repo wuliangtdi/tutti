@@ -17,6 +17,10 @@ const standaloneHeaderIdentitySource = readFileSync(
   resolve(currentDirectory, "standaloneAgentHeaderIdentity.ts"),
   "utf8"
 );
+const standaloneWindowHeaderSource = readFileSync(
+  resolve(currentDirectory, "StandaloneAgentWindowHeader.tsx"),
+  "utf8"
+);
 const standaloneLaunchRoutingSource = readFileSync(
   resolve(currentDirectory, "useStandaloneAgentLaunchRouting.ts"),
   "utf8"
@@ -67,6 +71,13 @@ test("standalone Agent delegates live window focus to the engagement controller"
   );
 });
 
+test("standalone Agent accepts a startup intent without a provider", () => {
+  assert.match(
+    standaloneWindowSource,
+    /windowIntent\.kind === "agent" && windowIntent\.provider\s*\? normalizeDesktopAgentGUIProvider\(windowIntent\.provider\)\s*: "codex"/
+  );
+});
+
 test("standalone Agent starts the app runtime lifecycle only when apps open", () => {
   assert.match(
     standaloneWindowSource,
@@ -78,23 +89,27 @@ test("standalone Agent starts the app runtime lifecycle only when apps open", ()
   );
   assert.match(
     standaloneWindowSource,
-    /setWorkspaceAppLauncher\([\s\S]*?ensureWorkspaceAppPolling\(\);[\s\S]*?state: \{ openAppId: appId \}/
+    /workspaceAppSurfaceHost\.registerPresenter\([\s\S]*?createStandaloneAgentWorkspaceAppSurfacePresenter\([\s\S]*?ensureWorkspaceAppPolling/
   );
 });
 
 test("standalone Agent opens files like Finder and routes links into the right sidebar", () => {
   assert.match(
     standaloneWindowSource,
-    /setCanvasFilePreviewLauncher\([\s\S]*?desktopApi\.host\.files\.openFile\(workspaceId, target\.path\)[\s\S]*?return true/
+    /workspaceFilePreviewSurfaceHost\.registerPresenter\([\s\S]*?createStandaloneAgentWorkspaceFilePreviewPresenter\([\s\S]*?hostFilesApi: desktopApi\.host\.files/
   );
   assert.match(standaloneWindowSource, /workspaceFilePreviewMode: "canvas"/);
   assert.match(
     standaloneLaunchRoutingSource,
-    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path \}\) => openFileInSidebar\(path\)/
+    /runDesktopAgentGUILinkAction\(action,[\s\S]*?launchWorkspaceFiles: \(\{ path, validateExists \}\) =>[\s\S]*?openFileInSidebar\(path, validateExists\)/
   );
   assert.match(
     standaloneWindowSource,
-    /setWorkspaceAppLauncher\([\s\S]*?state: \{ openAppId: appId \}/
+    /validateExists &&[\s\S]*?workspaceFileManagerService\.entryExists\([\s\S]*?showWorkspaceFileMissingToast\(\)/
+  );
+  assert.match(
+    standaloneWindowSource,
+    /workspaceAppSurfaceHost\.registerPresenter\([\s\S]*?createStandaloneAgentWorkspaceAppSurfacePresenter/
   );
   assert.match(
     standaloneWindowSource,
@@ -113,7 +128,11 @@ test("standalone Agent handles task and app Agent launch requests", () => {
   );
   assert.match(
     standaloneLaunchRoutingSource,
-    /registerWorkspaceIssueManagerLaunchHandler\(workspaceId, \(request\) => \{[\s\S]*?createStandaloneAgentIssueManagerOpenRequest/
+    /const issueManagerPresenter = useMemo\([\s\S]*?createStandaloneAgentWorkspaceIssueManagerPresenter\(\{[\s\S]*?open: setIssueManagerOpenRequest/
+  );
+  assert.match(
+    standaloneLaunchRoutingSource,
+    /registerWorkspaceIssueManagerLaunchPresenter\([\s\S]*?workspaceId,[\s\S]*?issueManagerPresenter/
   );
   assert.match(
     standaloneWindowSource,
@@ -177,7 +196,11 @@ test("standalone Agent widens a narrow window before expanding the conversation 
 test("standalone Agent hides home identity and shows it after local session start", () => {
   assert.match(
     standaloneWindowSource,
-    /resolveStandaloneAgentHeaderIdentity\(\{[\s\S]*?agentTargetId: activeAgentTargetId,[\s\S]*?lastActiveAgentSessionId: nodeState\.lastActiveAgentSessionId,[\s\S]*?sessions: activitySnapshot\.sessions/
+    /useStandaloneAgentWindowHeaderIdentity\(\{[\s\S]*?activeAgentTargetId,[\s\S]*?nodeState,[\s\S]*?sessions: activitySnapshot\.sessions/
+  );
+  assert.match(
+    standaloneWindowHeaderSource,
+    /resolveStandaloneAgentHeaderIdentity\(\{[\s\S]*?agentTargetId: input\.activeAgentTargetId,[\s\S]*?lastActiveAgentSessionId: input\.nodeState\.lastActiveAgentSessionId,[\s\S]*?sessions: input\.sessions/
   );
   assert.match(
     standaloneHeaderIdentitySource,
@@ -187,10 +210,13 @@ test("standalone Agent hides home identity and shows it after local session star
     standaloneHeaderIdentitySource,
     /agentTitle: resolveAgentGuiWorkbenchHeaderTitle\(\{[\s\S]*?agentName: agent\?\.name,[\s\S]*?conversationTitle,[\s\S]*?provider/
   );
-  assert.match(standaloneWindowSource, /agentTitle=\{headerAgentTitle\}/);
   assert.match(
-    standaloneWindowSource,
-    /conversationTitle=\{headerConversationTitle\}/
+    standaloneWindowHeaderSource,
+    /agentTitle=\{identity\.agentTitle\}/
+  );
+  assert.match(
+    standaloneWindowHeaderSource,
+    /conversationTitle=\{identity\.conversationTitle\}/
   );
 });
 

@@ -59,6 +59,9 @@ func (*Store) recordTurnTransitionTx(
 	if transition.Outcome != "" && !isKnownTurnOutcome(transition.Outcome) {
 		return Turn{}, false, fmt.Errorf("unknown workspace agent turn outcome %q", transition.Outcome)
 	}
+	if transition.Origin != "" && !isKnownTurnOrigin(transition.Origin) {
+		return Turn{}, false, fmt.Errorf("unknown workspace agent turn origin %q", transition.Origin)
+	}
 	if err := validateLiveTurnSlotTx(ctx, tx, workspaceID, agentSessionID, turnID, phase); err != nil {
 		return Turn{}, false, err
 	}
@@ -93,8 +96,9 @@ func (*Store) recordTurnTransitionTx(
 INSERT INTO workspace_agent_turns (
   workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
   file_changes_json, completed_command_json, backfilled,
-  started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+  started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
+  turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
   phase = excluded.phase,
   outcome = excluded.outcome,
@@ -110,7 +114,8 @@ ON CONFLICT(workspace_id, agent_session_id, turn_id) DO UPDATE SET
 		fileChangesJSON,
 		encodeCompletedCommandJSON(merged.CompletedCommandKind, merged.CompletedCommandStatus),
 		merged.StartedAtUnixMS, nullInt64(merged.SettledAtUnixMS),
-		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS); err != nil {
+		merged.CreatedAtUnixMS, merged.UpdatedAtUnixMS, merged.Origin,
+		nullString(merged.SourceGoalOperationID), nullInt64(merged.SourceGoalRevision), nullInt64WhenAbsent(merged.SourceGoalRepairEpoch, merged.SourceGoalOperationID != "")); err != nil {
 		return Turn{}, false, fmt.Errorf("upsert workspace agent turn: %w", err)
 	}
 
@@ -175,6 +180,9 @@ SELECT active_turn_id
 FROM workspace_agent_sessions
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, workspaceID, agentSessionID).Scan(&activeTurnID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("workspace agent turn references unknown or deleted session %q", agentSessionID)
+	}
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("read workspace agent session active turn: %w", err)
 	}
@@ -207,7 +215,14 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 			AgentSessionID:  strings.TrimSpace(transition.AgentSessionID),
 			TurnID:          strings.TrimSpace(transition.TurnID),
 			CreatedAtUnixMS: now,
+			Origin:          TurnOriginLegacyUnknown,
 		}
+		if origin := strings.TrimSpace(transition.Origin); origin != "" {
+			merged.Origin = origin
+		}
+		merged.SourceGoalOperationID = strings.TrimSpace(transition.SourceGoalOperationID)
+		merged.SourceGoalRevision = transition.SourceGoalRevision
+		merged.SourceGoalRepairEpoch = transition.SourceGoalRepairEpoch
 	}
 	merged.Phase = phase
 	merged.Backfilled = false
@@ -446,7 +461,7 @@ WHERE status = ?
 	return settlements, nil
 }
 
-func (s *Store) upsertInteractionTx(
+func (*Store) upsertInteractionTx(
 	ctx context.Context,
 	tx *sql.Tx,
 	upsert InteractionUpsert,
@@ -492,17 +507,7 @@ func (s *Store) upsertInteractionTx(
 	if _, hasTurn, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID); err != nil {
 		return Interaction{}, InteractionTransitionConflict, err
 	} else if !hasTurn {
-		if _, accepted, err := s.recordTurnTransitionTx(ctx, tx, TurnTransition{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   agentSessionID,
-			TurnID:           turnID,
-			Phase:            TurnPhaseWaiting,
-			OccurredAtUnixMS: occurred,
-		}, now); err != nil {
-			return Interaction{}, InteractionTransitionConflict, fmt.Errorf("ensure workspace agent turn for interaction: %w", err)
-		} else if !accepted {
-			return Interaction{}, InteractionTransitionConflict, errors.New("workspace agent interaction turn transition was rejected")
-		}
+		return Interaction{}, InteractionTransitionConflict, fmt.Errorf("workspace agent interaction references unknown turn %q", turnID)
 	}
 
 	inputJSON, err := marshalJSONMap(upsert.Input)
@@ -592,12 +597,6 @@ ORDER BY created_at_unix_ms ASC, request_id ASC`
 	return interactions, nil
 }
 
-const agentTurnSelectSQL = `
-SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
-       file_changes_json, completed_command_json, backfilled,
-       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-FROM workspace_agent_turns`
-
 const agentInteractionSelectSQL = `
 SELECT workspace_id, agent_session_id, request_id, turn_id, kind, status, tool_name,
        input_json, output_json, metadata_json, created_at_unix_ms, updated_at_unix_ms
@@ -629,59 +628,6 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND request_id =
 		return Interaction{}, false, fmt.Errorf("get workspace agent interaction for update: %w", err)
 	}
 	return interaction, true, nil
-}
-
-func scanAgentTurn(scanner rowScanner) (Turn, error) {
-	var turn Turn
-	var outcome sql.NullString
-	var errorJSON sql.NullString
-	var fileChangesJSON sql.NullString
-	var completedCommandJSON sql.NullString
-	var settledAt sql.NullInt64
-	var backfilled int
-	err := scanner.Scan(
-		&turn.WorkspaceID,
-		&turn.AgentSessionID,
-		&turn.TurnID,
-		&turn.Phase,
-		&outcome,
-		&errorJSON,
-		&fileChangesJSON,
-		&completedCommandJSON,
-		&backfilled,
-		&turn.StartedAtUnixMS,
-		&settledAt,
-		&turn.CreatedAtUnixMS,
-		&turn.UpdatedAtUnixMS,
-	)
-	if err != nil {
-		return Turn{}, err
-	}
-	turn.Outcome = strings.TrimSpace(outcome.String)
-	turn.Backfilled = backfilled != 0
-	turn.SettledAtUnixMS = settledAt.Int64
-	if errorJSON.Valid && strings.TrimSpace(errorJSON.String) != "" {
-		decoded, err := unmarshalJSONMap(errorJSON.String)
-		if err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn error: %w", err)
-		}
-		turn.ErrorMessage, _ = decoded["message"].(string)
-		turn.ErrorCode, _ = decoded["code"].(string)
-	}
-	if fileChangesJSON.Valid && strings.TrimSpace(fileChangesJSON.String) != "" {
-		if turn.FileChanges, err = unmarshalJSONMap(fileChangesJSON.String); err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn file changes: %w", err)
-		}
-	}
-	if completedCommandJSON.Valid && strings.TrimSpace(completedCommandJSON.String) != "" {
-		decoded, err := unmarshalJSONMap(completedCommandJSON.String)
-		if err != nil {
-			return Turn{}, fmt.Errorf("decode workspace agent turn completed command: %w", err)
-		}
-		turn.CompletedCommandKind, _ = decoded["kind"].(string)
-		turn.CompletedCommandStatus, _ = decoded["status"].(string)
-	}
-	return turn, nil
 }
 
 func scanAgentInteraction(scanner rowScanner) (Interaction, error) {
@@ -730,6 +676,16 @@ func isKnownTurnPhase(phase string) bool {
 func isKnownTurnOutcome(outcome string) bool {
 	switch outcome {
 	case TurnOutcomeCompleted, TurnOutcomeFailed, TurnOutcomeCanceled, TurnOutcomeInterrupted:
+		return true
+	default:
+		return false
+	}
+}
+
+func isKnownTurnOrigin(origin string) bool {
+	switch origin {
+	case TurnOriginUserPrompt, TurnOriginGoalArm, TurnOriginGoalContinuation,
+		TurnOriginProviderInitiated, TurnOriginLegacyUnknown:
 		return true
 	default:
 		return false
@@ -795,6 +751,13 @@ func marshalNullableJSONMap(value map[string]any) (any, error) {
 
 func nullInt64(value int64) any {
 	if value <= 0 {
+		return nil
+	}
+	return value
+}
+
+func nullInt64WhenAbsent(value int64, present bool) any {
+	if !present {
 		return nil
 	}
 	return value

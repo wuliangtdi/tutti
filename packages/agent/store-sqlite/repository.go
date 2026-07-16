@@ -15,6 +15,7 @@ type Repository interface {
 	DeleteSession(context.Context, string, string) (bool, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
+	ListChildSessions(context.Context, string, string) ([]Session, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
 	GetLatestTurn(context.Context, string, string) (Turn, bool, error)
 	GetTurn(context.Context, string, string, string) (Turn, bool, error)
@@ -24,6 +25,7 @@ type Repository interface {
 	ListTurnsBySession(context.Context, string, map[string]string) (map[string]Turn, error)
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]Interaction, error)
 	ListSessionSection(context.Context, ListSessionSectionInput) (SessionSectionPage, bool, error)
+	ListSessionSections(context.Context, ListSessionSectionsInput) (SessionSectionsPage, bool, error)
 	ListSessionSectionDeletionCandidates(context.Context, ListSessionSectionDeletionCandidatesInput) (SessionSectionDeletionCandidates, bool, error)
 	ListSessionTurns(context.Context, string, string) ([]Turn, error)
 	ListSessions(context.Context, string) ([]Session, bool, error)
@@ -44,7 +46,16 @@ type Repository interface {
 	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
 	SettleStaleTurns(context.Context) ([]StaleTurnSettlement, error)
 	UpdateSessionPinned(context.Context, string, string, bool) (Session, bool, error)
+	UpdateSessionSettings(context.Context, string, string, string, map[string]any) (Session, bool, error)
 	UpdateSessionTitle(context.Context, string, string, string) (Session, bool, error)
+}
+
+// GoalProvenanceLedger is a narrow optional persistence capability. It stays
+// separate from Repository so read-only/custom activity repositories do not
+// need to implement provider-specific Goal attribution.
+type GoalProvenanceLedger interface {
+	BindGoalProvenance(context.Context, BindGoalProvenanceInput) (GoalProvenanceBinding, error)
+	LookupGoalProvenance(context.Context, LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error)
 }
 
 type ClearSessionsResult struct {
@@ -64,17 +75,20 @@ type ListSessionMessagesInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	TurnID         string
-	AfterVersion   uint64
-	BeforeVersion  uint64
-	Limit          int
-	Order          MessageOrder
+	// AfterVersion and BeforeVersion are per-session change cursors. Current
+	// message snapshots may skip cursor values when the same message is updated.
+	AfterVersion  uint64
+	BeforeVersion uint64
+	Limit         int
+	Order         MessageOrder
 }
 
 type ListWorkspaceGeneratedFilesInput struct {
-	WorkspaceID string
-	Query       string
-	SessionCwd  string
-	Limit       int
+	WorkspaceID    string
+	Query          string
+	SessionCwd     string
+	AgentTargetIDs []string
+	Limit          int
 }
 
 type GeneratedFile struct {
@@ -94,6 +108,16 @@ type ListSessionSectionInput struct {
 	CursorSortTimeUnixMS int64
 	CursorSessionID      string
 	Limit                int
+}
+
+// ListSessionSectionsInput describes the first-page bootstrap for every rail
+// section in one workspace query. SectionKeys includes the synthetic pinned
+// page key when the caller needs pinned conversations.
+type ListSessionSectionsInput struct {
+	WorkspaceID     string
+	SectionKeys     []string
+	AgentTargetID   string
+	LimitPerSection int
 }
 
 type ListSessionSectionDeletionCandidatesInput struct {
@@ -133,9 +157,20 @@ type SessionSectionPage struct {
 	NextCursor  string
 }
 
+type SessionSectionsPage struct {
+	WorkspaceID string
+	Sections    []SessionSectionPage
+}
+
 type Session struct {
 	ID                     string
 	WorkspaceID            string
+	Kind                   string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ParentAgentSessionID   string
+	ParentTurnID           string
+	ParentToolCallID       string
 	Origin                 string
 	UserID                 string
 	AgentTargetID          string
@@ -146,10 +181,13 @@ type Session struct {
 	Metadata               SessionMetadata
 	InternalRuntimeContext map[string]any
 	Cwd                    string
+	RailSectionKey         string
 	Title                  string
 	// ActiveTurnID is the protocol v2 turn reference: the id of the turn
 	// currently in flight, empty when the session is idle.
-	ActiveTurnID    string
+	ActiveTurnID string
+	// MessageVersion is the latest accepted per-session message change cursor.
+	// It is a high-water mark, not a count of current message rows.
 	MessageVersion  uint64
 	LastEventUnixMS int64
 	StartedAtUnixMS int64
@@ -159,19 +197,27 @@ type Session struct {
 	UpdatedAtUnixMS int64
 }
 
+const (
+	SessionKindRoot  = "root"
+	SessionKindChild = "child"
+)
+
 // ActivityStateReport persists the session projection and its optional v2
 // turn/interaction entities as one atomic unit. Child entities must identify
 // the same workspace and session as Session.
 type ActivityStateReport struct {
-	Session     SessionStateReport
-	Turn        *TurnTransition
-	Interaction *InteractionUpsert
+	Session          SessionStateReport
+	Turn             *TurnTransition
+	RootProviderTurn *RootProviderTurnTransition
+	Interaction      *InteractionUpsert
 }
 
 type ActivityStateReportResult struct {
 	State             StateReportResult
 	Turn              Turn
 	TurnAccepted      bool
+	RootTurn          Turn
+	RootTurnAccepted  bool
 	Interaction       Interaction
 	InteractionResult InteractionTransitionResult
 }
@@ -194,26 +240,65 @@ const (
 	TurnOutcomeFailed      = "failed"
 	TurnOutcomeCanceled    = "canceled"
 	TurnOutcomeInterrupted = "interrupted"
+
+	TurnOriginUserPrompt        = "user_prompt"
+	TurnOriginGoalArm           = "goal_arm"
+	TurnOriginGoalContinuation  = "goal_continuation"
+	TurnOriginProviderInitiated = "provider_initiated"
+	TurnOriginLegacyUnknown     = "legacy_unknown"
 )
 
-// Turn is the protocol v2 turn entity: one user-submission-driven execution
-// with its own phase, outcome, error, and file changes.
+// Turn is the protocol v2 execution entity inside either a root or child
+// session. It may originate from a user prompt, Goal control, or an explicit
+// provider-initiated interaction and carries both Goal provenance and the
+// root-provider completion projection.
 type Turn struct {
+	WorkspaceID                            string
+	AgentSessionID                         string
+	TurnID                                 string
+	Phase                                  string
+	Outcome                                string
+	ErrorMessage                           string
+	ErrorCode                              string
+	FileChanges                            map[string]any
+	CompletedCommandKind                   string
+	CompletedCommandStatus                 string
+	Backfilled                             bool
+	StartedAtUnixMS                        int64
+	SettledAtUnixMS                        int64
+	CreatedAtUnixMS                        int64
+	UpdatedAtUnixMS                        int64
+	Origin                                 string
+	SourceGoalOperationID                  string
+	SourceGoalRevision                     int64
+	SourceGoalRepairEpoch                  int64
+	RootProviderTurnID                     string
+	RootProviderTurnPhase                  string
+	RootProviderTurnOutcome                string
+	RootProviderTurnErrorMessage           string
+	RootProviderTurnErrorCode              string
+	RootProviderTurnCompletedCommandKind   string
+	RootProviderTurnCompletedCommandStatus string
+	RootProviderTurnUpdatedAtUnixMS        int64
+}
+
+const (
+	RootProviderTurnPhaseRunning   = "running"
+	RootProviderTurnPhaseCompleted = "completed"
+)
+
+type RootProviderTurnTransition struct {
 	WorkspaceID            string
-	AgentSessionID         string
-	TurnID                 string
+	RootAgentSessionID     string
+	RootTurnID             string
+	ProviderTurnID         string
 	Phase                  string
 	Outcome                string
 	ErrorMessage           string
 	ErrorCode              string
-	FileChanges            map[string]any
 	CompletedCommandKind   string
 	CompletedCommandStatus string
-	Backfilled             bool
-	StartedAtUnixMS        int64
-	SettledAtUnixMS        int64
-	CreatedAtUnixMS        int64
-	UpdatedAtUnixMS        int64
+	OccurredAtUnixMS       int64
 }
 
 // TurnTransition records one turn phase transition. Transitions are written
@@ -231,6 +316,10 @@ type TurnTransition struct {
 	FileChanges            map[string]any
 	CompletedCommandKind   string
 	CompletedCommandStatus string
+	Origin                 string
+	SourceGoalOperationID  string
+	SourceGoalRevision     int64
+	SourceGoalRepairEpoch  int64
 	StartedAtUnixMS        int64
 	SettledAtUnixMS        int64
 	OccurredAtUnixMS       int64
@@ -304,24 +393,31 @@ type StaleTurnSettlement struct {
 }
 
 type SessionStateReport struct {
-	WorkspaceID       string
-	AgentSessionID    string
-	Origin            string
-	UserID            string
-	AgentTargetID     string
-	Provider          string
-	ProviderSessionID string
-	Model             string
-	Settings          map[string]any
-	RuntimeContext    map[string]any
-	Cwd               string
-	Title             string
-	Status            string
-	CurrentPhase      string
-	LastError         string
-	OccurredAtUnixMS  int64
-	StartedAtUnixMS   int64
-	EndedAtUnixMS     int64
+	WorkspaceID          string
+	AgentSessionID       string
+	Kind                 string
+	RootAgentSessionID   string
+	RootTurnID           string
+	ParentAgentSessionID string
+	ParentTurnID         string
+	ParentToolCallID     string
+	Origin               string
+	UserID               string
+	AgentTargetID        string
+	Provider             string
+	ProviderSessionID    string
+	Model                string
+	Settings             map[string]any
+	RuntimeContext       map[string]any
+	Cwd                  string
+	Title                string
+	Status               string
+	CurrentPhase         string
+	LastError            string
+	OccurredAtUnixMS     int64
+	StartedAtUnixMS      int64
+	EndedAtUnixMS        int64
+	CreatedAtUnixMS      int64
 }
 
 type StateReportResult struct {
@@ -337,7 +433,11 @@ type SessionMessageReport struct {
 	AgentSessionID string
 	Origin         string
 	Provider       string
-	Messages       []MessageUpdate
+	// HistoricalImport is an internal-only compatibility boundary for
+	// read-only external transcript imports that predate Turn identities. It
+	// must never be populated from runtime/API report payloads.
+	HistoricalImport bool
+	Messages         []MessageUpdate
 }
 
 type MessageUpdate struct {
@@ -346,6 +446,7 @@ type MessageUpdate struct {
 	Role              string
 	Kind              string
 	Status            string
+	Semantics         *MessageSemantics
 	ContentDelta      string
 	Payload           map[string]any
 	OccurredAtUnixMS  int64
@@ -361,14 +462,17 @@ type MessageReportResult struct {
 }
 
 type Message struct {
-	ID                uint64
-	AgentSessionID    string
-	MessageID         string
+	ID             uint64
+	AgentSessionID string
+	MessageID      string
+	// Version is a per-session change cursor for this mutable snapshot. Updating
+	// the same MessageID assigns a newer version, so current rows may have gaps.
 	Version           uint64
 	TurnID            string
 	Role              string
 	Kind              string
 	Status            string
+	Semantics         *MessageSemantics
 	Payload           map[string]any
 	OccurredAtUnixMS  int64
 	StartedAtUnixMS   int64
@@ -377,9 +481,18 @@ type Message struct {
 	UpdatedAtUnixMS   int64
 }
 
+type MessageSemantics struct {
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	TurnSettling                 bool   `json:"turnSettling,omitempty"`
+	NoticeCommand                string `json:"noticeCommand,omitempty"`
+	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`
+}
+
 type MessagePage struct {
 	AgentSessionID string
 	Messages       []Message
-	LatestVersion  uint64
-	HasMore        bool
+	// LatestVersion is the largest cursor delivered by this page, or the input
+	// AfterVersion when an ascending page contains no newer snapshots.
+	LatestVersion uint64
+	HasMore       bool
 }

@@ -3,7 +3,7 @@ import type {
   AgentActivityPresence,
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
-import { selectCanonicalAgentActivitySessions } from "@tutti-os/agent-activity-core";
+import { selectRootAgentActivitySessions } from "@tutti-os/agent-activity-core";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "./workspaceAgentSessionSortTime";
 import { workspaceAgentProviderLabel } from "./workspaceAgentProviderLabel";
 import {
@@ -29,7 +29,7 @@ export function buildWorkspaceAgentActivityListViewModel(
   snapshot: WorkspaceAgentActivityListSnapshot,
   options: BuildWorkspaceAgentActivityListOptions = {}
 ): WorkspaceAgentActivityListViewModel {
-  const activities = selectCanonicalAgentActivitySessions(snapshot)
+  const activities = selectRootAgentActivitySessions(snapshot)
     .map((session): WorkspaceAgentActivityCard | null => {
       const presence =
         snapshot.presences.find(
@@ -71,7 +71,7 @@ export function buildWorkspaceAgentActivityListViewModel(
         ...(user.userAvatarUrl ? { userAvatarUrl: user.userAvatarUrl } : {}),
         agentProvider,
         agentName,
-        title: resolveWorkspaceAgentActivityTitle(session, messages),
+        title: resolveWorkspaceAgentActivityTitle(session),
         status,
         latestActivitySummary: latestActivity.summary,
         latestActivityActorName: latestActivity.actorName,

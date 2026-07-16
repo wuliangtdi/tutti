@@ -13,6 +13,7 @@ func submittedTurnActivityEvents(session Session, turnID string) []activityshare
 		return nil
 	}
 	event := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseSubmitted)
+	event.Payload.Metadata = map[string]any{"turnOrigin": "user_prompt"}
 	// The controller owns the submit moment; it publishes the submitted
 	// lifecycle snapshot so downstream layers copy instead of recomputing
 	// (ADR 0008).
@@ -132,9 +133,6 @@ func statusForAuthoritySession(session Session, batchSessionLevel string) string
 		}
 		return SessionStatusWorking
 	}
-	if sessionHasLiveBackgroundAgents(session) {
-		return SessionStatusWorking
-	}
 	if lifecycle != nil && lifecycle.Phase == "settled" {
 		if lifecycle.Outcome != nil {
 			switch strings.TrimSpace(*lifecycle.Outcome) {
@@ -167,9 +165,6 @@ func submitAvailabilityForAuthoritySession(session Session) *SubmitAvailability 
 		}
 		return blockedSubmitAvailability("active_turn")
 	}
-	if sessionHasLiveBackgroundAgents(session) {
-		return blockedSubmitAvailability("background_agent")
-	}
 	return availableSubmitAvailability()
 }
 
@@ -178,6 +173,10 @@ func submitAvailabilityForAuthoritySession(session Session) *SubmitAvailability 
 // Status/SubmitAvailability purely (ADR 0008); legacy sessions keep the
 // historic folding path until their provider publishes snapshots (Phase B).
 func (c *Controller) foldTurnSessionEvents(session Session, events []activityshared.Event, execTurnID string) Session {
+	events = eventsOwnedBySession(events, session.AgentSessionID)
+	if len(events) == 0 {
+		return session
+	}
 	previousStatus := session.Status
 	if session.LifecycleAuthority || eventsCarryAdapterLifecycleSnapshot(events) {
 		session = applySessionEventsBase(session, events)
@@ -194,6 +193,18 @@ func (c *Controller) foldTurnSessionEvents(session Session, events []activitysha
 		session = c.preserveActiveTurnStatus(session, execTurnID, previousStatus)
 	}
 	return session
+}
+
+func eventsOwnedBySession(events []activityshared.Event, agentSessionID string) []activityshared.Event {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	owned := make([]activityshared.Event, 0, len(events))
+	for _, event := range events {
+		eventSessionID := strings.TrimSpace(event.AgentSessionID)
+		if eventSessionID == "" || eventSessionID == agentSessionID {
+			owned = append(owned, event)
+		}
+	}
+	return owned
 }
 
 func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event) Session {
@@ -229,7 +240,7 @@ func applyTurnLifecycleFromEvents(session Session, events []activityshared.Event
 
 func turnLifecyclePhaseFromEvent(event activityshared.Event) string {
 	switch event.Type {
-	case activityshared.EventTurnStarted:
+	case activityshared.EventTurnStarted, activityshared.EventRootProviderTurnStarted:
 		return "running"
 	case activityshared.EventTurnUpdated:
 		switch strings.TrimSpace(event.Payload.TurnPhase) {
@@ -405,28 +416,6 @@ func sessionHasLiveTurnLifecycle(session Session) bool {
 	}
 	return runtimeTurnLifecycleActiveTurnID(session.TurnLifecycle) != "" &&
 		runtimeTurnLifecyclePhaseIsLive(session.TurnLifecycle.Phase)
-}
-
-func sessionHasLiveBackgroundAgents(session Session) bool {
-	backgroundAgents := payloadMap(session.RuntimeContext, "backgroundAgents")
-	if len(backgroundAgents) == 0 {
-		return false
-	}
-	if metadataInt64(backgroundAgents, "count") > 0 {
-		return true
-	}
-	items, _ := backgroundAgents["items"].([]any)
-	for _, item := range items {
-		agent := payloadMap(map[string]any{"item": item}, "item")
-		if len(agent) == 0 {
-			continue
-		}
-		status := firstNonEmptyString(payloadString(agent, "status"), string(activityshared.ActivityStatusRunning))
-		if !backgroundAgentStatusIsTerminal(status) {
-			return true
-		}
-	}
-	return false
 }
 
 func runtimeTurnLifecycleActiveTurnID(value *TurnLifecycle) string {

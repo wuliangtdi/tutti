@@ -105,7 +105,7 @@ func TestClaudeCodeSDKAdapterMapsGoalUpdatedSidecarEvent(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterExecEmitsPromptFallbackTitle(t *testing.T) {
+func TestClaudeCodeSDKAdapterExecLeavesInitialTitleToController(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
 	conn := &scriptedClaudeSDKConnection{
@@ -130,8 +130,8 @@ func TestClaudeCodeSDKAdapterExecEmitsPromptFallbackTitle(t *testing.T) {
 		t.Fatalf("Exec: %v", err)
 	}
 	titleEvents := activityEventsWithType(emitted, activityshared.EventSessionUpdated)
-	if len(titleEvents) != 1 || titleEvents[0].Payload.Title != "inspect repo" {
-		t.Fatalf("title events = %#v, want prompt fallback title", titleEvents)
+	if len(titleEvents) != 0 {
+		t.Fatalf("title events = %#v, want adapter to leave initial title to controller", titleEvents)
 	}
 	if !hasActivityMessage(events, activityshared.MessageRoleUser, "inspect repo") {
 		t.Fatalf("events = %#v, missing user prompt", events)
@@ -150,6 +150,7 @@ func TestClaudeCodeSDKAdapterIgnoresCanceledTurnOrphanBeforeCompactResult(t *tes
 	if err != nil || !terminal {
 		t.Fatalf("turn_canceled terminal=%v err=%v, want terminal cancel", terminal, err)
 	}
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-compact", "turn-compact")
 	orphan, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
 		Type:    "turn_completed",
 		Payload: map[string]any{"turnId": "turn-canceled"},
@@ -161,8 +162,169 @@ func TestClaudeCodeSDKAdapterIgnoresCanceledTurnOrphanBeforeCompactResult(t *tes
 		Type:    "turn_completed",
 		Payload: map[string]any{"turnId": "turn-compact"},
 	})
-	if err != nil || !terminal || len(compact) != 1 || compact[0].Type != activityshared.EventTurnCompleted {
-		t.Fatalf("compact result events=%#v terminal=%v err=%v, want compact turn completion", compact, terminal, err)
+	if err != nil || !terminal || len(compact) != 1 || compact[0].Type != activityshared.EventRootProviderTurnCompleted ||
+		compact[0].Payload.TurnID != "turn-compact" || compact[0].Payload.ProviderTurnID != "turn-compact" {
+		t.Fatalf("compact result events=%#v terminal=%v err=%v, want root provider completion", compact, terminal, err)
+	}
+}
+
+func TestClaudeCodeSDKAdapterMapsCompactLifecycleAsSystemNotice(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	started, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil || terminal || len(started) != 1 {
+		t.Fatalf("compact_started events=%#v terminal=%v err=%v", started, terminal, err)
+	}
+	failed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type: "compact_failed",
+		Payload: map[string]any{
+			"turnId":  "turn-compact",
+			"content": "Compacting failed: Not enough messages to compact.",
+		},
+	})
+	if err != nil || terminal || len(failed) != 1 {
+		t.Fatalf("compact_failed events=%#v terminal=%v err=%v", failed, terminal, err)
+	}
+	if started[0].EventID != failed[0].EventID {
+		t.Fatalf("compact event IDs = %q and %q, want one stable notice", started[0].EventID, failed[0].EventID)
+	}
+	if started[0].Payload.Content != appServerCompactingContextTitle ||
+		started[0].Payload.Metadata["kind"] != "agent_system_notice" ||
+		started[0].Payload.Metadata["noticeCommand"] != "compact" ||
+		started[0].Payload.Metadata["noticeCommandStatus"] != "running" {
+		t.Fatalf("compact_started = %#v, want running compact system notice", started[0])
+	}
+	if failed[0].Payload.Content != appServerCompactionInterruptedTitle ||
+		failed[0].Payload.Metadata["noticeCommandStatus"] != "failed" ||
+		failed[0].Payload.Metadata["detail"] != "Not enough messages to compact." {
+		t.Fatalf("compact_failed = %#v, want failed compact system notice", failed[0])
+	}
+}
+
+func TestClaudeCodeSDKAdapterSettlesActiveCompactWithTurn(t *testing.T) {
+	tests := []struct {
+		name             string
+		turnEvent        string
+		wantNoticeStatus string
+	}{
+		{name: "canceled", turnEvent: "turn_canceled", wantNoticeStatus: "canceled"},
+		{name: "failed", turnEvent: "turn_failed", wantNoticeStatus: "failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := NewClaudeCodeSDKAdapter(nil)
+			adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+			session := standardTestSession(ProviderClaudeCode)
+
+			started, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+				Type:    "compact_started",
+				Payload: map[string]any{"turnId": "turn-compact"},
+			})
+			if err != nil || terminal || len(started) != 1 {
+				t.Fatalf("compact_started events=%#v terminal=%v err=%v", started, terminal, err)
+			}
+
+			settled, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+				Type:    test.turnEvent,
+				Payload: map[string]any{"turnId": "turn-compact", "error": "provider stopped"},
+			})
+			if err != nil || !terminal {
+				t.Fatalf("%s events=%#v terminal=%v err=%v", test.turnEvent, settled, terminal, err)
+			}
+			var compact *activityshared.Event
+			for index := range settled {
+				if settled[index].Payload.Metadata["noticeCommand"] == "compact" {
+					compact = &settled[index]
+					break
+				}
+			}
+			if compact == nil {
+				t.Fatalf("%s events=%#v, want terminal compact notice", test.turnEvent, settled)
+			}
+			if compact.EventID != started[0].EventID ||
+				compact.Payload.Content != appServerCompactionInterruptedTitle ||
+				compact.Payload.Metadata["noticeCommandStatus"] != test.wantNoticeStatus {
+				t.Fatalf("terminal compact = %#v, want stable %s notice", compact, test.wantNoticeStatus)
+			}
+		})
+	}
+}
+
+func TestClaudeCodeSDKAdapterDoesNotResettleTerminalCompactWithTurn(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	}); err != nil {
+		t.Fatalf("compact_started: %v", err)
+	}
+	if _, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_failed",
+		Payload: map[string]any{"turnId": "turn-compact", "reason": "not enough context"},
+	}); err != nil {
+		t.Fatalf("compact_failed: %v", err)
+	}
+	settled, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "turn_failed",
+		Payload: map[string]any{"turnId": "turn-compact", "error": "provider stopped"},
+	})
+	if err != nil || !terminal {
+		t.Fatalf("turn_failed events=%#v terminal=%v err=%v", settled, terminal, err)
+	}
+	for _, event := range settled {
+		if event.Payload.Metadata["noticeCommand"] == "compact" {
+			t.Fatalf("turn_failed events=%#v, terminal compact must not be emitted twice", settled)
+		}
+	}
+}
+
+func TestClaudeCodeSDKAdapterIgnoresCompactTerminalAfterSynthesizedCancel(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{liveState: newClaudeSDKLiveState()}
+	session := standardTestSession(ProviderClaudeCode)
+
+	started, _, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "compact_started",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil || len(started) != 1 {
+		t.Fatalf("compact_started events=%#v err=%v", started, err)
+	}
+	settled, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", claudeSDKSidecarEvent{
+		Type:    "turn_canceled",
+		Payload: map[string]any{"turnId": "turn-compact"},
+	})
+	if err != nil || !terminal {
+		t.Fatalf("turn_canceled events=%#v terminal=%v err=%v", settled, terminal, err)
+	}
+	var canceledCompact *activityshared.Event
+	for index := range settled {
+		if settled[index].Payload.Metadata["noticeCommandStatus"] == "canceled" {
+			canceledCompact = &settled[index]
+			break
+		}
+	}
+	if canceledCompact == nil || canceledCompact.EventID != started[0].EventID {
+		t.Fatalf("turn_canceled events=%#v, want stable canceled compact notice", settled)
+	}
+
+	lateEvents := []claudeSDKSidecarEvent{
+		{Type: "compact_completed", Payload: map[string]any{"turnId": "turn-compact"}},
+		{Type: "compact_failed", Payload: map[string]any{"turnId": "turn-compact", "reason": "late failure"}},
+	}
+	for _, event := range lateEvents {
+		late, lateTerminal, lateErr := adapter.sidecarTurnEvents(adapterSession, session, "turn-compact", event)
+		if lateErr != nil || lateTerminal || len(late) != 0 {
+			t.Fatalf("late %s events=%#v terminal=%v err=%v, want ignored terminal", event.Type, late, lateTerminal, lateErr)
+		}
 	}
 }
 
@@ -202,6 +364,62 @@ func TestClaudeCodeSDKAdapterMapsThinkingEvents(t *testing.T) {
 	}
 	if completed[0].Payload.Metadata["streamState"] != messageStreamStateCompleted {
 		t.Fatalf("completed metadata = %#v, want completed stream state", completed[0].Payload.Metadata)
+	}
+}
+
+func TestClaudeCodeSDKAdapterSuppressesGoalClearControlTranscript(t *testing.T) {
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	adapterSession := &claudeSDKAdapterSession{
+		liveState: newClaudeSDKLiveState(),
+		goalClearControlTurns: map[string]struct{}{
+			"turn-clear": {},
+		},
+	}
+	session := standardTestSession(ProviderClaudeCode)
+
+	for _, event := range []claudeSDKSidecarEvent{
+		{Type: "turn_started", Payload: map[string]any{"turnId": "turn-clear"}},
+		{Type: "assistant_delta", Payload: map[string]any{"turnId": "turn-clear", "snapshot": "Goal cleared: ship it"}},
+		{Type: "assistant_completed", Payload: map[string]any{"turnId": "turn-clear", "content": "Goal cleared: ship it"}},
+		{Type: "thinking_delta", Payload: map[string]any{"turnId": "turn-clear", "snapshot": "Clearing goal"}},
+		{Type: "thinking_completed", Payload: map[string]any{"turnId": "turn-clear", "content": "Clearing goal"}},
+	} {
+		events, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "", event)
+		if err != nil || terminal || len(events) != 0 {
+			t.Fatalf("%s events=%#v terminal=%v err=%v, want suppressed transcript", event.Type, events, terminal, err)
+		}
+	}
+
+	ordinary, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-normal", claudeSDKSidecarEvent{
+		Type: "assistant_completed",
+		Payload: map[string]any{
+			"turnId":  "turn-normal",
+			"content": "Goal cleared: ship it",
+		},
+	})
+	if err != nil || terminal || !hasActivityMessage(ordinary, activityshared.MessageRoleAssistant, "Goal cleared: ship it") {
+		t.Fatalf("ordinary assistant events=%#v terminal=%v err=%v, want visible matching text", ordinary, terminal, err)
+	}
+
+	for index, terminalType := range []string{"turn_completed", "turn_canceled", "turn_failed"} {
+		turnID := "turn-clear"
+		if index > 0 {
+			turnID += "-" + terminalType
+		}
+		adapterSession.goalClearControlTurns[turnID] = struct{}{}
+		terminalEvents, terminal, terminalErr := adapter.sidecarTurnEvents(adapterSession, session, "", claudeSDKSidecarEvent{
+			Type:    terminalType,
+			Payload: map[string]any{"turnId": turnID, "error": "failed"},
+		})
+		if terminalErr != nil || !terminal {
+			t.Fatalf("%s terminal=%v err=%v, want terminal", terminalType, terminal, terminalErr)
+		}
+		if len(terminalEvents) != 0 {
+			t.Fatalf("%s events=%#v, want internal control terminal suppressed", terminalType, terminalEvents)
+		}
+		if adapter.isGoalClearControlTurn(adapterSession, turnID) {
+			t.Fatalf("%s clear control turn remained registered", terminalType)
+		}
 	}
 }
 
@@ -280,5 +498,23 @@ func TestClaudeCodeSDKAdapterMapsToolLifecycleAndFileMetadata(t *testing.T) {
 	completedMetadata := payloadMap(completed[0].Payload.Metadata, "metadata")
 	if toolResponse := payloadMap(completedMetadata, "claudeToolResponse"); payloadMap(toolResponse, "structuredPatch") == nil {
 		t.Fatalf("completed metadata = %#v, want structuredPatch", completed[0].Payload.Metadata)
+	}
+}
+
+func TestNormalizeClaudeSDKToolPayloadCanonicalizesNoNewlineMarkers(t *testing.T) {
+	payload := normalizeClaudeSDKToolPayload(map[string]any{
+		"output": map[string]any{
+			"changes": []any{map[string]any{
+				"path": "/tmp/a.txt",
+				"diff": "@@ -1 +1 @@\n-old\n \\ No newline at end of file\n+new\n \\ No newline at end of file",
+			}},
+		},
+	})
+	output := payloadMap(payload, "output")
+	changes, _ := output["changes"].([]any)
+	change := payloadObject(changes[0])
+	want := "@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n\\ No newline at end of file"
+	if change["diff"] != want {
+		t.Fatalf("normalized diff = %q, want %q", change["diff"], want)
 	}
 }

@@ -24,6 +24,9 @@ WHERE id IN ('workspace_agent_runtime_operations_v1', 'workspace_agent_runtime_o
 	if _, created, err := store.PrepareRuntimeOperation(ctx, RuntimeOperationPrepare{
 		OperationID: "cancel-1", WorkspaceID: "ws-1", AgentSessionID: "session-1",
 		Kind: RuntimeOperationKindCancelTurn, TurnID: "turn-1", OccurredAtMS: 10,
+		Payload: map[string]any{"rootAgentSessionId": "session-1", "targets": []any{
+			map[string]any{"agentSessionId": "session-1", "turnId": "turn-1"},
+		}},
 	}); err != nil || !created {
 		t.Fatalf("prepare v1 cancel created=%v err=%v", created, err)
 	}

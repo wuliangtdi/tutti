@@ -13,17 +13,17 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Local State And Runtime Paths
 
-| Variable                    | Owner document                                                                                             | Purpose                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `TUTTI_ENV`                 | [Local State Storage](./local-state-storage.md)                                                            | Selects production or development default state roots.                                |
-| `TUTTI_STATE_DIR`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the shared local state root.                                                |
-| `TUTTI_LOG_DIR`             | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                             |
-| `TUTTID_DB_PATH`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.               |
-| `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon runtime directory for files such as listener info and pid files. |
-| `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file path.                                                   |
-| `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.    |
-| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.        |
-| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`.  |
+| Variable                    | Owner document                                                                                             | Purpose                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `TUTTI_ENV`                 | [Local State Storage](./local-state-storage.md)                                                            | Selects production or development default state roots.                               |
+| `TUTTI_STATE_DIR`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the shared local state root.                                               |
+| `TUTTI_LOG_DIR`             | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                            |
+| `TUTTID_DB_PATH`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.              |
+| `TUTTID_RUN_DIR`            | [Local State Storage](./local-state-storage.md)                                                            | Overrides listener-info and pid paths, but not the state-root ownership lock.        |
+| `TUTTID_PID_PATH`           | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon pid file, but not the state-root ownership lock.                |
+| `TUTTID_LISTENER_INFO_PATH` | [Local State Storage](./local-state-storage.md), [Desktop Transport](../architecture/desktop-transport.md) | Overrides the listener-info file path used by managed desktop-to-daemon transport.   |
+| `CODEX_HOME`                | [Local State Storage](./local-state-storage.md)                                                            | Injected per Codex agent run by tuttid; points at the run-scoped `codex-home`.       |
+| `TUTTI_AGENT_HOME`          | [Local State Storage](./local-state-storage.md)                                                            | Injected per Tutti Agent run by tuttid; points at the run-scoped `tutti-agent-home`. |
 
 ## Workspace App Catalog
 
@@ -140,16 +140,19 @@ custom-provider environment allowlist for OpenCode includes `OPENCODE_CONFIG`,
 `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG_CONTENT`, and `OPENCODE_PERMISSION`
 so operator-supplied OpenCode config stays explicit and provider-owned.
 OpenCode composer model options and model-specific reasoning variants come from
-`opencode models --verbose` and are cached by the daemon model catalog. An
-empty `variants` object is authoritative: AgentGUI must not expose or submit an
-ACP `effort` value for that model. Do not restore a provider-wide static effort
-list, because OpenCode models use different variant vocabularies (for example
-`max` rather than `xhigh`) and some reasoning-capable models expose no
-selectable variant at all. The provider auth/config watcher invalidates that
-cache when OpenCode's auth marker (`~/.local/share/opencode/auth.json`) or
-configured OpenCode config files change, so local model-list updates refresh
-through the same `agent.model.catalog.invalidated` event path used by Codex and
-Claude Code. OpenCode composer skill options are discovered with slash triggers
+`opencode models --verbose`. Run that command from the composer workspace cwd
+because OpenCode resolves project configuration relative to the current
+directory. OpenCode model lists are not stored in the daemon model-catalog
+cache; each composer-options request observes the current CLI catalog. An empty
+`variants` object is authoritative: AgentGUI must not expose or submit an ACP
+`effort` value for that model. Do not restore a provider-wide static effort list,
+because OpenCode models use different variant vocabularies (for example `max`
+rather than `xhigh`) and some reasoning-capable models expose no selectable
+variant at all. The provider auth/config watcher still publishes the
+`agent.model.catalog.invalidated` event when OpenCode's auth marker
+(`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
+so an open composer refreshes immediately; it does not invalidate an OpenCode
+model-list cache. OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
 `~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills

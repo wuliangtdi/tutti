@@ -2,6 +2,39 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Temporary Git fixture turns a linked worktree bare
+
+- Symptom:
+  A test run leaves the shared repository config with `core.bare=true`, writes
+  fixture author identity into `.git/config`, or creates an `init` commit that
+  deletes most tracked files from a linked-worktree branch.
+- Quick checks:
+  Run `git config --show-origin --get core.bare`, inspect local `user.name` and
+  `user.email`, then inspect the affected branch reflog for a fixture-authored
+  commit. Search the responsible test for temporary-repository Git commands
+  whose child environment inherits `GIT_DIR` or `GIT_WORK_TREE`.
+- Root cause:
+  `mkdtemp` isolates files, not Git repository selection. An inherited
+  linked-worktree `GIT_DIR` overrides the fixture cwd, so `git init` reinitializes
+  the caller's private worktree metadata and updates its shared common config.
+  Later fixture `add` and `commit` commands can then stage the fixture tree
+  against the real branch.
+- Fix:
+  Remove repository-local Git environment variables for every fixture Git
+  command using case-insensitive name matching, set `GIT_CEILING_DIRECTORIES` to
+  the fixture root, stop on any command failure, verify `--absolute-git-dir`
+  after initialization, and pass fixture author identity through commit-local
+  `-c` arguments instead of `git config`.
+- Validation:
+  Run the fixture tests with poisoned `GIT_DIR`, `GIT_WORK_TREE`, and
+  `GIT_CONFIG_*` inputs that point only at disposable paths. Confirm the fixture
+  initializes its own `.git`, then verify the caller's config, index, branch,
+  and worktree remain unchanged.
+- References:
+  [git-environment.mjs](../../../tools/scripts/git-environment.mjs)
+  [check-agent-gui-degradation.test.mjs](../../../tools/scripts/check-agent-gui-degradation.test.mjs)
+  [static-analysis.md](../static-analysis.md)
+
 ### Dynamic CLI input rejects plausible flags
 
 - Symptom:
@@ -190,6 +223,42 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
 
+### Browser Node action finds a webview but page injection does nothing
+
+- Symptom:
+  A Browser Node toolbar action is visible and clickable, but moving the pointer
+  over the loaded page produces no expected guest-page behavior. Desktop logs
+  may report `The WebView must be attached to the DOM and the dom-ready event
+emitted before this method can be called`, especially after HMR, navigation,
+  or panel remount.
+- Quick checks:
+  Do not treat a matching `<webview>` DOM element or a visibly rendered page as
+  proof that Electron methods are callable. Call `getWebContentsId()` inside a
+  `try` block and confirm it returns a finite id. Check whether the action found
+  a detached element, ran before `dom-ready`, or retained a stale element while
+  React cleanup and BrowserNode guest teardown raced.
+- Root cause:
+  Electron exposes the webview element before its guest method bridge is ready,
+  and detaches that bridge before React passive cleanup necessarily runs. Direct
+  DOM lookup followed immediately by `executeJavaScript()` therefore races the
+  BrowserNode lifecycle. The method can also throw synchronously before it
+  returns a Promise, so appending `.catch()` alone does not protect cleanup.
+- Fix:
+  Reuse BrowserNode's guest lifecycle rather than creating a second owner. Before
+  guest script execution, require a connected webview with a readable finite
+  web contents id; otherwise wait for its `dom-ready` event with a bounded
+  timeout. Treat cancellation during navigation or unmount as best-effort and
+  guard the full method call with `try`/`catch`, including synchronous throws.
+- Validation:
+  Test delayed `dom-ready`, detached webviews, and unmount cancellation. Run the
+  desktop typecheck, changed-aware checks, and production build. Confirm the
+  guest action is bundled with the standalone Agent browser adapter, then reload
+  the standalone Agent window before a manual page-selection smoke test.
+- References:
+  [browserElementWebview.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/browserElementWebview.ts)
+  [BrowserElementContextAction.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/browser-element-context/BrowserElementContextAction.tsx)
+  [webviewController.ts](../../../packages/browser/workbench-node/src/core/webviewController.ts)
+
 ### Hidden Browser Node webview covers another panel
 
 - Symptom:
@@ -285,6 +354,40 @@ delimited by ---`, and the composer skill picker may show partial or
 - References:
   [terminalImeInputGuard.ts](../../../packages/workspace/terminal/src/react/terminalImeInputGuard.ts)
   [terminalSurfaceRuntime.ts](../../../packages/workspace/terminal/src/react/terminalSurfaceRuntime.ts)
+
+### Chinese input renders replacement and control characters in workspace terminals
+
+- Symptom:
+  Chinese input reaches a local workspace terminal, but the shell prompt shows
+  replacement glyphs or control-byte markers such as `<0095>`. ASCII input and
+  commands continue to work, which can make the failure look like an xterm IME
+  composition bug.
+- Quick checks:
+  Run `locale` or `locale charmap` inside a newly created terminal. If
+  `LC_CTYPE` resolves to `C` and the character map is not UTF-8, inspect the
+  desktop and `tuttid` process environments for `LC_ALL`, `LC_CTYPE`, and
+  `LANG` before changing xterm key handlers or terminal transport encoding.
+- Root cause:
+  Finder-launched macOS applications commonly start without locale variables.
+  The daemon inherited that environment and spawned the interactive shell
+  without a character-type locale, so zsh interpreted UTF-8 IME bytes under the
+  single-byte `C` locale and rendered invalid or control characters.
+- Fix:
+  When all locale variables are absent or effectively empty on macOS, append
+  `LC_CTYPE=UTF-8` to the terminal child environment. Preserve any explicit
+  `LC_ALL`, `LC_CTYPE`, or `LANG` value. Restrict the fallback to the character
+  type so message language, sorting, dates, and other locale categories do not
+  change.
+- Validation:
+  Unit-cover missing, empty, explicit, and non-macOS environment cases. Start a
+  real macOS zsh PTY with empty locale variables and assert `locale charmap`
+  reports `UTF-8`, then manually enter Chinese text in a newly created terminal.
+  Existing terminal processes retain their original environment and must be
+  replaced for the fix to take effect.
+- References:
+  [terminal_helpers.go](../../../services/tuttid/service/workspace/terminal_helpers.go)
+  [terminal_helpers_test.go](../../../services/tuttid/service/workspace/terminal_helpers_test.go)
+  [terminal_test.go](../../../services/tuttid/service/workspace/terminal_test.go)
 
 ### Post-composition suppression window swallows real terminal input
 

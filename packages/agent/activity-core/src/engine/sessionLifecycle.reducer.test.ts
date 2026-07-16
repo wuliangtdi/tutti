@@ -62,6 +62,132 @@ test("snapshot restores a settled latest turn without an active turn", () => {
   );
 });
 
+test("settings timeout requires an explicit retry before sending again", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  const requested = reduce(state, settingsUpdateRequested("settings-1"));
+  assert.equal(requested.commands[0]?.type, "session/updateSettings");
+  const queued = reduce(
+    requested.state,
+    settingsUpdateRequested("settings-queued", { planMode: true })
+  );
+  assert.deepEqual(queued.commands, []);
+  state = reduce(queued.state, {
+    commandId: "settings-1",
+    commandType: "session/updateSettings",
+    correlationId: "session-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  }).state;
+
+  const dropped = reduce(
+    state,
+    settingsUpdateRequested("settings-2", { speed: "fast" })
+  );
+  assert.deepEqual(dropped.commands, []);
+  const retried = reduce(state, {
+    ...settingsUpdateRequested("settings-2", { speed: "fast" }),
+    retry: true
+  });
+  assert.deepEqual(retried.commands[0], {
+    agentSessionId: "session-1",
+    commandId: "settings-2",
+    correlationId: "session-1",
+    settings: {
+      permissionModeId: "acceptEdits",
+      planMode: true,
+      speed: "fast"
+    },
+    type: "session/updateSettings",
+    workspaceId: "workspace-1"
+  });
+});
+
+test("Turn provenance survives lifecycle upserts, reconcile snapshots, and selectors", () => {
+  const initialTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    origin: "goal_continuation",
+    sourceGoalOperationId: "goal-operation-1",
+    sourceGoalRepairEpoch: 4,
+    sourceGoalRevision: 7
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(initialTurn, 2)],
+    type: "session/snapshotReceived"
+  }).state;
+
+  state = reduce(state, {
+    turn: {
+      ...initialTurn,
+      origin: "goal_arm",
+      phase: "waiting",
+      sourceGoalOperationId: "conflicting-operation",
+      sourceGoalRepairEpoch: 99,
+      sourceGoalRevision: 99,
+      updatedAtUnixMs: 3
+    },
+    type: "turn/upserted"
+  }).state;
+
+  const reconciled = session(null, 4);
+  reconciled.activeTurn = {
+    ...initialTurn,
+    origin: "goal_arm",
+    phase: "running",
+    sourceGoalOperationId: undefined,
+    sourceGoalRepairEpoch: undefined,
+    sourceGoalRevision: undefined,
+    updatedAtUnixMs: 4
+  };
+  reconciled.activeTurnId = initialTurn.turnId;
+  state = reduce(state, {
+    sessions: [reconciled],
+    type: "session/snapshotReceived"
+  }).state;
+
+  const engine = {
+    ...createInitialAgentSessionEngineState(),
+    sessionLifecycle: state
+  };
+  const selected = selectEngineTurn(engine, "session-1", "turn-1");
+  assert.equal(selected?.phase, "running");
+  assert.equal(selected?.origin, "goal_continuation");
+  assert.equal(selected?.sourceGoalOperationId, "goal-operation-1");
+  assert.equal(selected?.sourceGoalRevision, 7);
+  assert.equal(selected?.sourceGoalRepairEpoch, 4);
+});
+
+test("legacy_unknown Turn provenance is never inferred during reconcile", () => {
+  const legacyTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    origin: "legacy_unknown"
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    sessions: [session(legacyTurn, 2)],
+    type: "session/snapshotReceived"
+  }).state;
+  state = reduce(state, {
+    turn: {
+      ...legacyTurn,
+      origin: "goal_continuation",
+      sourceGoalOperationId: "goal-operation-guessed",
+      sourceGoalRepairEpoch: 1,
+      sourceGoalRevision: 1,
+      updatedAtUnixMs: 3
+    },
+    type: "turn/upserted"
+  }).state;
+
+  const stored =
+    state.turnsById[canonicalTurnKey("session-1", legacyTurn.turnId)];
+  assert.equal(stored?.origin, "legacy_unknown");
+  assert.equal(stored?.sourceGoalOperationId, undefined);
+  assert.equal(stored?.sourceGoalRevision, undefined);
+  assert.equal(stored?.sourceGoalRepairEpoch, undefined);
+});
+
 test("bounded snapshots preserve page-loaded session entities omitted from the response", () => {
   const pageLoaded = {
     ...session(null, 2),
@@ -1006,6 +1132,7 @@ function activeTurn(updatedAtUnixMs: number): AgentActivityTurn {
   return {
     turnId: "turn-1",
     agentSessionId: "session-1",
+    origin: "user_prompt",
     phase: "running",
     startedAtUnixMs: 1,
     updatedAtUnixMs
@@ -1021,6 +1148,21 @@ function interactionResponseRequested(commandId: string) {
     requestId: "request-1",
     turnId: "turn-1",
     timeoutMs: 30_000,
+    workspaceId: "workspace-1"
+  };
+}
+
+function settingsUpdateRequested(
+  commandId: string,
+  settings: Readonly<Record<string, unknown>> = {
+    permissionModeId: "acceptEdits"
+  }
+) {
+  return {
+    type: "session/settingsUpdateRequested" as const,
+    agentSessionId: "session-1",
+    commandId,
+    settings,
     workspaceId: "workspace-1"
   };
 }

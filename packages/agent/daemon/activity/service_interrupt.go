@@ -165,21 +165,33 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 		return WorkspaceAgentStatePatch{}, false
 	}
 	patch := WorkspaceAgentStatePatch{
-		AgentSessionID:    strings.TrimSpace(sessionID),
-		Provider:          firstNonEmptyString(string(event.Provider), source.Provider),
-		ProviderSessionID: firstNonEmptyString(event.ProviderSessionID, source.ProviderSessionID),
-		CWD:               firstNonEmptyString(event.Payload.CWD, source.CWD),
-		Title:             strings.TrimSpace(event.Payload.Title),
-		LifecycleStatus:   strings.TrimSpace(event.Payload.LifecycleStatus),
-		CurrentPhase:      firstNonEmptyString(event.Payload.TurnPhase, event.Payload.EffectiveStatus),
-		LastError:         statePatchLastError(event),
-		OccurredAtUnixMS:  timestamp,
+		AgentSessionID:       strings.TrimSpace(sessionID),
+		Kind:                 strings.TrimSpace(event.SessionKind),
+		RootAgentSessionID:   strings.TrimSpace(event.RootAgentSessionID),
+		RootTurnID:           strings.TrimSpace(event.RootTurnID),
+		ParentAgentSessionID: strings.TrimSpace(event.ParentAgentSessionID),
+		ParentTurnID:         strings.TrimSpace(event.ParentTurnID),
+		ParentToolCallID:     strings.TrimSpace(event.ParentToolCallID),
+		Provider:             firstNonEmptyString(string(event.Provider), source.Provider),
+		ProviderSessionID:    firstNonEmptyString(event.ProviderSessionID, source.ProviderSessionID),
+		CWD:                  firstNonEmptyString(event.Payload.CWD, source.CWD),
+		Title:                strings.TrimSpace(event.Payload.Title),
+		LifecycleStatus:      strings.TrimSpace(event.Payload.LifecycleStatus),
+		CurrentPhase:         firstNonEmptyString(event.Payload.TurnPhase, event.Payload.EffectiveStatus),
+		LastError:            statePatchLastError(event),
+		OccurredAtUnixMS:     timestamp,
 	}
-	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" {
+	if turnID := strings.TrimSpace(event.Payload.TurnID); turnID != "" &&
+		event.Type != activityshared.EventRootProviderTurnStarted &&
+		event.Type != activityshared.EventRootProviderTurnCompleted {
 		patch.Turn = &WorkspaceAgentTurnPatch{
-			TurnID:  turnID,
-			Phase:   strings.TrimSpace(event.Payload.TurnPhase),
-			Outcome: strings.TrimSpace(event.Payload.TurnOutcome),
+			TurnID:                turnID,
+			Origin:                stringValueFromPayloadMap(event.Payload.Metadata, "turnOrigin"),
+			SourceGoalOperationID: stringValueFromPayloadMap(event.Payload.Metadata, "sourceGoalOperationId"),
+			SourceGoalRevision:    int64ValueFromPayloadMap(event.Payload.Metadata, "sourceGoalRevision"),
+			SourceGoalRepairEpoch: int64ValueFromPayloadMap(event.Payload.Metadata, "sourceGoalRepairEpoch"),
+			Phase:                 strings.TrimSpace(event.Payload.TurnPhase),
+			Outcome:               strings.TrimSpace(event.Payload.TurnOutcome),
 		}
 	}
 	applyExplicitTurnLifecycleToPatch(&patch, event)
@@ -211,6 +223,24 @@ func statePatchFromActivityEvent(source EventSource, event activityshared.Event,
 		if patch.Turn != nil {
 			patch.Turn.CompletedAtUnixMS = timestamp
 			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
+		}
+	case activityshared.EventTurnCanceled:
+		patch.CurrentPhase = firstNonEmptyString(patch.CurrentPhase, string(activityshared.TurnPhaseSettled))
+		if patch.Turn != nil {
+			patch.Turn.CompletedAtUnixMS = timestamp
+			patch.Turn.Phase = firstNonEmptyString(patch.Turn.Phase, patch.CurrentPhase)
+		}
+	case activityshared.EventRootProviderTurnStarted, activityshared.EventRootProviderTurnCompleted:
+		phase := RootProviderTurnPhaseRunning
+		if event.Type == activityshared.EventRootProviderTurnCompleted {
+			phase = RootProviderTurnPhaseCompleted
+		}
+		patch.RootProviderTurn = &WorkspaceAgentRootProviderTurnTransition{
+			RootTurnID:     strings.TrimSpace(event.Payload.TurnID),
+			ProviderTurnID: strings.TrimSpace(event.Payload.ProviderTurnID),
+			Phase:          phase,
+			Outcome:        strings.TrimSpace(event.Payload.TurnOutcome),
+			ErrorMessage:   activityshared.BestEffortErrorMessage(event.Payload),
 		}
 	}
 	return patch, true

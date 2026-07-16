@@ -17,9 +17,16 @@ import type { AgentGUIAgentTarget } from "../../../../../types";
 import type { AgentGUIConversationSummary } from "../../../../../agent-gui/agentGuiNode/model/agentGuiConversationModel";
 import {
   isAgentGUIProviderUnresolved,
+  resolveAgentGUIConversationBrowserFreeTitle,
+  resolveAgentGUIConversationTitleDisplayPrompt,
+  resolveAgentGUIConversationTitleLeadingMentionKind,
   resolveAgentGUIConversationTitle,
   resolveAgentGUIProviderIdentity
 } from "../../../../../shared/agentConversationTitleProjection.ts";
+import {
+  createAgentGUIConversationRailTitlePromptSelector,
+  type AgentGUIConversationRailTitlePromptsBySessionId
+} from "../../../../../shared/agentConversationRailTitlePromptSelector.ts";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../../../shared/workspaceAgentSessionSortTime.ts";
 
 export interface AgentGUIConversationListQuery {
@@ -30,25 +37,42 @@ export interface AgentGUIConversationListQuery {
   sessionOrigin: string;
 }
 
+const EMPTY_AGENT_GUI_AGENT_TARGETS: readonly AgentGUIAgentTarget[] = [];
+
 export function projectCanonicalAgentGUIConversationSummaries(
-  sessions: ReturnType<typeof selectWorkspaceAgentConsumerSessions>
+  sessions: ReturnType<typeof selectWorkspaceAgentConsumerSessions>,
+  firstUserDisplayPromptsBySessionId: AgentGUIConversationRailTitlePromptsBySessionId = {}
 ): AgentGUIConversationSummary[] {
   return sessions.map((item): AgentGUIConversationSummary => {
     const provider = resolveAgentGUIProviderIdentity({
       sessionProvider: item.session.provider
     });
+    const { title: canonicalTitle } = resolveAgentGUIConversationTitle(
+      item.session.title
+    );
+    const firstUserDisplayPrompt =
+      firstUserDisplayPromptsBySessionId[item.session.agentSessionId];
+    const titleDisplayPrompt = resolveAgentGUIConversationTitleDisplayPrompt({
+      firstUserDisplayPrompt,
+      title: canonicalTitle
+    });
     const { title, titleFallback } = resolveAgentGUIConversationTitle(
-      item.session.title,
-      provider
+      resolveAgentGUIConversationBrowserFreeTitle({
+        firstUserDisplayPrompt,
+        title: canonicalTitle
+      })
     );
     const canonicalUpdatedAtUnixMs =
       item.session.updatedAtUnixMs ?? item.session.createdAtUnixMs ?? 0;
+    const titleLeadingMentionKind =
+      resolveAgentGUIConversationTitleLeadingMentionKind(titleDisplayPrompt);
     return {
       agentTargetId: item.session.agentTargetId ?? null,
       cwd: item.session.cwd,
       id: item.session.agentSessionId,
       pinnedAtUnixMs: item.session.pinnedAtUnixMs ?? null,
       provider,
+      railSectionKey: item.session.railSectionKey,
       resumable: item.session.resumable,
       sortTimeUnixMs: resolveWorkspaceAgentSessionSortTimeUnixMs({
         createdAtUnixMs: item.session.createdAtUnixMs,
@@ -56,6 +80,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
       }),
       status: item.displayStatus === "idle" ? "ready" : item.displayStatus,
       title,
+      titleLeadingMentionKind,
       titleFallback,
       updatedAtUnixMs: canonicalUpdatedAtUnixMs,
       userId: item.session.userId?.trim() ?? ""
@@ -66,7 +91,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
 export function useAgentGuiConversationList(
   engine: AgentSessionEngine,
   query: AgentGUIConversationListQuery | null,
-  agentTargets: readonly AgentGUIAgentTarget[] = []
+  agentTargets: readonly AgentGUIAgentTarget[] = EMPTY_AGENT_GUI_AGENT_TARGETS
 ) {
   const workspaceReconcile = useEngineSelector(
     engine,
@@ -81,6 +106,15 @@ export function useAgentGuiConversationList(
     engine,
     selectPendingActivations,
     pendingActivationsEqual
+  );
+  const selectRailTitlePrompts = useMemo(
+    () => createAgentGUIConversationRailTitlePromptSelector(),
+    [engine]
+  );
+  const firstUserDisplayPromptsBySessionId = useEngineSelector(
+    engine,
+    selectRailTitlePrompts,
+    Object.is
   );
   return useMemo(() => {
     if (!query) return null;
@@ -109,10 +143,26 @@ export function useAgentGuiConversationList(
         const provider = resolveAgentGUIProviderIdentity({
           sessionProvider: target?.provider ?? query.provider
         });
-        const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activation.title ?? "",
-          provider
+        const { title: canonicalTitle } = resolveAgentGUIConversationTitle(
+          activation.optimisticTitle ?? activation.title ?? ""
         );
+        const titleDisplayPrompt =
+          resolveAgentGUIConversationTitleDisplayPrompt({
+            activation,
+            allowEmptyTitle: true,
+            title: canonicalTitle
+          });
+        const { title, titleFallback } = resolveAgentGUIConversationTitle(
+          resolveAgentGUIConversationBrowserFreeTitle({
+            activation,
+            allowEmptyTitle: true,
+            title: canonicalTitle
+          })
+        );
+        const titleLeadingMentionKind =
+          resolveAgentGUIConversationTitleLeadingMentionKind(
+            titleDisplayPrompt
+          );
         return {
           agentTargetId: activation.agentTargetId,
           cwd: activation.cwd,
@@ -122,6 +172,7 @@ export function useAgentGuiConversationList(
           status: "working",
           projectionSource: "pending_activation",
           title,
+          titleLeadingMentionKind,
           titleFallback,
           updatedAtUnixMs: activation.requestedAtUnixMs,
           userId: query.userId
@@ -131,29 +182,48 @@ export function useAgentGuiConversationList(
       ...projectCanonicalAgentGUIConversationSummaries(
         sessions.filter(
           (item) => item.session.workspaceId === query.workspaceId
-        )
+        ),
+        firstUserDisplayPromptsBySessionId
       ).map((conversation): AgentGUIConversationSummary => {
         const canonicalUpdatedAtUnixMs = conversation.updatedAtUnixMs;
         const activation = latestNewActivationBySessionId.get(conversation.id);
         const activationIsNewer =
           activation !== undefined &&
           activation.requestedAtUnixMs > canonicalUpdatedAtUnixMs;
-        const activationIsPending =
-          activation?.status === "requested" ||
-          activation?.status === "uncertain";
-        const { title, titleFallback } = resolveAgentGUIConversationTitle(
-          activationIsNewer && activation.title
+        const optimisticTitle = activation?.optimisticTitle?.trim() ?? "";
+        const shouldUseOptimisticTitle =
+          conversation.title.trim().length === 0 && optimisticTitle.length > 0;
+        const projectedTitle = shouldUseOptimisticTitle
+          ? optimisticTitle
+          : activationIsNewer && activation?.title
             ? activation.title
-            : conversation.title,
-          conversation.provider
+            : conversation.title;
+        const { title: projectedCanonicalTitle } =
+          resolveAgentGUIConversationTitle(projectedTitle);
+        const titleDisplayPrompt =
+          resolveAgentGUIConversationTitleDisplayPrompt({
+            activation,
+            allowEmptyTitle: shouldUseOptimisticTitle,
+            title: projectedCanonicalTitle
+          });
+        const { title, titleFallback } = resolveAgentGUIConversationTitle(
+          resolveAgentGUIConversationBrowserFreeTitle({
+            activation,
+            allowEmptyTitle: shouldUseOptimisticTitle,
+            title: projectedCanonicalTitle
+          })
         );
+        const titleLeadingMentionKind =
+          resolveAgentGUIConversationTitleLeadingMentionKind(
+            titleDisplayPrompt
+          ) ?? conversation.titleLeadingMentionKind;
         return {
           ...conversation,
           sortTimeUnixMs: activationIsNewer
             ? activation.requestedAtUnixMs
             : conversation.sortTimeUnixMs,
-          status: activationIsPending ? "working" : conversation.status,
           title,
+          titleLeadingMentionKind,
           titleFallback,
           updatedAtUnixMs: activationIsNewer
             ? activation.requestedAtUnixMs
@@ -198,7 +268,14 @@ export function useAgentGuiConversationList(
         query.sessionOrigin
       ].join("::")
     };
-  }, [agentTargets, pendingActivations, query, sessions, workspaceReconcile]);
+  }, [
+    agentTargets,
+    firstUserDisplayPromptsBySessionId,
+    pendingActivations,
+    query,
+    sessions,
+    workspaceReconcile
+  ]);
 }
 
 function pendingActivationsEqual(
@@ -223,7 +300,11 @@ function consumerSessionsEqual(
       item.session === other.session &&
       item.activeTurn === other.activeTurn &&
       item.latestTurn === other.latestTurn &&
-      item.pendingInteractions === other.pendingInteractions &&
+      item.pendingInteractions.length === other.pendingInteractions.length &&
+      item.pendingInteractions.every(
+        (interaction, interactionIndex) =>
+          interaction === other.pendingInteractions[interactionIndex]
+      ) &&
       item.displayStatus === other.displayStatus
     );
   });

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -345,6 +347,10 @@ func (stubAgentSessionService) Get(context.Context, string, string) (agentservic
 	return agentservice.Session{}, nil
 }
 
+func (stubAgentSessionService) GetDetail(context.Context, string, string) (agentservice.SessionDetail, error) {
+	return agentservice.SessionDetail{ChildSessions: []agentservice.Session{}}, nil
+}
+
 func (s stubAgentSessionService) ReadAttachment(ctx context.Context, workspaceID string, agentSessionID string, attachmentID string) (agentservice.PromptAttachment, error) {
 	if s.readAttachmentFn != nil {
 		return s.readAttachmentFn(ctx, workspaceID, agentSessionID, attachmentID)
@@ -396,6 +402,14 @@ func (s stubAgentSessionService) CancelTurn(ctx context.Context, workspaceID str
 
 func (stubAgentSessionService) GoalControl(context.Context, string, string, string, string) (agentservice.GoalControlSessionResult, error) {
 	return agentservice.GoalControlSessionResult{}, nil
+}
+
+func (stubAgentSessionService) GetGoalState(context.Context, string, string) (agentservice.GoalStateSessionResult, error) {
+	return agentservice.GoalStateSessionResult{}, nil
+}
+
+func (stubAgentSessionService) ReconcileGoal(context.Context, string, string) (agentservice.GoalStateSessionResult, error) {
+	return agentservice.GoalStateSessionResult{}, nil
 }
 
 func (s stubAgentSessionService) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
@@ -858,6 +872,62 @@ func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testin
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesSendTypedGoalReturnsOperationWithoutTurn(t *testing.T) {
+	mux := http.NewServeMux()
+	updatedAt := time.UnixMilli(1000)
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			sendInputFn: func(_ context.Context, _, agentSessionID string, input agentservice.SendInput) (agentservice.SendInputResult, error) {
+				if len(input.Content) != 1 || input.Content[0].Text != "/goal clear" {
+					t.Fatalf("input content = %#v", input.Content)
+				}
+				goalState := agentactivitybiz.SessionGoalState{
+					AgentSessionID: agentSessionID,
+					Revision:       2,
+					SyncStatus:     agentactivitybiz.GoalSyncStatusApplying,
+				}
+				goalResult := agentservice.GoalControlSessionResult{
+					OperationID: "goal-op-2",
+					GoalState:   &goalState,
+				}
+				return agentservice.SendInputResult{
+					Kind: "goalControl",
+					Session: agentservice.Session{
+						ID: agentSessionID, Provider: "claude-code", Visible: true,
+						CreatedAt: time.UnixMilli(1000), UpdatedAt: &updatedAt,
+					},
+					GoalControl: &goalResult,
+				}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/agent-session-1/input",
+		map[string]any{"content": []map[string]any{{"type": "text", "text": "/goal clear"}}},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response tuttigenerated.SendWorkspaceAgentSessionInputResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Kind != tuttigenerated.GoalControl {
+		t.Fatalf("kind = %q, want goalControl", response.Kind)
+	}
+	if response.TurnId != nil || response.Turn != nil {
+		t.Fatalf("typed goal manufactured turn: turnId=%v turn=%#v", response.TurnId, response.Turn)
+	}
+	if response.OperationId == nil || *response.OperationId != "goal-op-2" {
+		t.Fatalf("operationId = %v, want goal-op-2", response.OperationId)
+	}
+	if response.GoalState == nil || response.GoalState.Revision != 2 {
+		t.Fatalf("goalState = %#v", response.GoalState)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesListAgentSessionSectionsForwardsLimit(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{
@@ -1116,6 +1186,9 @@ func TestDaemonAPIGeneratedRoutesListAgentSessionsRejectsLimitAboveContractMaxim
 				}
 				if input.SessionCwd != "/workspace" {
 					t.Fatalf("sessionCwd = %q, want /workspace", input.SessionCwd)
+				}
+				if !slices.Equal(input.AgentTargetIDs, []string{"local:codex", "local:claude-code"}) {
+					t.Fatalf("agentTargetIDs = %#v, want selected targets", input.AgentTargetIDs)
 				}
 				if input.Limit != 25 {
 					t.Fatalf("limit = %d, want 25", input.Limit)
@@ -2060,7 +2133,7 @@ func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/agent-generated-files?query=report&sessionCwd=/workspace&limit=25",
+		"/v1/workspaces/ws-1/agent-generated-files?query=report&sessionCwd=/workspace&agentTargetIds=local%3Acodex&agentTargetIds=local%3Aclaude-code&limit=25",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {
@@ -2078,6 +2151,37 @@ func TestDaemonAPIGeneratedRoutesListAgentGeneratedFiles(t *testing.T) {
 	}
 	if response.Entries[0].Path != "/workspace/report.md" {
 		t.Fatalf("entry path = %q, want /workspace/report.md", response.Entries[0].Path)
+	}
+}
+
+func TestDaemonAPIGeneratedRoutesRejectsTooManyAgentTargetFilters(t *testing.T) {
+	mux := http.NewServeMux()
+	serviceCalls := 0
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			listGeneratedFilesFn: func(context.Context, string, agentservice.ListGeneratedFilesInput) (agentservice.GeneratedFileList, error) {
+				serviceCalls++
+				return agentservice.GeneratedFileList{}, nil
+			},
+		},
+	}))
+
+	query := make(url.Values)
+	for index := 0; index <= agentservice.MaxGeneratedFileAgentTargetFilters; index++ {
+		query.Add("agentTargetIds", fmt.Sprintf("agent-%d", index))
+	}
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodGet,
+		"/v1/workspaces/ws-1/agent-generated-files?"+query.Encode(),
+		nil,
+	)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if serviceCalls != 0 {
+		t.Fatalf("service calls = %d, want 0", serviceCalls)
 	}
 }
 

@@ -77,7 +77,7 @@ INSERT INTO workspace_agent_sessions (
   created_at_unix_ms, updated_at_unix_ms
 ) VALUES
   ('ws-legacy', 'session-with-target', 'runtime', 'local:codex', 'codex', 'Old Session', 'completed',
-   '{"visible":false,"imported":true,"capabilities":["planMode","planMode","unknown","modelImageInputRequired"],"backgroundAgents":{"count":99,"items":[{"taskId":"task-1","description":"done","status":"cancelled"}]},"goal":{"objective":"ship","status":"usageLimited"},"providerConfig":{"threadId":"thread-1"}}', 1, 2),
+   '{"visible":false,"imported":true,"capabilities":["planMode","planMode","unknown","modelImageInputRequired"],"goal":{"objective":"ship","status":"usageLimited"},"providerConfig":{"threadId":"thread-1"}}', 1, 2),
   ('ws-legacy', 'session-untargeted', 'runtime', '', 'codex', 'Untargeted Session', 'completed', '{}', 1, 1);
 
 CREATE TABLE workspace_agent_messages (
@@ -146,21 +146,18 @@ WHERE workspace_id = 'ws-legacy' AND agent_session_id = 'session-with-target'
 		t.Fatalf("read migrated session metadata: %v", err)
 	}
 	metadata, err := unmarshalJSONMap(metadataJSON)
-	if err != nil || metadata["visible"] != false || metadata["imported"] != true ||
-		payloadString(metadata, "backgroundAgents") != "" {
+	if err != nil || metadata["visible"] != false || metadata["imported"] != true {
 		t.Fatalf("metadata=%#v err=%v", metadata, err)
 	}
 	capabilities, _ := metadata["capabilities"].([]any)
-	background, _ := metadata["backgroundAgents"].(map[string]any)
-	items, _ := background["items"].([]any)
-	item, _ := items[0].(map[string]any)
 	goal, _ := metadata["goal"].(map[string]any)
-	if len(capabilities) != 2 || background["count"] != float64(0) || item["status"] != "canceled" || goal["status"] != "usageLimited" {
+	if len(capabilities) != 2 || goal["status"] != "usageLimited" {
 		t.Fatalf("normalized metadata=%#v", metadata)
 	}
 	internal, err := unmarshalJSONMap(internalJSON)
 	providerConfig, _ := internal["providerConfig"].(map[string]any)
-	if err != nil || providerConfig["threadId"] != "thread-1" || internal["visible"] != nil || internal["goal"] != nil {
+	if err != nil || providerConfig["threadId"] != "thread-1" || internal["visible"] != nil ||
+		internal["goal"] != nil {
 		t.Fatalf("internal context=%#v err=%v", internal, err)
 	}
 	for _, removedColumn := range []string{"status", "current_phase", "last_error", "runtime_context_json"} {

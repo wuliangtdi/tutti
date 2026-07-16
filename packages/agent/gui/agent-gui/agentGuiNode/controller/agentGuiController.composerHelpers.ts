@@ -135,21 +135,6 @@ export function reasoningSelectionForModelFromComposerOptions(
   };
 }
 
-// liveModelOptionValuesFromRuntimeContext extracts the model option values a
-// live ACP session advertises through its runtime-context config options
-// (configOptions[id="model"].options[].value). Providers such as Cursor only
-// expose their model list this way — there is no static catalog.
-export function composerOptionsMissingLiveModelValues(
-  options: AgentActivityComposerOptions | null,
-  liveValues: readonly string[]
-): boolean {
-  if (!options || liveValues.length === 0) {
-    return false;
-  }
-  const known = new Set(options.models.map((option) => option.value));
-  return liveValues.some((value) => !known.has(value));
-}
-
 export function modelSelectionFromComposerOptions(
   options: AgentActivityComposerOptions | null,
   currentValue: string | null

@@ -3,6 +3,7 @@ import type {
   AgentGUIAgentDirectorySnapshot,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
+  AgentGUIComposerAppendRequest,
   AgentGUIAgentsEmptyRenderer,
   AgentGUIProps,
   AgentHostInputApi
@@ -43,6 +44,7 @@ export interface DesktopAgentGUIWorkbenchBodyProps {
   agentProviderStatusService?: IAgentProviderStatusService;
   context: WorkbenchHostNodeBodyContext;
   computerUseApi?: Pick<DesktopComputerUseApi, "checkStatus">;
+  composerAppendRequest?: AgentGUIComposerAppendRequest | null;
   conversationRailAutoCollapseWidthPx?: number | null;
   dockPreviewCache: WorkbenchDockPreviewCache;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
@@ -133,6 +135,7 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.appCenterService === next.appCenterService &&
     previous.agentProviderStatusService === next.agentProviderStatusService &&
     previous.computerUseApi === next.computerUseApi &&
+    previous.composerAppendRequest === next.composerAppendRequest &&
     previous.conversationRailAutoCollapseWidthPx ===
       next.conversationRailAutoCollapseWidthPx &&
     previous.dockPreviewCache === next.dockPreviewCache &&

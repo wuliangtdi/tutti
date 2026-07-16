@@ -38,68 +38,68 @@ func (r *startupWaitRuntime) Sessions(string) []ProviderRuntimeSession {
 	return append([]ProviderRuntimeSession(nil), r.afterWaitSessions...)
 }
 
-func TestClaudeLiveModelCacheKeyIgnoresCallerCwd(t *testing.T) {
+func TestAccountScopedLiveModelCacheKeyIgnoresCallerWorkspaceAndCwd(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 
-	rootKey := composerLiveModelCacheKey(
-		agentprovider.ClaudeCode,
-		"workspace-1",
-		"/",
-		liveModelAuthScope(agentprovider.ClaudeCode),
-	)
-	projectKey := composerLiveModelCacheKey(
-		agentprovider.ClaudeCode,
-		"workspace-1",
-		"/Users/example/project",
-		liveModelAuthScope(agentprovider.ClaudeCode),
-	)
-	if rootKey != projectKey {
-		t.Fatalf("Claude cache keys differ by cwd: root=%q project=%q", rootKey, projectKey)
-	}
-
-	cursorRootKey := composerLiveModelCacheKey(agentprovider.Cursor, "workspace-1", "/", "")
-	cursorProjectKey := composerLiveModelCacheKey(agentprovider.Cursor, "workspace-1", "/project", "")
-	if cursorRootKey == cursorProjectKey {
-		t.Fatal("non-Claude cache keys must retain their cwd scope")
+	for _, provider := range []string{agentprovider.ClaudeCode, agentprovider.Cursor} {
+		rootKey := composerLiveModelCacheKey(
+			provider,
+			"workspace-1",
+			"/",
+			liveModelAuthScope(provider),
+		)
+		projectKey := composerLiveModelCacheKey(
+			provider,
+			"workspace-2",
+			"/Users/example/project",
+			liveModelAuthScope(provider),
+		)
+		if rootKey != projectKey {
+			t.Fatalf("%s cache keys differ by workspace/cwd: root=%q project=%q", provider, rootKey, projectKey)
+		}
 	}
 }
 
-func TestClaudeLiveModelScopeIsSharedAcrossWorkspacesAndSeparatedByTarget(t *testing.T) {
+func TestAccountScopedLiveModelScopeIsSharedAcrossWorkspacesAndSeparatedByTarget(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	first := newComposerLiveModelScope(agentprovider.ClaudeCode, "workspace-1", "/one", "local-claude")
-	second := newComposerLiveModelScope(agentprovider.ClaudeCode, "workspace-2", "/two", "local-claude")
-	otherTarget := newComposerLiveModelScope(agentprovider.ClaudeCode, "workspace-2", "/two", "remote-claude")
-	if first.key() != second.key() {
-		t.Fatalf("Claude discovery scope differs across workspaces: %q != %q", first.key(), second.key())
-	}
-	if first.key() == otherTarget.key() {
-		t.Fatal("Claude discovery scope must distinguish agent targets")
+	for _, provider := range []string{agentprovider.ClaudeCode, agentprovider.Cursor} {
+		first := newComposerLiveModelScope(provider, "workspace-1", "/one", "local-agent")
+		second := newComposerLiveModelScope(provider, "workspace-2", "/two", "local-agent")
+		otherTarget := newComposerLiveModelScope(provider, "workspace-2", "/two", "remote-agent")
+		if first.key() != second.key() {
+			t.Fatalf("%s discovery scope differs across workspaces: %q != %q", provider, first.key(), second.key())
+		}
+		if first.key() == otherTarget.key() {
+			t.Fatalf("%s discovery scope must distinguish agent targets", provider)
+		}
 	}
 }
 
-func TestClaudeLiveModelDiscoveryUsesDaemonOwnedCwd(t *testing.T) {
+func TestAccountScopedLiveModelDiscoveryUsesDaemonOwnedCwd(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("TUTTI_STATE_DIR", stateDir)
 	service := newIsolatedAgentService(newFakeRuntime())
 
-	fromRoot, err := service.resolveLiveModelDiscoveryCwd(context.Background(), agentprovider.ClaudeCode, "/")
-	if err != nil {
-		t.Fatalf("resolve root discovery cwd: %v", err)
-	}
-	fromProject, err := service.resolveLiveModelDiscoveryCwd(context.Background(), agentprovider.ClaudeCode, "/Users/example/project")
-	if err != nil {
-		t.Fatalf("resolve project discovery cwd: %v", err)
-	}
-	want := filepath.Join(stateDir, "agent", "discovery", agentprovider.ClaudeCode)
-	if fromRoot != want || fromProject != want {
-		t.Fatalf("Claude discovery cwd = %q and %q, want %q", fromRoot, fromProject, want)
-	}
-	info, err := os.Stat(want)
-	if err != nil {
-		t.Fatalf("stat discovery cwd: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("discovery cwd %q is not a directory", want)
+	for _, provider := range []string{agentprovider.ClaudeCode, agentprovider.Cursor} {
+		fromRoot, err := service.resolveLiveModelDiscoveryCwd(context.Background(), provider, "/")
+		if err != nil {
+			t.Fatalf("resolve %s root discovery cwd: %v", provider, err)
+		}
+		fromProject, err := service.resolveLiveModelDiscoveryCwd(context.Background(), provider, "/Users/example/project")
+		if err != nil {
+			t.Fatalf("resolve %s project discovery cwd: %v", provider, err)
+		}
+		want := filepath.Join(stateDir, "agent", "discovery", provider)
+		if fromRoot != want || fromProject != want {
+			t.Fatalf("%s discovery cwd = %q and %q, want %q", provider, fromRoot, fromProject, want)
+		}
+		info, err := os.Stat(want)
+		if err != nil {
+			t.Fatalf("stat %s discovery cwd: %v", provider, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("discovery cwd %q is not a directory", want)
+		}
 	}
 }
 

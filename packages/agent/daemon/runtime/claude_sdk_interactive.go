@@ -27,10 +27,12 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 	if requestID == "" {
 		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
 	}
-	adapterSession, pending := a.getClaudeSDKPendingRequestWithSession(session.AgentSessionID, turnID, requestID)
+	targetAgentSessionID := firstNonEmpty(strings.TrimSpace(input.AgentSessionID), strings.TrimSpace(session.AgentSessionID))
+	adapterSession, pending := a.getClaudeSDKPendingRequestWithSession(targetAgentSessionID, turnID, requestID)
 	if pending == nil {
 		return SubmitInteractiveResult{}, fmt.Errorf("%w: %q", ErrInteractiveRequestNotLive, requestID)
 	}
+	providerAgentSessionID := a.claudeSDKAdapterSessionID(adapterSession, session.AgentSessionID)
 
 	optionID := strings.TrimSpace(input.OptionID)
 	if optionID == "" && input.Payload != nil {
@@ -68,8 +70,8 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 	}
 
 	payload := map[string]any{
-		"agentSessionId": session.AgentSessionID,
-		"turnId":         turnID,
+		"agentSessionId": providerAgentSessionID,
+		"turnId":         claudeSDKInteractiveProviderTurnID(pending),
 		"requestId":      requestID,
 		"action":         response.action,
 		"optionId":       optionID,
@@ -83,7 +85,7 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 		}
 		ackCtx, cancel := context.WithTimeout(context.Background(), ackTimeout)
 		defer cancel()
-		event, err := a.roundTripClaudeSDKResponse(ackCtx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
+		event, err := a.roundTripClaudeSDKResponse(ackCtx, providerAgentSessionID, adapterSession, claudeSDKSidecarRequest{
 			ID:      newID(),
 			Type:    "submit_interactive",
 			Payload: payload,
@@ -192,12 +194,13 @@ func (a *ClaudeCodeSDKAdapter) queryClaudeSDKInteractiveDisposition(
 	pending *pendingInteractiveRequest,
 	response pendingInteractiveResponse,
 ) claudeSDKInteractiveAck {
-	event, err := a.roundTripClaudeSDKResponse(ctx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
+	providerAgentSessionID := a.claudeSDKAdapterSessionID(adapterSession, session.AgentSessionID)
+	event, err := a.roundTripClaudeSDKResponse(ctx, providerAgentSessionID, adapterSession, claudeSDKSidecarRequest{
 		ID:   newID(),
 		Type: "interactive_disposition",
 		Payload: map[string]any{
-			"agentSessionId": session.AgentSessionID,
-			"turnId":         pending.turnID,
+			"agentSessionId": providerAgentSessionID,
+			"turnId":         claudeSDKInteractiveProviderTurnID(pending),
 			"requestId":      pending.requestID,
 			"action":         response.action,
 			"optionId":       response.optionID,
@@ -242,20 +245,27 @@ func (a *ClaudeCodeSDKAdapter) applyClaudeSDKInteractiveAck(
 		return
 	}
 	events := normalizedPermissionResolvedEvents(session, pending.turnID, pending, response, terminalErr)
+	if child, ok := adapterSession.claudeSDKChildByAgentSessionID(pending.agentSessionID); ok {
+		events = claudeSDKScopeInteractiveEvents(events, child, true)
+	}
 	events = a.stampTurnLifecycleSnapshots(adapterSession, events)
 	a.updateClaudeSDKSessionSnapshot(adapterSession, events)
 	if waiter := a.claudeSDKTurnWaiter(adapterSession, pending.turnID); waiter != nil {
 		a.completeClaudeSDKWaiterEvent(adapterSession, waiter, pending.turnID, events, false, nil)
 		return
 	}
-	a.emitClaudeSDKSessionEvents(session.AgentSessionID, events)
+	a.emitClaudeSDKSessionEvents(a.claudeSDKAdapterSessionID(adapterSession, session.AgentSessionID), events)
 }
 
 func (a *ClaudeCodeSDKAdapter) InteractiveDisposition(session Session, turnID string, requestID string) InteractiveDisposition {
-	if pending := a.getClaudeSDKPendingRequest(session.AgentSessionID, turnID, requestID); pending != nil {
+	return a.InteractiveDispositionForTarget(session, session.AgentSessionID, turnID, requestID)
+}
+
+func (a *ClaudeCodeSDKAdapter) InteractiveDispositionForTarget(_ Session, agentSessionID string, turnID string, requestID string) InteractiveDisposition {
+	if pending := a.getClaudeSDKPendingRequest(agentSessionID, turnID, requestID); pending != nil {
 		return runtimeInteractiveDisposition(pending)
 	}
-	return a.terminalInteractiveDisposition(session.AgentSessionID, turnID, requestID)
+	return a.terminalInteractiveDisposition(agentSessionID, turnID, requestID)
 }
 
 func (*ClaudeCodeSDKAdapter) StateAfterInteractiveSelection(
@@ -293,10 +303,21 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 	adapterSession *claudeSDKAdapterSession,
 	session Session,
 	turnID string,
+	providerTurnID string,
 	payload map[string]any,
 ) ([]activityshared.Event, error) {
 	requestID := firstNonEmpty(payloadString(payload, "requestId"), payloadString(payload, "id"), newID())
 	toolCall := claudeSDKInteractiveToolCall(payload, requestID)
+	eventSession := session
+	eventTurnID := strings.TrimSpace(turnID)
+	child, childScoped := adapterSession.claudeSDKChildForPayload(payload)
+	if !childScoped {
+		child, childScoped = adapterSession.claudeSDKChildForPayload(toolCall)
+	}
+	if childScoped {
+		eventSession = claudeSDKChildRuntimeSession(session, child)
+		eventTurnID = child.TurnID
+	}
 	options := claudeSDKInteractiveOptions(payload, toolCall)
 	interactivePrompt := normalizedInteractivePrompt(toolCall, options, requestID)
 	title := firstNonEmpty(
@@ -344,38 +365,56 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		}
 	}
 	pending := &pendingInteractiveRequest{
-		agentSessionID: strings.TrimSpace(session.AgentSessionID),
+		agentSessionID: strings.TrimSpace(eventSession.AgentSessionID),
 		requestID:      requestID,
 		eventID:        newID(),
 		callID:         callID,
 		callType:       callType,
-		turnID:         strings.TrimSpace(turnID),
-		input:          input,
-		kind:           firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
-		name:           title,
-		toolName:       firstNonEmpty(asString(eventPayload["toolName"]), title),
-		prompt:         interactivePrompt,
-		options:        options,
-		response:       make(chan pendingInteractiveResponse, 1),
+		turnID:         eventTurnID,
+		providerTurnID: firstNonEmptyString(
+			payloadString(payload, "turnId"),
+			payloadString(payload, "turnID"),
+			strings.TrimSpace(providerTurnID),
+		),
+		input:    input,
+		kind:     firstNonEmpty(interactivePromptKind(interactivePrompt), "approval"),
+		name:     title,
+		toolName: firstNonEmpty(asString(eventPayload["toolName"]), title),
+		prompt:   interactivePrompt,
+		options:  options,
+		response: make(chan pendingInteractiveResponse, 1),
 	}
 	a.storeClaudeSDKPendingRequest(adapterSession, pending)
-	return []activityshared.Event{
-		newTurnActivityEvent(session, EventTurnUpdated, turnID, SessionStatusWaiting, "", "", map[string]any{
+	events := []activityshared.Event{
+		newTurnActivityEvent(eventSession, EventTurnUpdated, eventTurnID, SessionStatusWaiting, "", "", map[string]any{
 			"phase":     string(activityshared.TurnPhaseWaitingApproval),
 			"requestId": requestID,
 		}),
 		newTurnActivityEventWithID(
-			session,
+			eventSession,
 			pending.eventID,
 			EventCallStarted,
-			turnID,
+			eventTurnID,
 			SessionStatusWaiting,
 			"",
 			title,
 			eventPayload,
 		),
-		normalizedInteractionRequestedEvent(session, turnID, pending),
-	}, nil
+		normalizedInteractionRequestedEvent(eventSession, eventTurnID, pending),
+	}
+	if childScoped {
+		for index := range events {
+			events[index] = claudeSDKEventForChild(events[index], child)
+		}
+	}
+	return events, nil
+}
+
+func claudeSDKInteractiveProviderTurnID(pending *pendingInteractiveRequest) string {
+	if pending == nil {
+		return ""
+	}
+	return firstNonEmptyString(strings.TrimSpace(pending.providerTurnID), strings.TrimSpace(pending.turnID))
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
@@ -391,7 +430,7 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 		payloadString(payload, "turnID"),
 	)
 	pending := a.getClaudeSDKPendingRequest(session.AgentSessionID, eventTurnID, requestID)
-	if pending == nil && eventTurnID == "" {
+	if pending == nil {
 		pending = a.getUniqueClaudeSDKPendingRequestByRequestID(session.AgentSessionID, requestID)
 	}
 	if pending == nil {
@@ -403,8 +442,11 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 		payloadString(payload, "turnID"),
 		pending.turnID,
 	)
-	if adapterSession != nil {
-		effectiveTurnID = adapterSession.backgroundAgentTurnID(payload, effectiveTurnID)
+	eventSession := session
+	child, childScoped := adapterSession.claudeSDKChildByAgentSessionID(pending.agentSessionID)
+	if childScoped {
+		eventSession = claudeSDKChildRuntimeSession(session, child)
+		effectiveTurnID = child.TurnID
 	}
 	response := pendingInteractiveResponse{
 		optionID: firstNonEmpty(payloadString(payload, "optionId"), payloadString(payload, "selectedId")),
@@ -415,12 +457,24 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveResolved(
 		if !pending.finish(pendingInteractiveRequestStateSuperseded) {
 			return nil
 		}
-		return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, pendingInteractiveResponse{}, errors.New(errText))
+		events := normalizedPermissionResolvedEvents(eventSession, effectiveTurnID, pending, pendingInteractiveResponse{}, errors.New(errText))
+		return claudeSDKScopeInteractiveEvents(events, child, childScoped)
 	}
 	if !pending.finish(pendingInteractiveRequestStateAnswered) {
 		return nil
 	}
-	return normalizedPermissionResolvedEvents(session, effectiveTurnID, pending, response, nil)
+	events := normalizedPermissionResolvedEvents(eventSession, effectiveTurnID, pending, response, nil)
+	return claudeSDKScopeInteractiveEvents(events, child, childScoped)
+}
+
+func claudeSDKScopeInteractiveEvents(events []activityshared.Event, child claudeSDKChildSession, childScoped bool) []activityshared.Event {
+	if !childScoped {
+		return events
+	}
+	for index := range events {
+		events[index] = claudeSDKEventForChild(events[index], child)
+	}
+	return events
 }
 
 func (a *ClaudeCodeSDKAdapter) claudeSDKPendingRequestFailureEvents(
@@ -524,7 +578,7 @@ func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequestWithSession(agentSessio
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	adapterSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	adapterSession := a.claudeSDKAdapterSessionForAgentSessionIDLocked(agentSessionID)
 	if adapterSession == nil || adapterSession.invalid {
 		return nil, nil
 	}
@@ -532,12 +586,15 @@ func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequestWithSession(agentSessio
 }
 
 func (a *ClaudeCodeSDKAdapter) getUniqueClaudeSDKPendingRequestByRequestID(agentSessionID string, requestID string) *pendingInteractiveRequest {
-	adapterSession := a.getSession(agentSessionID)
-	if adapterSession == nil {
+	if a == nil {
 		return nil
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	adapterSession := a.claudeSDKAdapterSessionForAgentSessionIDLocked(agentSessionID)
+	if adapterSession == nil || adapterSession.invalid {
+		return nil
+	}
 	if adapterSession.pendingRequests == nil {
 		return nil
 	}
@@ -555,6 +612,36 @@ func (a *ClaudeCodeSDKAdapter) getUniqueClaudeSDKPendingRequestByRequestID(agent
 	return match
 }
 
+func (a *ClaudeCodeSDKAdapter) claudeSDKAdapterSessionForAgentSessionIDLocked(agentSessionID string) *claudeSDKAdapterSession {
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if adapterSession := a.sessions[agentSessionID]; adapterSession != nil {
+		return adapterSession
+	}
+	for _, adapterSession := range a.sessions {
+		if _, ok := adapterSession.claudeSDKChildByAgentSessionID(agentSessionID); ok {
+			return adapterSession
+		}
+	}
+	return nil
+}
+
+func (a *ClaudeCodeSDKAdapter) claudeSDKAdapterSessionID(adapterSession *claudeSDKAdapterSession, fallback string) string {
+	if a == nil || adapterSession == nil {
+		return strings.TrimSpace(fallback)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if agentSessionID := strings.TrimSpace(adapterSession.session.AgentSessionID); agentSessionID != "" {
+		return agentSessionID
+	}
+	for agentSessionID, candidate := range a.sessions {
+		if candidate == adapterSession {
+			return agentSessionID
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
 func claudeSDKPendingRequestKey(turnID string, requestID string) string {
 	return strings.TrimSpace(turnID) + "\x00" + strings.TrimSpace(requestID)
 }
@@ -566,7 +653,7 @@ func (a *ClaudeCodeSDKAdapter) recordTerminalInteractiveRequest(pending *pending
 	disposition := interactiveDispositionFromState(state)
 	key := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
 	a.mu.Lock()
-	if adapterSession := a.sessions[key.agentSessionID]; adapterSession != nil && adapterSession.pendingRequests != nil {
+	if adapterSession := a.claudeSDKAdapterSessionForAgentSessionIDLocked(key.agentSessionID); adapterSession != nil && adapterSession.pendingRequests != nil {
 		mapKey := claudeSDKPendingRequestKey(key.turnID, key.requestID)
 		if adapterSession.pendingRequests[mapKey] == pending {
 			delete(adapterSession.pendingRequests, mapKey)

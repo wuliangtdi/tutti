@@ -31,10 +31,42 @@ func (p *ActivityProjection) publishPersistedTurnState(
 		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "turn_update",
 			activityTurnUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.Turn, input.State.OccurredAtUnixMS))
 	}
+	if result.RootTurnAccepted {
+		p.publishActivityUpdated(ctx, input.WorkspaceID, result.RootTurn.AgentSessionID, "turn_update",
+			activityTurnUpdateEventPayload(input.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn, input.State.OccurredAtUnixMS))
+		if result.RootTurn.Phase == agentactivitybiz.TurnPhaseSettled {
+			p.observeRootTurnSettled(ctx, input.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn)
+		}
+	}
 	if result.InteractionResult == agentactivitybiz.InteractionTransitionApplied {
 		p.publishActivityUpdated(ctx, input.WorkspaceID, input.AgentSessionID, "interaction_update",
 			activityInteractionUpdateEventPayload(input.WorkspaceID, input.AgentSessionID, result.Interaction, input.State.OccurredAtUnixMS))
 	}
+}
+
+func rootProviderTurnTransitionFromStateInput(
+	input agentsessionstore.ReportSessionStateInput,
+) (agentactivitybiz.RootProviderTurnTransition, bool) {
+	root := input.State.RootProviderTurn
+	if root == nil || strings.TrimSpace(root.RootTurnID) == "" || strings.TrimSpace(root.ProviderTurnID) == "" {
+		return agentactivitybiz.RootProviderTurnTransition{}, false
+	}
+	transition := agentactivitybiz.RootProviderTurnTransition{
+		WorkspaceID:        strings.TrimSpace(input.WorkspaceID),
+		RootAgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		RootTurnID:         strings.TrimSpace(root.RootTurnID),
+		ProviderTurnID:     strings.TrimSpace(root.ProviderTurnID),
+		Phase:              strings.TrimSpace(root.Phase),
+		Outcome:            normalizeTurnOutcomeV2(root.Outcome),
+		ErrorMessage:       strings.TrimSpace(root.ErrorMessage),
+		ErrorCode:          strings.TrimSpace(root.ErrorCode),
+		OccurredAtUnixMS:   input.State.OccurredAtUnixMS,
+	}
+	if root.CompletedCommand != nil {
+		transition.CompletedCommandKind = strings.TrimSpace(root.CompletedCommand.Kind)
+		transition.CompletedCommandStatus = strings.TrimSpace(root.CompletedCommand.Status)
+	}
+	return transition, true
 }
 
 func interactionTransitionFromStateInput(
@@ -65,10 +97,10 @@ func interactionTransitionFromStateInput(
 	}, nil
 }
 
-// turnTransitionFromStateInput derives one closed-vocabulary turn transition
-// from a session state report. The structured Turn patch wins; a bare
-// TurnLifecycle is the fallback carrier. Reports without turn information
-// produce no transition.
+// turnTransitionFromStateInput derives one closed-vocabulary canonical turn
+// transition from an explicit structured Turn patch. TurnLifecycle is a
+// runtime/session snapshot for presentation and must not implicitly mutate a
+// WorkspaceAgentTurn.
 func turnTransitionFromStateInput(
 	input agentsessionstore.ReportSessionStateInput,
 ) (agentactivitybiz.TurnTransition, bool) {
@@ -82,15 +114,19 @@ func turnTransitionFromStateInput(
 			return agentactivitybiz.TurnTransition{}, false
 		}
 		transition := agentactivitybiz.TurnTransition{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   agentSessionID,
-			TurnID:           strings.TrimSpace(turn.TurnID),
-			Phase:            phase,
-			Outcome:          normalizeTurnOutcomeV2(turn.Outcome),
-			FileChanges:      clonePayload(turn.FileChanges),
-			StartedAtUnixMS:  turn.StartedAtUnixMS,
-			SettledAtUnixMS:  turn.CompletedAtUnixMS,
-			OccurredAtUnixMS: state.OccurredAtUnixMS,
+			WorkspaceID:           workspaceID,
+			AgentSessionID:        agentSessionID,
+			TurnID:                strings.TrimSpace(turn.TurnID),
+			Phase:                 phase,
+			Outcome:               normalizeTurnOutcomeV2(turn.Outcome),
+			FileChanges:           clonePayload(turn.FileChanges),
+			StartedAtUnixMS:       turn.StartedAtUnixMS,
+			SettledAtUnixMS:       turn.CompletedAtUnixMS,
+			OccurredAtUnixMS:      state.OccurredAtUnixMS,
+			Origin:                strings.TrimSpace(turn.Origin),
+			SourceGoalOperationID: strings.TrimSpace(turn.SourceGoalOperationID),
+			SourceGoalRevision:    turn.SourceGoalRevision,
+			SourceGoalRepairEpoch: turn.SourceGoalRepairEpoch,
 		}
 		if turn.CompletedCommand != nil {
 			transition.CompletedCommandKind = strings.TrimSpace(turn.CompletedCommand.Kind)
@@ -98,37 +134,6 @@ func turnTransitionFromStateInput(
 		}
 		if phase == agentactivitybiz.TurnPhaseSettled && transition.Outcome == agentactivitybiz.TurnOutcomeFailed {
 			transition.ErrorMessage = strings.TrimSpace(state.LastError)
-		}
-		return transition, true
-	}
-
-	if lifecycle := state.TurnLifecycle; lifecycle != nil {
-		turnID := ""
-		if lifecycle.ActiveTurnID != nil {
-			turnID = strings.TrimSpace(*lifecycle.ActiveTurnID)
-		}
-		if turnID == "" {
-			return agentactivitybiz.TurnTransition{}, false
-		}
-		phase := normalizeTurnPhaseV2(lifecycle.Phase, lifecycle.Settling)
-		if phase == "" {
-			return agentactivitybiz.TurnTransition{}, false
-		}
-		outcome := ""
-		if lifecycle.Outcome != nil {
-			outcome = normalizeTurnOutcomeV2(*lifecycle.Outcome)
-		}
-		transition := agentactivitybiz.TurnTransition{
-			WorkspaceID:      workspaceID,
-			AgentSessionID:   agentSessionID,
-			TurnID:           turnID,
-			Phase:            phase,
-			Outcome:          outcome,
-			OccurredAtUnixMS: state.OccurredAtUnixMS,
-		}
-		if lifecycle.CompletedCommand != nil {
-			transition.CompletedCommandKind = strings.TrimSpace(lifecycle.CompletedCommand.Kind)
-			transition.CompletedCommandStatus = strings.TrimSpace(lifecycle.CompletedCommand.Status)
 		}
 		return transition, true
 	}
@@ -206,7 +211,8 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		outcome = &value
 	}
 	var turnError *tuttigenerated.WorkspaceAgentTurnError
-	if message := strings.TrimSpace(turn.ErrorMessage); message != "" {
+	if message := strings.TrimSpace(turn.ErrorMessage); message != "" &&
+		(turn.Outcome == agentactivitybiz.TurnOutcomeFailed || turn.Outcome == agentactivitybiz.TurnOutcomeInterrupted) {
 		turnError = &tuttigenerated.WorkspaceAgentTurnError{
 			Message: message,
 			Code:    optionalStringPointerValue(turn.ErrorCode),
@@ -229,17 +235,36 @@ func GeneratedWorkspaceAgentTurn(turn agentactivitybiz.Turn) tuttigenerated.Work
 		value := turn.SettledAtUnixMS
 		settledAt = &value
 	}
+	origin := tuttigenerated.WorkspaceAgentTurnOrigin(strings.TrimSpace(turn.Origin))
+	var sourceGoalOperationID *string
+	if value := strings.TrimSpace(turn.SourceGoalOperationID); value != "" {
+		sourceGoalOperationID = &value
+	}
+	var sourceGoalRevision *int64
+	if turn.SourceGoalRevision > 0 {
+		value := turn.SourceGoalRevision
+		sourceGoalRevision = &value
+	}
+	var sourceGoalRepairEpoch *int64
+	if sourceGoalOperationID != nil {
+		value := turn.SourceGoalRepairEpoch
+		sourceGoalRepairEpoch = &value
+	}
 	return tuttigenerated.WorkspaceAgentTurn{
-		AgentSessionId:   strings.TrimSpace(turn.AgentSessionID),
-		CompletedCommand: completedCommand,
-		Error:            turnError,
-		FileChanges:      fileChanges,
-		Outcome:          outcome,
-		Phase:            tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
-		SettledAtUnixMs:  settledAt,
-		StartedAtUnixMs:  turn.StartedAtUnixMS,
-		TurnId:           strings.TrimSpace(turn.TurnID),
-		UpdatedAtUnixMs:  turn.UpdatedAtUnixMS,
+		AgentSessionId:        strings.TrimSpace(turn.AgentSessionID),
+		CompletedCommand:      completedCommand,
+		Error:                 turnError,
+		FileChanges:           fileChanges,
+		Outcome:               outcome,
+		Origin:                origin,
+		Phase:                 tuttigenerated.WorkspaceAgentTurnPhase(turn.Phase),
+		SettledAtUnixMs:       settledAt,
+		StartedAtUnixMs:       turn.StartedAtUnixMS,
+		SourceGoalOperationId: sourceGoalOperationID,
+		SourceGoalRevision:    sourceGoalRevision,
+		SourceGoalRepairEpoch: sourceGoalRepairEpoch,
+		TurnId:                strings.TrimSpace(turn.TurnID),
+		UpdatedAtUnixMs:       turn.UpdatedAtUnixMS,
 	}
 }
 

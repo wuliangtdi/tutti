@@ -34,6 +34,7 @@ const (
 	EventSessionCompleted = "session.completed"
 	EventSessionFailed    = "session.failed"
 	EventSessionCanceled  = "session.canceled"
+	EventSessionAudit     = "session.audit"
 	EventTurnStarted      = "turn.started"
 	EventTurnUpdated      = "turn.updated"
 	EventTurnCompleted    = "turn.completed"
@@ -55,22 +56,24 @@ const (
 	StreamEventStatePatch        = "state_patch"
 	StreamEventAvailableCommands = "available_commands_update"
 	StreamEventConfigOptions     = "config_options_update"
+	StreamEventSessionAudit      = "session_audit"
 )
 
 type StartInput struct {
-	RoomID            string
-	AgentSessionID    string
-	AgentTargetID     string
-	Provider          string
-	CWD               string
-	Env               []string
-	Title             string
-	Visible           *bool
-	RuntimeContext    map[string]any
-	ProviderTargetRef map[string]any
-	PermissionModeID  string
-	Settings          *SessionSettings
-	Provisional       bool
+	RoomID                  string
+	AgentSessionID          string
+	AgentTargetID           string
+	Provider                string
+	CWD                     string
+	Env                     []string
+	Title                   string
+	InitialTitleEstablished bool
+	Visible                 *bool
+	RuntimeContext          map[string]any
+	ProviderTargetRef       map[string]any
+	PermissionModeID        string
+	Settings                *SessionSettings
+	Provisional             bool
 }
 
 type ResumeInput struct {
@@ -102,19 +105,29 @@ type CloseInput struct {
 }
 
 type ExecInput struct {
-	RoomID         string
-	AgentSessionID string
-	Content        []PromptContentBlock
-	DisplayPrompt  string
-	Metadata       map[string]any
-	Guidance       bool
+	RoomID           string
+	AgentSessionID   string
+	Content          []PromptContentBlock
+	DisplayPrompt    string
+	InitialTitle     string
+	InitialTitleBase string
+	Metadata         map[string]any
+	Guidance         bool
 }
 
 type CancelInput struct {
-	RoomID         string
+	RoomID             string
+	RootAgentSessionID string
+	Targets            []CancelTarget
+	Reason             string
+}
+
+// CancelTarget identifies one canonical root or child turn. The root session
+// selects the live provider runtime; targets select the durable entities that
+// the provider operation must stop.
+type CancelTarget struct {
 	AgentSessionID string
 	TurnID         string
-	Reason         string
 }
 
 type PermissionOptionInput struct {
@@ -126,13 +139,14 @@ type PermissionOptionInput struct {
 }
 
 type SubmitInteractiveInput struct {
-	RoomID         string
-	AgentSessionID string
-	TurnID         string
-	RequestID      string
-	Action         string
-	OptionID       string
-	Payload        map[string]any
+	RoomID             string
+	RootAgentSessionID string
+	AgentSessionID     string
+	TurnID             string
+	RequestID          string
+	Action             string
+	OptionID           string
+	Payload            map[string]any
 }
 
 type InteractiveDisposition string
@@ -226,6 +240,9 @@ type Session struct {
 	// LifecycleSeq is the sequence of the last applied lifecycle snapshot;
 	// lower-seq snapshots arriving over a slower channel are dropped.
 	LifecycleSeq uint64 `json:"-"`
+	// InitialTitleEstablished prevents a first-submit title candidate from
+	// overwriting a title established concurrently in this runtime.
+	InitialTitleEstablished bool `json:"-"`
 }
 
 type SessionInteractivePrompt struct {
@@ -334,9 +351,10 @@ type TurnLifecycle struct {
 }
 
 type CancelResult struct {
-	AgentSessionID string `json:"agentSessionId"`
-	Canceled       bool   `json:"canceled"`
-	TargetAbsent   bool   `json:"targetAbsent,omitempty"`
+	AgentSessionID   string         `json:"agentSessionId"`
+	Canceled         bool           `json:"canceled"`
+	TargetAbsent     bool           `json:"targetAbsent,omitempty"`
+	ConfirmedTargets []CancelTarget `json:"confirmedTargets,omitempty"`
 }
 
 type SubmitInteractiveResult struct {

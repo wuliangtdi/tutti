@@ -35,7 +35,6 @@ export function useAgentGUIViewModel(
     [
       candidate.detail.availability,
       candidate.detail.avoidGroupingEdits,
-      candidate.detail.backgroundAgentCount,
       candidate.detail.conversation,
       candidate.detail.conversationDetail,
       candidate.detail.hasOlderMessages,
@@ -90,6 +89,7 @@ export function useAgentGUIViewModel(
   const operations = useMemo(
     () => candidate.operations,
     [
+      candidate.operations.goalClearNoticeSequence,
       candidate.operations.isDeletingConversation,
       candidate.operations.isDeletingProjectConversations,
       candidate.operations.pendingDeleteConversation,

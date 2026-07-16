@@ -1,4 +1,7 @@
-import { selectWorkspaceAgentConsumerSessions } from "@tutti-os/agent-activity-core";
+import {
+  selectEngineSessionIsRespondingToInteraction,
+  selectWorkspaceAgentConsumerSessions
+} from "@tutti-os/agent-activity-core";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAgentHostApi } from "../../../agentActivityHost";
 import {
@@ -59,6 +62,7 @@ import { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderCatalo
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
 import { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
 import { useAgentGUILocalState } from "./useAgentGUILocalState";
+import type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
 export {
   normalizePermissionModeSemantic,
   permissionConfigFromComposerOptions,
@@ -119,6 +123,7 @@ interface UseAgentGUINodeControllerInput {
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
   defaultAgentTargetId?: string | null;
+  composerAppendRequest?: AgentGUIComposerAppendRequest | null;
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   previewMode?: boolean;
@@ -136,6 +141,7 @@ interface UseAgentGUINodeControllerInput {
 
 export type { AgentGUIOpenSessionRequest } from "./agentGuiController.draftMessageHelpers";
 export type { AgentGUIPrefillPromptRequest } from "./useAgentGUIConversationHome";
+export type { AgentGUIComposerAppendRequest } from "./useAgentGUIComposerAppendRequest";
 
 export function useAgentGUINodeController({
   workspaceId,
@@ -149,6 +155,7 @@ export function useAgentGUINodeController({
   comingSoonProviders,
   providerReadinessGates = null,
   defaultAgentTargetId = null,
+  composerAppendRequest = null,
   openSessionRequest = null,
   prefillPromptRequest = null,
   previewMode = false,
@@ -227,7 +234,6 @@ export function useAgentGUINodeController({
   } = localState;
   const conversationList = useAgentGUIConversationListState({
     agentActivityRuntimeOrigin,
-    agentActivitySnapshot,
     currentUserId,
     data,
     normalizedProviderTargets,
@@ -256,6 +262,33 @@ export function useAgentGUINodeController({
     activeSessionState,
     isCreatingConversation
   } = sessionEngineState;
+  const activeRelatedPendingInteractions = useMemo(() => {
+    if (!activeConversationId) return [];
+    return agentActivitySnapshot.sessions
+      .filter(
+        (session) =>
+          session.agentSessionId === activeConversationId ||
+          (session.kind === "child" &&
+            session.rootAgentSessionId === activeConversationId)
+      )
+      .flatMap((session) => session.pendingInteractions)
+      .sort(
+        (left, right) =>
+          left.createdAtUnixMs - right.createdAtUnixMs ||
+          left.agentSessionId.localeCompare(right.agentSessionId) ||
+          left.requestId.localeCompare(right.requestId)
+      );
+  }, [activeConversationId, agentActivitySnapshot.sessions]);
+  const activeRelatedIsRespondingToInteraction = useEngineSelector(
+    sessionEngine,
+    (state) =>
+      activeRelatedPendingInteractions.some((interaction) =>
+        selectEngineSessionIsRespondingToInteraction(
+          state,
+          interaction.agentSessionId
+        )
+      )
+  );
   // Bridges submitInteractivePrompt
   // updateComposerSettings (defined later); assigned right after the
   // callback's definition.
@@ -457,7 +490,7 @@ export function useAgentGUINodeController({
   // NOTE: project metadata is intentionally NOT written back into the shared
   // conversation store. `conversation.project` is a per-window JOIN of cwd ×
   // userProjects; deriving it here and persisting it caused cross-window update
-  // storms. It is now derived in the view layer (groupConversations) instead.
+  // storms. Rail membership now comes from the backend railSectionKey contract.
 
   useEffect(() => {
     if (activeConversationId === null && isComposerHome) {
@@ -472,7 +505,6 @@ export function useAgentGUINodeController({
     activeConversationIdRef,
     activePendingActivation,
     agentActivityRuntime,
-    agentActivitySnapshotRef,
     attentionReadRecordsBySessionId: attentionReadState.recordsBySessionId,
     conversationIdsRef,
     conversationListQuery,
@@ -622,11 +654,13 @@ export function useAgentGUINodeController({
     ...controllerRefs,
     ...sessionDetailTransport,
     ...conversationSelection,
+    activeEnginePendingInteractions: activeRelatedPendingInteractions,
     accountProfilesByUserId,
     activation,
     agentActivityRuntime,
     agentHostApi,
     composerTargetDataFromProviderTarget,
+    composerAppendRequest,
     composerSupportPermissionModeChangeDeferred:
       composerSupport.permissionModeChangeDeferred,
     currentProvider: data.provider,
@@ -634,6 +668,7 @@ export function useAgentGUINodeController({
     data,
     defaultAgentTargetId,
     isExplicitAgentGUIAgentTarget,
+    isRespondingToInteraction: activeRelatedIsRespondingToInteraction,
     loadDraftComposerOptions,
     normalizedExplicitProviderTargets,
     normalizedProviderTargets,
@@ -652,7 +687,7 @@ export function useAgentGUINodeController({
   });
   const isLoadingMessages =
     localState.isLoadingMessages ||
-    sessionEngineState.activeSessionReconcilePending;
+    sessionEngineState.activeSessionDetailLoading;
   const detailAvailability: AgentGUIDetailViewModel["availability"] =
     activeConversationId === null
       ? "ready"
@@ -664,7 +699,7 @@ export function useAgentGUINodeController({
               localState.detailError
             ? "error"
             : "ready";
-  return useAgentGUIViewAssembly({
+  const viewAssembly = useAgentGUIViewAssembly({
     ...providerCatalogSelection,
     ...localState,
     ...conversationList,
@@ -675,13 +710,16 @@ export function useAgentGUINodeController({
     ...conversationSelection,
     ...operationActions,
     activeCancelStatus: sessionEngineState.activeCancelState?.status ?? null,
-    activePendingInteractions:
-      sessionEngineState.activeEnginePendingInteractions,
+    activePendingInteractions: activeRelatedPendingInteractions,
     activeTurn: sessionEngineState.activeEngineActiveTurn,
     activeLatestPendingSubmitTurnId:
       sessionEngineState.activeLatestPendingSubmit?.turnId ?? null,
     activeMessages,
     activeTimelineItems,
+    agentActivitySnapshot,
+    activeEngineHasPendingInteractions:
+      activeRelatedPendingInteractions.length > 0,
+    isRespondingToInteraction: activeRelatedIsRespondingToInteraction,
     activeConversationLiveState,
     activationState: activeConversationLiveState,
     activityDisplayStatus: activeConversationId
@@ -719,4 +757,5 @@ export function useAgentGUINodeController({
     workspaceId,
     workspacePath
   });
+  return viewAssembly;
 }

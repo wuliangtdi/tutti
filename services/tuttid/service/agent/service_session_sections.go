@@ -2,8 +2,11 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
@@ -13,45 +16,253 @@ const (
 	sessionSectionKindConversations = "conversations"
 	sessionSectionKindProject       = "project"
 	sessionSectionKeyConversations  = "conversations"
+	sessionSectionsSlowLogThreshold = 250 * time.Millisecond
 )
+
+type sessionSectionsDiagnostics struct {
+	currentProjectCount     int
+	failureStage            string
+	hydrateDuration         time.Duration
+	nonEmptyProjectCount    int
+	projectDuration         time.Duration
+	railVisibleSessionCount int
+	returnedSessionCount    int
+	sectionCount            int
+	storeDuration           time.Duration
+}
 
 func (s *Service) ListSessionSections(
 	ctx context.Context,
 	workspaceID string,
 	input ListSessionSectionsInput,
-) (SessionSectionsPage, error) {
+) (result SessionSectionsPage, resultErr error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" || input.LimitPerSection <= 0 {
 		return SessionSectionsPage{}, ErrInvalidArgument
 	}
 	agentTargetID := strings.TrimSpace(input.AgentTargetID)
+	startedAt := time.Now()
+	diagnostics := &sessionSectionsDiagnostics{failureStage: "projects"}
+	defer func() {
+		logSessionSectionsDiagnostics(
+			ctx,
+			workspaceID,
+			agentTargetID,
+			input.LimitPerSection,
+			time.Since(startedAt),
+			diagnostics,
+			resultErr,
+		)
+	}()
+	projectsStartedAt := time.Now()
 	projects, err := s.currentUserProjects(ctx)
+	diagnostics.projectDuration = time.Since(projectsStartedAt)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
-	pinned, err := s.sessionPinnedPage(ctx, workspaceID, "", input.LimitPerSection, agentTargetID)
-	if err != nil {
-		return SessionSectionsPage{}, err
+	diagnostics.failureStage = "reader"
+	reader, ok := s.SessionReader.(SessionSectionsReader)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
 	}
-	sections := make([]SessionSection, 0, len(projects)+1)
+	result, resultErr = s.listSessionSectionsBatched(
+		ctx,
+		reader,
+		workspaceID,
+		projects,
+		input.LimitPerSection,
+		agentTargetID,
+		diagnostics,
+	)
+	return result, resultErr
+}
+
+func (s *Service) listSessionSectionsBatched(
+	ctx context.Context,
+	reader SessionSectionsReader,
+	workspaceID string,
+	projects []userprojectbiz.Project,
+	limitPerSection int,
+	agentTargetID string,
+	diagnostics *sessionSectionsDiagnostics,
+) (SessionSectionsPage, error) {
+	normalizedProjects := make([]userprojectbiz.Project, 0, len(projects))
+	sectionKeys := make([]string, 0, len(projects)+2)
+	sectionKeys = append(sectionKeys, agentactivitybiz.PinnedSessionPageKey)
 	for _, project := range projects {
 		project = userProjectWithSectionKey(project)
-		section, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindProject, project.SectionKey, &project, "", input.LimitPerSection, agentTargetID)
-		if err != nil {
-			return SessionSectionsPage{}, err
+		if strings.TrimSpace(project.SectionKey) == "" {
+			continue
 		}
-		sections = append(sections, section)
+		normalizedProjects = append(normalizedProjects, project)
+		sectionKeys = append(sectionKeys, project.SectionKey)
 	}
-	conversations, err := s.sessionSectionPage(ctx, workspaceID, sessionSectionKindConversations, sessionSectionKeyConversations, nil, "", input.LimitPerSection, agentTargetID)
+	sectionKeys = append(sectionKeys, sessionSectionKeyConversations)
+	diagnostics.currentProjectCount = len(normalizedProjects)
+	diagnostics.failureStage = "store"
+	storeStartedAt := time.Now()
+	page, ok, err := reader.ListSessionSections(ctx, agentactivitybiz.ListSessionSectionsInput{
+		WorkspaceID:     workspaceID,
+		SectionKeys:     sectionKeys,
+		AgentTargetID:   strings.TrimSpace(agentTargetID),
+		LimitPerSection: limitPerSection,
+	})
+	diagnostics.storeDuration = time.Since(storeStartedAt)
 	if err != nil {
 		return SessionSectionsPage{}, err
 	}
-	sections = append(sections, conversations)
-	return SessionSectionsPage{
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	rawPagesByKey := make(map[string]agentactivitybiz.SessionSectionPage, len(page.Sections))
+	rawSessions := make([]agentactivitybiz.Session, 0, len(page.Sections)*limitPerSection)
+	for _, section := range page.Sections {
+		sectionKey := strings.TrimSpace(section.SectionKey)
+		if sectionKey == "" {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		rawPagesByKey[sectionKey] = section
+		rawSessions = append(rawSessions, section.Sessions...)
+		diagnostics.railVisibleSessionCount += section.TotalCount
+	}
+	diagnostics.sectionCount = len(page.Sections)
+	diagnostics.returnedSessionCount = len(rawSessions)
+	for _, project := range normalizedProjects {
+		if rawPage, ok := rawPagesByKey[project.SectionKey]; ok && rawPage.TotalCount > 0 {
+			diagnostics.nonEmptyProjectCount++
+		}
+	}
+	diagnostics.failureStage = "hydrate"
+	hydrateStartedAt := time.Now()
+	sessions, err := s.sessionsFromActivity(ctx, workspaceID, rawSessions)
+	diagnostics.hydrateDuration = time.Since(hydrateStartedAt)
+	if err != nil {
+		return SessionSectionsPage{}, err
+	}
+	diagnostics.failureStage = "projection"
+	sessionsByID := make(map[string]Session, len(sessions))
+	for _, session := range sessions {
+		sessionsByID[session.ID] = session
+	}
+
+	pinnedPage, ok := rawPagesByKey[agentactivitybiz.PinnedSessionPageKey]
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	pinnedSessions, ok := sessionsForSectionPage(pinnedPage, sessionsByID)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	sections := make([]SessionSection, 0, len(normalizedProjects)+1)
+	for i := range normalizedProjects {
+		project := normalizedProjects[i]
+		rawPage, ok := rawPagesByKey[project.SectionKey]
+		if !ok {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		projectSessions, ok := sessionsForSectionPage(rawPage, sessionsByID)
+		if !ok {
+			return SessionSectionsPage{}, ErrInvalidArgument
+		}
+		sections = append(sections, SessionSection{
+			Kind:        sessionSectionKindProject,
+			SectionKey:  project.SectionKey,
+			UserProject: &project,
+			Sessions:    projectSessions,
+			HasMore:     rawPage.HasMore,
+			TotalCount:  rawPage.TotalCount,
+			NextCursor:  rawPage.NextCursor,
+		})
+	}
+	conversationsPage, ok := rawPagesByKey[sessionSectionKeyConversations]
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	conversationSessions, ok := sessionsForSectionPage(conversationsPage, sessionsByID)
+	if !ok {
+		return SessionSectionsPage{}, ErrInvalidArgument
+	}
+	sections = append(sections, SessionSection{
+		Kind:       sessionSectionKindConversations,
+		SectionKey: sessionSectionKeyConversations,
+		Sessions:   conversationSessions,
+		HasMore:    conversationsPage.HasMore,
+		TotalCount: conversationsPage.TotalCount,
+		NextCursor: conversationsPage.NextCursor,
+	})
+	result := SessionSectionsPage{
 		WorkspaceID: workspaceID,
-		Pinned:      pinned,
-		Sections:    sections,
-	}, nil
+		Pinned: SessionPage{
+			Sessions:   pinnedSessions,
+			HasMore:    pinnedPage.HasMore,
+			TotalCount: pinnedPage.TotalCount,
+			NextCursor: pinnedPage.NextCursor,
+		},
+		Sections: sections,
+	}
+	diagnostics.failureStage = ""
+	return result, nil
+}
+
+func logSessionSectionsDiagnostics(
+	ctx context.Context,
+	workspaceID string,
+	agentTargetID string,
+	limitPerSection int,
+	duration time.Duration,
+	diagnostics *sessionSectionsDiagnostics,
+	err error,
+) {
+	if errors.Is(err, context.Canceled) || (err == nil && duration < sessionSectionsSlowLogThreshold) {
+		return
+	}
+	status := "slow"
+	event := "workspace.agent_session.sections.list_slow"
+	message := "workspace agent session sections list slow"
+	level := slog.LevelInfo
+	if err != nil {
+		status = "failed"
+		event = "workspace.agent_session.sections.list_failed"
+		message = "workspace agent session sections list failed"
+		level = slog.LevelWarn
+	}
+	args := []any{
+		"event", event,
+		"workspace_id", workspaceID,
+		"agent_target_id", agentTargetID,
+		"target_filtered", agentTargetID != "",
+		"limit_per_section", limitPerSection,
+		"status", status,
+		"failure_stage", diagnostics.failureStage,
+		"duration_ms", duration.Milliseconds(),
+		"projects_ms", diagnostics.projectDuration.Milliseconds(),
+		"store_ms", diagnostics.storeDuration.Milliseconds(),
+		"hydrate_ms", diagnostics.hydrateDuration.Milliseconds(),
+		"current_project_count", diagnostics.currentProjectCount,
+		"non_empty_project_count", diagnostics.nonEmptyProjectCount,
+		"rail_visible_session_count", diagnostics.railVisibleSessionCount,
+		"returned_session_count", diagnostics.returnedSessionCount,
+		"section_count", diagnostics.sectionCount,
+	}
+	if err != nil {
+		args = append(args, "error", err)
+	}
+	slog.Log(ctx, level, message, args...)
+}
+
+func sessionsForSectionPage(
+	page agentactivitybiz.SessionSectionPage,
+	sessionsByID map[string]Session,
+) ([]Session, bool) {
+	sessions := make([]Session, 0, len(page.Sessions))
+	for _, rawSession := range page.Sessions {
+		session, ok := sessionsByID[strings.TrimSpace(rawSession.ID)]
+		if !ok {
+			return nil, false
+		}
+		sessions = append(sessions, session)
+	}
+	return sessions, true
 }
 
 func (s *Service) ListSessionSectionPage(
@@ -247,7 +458,7 @@ func (s *Service) sessionSectionPage(
 			return SessionSection{}, err
 		}
 	}
-	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+	page, ok, err := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
 		WorkspaceID:          workspaceID,
 		SectionKey:           sectionKey,
 		AgentTargetID:        strings.TrimSpace(agentTargetID),
@@ -255,6 +466,9 @@ func (s *Service) sessionSectionPage(
 		CursorSessionID:      parsedCursor.ID,
 		Limit:                limit,
 	})
+	if err != nil {
+		return SessionSection{}, err
+	}
 	if !ok {
 		return SessionSection{}, ErrInvalidArgument
 	}
@@ -316,7 +530,7 @@ func (s *Service) sessionPinnedPage(
 			return SessionPage{}, err
 		}
 	}
-	page, ok := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
+	page, ok, err := reader.ListSessionSection(ctx, agentactivitybiz.ListSessionSectionInput{
 		WorkspaceID:          workspaceID,
 		SectionKey:           agentactivitybiz.PinnedSessionPageKey,
 		AgentTargetID:        strings.TrimSpace(agentTargetID),
@@ -324,6 +538,9 @@ func (s *Service) sessionPinnedPage(
 		CursorSessionID:      parsedCursor.ID,
 		Limit:                limit,
 	})
+	if err != nil {
+		return SessionPage{}, err
+	}
 	if !ok {
 		return SessionPage{}, ErrInvalidArgument
 	}

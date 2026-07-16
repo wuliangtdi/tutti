@@ -37,6 +37,17 @@ Validation runners that spawn nested pnpm commands should read the root
 let runner-spawned lanes resolve a bare `pnpm` from `PATH`, because local
 package-manager shims can differ from the repository pin.
 
+Tests and checks that create temporary Git repositories must also isolate
+repository-local Git environment variables before invoking Git. In particular,
+remove inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, index/object
+overrides, and command-scoped `GIT_CONFIG_*` entries using case-insensitive
+name matching for Windows compatibility; set
+`GIT_CEILING_DIRECTORIES` to the fixture root; fail immediately when fixture Git
+commands fail; and verify the initialized Git directory before staging,
+committing, fetching, or checking out. A temporary cwd alone is not isolation
+because `GIT_DIR` takes precedence and can redirect `git init` and later
+commands into a caller's linked-worktree metadata.
+
 ## TypeScript Baseline
 
 TypeScript linting uses Oxlint.
@@ -124,6 +135,17 @@ Renderer feature implementation boundaries are checked by `pnpm check:renderer-b
 That check also enforces the Workbench-specific rule that
 `workspace-workbench/ui/**` imports public service or controller seams instead
 of `workspace-workbench/services/internal/**`.
+Workspace Workbench launch coordinators must also route workspace-keyed Shell
+registrations through the private `WorkspaceScopedRegistrationRegistry` rather
+than declaring their own `Map`. The rule covers top-level
+`*LaunchCoordinator.ts` services and the Message Center coordinator, while
+leaving non-launch coordinator state such as Agent GUI open-session reference
+counts outside this registration-specific policy. Because the rule is part of
+`check:renderer-boundaries`, it runs for staged renderer changes, the
+renderer-boundary lane selected by `check:changed`, and `check:full`. Changes
+to the renderer-boundary checker or its fixture suite also select that
+`check:changed` lane, so policy edits validate both their fixtures and the live
+renderer tree.
 
 `pnpm check:ui-boundaries` has a package-scoped temporary migration exception
 for `packages/agent/gui` while the carried agent activity renderer is
@@ -167,15 +189,19 @@ is protected by a degradation ratchet:
 
 - `pnpm check:agent-gui-degradation` measures entropy metrics over
   `packages/agent/gui` and `packages/agent/activity-core` (per-file line counts
-  over the business limit, package-wide effect and memoization totals, provider behavior
+  over the business limit, package-wide effect totals, per-component
+  memoization overages, render-time ref mirrors/caches, provider behavior
   branches, timers, swallowed catch blocks, view-embedded stores, direct
   `useSyncExternalStore` calls, module-level mutable globals, and daemon Go
   file-length exemptions) and compares them against the committed baseline in
-  `tools/degradation-baseline/agent-gui.json`.
-- Effect and memoization counts are package-wide totals because hooks move with
-  their vertical module during decomposition. Counting them per path would
-  falsely reject moving an existing hook out of a monolith. The per-file line
-  limit and render-budget tests continue to enforce module and render shape.
+  `tools/degradation-baseline/agent-gui.json`. Render-mirror counting also
+  covers Desktop's `DesktopAgentGUIWorkbenchBody` host boundary because
+  unstable host callbacks can invalidate the entire Agent GUI subtree.
+- Effect counts remain package-wide because hooks move with a vertical module
+  during decomposition. Memoization follows the architecture boundary instead:
+  `.tsx` component modules have a five-call budget, while controller/read hooks
+  may own stable projections. Read-layer memoization must stabilize data-owner
+  output; it must not become a second view cache.
 - Any metric increase fails. Any decrease also fails until the same change
   updates the baseline with
   `node tools/scripts/check-agent-gui-degradation.mjs --update-baseline`, so
@@ -191,9 +217,17 @@ is protected by a degradation ratchet:
   new degradation patterns on staged added lines: uncommented timers (a
   `// timing: <reason>` comment is required outside engine/reducer/selector
   code, where timers are forbidden entirely), silently swallowed catch blocks,
-  store creation in component files, new provider behavior branches, direct
+  component memoization beyond budget, render-time ref mirrors/caches, store
+  creation in component files, new provider behavior branches, direct
   `useSyncExternalStore` calls outside the single engine binding file, and new
-  module-level mutable globals.
+  module-level mutable globals. Ref-mirror and component-cache diagnostics
+  explicitly route business state to the engine/controller and stable
+  projections to selectors/read hooks; refs remain valid for imperative DOM,
+  timer, abort, and external-lifecycle handles.
+- During a merge commit, staged mode compares the resolved index with
+  `MERGE_HEAD` instead of treating every incoming-parent line as newly added.
+  This keeps the hook focused on branch-authored degradation while the full
+  baseline check still measures the complete merged tree.
 
 The business file size limit below also applies to TypeScript under
 `packages/agent/gui` and `packages/agent/activity-core` through this ratchet:

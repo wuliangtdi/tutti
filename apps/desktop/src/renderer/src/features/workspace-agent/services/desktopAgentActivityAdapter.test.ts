@@ -20,7 +20,8 @@ test("desktop agent activity adapter rejects missing protocol v2 session fields"
   for (const field of [
     "activeTurnId",
     "latestTurnInteractions",
-    "pendingInteractions"
+    "pendingInteractions",
+    "railSectionKey"
   ] as const) {
     const malformed = { ...createSession() } as Record<string, unknown>;
     delete malformed[field];
@@ -35,15 +36,30 @@ test("desktop agent activity adapter rejects missing protocol v2 session fields"
   }
 });
 
+test("desktop agent activity adapter rejects a blank rail section key", () => {
+  assert.throws(
+    () =>
+      agentActivitySessionFromTuttidSession(
+        workspaceId,
+        createSession({ railSectionKey: "  " })
+      ),
+    /railSectionKey must be a non-empty string/
+  );
+});
+
 test("desktop agent activity adapter preserves a settled latest turn on reload", () => {
   const latestTurn = {
     agentSessionId: "agent-session-1",
     completedCommand: null,
     error: null,
     fileChanges: null,
+    origin: "goal_continuation" as const,
     outcome: "failed" as const,
     phase: "settled" as const,
     settledAtUnixMs: 30,
+    sourceGoalOperationId: "goal-operation-1",
+    sourceGoalRepairEpoch: 4,
+    sourceGoalRevision: 7,
     startedAtUnixMs: 10,
     turnId: "turn-1",
     updatedAtUnixMs: 30
@@ -81,7 +97,6 @@ test("desktop agent activity adapter maps typed canonical session control fields
   const session = agentActivitySessionFromTuttidSession(
     workspaceId,
     createSession({
-      backgroundAgents: { count: 1, items: [] },
       capabilities: {
         activeTurnGuidance: false,
         browserUse: false,
@@ -105,6 +120,7 @@ test("desktop agent activity adapter maps typed canonical session control fields
       endedAtUnixMs: 30,
       goal: { objective: "Ship it", status: "active" },
       imported: true,
+      railSectionKey: "project:repo-1",
       permissionConfig: {
         configurable: true,
         defaultValue: "ask",
@@ -125,13 +141,13 @@ test("desktop agent activity adapter maps typed canonical session control fields
     })
   );
 
-  assert.deepEqual(session.backgroundAgents, { count: 1, items: [] });
   assert.equal(session.capabilities?.compact, true);
   assert.equal(session.capabilities?.planMode, true);
   assert.equal(session.createdAtUnixMs, 10);
   assert.equal(session.endedAtUnixMs, 30);
   assert.deepEqual(session.goal, { objective: "Ship it", status: "active" });
   assert.equal(session.imported, true);
+  assert.equal(session.railSectionKey, "project:repo-1");
   assert.equal(session.permissionConfig?.defaultValue, "ask");
   assert.deepEqual(session.settings, { model: "gpt-5", planMode: true });
   assert.deepEqual(session.usage, {
@@ -399,6 +415,43 @@ test("desktop agent activity adapter rejects send responses without a canonical 
     }),
     /workspace_agent\.send_response_turn_required/
   );
+});
+
+test("desktop agent activity adapter accepts typed goal input without a Turn", async () => {
+  const adapter = createDesktopAgentActivityAdapter({
+    tuttidClient: createTuttidClient({
+      async sendWorkspaceAgentSessionInput(
+        _requestWorkspaceId,
+        agentSessionId
+      ) {
+        const session = createSession({
+          id: agentSessionId,
+          goal: { objective: "ship it", status: "active" }
+        });
+        return {
+          kind: "goalControl" as const,
+          operationId: "goal-op-1",
+          session,
+          goal: session.goal
+        };
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  const result = await adapter.sendInput({
+    clientSubmitId: "submit-goal",
+    workspaceId,
+    agentSessionId: "agent-session-1",
+    content: [{ type: "text", text: "/goal ship it" }]
+  });
+
+  assert.equal(result.kind, "goalControl");
+  assert.equal(result.session.activeTurnId, null);
+  if (result.kind !== "goalControl") {
+    throw new Error("expected goal control result");
+  }
+  assert.equal(result.goal?.objective, "ship it");
 });
 
 test("desktop agent activity adapter marks empty-cwd creates as no-project", async () => {
@@ -1596,6 +1649,7 @@ function createSession(
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt" as const,
           outcome: null,
           phase:
             status === "waiting" ? ("waiting" as const) : ("running" as const),
@@ -1612,6 +1666,7 @@ function createSession(
           completedCommand: null,
           error: null,
           fileChanges: null,
+          origin: "user_prompt" as const,
           outcome: status as "completed" | "failed" | "canceled",
           phase: "settled" as const,
           settledAtUnixMs: updatedAtUnixMs,
@@ -1622,7 +1677,6 @@ function createSession(
       : null;
   return {
     agentTargetId: null,
-    backgroundAgents: null,
     capabilities: null,
     createdAtUnixMs,
     cwd: "/",
@@ -1637,6 +1691,7 @@ function createSession(
     pinnedAtUnixMs: null,
     provider: "codex",
     providerSessionId: null,
+    railSectionKey: "conversations",
     resumable: true,
     settings: {},
     title: "Agent session",
@@ -1644,6 +1699,12 @@ function createSession(
     usage: null,
     visible: true,
     ...canonicalOverrides,
+    kind: canonicalOverrides.kind ?? "root",
+    rootAgentSessionId: canonicalOverrides.rootAgentSessionId ?? null,
+    rootTurnId: canonicalOverrides.rootTurnId ?? null,
+    parentAgentSessionId: canonicalOverrides.parentAgentSessionId ?? null,
+    parentTurnId: canonicalOverrides.parentTurnId ?? null,
+    parentToolCallId: canonicalOverrides.parentToolCallId ?? null,
     latestTurnInteractions: canonicalOverrides.latestTurnInteractions ?? [],
     pendingInteractions: canonicalOverrides.pendingInteractions ?? []
   };
@@ -1651,6 +1712,7 @@ function createSession(
 
 function createSendInputResponse(session: WorkspaceAgentSession) {
   return {
+    kind: "turn" as const,
     session,
     turnId: "turn-1",
     turn: {
@@ -1658,6 +1720,7 @@ function createSendInputResponse(session: WorkspaceAgentSession) {
       completedCommand: null,
       error: null,
       fileChanges: null,
+      origin: "user_prompt" as const,
       outcome: null,
       phase: "submitted" as const,
       settledAtUnixMs: null,

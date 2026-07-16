@@ -368,6 +368,8 @@ export const enAgentGui = {
   contextPickerBrowseIssueHint: "Type to search tasks in the current room",
   workspaceAppFactoryMentionFallback: "Create app",
   contextPickerExpandMore: "Show {{count}} more",
+  contextPickerLoadMoreLoading: "Loading…",
+  contextPickerLoadMoreRetry: "Load failed. Retry",
   contextPickerCategoryFileDescription: "Search Files and folders",
   contextPickerCategorySessionDescription: "Find agent sessions that I started",
   contextPickerCategoryCollabDescription:
@@ -439,6 +441,7 @@ export const enAgentGui = {
   goalPauseAction: "Pause goal",
   goalResumeAction: "Resume goal",
   goalClearAction: "Delete goal",
+  goalRemoved: "Goal removed",
   processing: "Planning next moves",
   agentTargetRequired:
     "Select an available agent target before starting a session.",
@@ -467,6 +470,10 @@ export const enAgentGui = {
   turnSummaryGitRequired: "This directory is not a Git repository",
   turnSummaryPatchUnavailable:
     "No reversible patch data is available for this change",
+  turnSummaryInvalidPatch:
+    "The recorded patch is invalid and cannot be safely applied",
+  turnSummaryPatchDoesNotApply:
+    "The file changed after this edit and cannot be safely restored",
   turnSummaryUndoFailed: "Failed to undo changes",
   turnSummaryReapplyFailed: "Failed to reapply changes",
   turnSummaryShowMoreFiles: "Show {{count}} more file",
@@ -499,10 +506,6 @@ export const enAgentGui = {
   submitAnswers: "Submit answers",
   answerPlaceholder: "Add details for the agent...",
   waitingForAnswer: "Waiting for your answer...",
-  waitingForBackgroundAgent_one:
-    "Waiting for {{count}} background agent to finish",
-  waitingForBackgroundAgent_other:
-    "Waiting for {{count}} background agents to finish",
   shortcutEnter: "Enter",
   shortcutCmdEnter: "Cmd + Enter",
   shortcutCtrEnter: "Ctr + Enter",
@@ -631,6 +634,13 @@ export const enAgentGui = {
   mentionFilterFile: "Files",
   mentionFilterApp: "Apps",
   mentionFilterAgent: "Agents",
+  provenanceFilterAllAgents: "All agents",
+  provenanceFilterAllMembers: "All members",
+  provenanceFilterAllSources: "All sources",
+  provenanceFilterAgents: "Agents",
+  provenanceFilterFilteredSources: "Filtered sources",
+  provenanceFilterMembers: "Members",
+  provenanceFilterReset: "Reset",
   mentionFilterSession: "Sessions",
   mentionFilterCollab: "Collaboration",
   mentionFilterIssue: "Tasks",

@@ -7,23 +7,35 @@ import {
   standaloneAgentBrowserDefaultUrl
 } from "./standaloneAgentToolWorkbench.ts";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
+import { BrowserElementContextAction } from "../browser-element-context/BrowserElementContextAction.tsx";
 
 const LazyBrowserNode = lazy(() =>
   import("@tutti-os/browser-node/react").then(({ BrowserNode }) => ({
     default: BrowserNode
   }))
 );
-
 export function StandaloneAgentBrowserToolPanel({
   appI18n,
   browserApi,
+  elementContextCopy,
   hidden,
-  loadingLabel
+  loadingLabel,
+  onAppendBrowserElementMention,
+  onBrowserElementError,
+  workspaceId
 }: {
   appI18n: I18nRuntime<string>;
   browserApi: DesktopBrowserApi;
+  elementContextCopy: {
+    cancel: string;
+    failed: string;
+    select: string;
+  };
   hidden: boolean;
   loadingLabel: string;
+  onAppendBrowserElementMention: (mention: string) => void;
+  onBrowserElementError: (message: string) => void;
+  workspaceId: string;
 }): ReactNode {
   const [nodeId] = useState(createStandaloneAgentBrowserNodeId);
   const feature = useMemo(
@@ -39,6 +51,7 @@ export function StandaloneAgentBrowserToolPanel({
     <div
       className="relative h-full min-h-0 overflow-hidden"
       data-standalone-agent-browser-surface="true"
+      data-standalone-agent-browser-surface-id={nodeId}
     >
       <Suspense
         fallback={<StandaloneAgentToolLoadingState label={loadingLabel} />}
@@ -47,6 +60,15 @@ export function StandaloneAgentBrowserToolPanel({
           defaultUrl={standaloneAgentBrowserDefaultUrl}
           feature={feature}
           hidden={hidden}
+          navigationActions={
+            <BrowserElementContextAction
+              copy={elementContextCopy}
+              surfaceId={nodeId}
+              workspaceId={workspaceId}
+              onAppendMention={onAppendBrowserElementMention}
+              onError={onBrowserElementError}
+            />
+          }
           nodeId={nodeId}
           syncDefaultUrl
           tabs

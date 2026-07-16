@@ -4,10 +4,27 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/titletext"
 )
 
 func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessionID string, input SendInput) (SendInputResult, error) {
 	logAgentSubmitTrace("service.send.entered", workspaceID, agentSessionID, input.Metadata, nil)
+	nodeStartedAt := time.Now()
+	normalizedContent, normalizedPromptText, err := normalizePromptContent(input.Content)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
+		return SendInputResult{}, err
+	}
+	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
+	visiblePrompt := firstNonEmptyString(strings.TrimSpace(input.DisplayPrompt), normalizedPromptText)
+	if goal, ok := parseTypedGoalControl(normalizedContent, visiblePrompt, input.Guidance); ok {
+		result, err := s.goalControl(ctx, workspaceID, agentSessionID, goal.Action, goal.Objective, input.Metadata)
+		if err != nil {
+			return SendInputResult{}, err
+		}
+		return SendInputResult{Session: result.Session, Kind: "goalControl", GoalControl: &result}, nil
+	}
 	submitClaim, claimPending, err := s.prepareSubmitClaim(ctx, workspaceID, agentSessionID, input.Metadata)
 	if err != nil {
 		return SendInputResult{}, err
@@ -23,13 +40,6 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 			s.abandonSubmitClaim(workspaceID, agentSessionID, submitClaim.ClientSubmitID)
 		}
 	}()
-	nodeStartedAt := time.Now()
-	normalizedContent, _, err := normalizePromptContent(input.Content)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt, err)
-		return SendInputResult{}, err
-	}
-	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "content_normalized", "", nodeStartedAt)
 	logAgentSubmitTrace("service.send.content_normalized", workspaceID, agentSessionID, input.Metadata, map[string]any{
 		"content_block_count": len(normalizedContent),
 	})
@@ -50,7 +60,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "prompt_validated", provider, nodeStartedAt)
 	logAgentSubmitTrace("service.send.prompt_validated", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
-	content, _, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
+	content, preparedDisplayPrompt, err := s.prepareNormalizedPromptContentForExec(workspaceID, agentSessionID, normalizedContent, "")
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, agentSessionID, "message_send", "prompt_prepared", provider, nodeStartedAt, err)
 		return SendInputResult{}, err
@@ -60,6 +70,11 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		"content_block_count": len(content),
 	})
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
+	initialTitle := ""
+	if !input.Guidance && !runtimeSession.InitialTitleEstablished {
+		visiblePrompt := firstNonEmptyString(displayPrompt, normalizedPromptText, preparedDisplayPrompt)
+		initialTitle = titletext.DeriveInitial(runtimeSession.Title, visiblePrompt)
+	}
 	logAgentSubmitTrace("service.send.exec_requested", workspaceID, agentSessionID, input.Metadata, nil)
 	nodeStartedAt = time.Now()
 	// Exec may have to resume an idle-released Claude process inside the runtime
@@ -73,12 +88,14 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	result, err := func() (RuntimeExecResult, error) {
 		defer releaseStartup()
 		return s.controller().Exec(ctx, RuntimeExecInput{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-			Content:        content,
-			DisplayPrompt:  displayPrompt,
-			Guidance:       input.Guidance,
-			Metadata:       cloneMetadata(input.Metadata),
+			WorkspaceID:      workspaceID,
+			AgentSessionID:   agentSessionID,
+			Content:          content,
+			DisplayPrompt:    displayPrompt,
+			InitialTitle:     initialTitle,
+			InitialTitleBase: runtimeSession.Title,
+			Guidance:         input.Guidance,
+			Metadata:         cloneMetadata(input.Metadata),
 		})
 	}()
 	if err != nil {
@@ -107,6 +124,7 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	s.reportAgentServiceNodeSuccess(ctx, agentSessionID, "message_send", "session_refreshed", provider, nodeStartedAt)
 	return SendInputResult{
 		Session:            session,
+		Kind:               "turn",
 		TurnID:             strings.TrimSpace(result.TurnID),
 		TurnLifecycle:      result.TurnLifecycle,
 		SubmitAvailability: result.SubmitAvailability,

@@ -36,7 +36,7 @@ func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.ClaudeCode)
 	if profile.LiveModelDiscoveryKind != providerregistry.LiveModelDiscoveryKindClaudeSDK ||
-		!profile.LiveModelProbeSession || profile.SkillKind != "claude-code" ||
+		!profile.LiveModelProbeSession || !profile.LiveModelAccountScoped || profile.SkillKind != "claude-code" ||
 		profile.ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStatic {
 		t.Fatalf("claude composer profile = %#v", profile)
 	}
@@ -47,8 +47,12 @@ func TestClaudeCodeComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	}
 }
 
-func TestCursorSkillDiscoveryComesFromProviderDescriptor(t *testing.T) {
+func TestCursorComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.Cursor)
+	if profile.LiveModelDiscoveryKind != providerregistry.LiveModelDiscoveryKindRuntimeSession ||
+		!profile.LiveModelProbeSession || !profile.LiveModelAccountScoped {
+		t.Fatalf("cursor live model discovery profile = %#v", profile)
+	}
 	if profile.SkillKind != string(providerregistry.SkillKindCursor) || profile.SkillInvocation != string(providerregistry.SkillInvocationTextTrigger) {
 		t.Fatalf("cursor skill profile = %#v", profile)
 	}
@@ -131,12 +135,15 @@ func TestOpenCodeModelCatalogListerUsesDescriptorRuntimeCommand(t *testing.T) {
 	if err != nil || !registered {
 		t.Fatalf("agentModelCatalogSpecFromDescriptor() = (_, %v, %v)", registered, err)
 	}
-	lister, ok := spec.lister(&CachedAgentModelCatalog{}).(OpenCodeCLIModelLister)
+	lister, ok := spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{Cwd: "/workspace"}).(OpenCodeCLIModelLister)
 	if !ok {
-		t.Fatalf("lister = %T, want OpenCodeCLIModelLister", spec.lister(&CachedAgentModelCatalog{}))
+		t.Fatalf("lister = %T, want OpenCodeCLIModelLister", spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{}))
 	}
 	if lister.Command != "poison-opencode" || !reflect.DeepEqual(lister.Args, []string{"models", "--verbose"}) {
 		t.Fatalf("lister command = %q %#v", lister.Command, lister.Args)
+	}
+	if lister.Cwd != "/workspace" {
+		t.Fatalf("lister cwd = %q, want /workspace", lister.Cwd)
 	}
 }
 
@@ -150,9 +157,9 @@ func TestCodexModelCatalogListerUsesDescriptorRuntimeCommand(t *testing.T) {
 	if err != nil || !registered {
 		t.Fatalf("agentModelCatalogSpecFromDescriptor() = (_, %v, %v)", registered, err)
 	}
-	lister, ok := spec.lister(&CachedAgentModelCatalog{}).(CodexCLIModelLister)
+	lister, ok := spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{}).(CodexCLIModelLister)
 	if !ok {
-		t.Fatalf("lister = %T, want CodexCLIModelLister", spec.lister(&CachedAgentModelCatalog{}))
+		t.Fatalf("lister = %T, want CodexCLIModelLister", spec.lister(&CachedAgentModelCatalog{}, AgentModelCatalogInput{}))
 	}
 	if lister.Command != "poison-codex" || !reflect.DeepEqual(lister.Args, []string{"poison-app-server"}) {
 		t.Fatalf("lister command = %q %#v", lister.Command, lister.Args)

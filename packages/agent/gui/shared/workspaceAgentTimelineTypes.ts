@@ -1,3 +1,5 @@
+import type { AgentActivityMessageSemantics } from "@tutti-os/agent-activity-core";
+
 export interface WorkspaceAgentActivityFileChange {
   path: string;
   change?: "added" | "modified" | "deleted" | "moved" | string;
@@ -25,6 +27,7 @@ export interface WorkspaceAgentActivityTimelineItem {
   callId?: string;
   name?: string;
   status?: string | null;
+  messageSemantics?: AgentActivityMessageSemantics;
   content?: string;
   payload?: Record<string, unknown> & {
     content?: unknown;

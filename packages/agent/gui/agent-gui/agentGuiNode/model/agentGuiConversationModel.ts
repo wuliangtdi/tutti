@@ -12,10 +12,9 @@ import {
 import { projectAgentSessionEventsToTimelineItems } from "../../../shared/agentConversation/projection/agentSessionEventProjection";
 import { projectAgentConversationVM } from "../../../shared/agentConversation/projection/agentConversationProjection";
 import {
-  attachSubAgentLanesToConversationVM,
-  buildSubAgentLanesByCallId,
-  partitionSubAgentTimelineItems
-} from "../../../shared/agentConversation/projection/subAgentTimelinePartition";
+  attachChildSessionLanesToConversationVM,
+  buildChildSessionLanesByParentToolCallId
+} from "../../../shared/agentConversation/projection/childSessionLanes";
 import {
   filterAgentGUIConversationSummaries,
   normalizeAgentGUIConversationFilter
@@ -24,6 +23,7 @@ import type { AgentConversationVM } from "../../../shared/agentConversation/cont
 import {
   resolveAgentGUIConversationTitle,
   resolveAgentGUIExplicitConversationTitle,
+  resolveAgentGUIExplicitConversationTitleFromMessages,
   resolveAgentGUIProviderIdentity,
   type AgentGUIConversationTitleFallback
 } from "../../../shared/agentConversationTitleProjection.ts";
@@ -32,7 +32,7 @@ import type {
   AgentActivitySnapshot,
   CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
-import { selectCanonicalAgentActivitySessions } from "@tutti-os/agent-activity-core";
+import { selectRootAgentActivitySessions } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspaceAgentTimelineTypes";
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/workspaceAgentSessionSortTime";
 import {
@@ -52,7 +52,6 @@ import type {
   BuildAgentGUIConversationsInput
 } from "./agentGuiConversationTypes";
 import {
-  firstUserMessageTitleFromMessages,
   firstUserMessageTitleFromTimelineItems,
   timelineRowsFromActivityTimelineItems,
   timelineSessionFromItems,
@@ -94,7 +93,7 @@ export function buildAgentGUIConversationSummaries({
 }: BuildAgentGUIConversationsInput): AgentGUIConversationSummary[] {
   const runtimeSnapshot = filterAgentGUIRuntimeSnapshot(snapshot);
   const sessionsById = new Map(
-    selectCanonicalAgentActivitySessions(runtimeSnapshot).map((session) => [
+    selectRootAgentActivitySessions(runtimeSnapshot).map((session) => [
       session.agentSessionId,
       session
     ])
@@ -230,11 +229,17 @@ export function buildAgentGUIConversationDetail({
 export function buildAgentGUIConversationModels({
   timelineItems,
   conversation,
+  childSessions = [],
+  childMessagesBySessionId = {},
   workspaceRoot = null,
   avoidGroupingEdits = false
 }: {
   timelineItems: readonly WorkspaceAgentActivityTimelineItem[];
   conversation: AgentGUIConversationProjectionSource;
+  childSessions?: readonly AgentActivitySession[];
+  childMessagesBySessionId?: Readonly<
+    Record<string, readonly AgentActivityMessage[] | undefined>
+  >;
   workspaceRoot?: string | null;
   avoidGroupingEdits?: boolean;
 }): {
@@ -249,16 +254,17 @@ export function buildAgentGUIConversationModels({
   if (!detail) {
     return { conversation: null, detail: null };
   }
-  // Child-thread rows are excluded from the transcript by the canonical
-  // detail builder; here they are regrouped into live sub-agent lanes and
-  // attached to their collab spawn card so running sub-agents stay visible.
-  const subAgentLanesByCallId = buildSubAgentLanesByCallId(
-    partitionSubAgentTimelineItems(timelineItems)
-  );
+  const childSessionLanesByParentToolCallId =
+    buildChildSessionLanesByParentToolCallId({
+      rootSession: detail.session,
+      rootTimelineItems: timelineItems,
+      childSessions,
+      messagesBySessionId: childMessagesBySessionId
+    });
   return {
-    conversation: attachSubAgentLanesToConversationVM(
+    conversation: attachChildSessionLanesToConversationVM(
       projectAgentConversationVM(detail, { avoidGroupingEdits }),
-      subAgentLanesByCallId
+      childSessionLanesByParentToolCallId
     ),
     detail
   };
@@ -305,8 +311,7 @@ export function conversationSummaryFromAgentSession(
     sessionProvider: session.provider
   });
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    session.title,
-    provider
+    session.title
   );
   return {
     id: session.agentSessionId.trim(),
@@ -320,6 +325,7 @@ export function conversationSummaryFromAgentSession(
       session.activeTurnId ? "working" : "idle"
     ),
     cwd: session.cwd?.trim() ?? "",
+    railSectionKey: session.railSectionKey,
     project: resolveConversationProject(session, projectResolver),
     ...(isExternalImportNoProjectSession(session)
       ? { projectMode: "none" }
@@ -376,10 +382,7 @@ export function resolveAgentGUIConversationTitleFromTimelineItems({
   if (!userMessageTitle) {
     return null;
   }
-  return resolveAgentGUIConversationTitle(
-    userMessageTitle,
-    conversation.provider
-  );
+  return resolveAgentGUIConversationTitle(userMessageTitle);
 }
 
 export function resolveAgentGUIConversationTitleFromMessages({
@@ -395,14 +398,15 @@ export function resolveAgentGUIConversationTitleFromMessages({
   if (resolveAgentGUIExplicitConversationTitle(conversation) !== null) {
     return null;
   }
-  const userMessageTitle = firstUserMessageTitleFromMessages(messages);
-  if (!userMessageTitle) {
+  const projectedTitle = resolveAgentGUIExplicitConversationTitleFromMessages({
+    messages,
+    provider: conversation.provider,
+    title: conversation.title
+  });
+  if (!projectedTitle) {
     return null;
   }
-  return resolveAgentGUIConversationTitle(
-    userMessageTitle,
-    conversation.provider
-  );
+  return resolveAgentGUIConversationTitle(projectedTitle);
 }
 
 function filterAgentGUIRuntimeSnapshot(
@@ -410,7 +414,7 @@ function filterAgentGUIRuntimeSnapshot(
 ): AgentActivitySnapshot {
   return {
     ...snapshot,
-    sessions: selectCanonicalAgentActivitySessions(snapshot).filter((session) =>
+    sessions: selectRootAgentActivitySessions(snapshot).filter((session) =>
       isAgentGUIRuntimeSession(session)
     )
   };
@@ -438,8 +442,7 @@ function conversationSummaryFromActivity(
       })
     : null;
   const { title, titleFallback } = resolveAgentGUIConversationTitle(
-    explicitSessionTitle ?? activity.title,
-    provider
+    explicitSessionTitle ?? (session ? "" : activity.title)
   );
   return {
     id: activity.sessionId,
@@ -451,6 +454,7 @@ function conversationSummaryFromActivity(
     titleFallback,
     status,
     cwd: session?.cwd.trim() ?? "",
+    ...(session ? { railSectionKey: session.railSectionKey } : {}),
     project: resolveConversationProject(session, options.projectResolver),
     ...(isExternalImportNoProjectSession(session)
       ? { projectMode: "none" }

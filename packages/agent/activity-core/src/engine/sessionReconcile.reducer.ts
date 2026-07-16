@@ -32,10 +32,13 @@ export function sessionReconcileReducer(
       }
       return requestReconcile(state, {
         agentSessionId: intent.agentSessionId,
-        needsMessages: intent.eventType === "message_update",
+        needsMessages:
+          intent.eventType === "message_update" ||
+          intent.eventType === "session_audit",
         needsState:
           !intent.hasCachedSession ||
-          intent.eventType !== "message_update" ||
+          (intent.eventType !== "message_update" &&
+            intent.eventType !== "session_audit") ||
           !intent.hasInlineMessages,
         workspaceId: intent.workspaceId
       });
@@ -77,6 +80,8 @@ function requestReconcile(
     agentSessionId,
     errorMessage: null,
     inFlightCommandId: null,
+    inFlightScope: null,
+    messagesHydrated: false,
     pendingMessages: false,
     pendingState: false,
     workspaceId
@@ -109,7 +114,13 @@ function settleReconcile(
       intent.outcome === "succeeded"
         ? null
         : intent.errorMessage?.trim() || null,
-    inFlightCommandId: null
+    inFlightCommandId: null,
+    inFlightScope: null,
+    messagesHydrated:
+      record.messagesHydrated ||
+      (intent.outcome === "succeeded" &&
+        (record.inFlightScope === "messages" ||
+          record.inFlightScope === "state_and_messages"))
   };
   const next = replaceRecord(state, settled);
   return settled.pendingMessages || settled.pendingState
@@ -143,6 +154,7 @@ function startReconcile(
       {
         ...record,
         inFlightCommandId: commandId,
+        inFlightScope: scope,
         pendingMessages: false,
         pendingState: false
       }

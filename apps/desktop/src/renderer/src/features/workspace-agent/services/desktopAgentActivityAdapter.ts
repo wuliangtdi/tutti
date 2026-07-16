@@ -256,7 +256,17 @@ export function createDesktopAgentActivityAdapter({
         });
         throw wrapLocalizedTuttidErrorIfSpecific(error, getActiveLocale());
       }
-      if (!result.turn) {
+      if (result.kind === "goalControl") {
+        return {
+          kind: "goalControl",
+          goal: result.goal ?? result.session.goal ?? null,
+          session: agentActivitySessionFromTuttidSession(
+            input.workspaceId,
+            result.session
+          )
+        };
+      }
+      if (!result.turn || !result.turnId) {
         throw new Error("workspace_agent.send_response_turn_required");
       }
       reportDesktopAgentSubmitTrace(runtimeApi, {
@@ -273,6 +283,7 @@ export function createDesktopAgentActivityAdapter({
         }
       });
       return {
+        kind: "turn",
         session: agentActivitySessionFromTuttidSession(
           input.workspaceId,
           result.session
@@ -467,11 +478,18 @@ export function agentActivitySessionFromTuttidSession(
   return {
     workspaceId,
     agentSessionId: session.id,
+    kind: session.kind,
+    rootAgentSessionId: session.rootAgentSessionId,
+    rootTurnId: session.rootTurnId,
+    parentAgentSessionId: session.parentAgentSessionId,
+    parentTurnId: session.parentTurnId,
+    parentToolCallId: session.parentToolCallId,
     agentTargetId: session.agentTargetId ?? null,
     provider: session.provider,
     providerSessionId: session.providerSessionId ?? session.id,
     userId: DESKTOP_AGENT_GUI_CURRENT_USER_ID,
     cwd: session.cwd ?? "/",
+    railSectionKey: session.railSectionKey,
     title: session.title ?? "",
     activeTurnId: session.activeTurnId,
     activeTurn: session.activeTurn ?? null,
@@ -484,9 +502,6 @@ export function agentActivitySessionFromTuttidSession(
       ? structuredClone(session.capabilities)
       : null,
     usage: session.usage ? structuredClone(session.usage) : null,
-    backgroundAgents: session.backgroundAgents
-      ? structuredClone(session.backgroundAgents)
-      : null,
     goal: session.goal ? structuredClone(session.goal) : null,
     imported: session.imported ?? false,
     visible: session.visible ?? true,
@@ -506,7 +521,8 @@ function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
   const missing = [
     "activeTurnId",
     "latestTurnInteractions",
-    "pendingInteractions"
+    "pendingInteractions",
+    "railSectionKey"
   ].filter((field) => !Object.prototype.hasOwnProperty.call(value, field));
   if (missing.length > 0) {
     throw new Error(
@@ -519,6 +535,14 @@ function assertProtocolV2SessionContract(session: WorkspaceAgentSession): void {
   ) {
     throw new Error(
       "Protocol v2 contract error: workspace agent interaction collections must be arrays"
+    );
+  }
+  if (
+    typeof value.railSectionKey !== "string" ||
+    value.railSectionKey.trim().length === 0
+  ) {
+    throw new Error(
+      "Protocol v2 contract error: workspace agent railSectionKey must be a non-empty string"
     );
   }
 }

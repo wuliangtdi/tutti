@@ -25,7 +25,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "tool-group",
       "tool-group",
-      "tool-group",
       "turn-summary"
     ]);
 
@@ -172,7 +171,6 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
       "message",
       "tool-group",
       "tool-group",
-      "tool-group",
       "turn-summary"
     ]);
   });
@@ -213,7 +211,10 @@ describe("projectWorkspaceAgentTimelineToConversationVM", () => {
         { kind: "tool-group" }
       > => row.kind === "tool-group" && row.grouped
     );
-    expect(groupedRows).toHaveLength(0);
+    expect(groupedRows).toHaveLength(1);
+    expect(groupedRows[0]?.calls.map((call) => call.id)).toEqual([
+      "call:read-1"
+    ]);
     expect(
       conversation.rows.some(
         (
@@ -620,6 +621,7 @@ function session(
 function activeTurn(phase: "running" | "settled") {
   return {
     agentSessionId: "session-1",
+    origin: "user_prompt" as const,
     phase,
     startedAtUnixMs: 1,
     turnId: "turn-1",

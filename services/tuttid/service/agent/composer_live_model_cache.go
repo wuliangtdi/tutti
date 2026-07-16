@@ -121,8 +121,8 @@ func (s *Service) liveModelCacheTTL(provider string) time.Duration {
 	if s.LiveModelCacheTTL != 0 {
 		return s.LiveModelCacheTTL
 	}
-	// Cursor cannot start a hidden probe, so expiry would only discard its
-	// last-known-good list. Claude can safely re-discover after the TTL.
+	// Providers with a preserved cache keep their last-known-good catalog until
+	// an explicit invalidation or a running session advertises a fresher list.
 	if composerProfileFor(provider).Behavior.PreserveLiveModelCache {
 		return 0
 	}
@@ -163,10 +163,11 @@ func (s *Service) setLiveComposerModelOptionsForScope(scope composerLiveModelSco
 }
 
 // composerLiveModelCacheKey buckets the cache by provider, workspace, cwd scope,
-// and (for auth-sensitive providers) an auth-context fingerprint. Claude uses
-// one account-level cwd scope so UI project selection cannot duplicate hidden
-// discovery. Other providers retain their caller cwd. The same key also scopes
-// the once-per-key hidden discovery guard.
+// and (for auth-sensitive providers) an auth-context fingerprint. Providers
+// with credential-scoped catalogs use one account-level workspace/cwd scope so
+// UI project selection cannot duplicate hidden discovery. Other providers
+// retain their caller scope. The same key also scopes the once-per-key hidden
+// discovery guard.
 func composerLiveModelCacheKey(provider, workspaceID, cwd, authScope string) string {
 	scope := newComposerLiveModelScope(provider, workspaceID, cwd, "")
 	scope.authScope = strings.TrimSpace(authScope)

@@ -1,4 +1,5 @@
 import type { WorkspaceAgentActivityTimelineItem } from "./workspaceAgentTimelineTypes";
+import { resolveWorkspaceAgentNoticeCommandSemantics } from "./workspaceAgentSystemNoticeSemantics";
 import {
   buildWorkspaceAgentToolCallDisplay,
   resolveWorkspaceAgentToolName,
@@ -169,14 +170,35 @@ export function visibleErrorFromPayload(
 }
 
 export function systemNoticeFromPayload(
-  payload: Record<string, unknown> | null
+  payload: Record<string, unknown> | null,
+  context: Pick<
+    WorkspaceAgentActivityTimelineItem,
+    "eventId" | "messageSemantics" | "status"
+  >
 ): WorkspaceAgentSessionDetailMessage["systemNotice"] {
-  if (stringRecordValue(payload, "kind") !== "agent_system_notice") return null;
+  const commandSemantics = resolveWorkspaceAgentNoticeCommandSemantics({
+    eventId: context.eventId,
+    messageSemantics: context.messageSemantics,
+    payload,
+    status: context.status
+  });
+  if (
+    stringRecordValue(payload, "kind") !== "agent_system_notice" &&
+    !commandSemantics
+  ) {
+    return null;
+  }
   const source = stringRecordValue(payload, "source");
   return {
     noticeKind: stringRecordValue(payload, "noticeKind"),
     severity: stringRecordValue(payload, "severity"),
     ...(source ? { source } : {}),
+    ...(commandSemantics
+      ? {
+          command: commandSemantics.command,
+          commandStatus: commandSemantics.commandStatus
+        }
+      : {}),
     title: stringRecordValue(payload, "title"),
     detail: stringRecordValue(payload, "detail"),
     retryable: booleanRecordValue(payload, "retryable")

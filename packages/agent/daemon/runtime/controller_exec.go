@@ -2,10 +2,12 @@ package agentruntime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, error) {
@@ -46,24 +48,23 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	if input.Guidance {
 		return c.guideActiveTurn(ctx, session, adapter, content, displayPrompt, metadata)
 	}
+	titleUpdated := false
+	if initialTitle := strings.TrimSpace(input.InitialTitle); initialTitle != "" &&
+		!session.InitialTitleEstablished &&
+		strings.TrimSpace(session.Title) == strings.TrimSpace(input.InitialTitleBase) {
+		session.Title = initialTitle
+		session = markInitialTitleEstablished(session)
+		session.UpdatedAtUnixMS = unixMS(now())
+		titleUpdated = true
+	}
 	turnID := newID()
 	runCtx, cancel := context.WithCancel(context.Background())
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(runCtx, execMetadataContextKey{}, metadata)
 	}
-	// beginTurn returns the zero session on failure; keep the real session
-	// for the goal-control fallback below.
 	startedSession, err := c.beginTurn(session, turnID, cancel)
 	if err != nil {
 		cancel()
-		if errors.Is(err, ErrSessionActiveTurn) {
-			// Goal control (/goal paused|active|clear) is a thread-level
-			// operation like Cancel: it must act immediately while a turn is
-			// running, exactly when the single-turn gate would reject it.
-			if result, handled, controlErr := c.execGoalControlWithActiveTurn(ctx, session, adapter, content, displayPrompt, turnID, metadata); handled {
-				return result, controlErr
-			}
-		}
 		return ExecResult{}, err
 	}
 	session = startedSession
@@ -75,6 +76,9 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (ExecResult, err
 	}
 	c.mu.Unlock()
 	submitEvents := submittedTurnActivityEvents(session, turnID)
+	if titleUpdated {
+		submitEvents = append([]activityshared.Event{newSessionTitleActivityEvent(session, session.Title)}, submitEvents...)
+	}
 	if len(submitEvents) > 0 {
 		c.publish(session, submitEvents)
 		c.enqueueSessionReport(ctx, session, submitEvents)
@@ -120,14 +124,31 @@ func (c *Controller) guideActiveTurn(
 	if len(metadata) > 0 {
 		runCtx = context.WithValue(ctx, execMetadataContextKey{}, metadata)
 	}
-	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, nil, nil)
+	var emittedMu sync.Mutex
+	var emitted []activityshared.Event
+	emit := func(next []activityshared.Event) {
+		if len(next) == 0 {
+			return
+		}
+		emittedMu.Lock()
+		emitted = append(emitted, next...)
+		emittedMu.Unlock()
+		c.applySessionEventsByAgentSessionID(session.AgentSessionID, next)
+	}
+	emitCommands := func(snapshot AgentSessionCommandSnapshot) {
+		c.applyCommandSnapshotByAgentSessionID(snapshot)
+	}
+	events, err := guidanceAdapter.GuideActiveTurn(runCtx, session, content, displayPrompt, turnID, emit, emitCommands)
 	if err != nil {
 		logAgentSubmitTrace("runtime.exec.guidance_failed", session, turnID, metadata, map[string]any{
 			"error": err.Error(),
 		})
 		return ExecResult{}, err
 	}
-	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	emittedMu.Lock()
+	remaining := unemittedActivityEvents(events, emitted)
+	emittedMu.Unlock()
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, remaining)
 	logAgentSubmitTrace("runtime.exec.guidance", session, turnID, metadata, map[string]any{
 		"activity_event_count": len(events),
 	})
@@ -151,16 +172,22 @@ func (c *Controller) guideActiveTurn(
 }
 
 type GoalControlInput struct {
-	RoomID         string
-	AgentSessionID string
-	Action         GoalControlAction
-	Objective      string
+	RoomID             string
+	AgentSessionID     string
+	Action             GoalControlAction
+	Objective          string
+	OperationID        string
+	GoalRevision       int64
+	RepairEpoch        int64
+	SubmissionMetadata map[string]any
 }
 
 type GoalControlResult struct {
 	AgentSessionID string
 	// Goal is the fresh goal snapshot after the action (nil after clear).
-	Goal map[string]any
+	Goal          map[string]any
+	Evidence      map[string]any
+	ProviderPhase string
 }
 
 // GoalControl performs a direct goal action (banner buttons) as a
@@ -171,14 +198,18 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 	if err != nil {
 		return GoalControlResult{}, err
 	}
-	goalAdapter, ok := adapter.(GoalControlAdapter)
+	goalAdapter, ok := adapter.(GoalAdapter)
 	if !ok {
 		return GoalControlResult{}, fmt.Errorf("agent provider does not support goals")
 	}
 	if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
 		return GoalControlResult{}, err
 	}
-	events, goal, err := goalAdapter.GoalControl(ctx, session, input.Action, input.Objective)
+	adapterResult, err := goalAdapter.ApplyGoal(ctx, session, GoalApplyInput{
+		Action: input.Action, Objective: input.Objective,
+		OperationID: input.OperationID, Revision: input.GoalRevision, RepairEpoch: input.RepairEpoch,
+		SubmissionMetadata: cloneExecMetadata(input.SubmissionMetadata),
+	})
 	if err != nil {
 		slog.Warn("agent session goal control failed",
 			"event", "agent_session.goal_control.failed",
@@ -189,71 +220,17 @@ func (c *Controller) GoalControl(ctx context.Context, input GoalControlInput) (G
 		)
 		return GoalControlResult{}, err
 	}
-	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
+	c.applySessionEventsByAgentSessionID(session.AgentSessionID, adapterResult.Events)
 	slog.Info("agent session goal control accepted",
 		"event", "agent_session.goal_control.accepted",
 		"room_id", session.RoomID,
 		"agent_session_id", session.AgentSessionID,
 		"action", string(input.Action),
 	)
-	return GoalControlResult{AgentSessionID: session.AgentSessionID, Goal: goal}, nil
-}
-
-// execGoalControlWithActiveTurn runs a /goal control command while another
-// turn holds the session's turn slot. The adapter executes it against the
-// thread without opening a turn; the resulting events (steered user message,
-// goal update, notice) are applied and published through the session-event
-// path, and the running turn keeps owning the session lifecycle.
-func (c *Controller) execGoalControlWithActiveTurn(
-	ctx context.Context,
-	session Session,
-	adapter Adapter,
-	content []PromptContentBlock,
-	displayPrompt string,
-	turnID string,
-	metadata map[string]any,
-) (ExecResult, bool, error) {
-	goalAdapter, ok := adapter.(GoalControlAdapter)
-	if !ok {
-		return ExecResult{}, false, nil
-	}
-	events, handled, err := goalAdapter.ExecGoalControl(ctx, session, content, displayPrompt, turnID)
-	slog.Info("agent session goal control with active turn",
-		"event", "agent_session.goal_control.with_active_turn",
-		"room_id", session.RoomID,
-		"agent_session_id", session.AgentSessionID,
-		"handled", handled,
-		"event_count", len(events),
-		"error", fmt.Sprintf("%v", err),
-	)
-	if !handled {
-		return ExecResult{}, false, nil
-	}
-	if err != nil {
-		logAgentSubmitTrace("runtime.exec.goal_control_failed", session, turnID, metadata, map[string]any{
-			"error": err.Error(),
-		})
-		return ExecResult{}, true, err
-	}
-	c.applySessionEventsByAgentSessionID(session.AgentSessionID, events)
-	logAgentSubmitTrace("runtime.exec.goal_control", session, turnID, metadata, map[string]any{
-		"activity_event_count": len(events),
-	})
-	if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
-		session = refreshed
-	}
-	result := ExecResult{
+	return GoalControlResult{
 		AgentSessionID: session.AgentSessionID,
-		Status:         ExecStatusStarted,
-		TurnID:         turnID,
-		Accepted:       true,
-		SessionStatus:  session.Status,
-	}
-	if session.TurnLifecycle != nil {
-		result.TurnLifecycle = *session.TurnLifecycle
-	}
-	if session.SubmitAvailability != nil {
-		result.SubmitAvailability = *session.SubmitAvailability
-	}
-	return result, true, nil
+		Goal:           goalAdapter.NormalizeGoalObservation(adapterResult.Observation),
+		Evidence:       clonePayload(adapterResult.Evidence),
+		ProviderPhase:  adapterResult.ProviderPhase,
+	}, nil
 }

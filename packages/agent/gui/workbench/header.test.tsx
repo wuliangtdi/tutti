@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentGuiWorkbenchHeader } from "./header.ts";
 
 describe("AgentGuiWorkbenchHeader", () => {
@@ -223,6 +223,37 @@ describe("AgentGuiWorkbenchHeader", () => {
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
   });
 
+  it("renders an allowed mention-rich prompt in the expanded detail header", async () => {
+    render(
+      <AgentGuiWorkbenchHeader
+        agentTitle="Codex"
+        copy={{
+          collapseConversationRail: "Collapse conversations",
+          expandConversationRail: "Expand conversations",
+          fallbackAgentLabel: "Agent",
+          newConversation: "New conversation"
+        }}
+        conversationTitle="@Task 看看"
+        conversationTitleDisplayPrompt="[@Task](mention://workspace-issue/issue-1?workspaceId=workspace-1) 看看"
+        isConversationRailAutoCollapsed={false}
+        isConversationRailCollapsed={false}
+        nodeId="agent-gui-node-1"
+        onToggleConversationRail={() => {}}
+      />
+    );
+
+    const detail = await screen.findByTestId("agent-gui-window-detail-title");
+    await waitFor(
+      () => {
+        expect(
+          detail.querySelector('[data-agent-mention-kind="workspace-issue"]')
+        ).toHaveTextContent("Task");
+      },
+      { timeout: 5_000 }
+    );
+    expect(detail).toHaveTextContent("Task 看看");
+  });
+
   it("shows the selected agent icon before an expanded conversation has a title", () => {
     render(
       <AgentGuiWorkbenchHeader
@@ -231,9 +262,11 @@ describe("AgentGuiWorkbenchHeader", () => {
           collapseConversationRail: "Collapse conversations",
           expandConversationRail: "Expand conversations",
           fallbackAgentLabel: "Agent",
-          newConversation: "New conversation"
+          newConversation: "New conversation",
+          untitledConversation: "Untitled conversation"
         }}
         conversationIconUrl="asset://cursor.png"
+        hasConversation
         isConversationRailAutoCollapsed={false}
         isConversationRailCollapsed={false}
         nodeId="agent-gui-node-1"
@@ -244,6 +277,9 @@ describe("AgentGuiWorkbenchHeader", () => {
     expect(
       screen.getByTestId("agent-gui-window-detail-title-icon")
     ).toHaveAttribute("src", "asset://cursor.png");
+    expect(
+      screen.getByTestId("agent-gui-window-detail-title")
+    ).toHaveTextContent("Untitled conversation");
     expect(screen.queryByText("Cursor")).not.toBeInTheDocument();
   });
 

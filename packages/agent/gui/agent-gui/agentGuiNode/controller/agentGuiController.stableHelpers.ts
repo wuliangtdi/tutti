@@ -8,7 +8,7 @@ import type {
 } from "../../../shared/agentSessionTypes";
 import type { AgentProviderId } from "../../../shared/contracts/dto";
 import type { WorkspaceAgentActivityCard } from "../../../shared/workspaceAgentActivityListViewModel";
-import { isWorkspaceAgentUntitledTask } from "../../../shared/workspaceAgentLatestActivitySummary";
+import { isWorkspaceAgentUntitledConversation } from "../../../shared/workspaceAgentLatestActivitySummary";
 import type { WorkspaceAgentSessionDetailViewModel } from "../../../shared/workspaceAgentSessionDetailViewModel";
 import { type AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type {
@@ -219,12 +219,14 @@ export function conversationSummariesRenderEqual(
     left.userId === right.userId &&
     left.provider === right.provider &&
     left.title === right.title &&
+    left.titleLeadingMentionKind === right.titleLeadingMentionKind &&
     conversationTitleFallbacksRenderEqual(
       left.titleFallback,
       right.titleFallback
     ) &&
     left.status === right.status &&
     left.cwd === right.cwd &&
+    left.railSectionKey === right.railSectionKey &&
     left.pinnedAtUnixMs === right.pinnedAtUnixMs &&
     left.sortTimeUnixMs === right.sortTimeUnixMs &&
     left.updatedAtUnixMs === right.updatedAtUnixMs &&
@@ -256,6 +258,7 @@ export function conversationProjectsRenderEqual(
       ? !left && !right
       : left.id === right.id &&
         left.path === right.path &&
+        left.sectionKey === right.sectionKey &&
         left.label === right.label &&
         left.createdAtUnixMs === right.createdAtUnixMs &&
         left.updatedAtUnixMs === right.updatedAtUnixMs &&
@@ -307,7 +310,7 @@ export function shouldPreserveExistingConversationTitle(
   if (!normalizedIncoming || !current.title.trim()) {
     return false;
   }
-  if (isWorkspaceAgentUntitledTask(normalizedIncoming)) {
+  if (isWorkspaceAgentUntitledConversation(normalizedIncoming)) {
     return true;
   }
   const providerLabel =

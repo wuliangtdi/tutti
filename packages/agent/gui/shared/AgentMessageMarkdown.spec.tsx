@@ -1,11 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
@@ -934,6 +928,49 @@ describe("AgentMessageMarkdown", () => {
     });
   });
 
+  it("closes the zoom preview with Escape when focus is outside the dialog", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={"![generated image](/workspace/output/imagegen/dance.png)"}
+        enableImageZoom
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Zoom image/ }));
+    const dialog = await screen.findByRole("dialog");
+    const backgroundButton = document.createElement("button");
+    document.body.append(backgroundButton);
+    backgroundButton.focus();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(dialog).toHaveAttribute("data-closing", "true");
+    fireEvent.animationEnd(dialog);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    backgroundButton.remove();
+  });
+
   it("closes the zoom preview when the zoomed image is clicked", async () => {
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
@@ -1546,35 +1583,13 @@ describe("AgentMessageMarkdown", () => {
     expect(screen.queryByRole("button", { name: "展开全部" })).toBeNull();
   });
 
-  it("defers full markdown rendering for long messages when requested", () => {
-    vi.useFakeTimers();
-    try {
-      const content = `请看 [README.md](README.md)\n\n${"x".repeat(4096)}`;
-      const { container } = render(
-        <AgentMessageMarkdown content={content} deferLongContentRender />
-      );
+  it("renders long messages as markdown on the first render", () => {
+    const content = `# Long answer\n\n${"x".repeat(4096)}`;
+    render(<AgentMessageMarkdown content={content} />);
 
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeTruthy();
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-
-      act(() => {
-        vi.advanceTimersByTime(80);
-      });
-
-      expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
-      expect(screen.getByText("README.md")).toBeInTheDocument();
-      expect(
-        container.querySelector(
-          '[data-workspace-agent-markdown-deferred="true"]'
-        )
-      ).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Long answer" })
+    ).toBeInTheDocument();
   });
 });
 

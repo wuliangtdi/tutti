@@ -11,11 +11,7 @@ import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
-import {
-  defaultIssueManagerWorkbenchTypeId,
-  issueManagerOpenActivationType,
-  type IssueManagerOpenActivationPayload
-} from "@tutti-os/workspace-issue-manager/workbench";
+import { defaultIssueManagerWorkbenchTypeId } from "@tutti-os/workspace-issue-manager/workbench";
 import {
   isEditableShortcutTarget,
   type WorkbenchContribution,
@@ -44,12 +40,10 @@ import {
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState";
 import { useService } from "@tutti-os/infra/di";
 import { useTranslation } from "@renderer/i18n";
-import { translate } from "@renderer/i18n/appRuntime";
 import { cn } from "@renderer/lib/format";
-import { Toast } from "@renderer/lib/toast";
 import {
-  createWorkspaceAgentGuiUnifiedDraftLaunchRequest,
-  createWorkspaceAgentGuiUnifiedSessionLaunchRequest
+  createWorkspaceAgentGuiDraftLaunchRequest,
+  createWorkspaceAgentGuiSessionLaunchRequest
 } from "../services/workspaceAgentGuiLaunch.ts";
 import {
   resolveWorkspaceAgentChatProvider,
@@ -69,10 +63,9 @@ import {
   workspaceFilesLaunchTypeId,
   type WorkspaceFilesLaunchRequest
 } from "../services/workspaceFilesLaunchCoordinator.ts";
-import {
-  registerWorkspaceIssueManagerLaunchHandler,
-  type WorkspaceIssueManagerLaunchRequest
-} from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
+import { registerWorkspaceIssueManagerLaunchPresenter } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
+import { createWorkbenchWorkspaceIssueManagerPresenter } from "../services/workbenchWorkspaceIssueManagerPresenter.ts";
 import { registerWorkspaceWorkbenchNodeLaunchHandler } from "../services/workspaceWorkbenchNodeLaunchCoordinator.ts";
 import {
   buildGroupChatDeepLinkUrl,
@@ -384,7 +377,7 @@ function ReadyWorkspaceWorkbenchWithSession({
             const normalizedDraftPrompt = draftPrompt?.trim() ?? "";
             await host.launchNode(
               normalizedDraftPrompt
-                ? createWorkspaceAgentGuiUnifiedDraftLaunchRequest({
+                ? createWorkspaceAgentGuiDraftLaunchRequest({
                     agentTargetId,
                     autoSubmit,
                     draftPrompt: normalizedDraftPrompt,
@@ -392,7 +385,7 @@ function ReadyWorkspaceWorkbenchWithSession({
                     provider,
                     userProjectPath
                   })
-                : createWorkspaceAgentGuiUnifiedSessionLaunchRequest({
+                : createWorkspaceAgentGuiSessionLaunchRequest({
                     agentTargetId,
                     agentSessionId,
                     openInNewWindow,
@@ -412,11 +405,9 @@ function ReadyWorkspaceWorkbenchWithSession({
         }
       );
       unregisterIssueManagerLaunchRef.current =
-        registerWorkspaceIssueManagerLaunchHandler(
+        registerWorkspaceIssueManagerLaunchPresenter(
           state.workspace.id,
-          async (request) => {
-            return openWorkspaceIssueManagerNode(host, request);
-          }
+          createWorkbenchWorkspaceIssueManagerPresenter({ host })
         );
       unregisterGroupChatLaunchRef.current = registerGroupChatLaunchHandler(
         state.workspace.id,
@@ -1030,16 +1021,7 @@ async function openWorkspaceFilesNode(
       workspaceID: request.workspaceId
     }))
   ) {
-    // The requested path doesn't exist on this machine (e.g. an imported
-    // historical session's recorded working directory has since been deleted
-    // or moved — see resolveExternalImportSessionCwd on the import side,
-    // which deliberately keeps such sessions instead of dropping them). Surface
-    // this instead of silently doing nothing, which previously looked like the
-    // Files panel simply refused to open with no explanation.
-    Toast.Error(
-      translate("workspace.workbenchDesktop.filesLaunch.openFailedTitle"),
-      translate("workspace.workbenchDesktop.filesLaunch.openFailedDescription")
-    );
+    showWorkspaceFileMissingToast();
     return false;
   }
 
@@ -1101,40 +1083,6 @@ async function openGroupChatNode(
         url: deepLinkUrl
       },
       type: "open-url"
-    }
-  );
-  return true;
-}
-
-async function openWorkspaceIssueManagerNode(
-  host: WorkbenchHostHandle,
-  request: WorkspaceIssueManagerLaunchRequest
-): Promise<boolean> {
-  const nodeId = await host.launchNode({
-    launchSource: "agent_command",
-    reason: "host",
-    typeId: defaultIssueManagerWorkbenchTypeId
-  });
-  if (!nodeId) {
-    return false;
-  }
-  if (!request.issueId) {
-    return true;
-  }
-
-  const payload: IssueManagerOpenActivationPayload = {
-    issueId: request.issueId,
-    ...(request.mode ? { mode: request.mode } : {}),
-    ...(request.outputDir ? { outputDir: request.outputDir } : {}),
-    ...(request.runId ? { runId: request.runId } : {}),
-    ...(request.taskId ? { taskId: request.taskId } : {}),
-    ...(request.topicId ? { topicId: request.topicId } : {})
-  };
-  host.activateNode(
-    { nodeId },
-    {
-      payload,
-      type: issueManagerOpenActivationType
     }
   );
   return true;

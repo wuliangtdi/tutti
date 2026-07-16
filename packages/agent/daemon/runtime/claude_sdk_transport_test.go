@@ -72,7 +72,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 			event.Payload.Role == activityshared.MessageRoleAssistant {
 			assistantText = event.Payload.Content
 		}
-		if event.Type == activityshared.EventTurnCompleted &&
+		if event.Type == activityshared.EventRootProviderTurnCompleted &&
 			event.Payload.TurnOutcome == string(activityshared.TurnOutcomeCompleted) {
 			completed = true
 		}
@@ -84,7 +84,7 @@ func TestClaudeCodeSDKAdapterExecWithSidecarTestDriver(t *testing.T) {
 		t.Fatalf("assistant text = %q, want echo", assistantText)
 	}
 	if !completed {
-		t.Fatalf("events missing completed turn: %#v", events)
+		t.Fatalf("events missing root provider completion: %#v", events)
 	}
 }
 
@@ -321,6 +321,7 @@ func TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter(t *te
 		liveState:         newClaudeSDKLiveState(),
 	}
 	adapter.storeSession(session.AgentSessionID, adapterSession)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "root-turn-1", "provider-turn-1")
 
 	var published []activityshared.Event
 	adapter.SetSessionEventSink(func(agentSessionID string, events []activityshared.Event) {
@@ -354,9 +355,9 @@ func TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter(t *te
 	var sawStarted, sawMessage, sawCompleted bool
 	for _, event := range published {
 		switch event.Type {
-		case activityshared.EventTurnStarted:
+		case activityshared.EventRootProviderTurnStarted:
 			sawStarted = true
-			if event.Payload.TurnID != "synthetic-continuation-1" {
+			if event.Payload.TurnID != "root-turn-1" || event.Payload.ProviderTurnID != "synthetic-continuation-1" {
 				t.Fatalf("start turn id = %q", event.Payload.TurnID)
 			}
 			if event.Payload.Metadata["synthetic"] != true {
@@ -364,9 +365,9 @@ func TestClaudeCodeSDKAdapterClosesSyntheticTurnLifecycleWithoutExecWaiter(t *te
 			}
 		case activityshared.EventMessageAppended:
 			sawMessage = true
-		case activityshared.EventTurnCompleted:
+		case activityshared.EventRootProviderTurnCompleted:
 			sawCompleted = true
-			if event.Payload.TurnID != "synthetic-continuation-1" {
+			if event.Payload.TurnID != "root-turn-1" || event.Payload.ProviderTurnID != "synthetic-continuation-1" {
 				t.Fatalf("completed turn id = %q", event.Payload.TurnID)
 			}
 		}
@@ -579,11 +580,10 @@ func TestClaudeCodeSDKAdapterControllerPublishesUIActivityWithSidecarTestDriver(
 		}
 	}
 
-	waitForSessionStatus(t, controller, started.Session.RoomID, started.Session.AgentSessionID, SessionStatusReady)
+	waitForSessionStatus(t, controller, started.Session.RoomID, started.Session.AgentSessionID, SessionStatusWorking)
 	waitForCondition(t, func() bool {
 		reports := reportInputs(reporter.snapshot())
 		return hasTimelineItemInReports(reports, "message.user", "completed", "say hello") &&
-			hasTimelineItemInReports(reports, "message.assistant", "completed", "") &&
-			hasTurnCompletionPatchInReports(reports, execResult.TurnID)
+			hasTimelineItemInReports(reports, "message.assistant", "completed", "")
 	})
 }

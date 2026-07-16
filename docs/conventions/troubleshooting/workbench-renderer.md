@@ -69,8 +69,14 @@
 - Symptom:
   A local development launch creates the standalone Agent native window, but
   only the window chrome is visible for several seconds before the Agent header,
-  rail, conversation, and composer appear.
+  rail, conversation, and composer appear. A related failure leaves the window
+  black permanently because the renderer root throws before AgentGUI mounts.
 - Quick checks:
+  Check `tutti-desktop.log` for `react.uncaught` before profiling cold startup.
+  If the error is `agent_gui_workbench.invalid_provider`, compare the encoded
+  Agent window intent with the standalone route's launch-provider resolution.
+  A primary standalone Agent startup may legitimately omit both provider and
+  Agent Target metadata while the directory is still loading.
   Compare desktop-ready, first renderer diagnostic, standalone route mount,
   AgentGUI body mount, and composer-ready timestamps. Time the daemon workspace,
   session-list, rail, target, and provider-status endpoints independently. If
@@ -79,7 +85,22 @@
   transformation/evaluation rather than SQLite or workspace hydration. Also
   time provider statuses per provider; one slow CLI probe can dominate a serial
   all-provider scan.
+  For provider-status startup, correlate the same `session_id` across
+  `tutti-desktop.log` and `tuttid.log`. Renderer events
+  `agent_provider_status.request.started`, `.resolved`, `.failed`,
+  `.cache_hit`, and `.reused` show request scope, provider IDs, request ID, and
+  total elapsed time. Daemon event
+  `tutti.agent_provider.status_list.completed` shows the batch total; per-provider
+  `tutti.agent_provider.status_detection.completed` events split runtime
+  resolution, adapter probe, auth, CLI version, and post-check time. Concurrent
+  step times overlap, so compare the largest step with the provider total rather
+  than summing every step.
 - Root cause:
+  For the permanent-black variant, an optional startup provider can be passed
+  directly to the strict workbench provider normalizer. The generic primary
+  Agent window starts with workspace identity only, so normalizing that absent
+  value throws during React render even while the daemon and provider probes
+  remain healthy.
   Development Vite transforms source modules on demand. An Agent-only route can
   therefore remain on a black Suspense fallback while nested lazy boundaries
   discover large dependency graphs. In the desktop renderer, enabling Babel
@@ -94,6 +115,10 @@
   same cold compile. Separately, a single global in-flight provider-status
   promise makes the active provider wait behind a slow all-provider scan.
 - Fix:
+  Resolve the absent startup provider to the existing workbench default at the
+  standalone route boundary, then use the strict normalizer only for a supplied
+  provider. Keep malformed non-empty values as errors, and keep Agent Target
+  directory resolution authoritative once it loads.
   Keep workspace and standalone Agent routes separate. Let both already-lazy
   routes statically own the full AgentGUI body so neither adds a second import
   waterfall beneath its route fallback. Render
@@ -116,6 +141,9 @@
   per provider, and ignore stale results for a provider already refreshed by a
   newer request.
 - Validation:
+  Keep a focused regression test for an Agent window intent with no provider;
+  it must reach the startup shell without weakening extension-provider
+  validation.
   Run focused provider concurrency and standalone tool-lifecycle tests, desktop
   typecheck, renderer boundary checks, and a production desktop build. Inspect
   the generated chunks to confirm the standalone shell does not statically
@@ -128,11 +156,21 @@
   manual renderer verification requires explicit user approval. If the dynamic
   import still dominates, compare cold and warm module-graph timings before
   investigating daemon hydration or provider discovery.
+  When a provider-status request is slow, compare Renderer `durationMs` with the
+  daemon batch `durationMs`. A large daemon total points to provider detection;
+  a large Renderer-only gap points to transport, timeout handling, or Renderer
+  runtime-probe fallback. Within the daemon, compare each provider total and its
+  largest phase. Logs intentionally record provider IDs, counts, outcomes, and
+  durations, but not executable paths, command output, environment values, or
+  error messages.
 - References:
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
   [WorkspaceWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/workspace/WorkspaceWindow.tsx)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [service.go](../../../services/tuttid/service/agentstatus/service.go)
+  [service_status.go](../../../services/tuttid/service/agentstatus/service_status.go)
 
 ### Renderer body requests fail with `ERR_H2_OR_QUIC_REQUIRED`
 
@@ -303,8 +341,38 @@
   [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
   [packages/workbench/surface/src/host/types.ts](../../../packages/workbench/surface/src/host/types.ts)
   [packages/workbench/surface/src/host/WorkbenchHostDock.tsx](../../../packages/workbench/surface/src/host/WorkbenchHostDock.tsx)
-  [workspaceAgentProviderDockStateSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceAgentProviderDockStateSource.ts)
   [useWorkspaceWorkbenchShellRuntime.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/useWorkspaceWorkbenchShellRuntime.tsx)
+
+### Dock entry is open but its state indicator is missing
+
+- Symptom:
+  A Dock icon is visible and its application window is open or minimized, but
+  the state dot is absent. The problem may affect one migrated node family or
+  every application in one Dock placement.
+- Quick checks:
+  Inspect the slot's `data-node-state`. If it is `closed`, compare the node's
+  persisted `dockEntryId` with the rendered entry id before inspecting CSS. If
+  it is `open` or `minimized`, inspect placement selectors for rules that hide
+  or clip the shared `::before` indicator. Reproduce with both an internal entry
+  and a `workspace-app:<appId>` entry to separate identity from presentation.
+- Root cause:
+  `dockEntryId` is exact durable affinity. A historical or provider-specific
+  value does not match a newer aggregate entry and therefore resolves to
+  `closed`. Separately, a placement-specific CSS override can suppress a
+  correctly resolved indicator for every application in that layout.
+- Fix:
+  Normalize stale durable affinity through an idempotent daemon migration and
+  make all new launch paths write the canonical entry id. Keep Workbench exact
+  matching intact. Render the shared indicator for both `open` and `minimized`
+  in every supported placement, changing only its position.
+- Validation:
+  Cover migrated snapshots, canonical new launches, third-party Workspace App
+  affinity, and bottom/left indicator selectors. Verify `closed` has no dot and
+  both `open` and `minimized` do.
+- References:
+  [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
+  [packages/workbench/surface/src/host/dockEntries.ts](../../../packages/workbench/surface/src/host/dockEntries.ts)
+  [packages/workbench/surface/src/styles/workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
 
 ### Effect cleanup leaves mounted refs false in React development
 
@@ -387,6 +455,13 @@
   `engine -> selector -> projection -> controller -> section` chain. Separate
   real summary-field changes from reference-only array, object, or callback
   changes; a memoized leaf cannot contain churn created at the selector boundary.
+  When the stack starts in `setRef`, inspect Radix `asChild` composition before
+  changing business state. In particular, check whether Tooltip and Dropdown
+  triggers both clone the same DOM child and merge callback refs, or whether a
+  transient status row mounts a Tooltip trigger while its message changes.
+  Also reject Tooltip/Select nesting where `TooltipTrigger` directly wraps a
+  `SelectTrigger`; both primitives install a stateful Popper anchor on the same
+  button.
 - Root cause:
   React StrictMode can intentionally replay setup/cleanup in development, but a
   continuously increasing render count usually means a parent is passing a new
@@ -401,20 +476,38 @@
   values from bidirectional state. For external/workbench state, only sync
   canonical identifiers and derive display text from the owning service. In
   AgentGUI, select the narrow render projection with a render-field equality
-  function, keep command callbacks stable, and derive the active row from the
-  same stabilized conversation list.
+  function, keep command callbacks stable, and separate Rail render equality
+  from active-session semantic equality. Stabilize usage, commands, prompt
+  queue, quota, session-chrome, and host callback projections at their owning
+  selector/controller boundary; do not clone canonical arrays while assembling
+  the view model. During Rail reconciliation, expose a stable lock reader so
+  portaled menu actions can check current state without passing a changing
+  boolean through every section. For composed menu actions, attach the Tooltip
+  trigger to a stable wrapper and the Dropdown trigger to the actual
+  forwarded-ref button. Do not nest both `asChild` triggers onto the same
+  element: their ref callbacks can repeatedly detach and attach each other until
+  React aborts the renderer tree. For truncated, non-interactive status text,
+  prefer a native `title` on the text element; it preserves access to the full
+  message without introducing a stateful anchor ref during session transitions.
+  Select triggers should likewise keep their native `title` and must not be
+  wrapped by a second Tooltip trigger.
 - Validation:
   With why-did-you-render enabled, reproduce once and confirm the noisy
   component lists the expected prop or hook difference. Then disable the tool
   and run the affected renderer tests plus desktop typecheck. AgentGUI budget
   tests must dispatch a real engine update and assert the unrelated Rail subtree
   stays at zero renders; do not replace this with a manual view-model rerender
-  that reuses the Rail reference by construction.
+  that reuses the Rail reference by construction. Add a composition regression
+  test for shared Tooltip/Dropdown actions and manually create a new
+  conversation, since an empty-to-populated Rail transition can be the first
+  time the faulty trigger mounts.
 - References:
   [main.tsx](../../../apps/desktop/src/renderer/src/main.tsx)
   [whyDidYouRender.ts](../../../apps/desktop/src/renderer/src/lib/whyDidYouRender.ts)
   [useAgentGUIConversationRailQuery.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.ts)
   [useAgentGUIConversationRailQuery.search.spec.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationRailQuery.search.spec.tsx)
+  [AgentGUIConversationRailSection.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIConversationRailSection.tsx)
+  [AgentSessionChrome.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentSessionChrome.tsx)
 
 ### Dense list panel stutters when mounted or resized
 
@@ -498,14 +591,19 @@
   suppress the synthesized `click` even though the button receives the pointer
   sequence. A handler wired only to `onClick` therefore never runs.
 - Fix:
-  Handle the primary `pointerup` as the pointer activation boundary. Preserve
-  keyboard activation explicitly, retain an assistive-technology click path,
-  and guard the async action with a synchronous in-flight ref so multiple event
-  paths cannot dispatch the command twice.
+  Handle `pointerup` only after a matching primary-button `pointerdown`; clear
+  the armed action on `pointerleave` and `pointercancel`. If the button instead
+  establishes pointer capture explicitly, also clear on lost capture and
+  validate that the release coordinates remain inside the action before
+  executing it. Preserve keyboard activation explicitly, retain an
+  assistive-technology click-only path, and guard the async action with a
+  synchronous in-flight ref so multiple event paths cannot dispatch the command
+  twice.
 - Validation:
   Cover pointer activation, the following synthesized mouse click, keyboard
-  activation, blank input, and cancellation. Assert the command runs exactly
-  once for each accepted action.
+  activation, assistive click-only activation, unmatched pointerup, canceled
+  pointer sequences, blank input, and cancellation. Assert the command runs
+  exactly once for each accepted action.
 - References:
   [AgentGUIRenameConversationDialog.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/view/AgentGUIRenameConversationDialog.tsx)
 

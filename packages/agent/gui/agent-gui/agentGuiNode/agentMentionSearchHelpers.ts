@@ -111,11 +111,9 @@ function normalizeSessionInitiatorDisplayName(value: string): string {
 
 export function resolveSessionMentionMessageTitle(
   session: AgentActivitySession,
-  messages: readonly AgentActivityMessage[]
+  _messages: readonly AgentActivityMessage[]
 ): string {
-  return compactText(
-    resolveWorkspaceAgentActivityTitle(session, [...messages])
-  );
+  return compactText(resolveWorkspaceAgentActivityTitle(session));
 }
 
 function resolveSessionDisplayStatus(
@@ -265,6 +263,9 @@ export function shouldShowEmptyGroup(
   filter: AgentMentionFilterId,
   query: string
 ): boolean {
+  if (groupId.startsWith("issue-topic:")) {
+    return false;
+  }
   const hasQuery = query.trim().length > 0;
   if (groupId === "files") {
     return false;
@@ -305,16 +306,22 @@ function emptyGroupLabel(groupId: AgentMentionGroupId, query: string): string {
   return agentMentionEmptyGroupLabel(groupId, query);
 }
 
-type AgentMentionRawGroupId = Exclude<AgentMentionGroupId, "files">;
+type AgentMentionRawGroupId = Exclude<
+  AgentMentionGroupId,
+  "files" | `issue-topic:${string}`
+>;
 
 export function resolveMentionGroupItems(
   groupId: AgentMentionGroupId,
   rawGroups: Record<AgentMentionRawGroupId, AgentContextMentionItem[]>
 ): AgentContextMentionItem[] {
+  if (groupId.startsWith("issue-topic:")) {
+    return [];
+  }
   if (groupId === "files") {
     return [...rawGroups.opened_files, ...rawGroups.agent_generated_files];
   }
-  return rawGroups[groupId] ?? [];
+  return rawGroups[groupId as AgentMentionRawGroupId] ?? [];
 }
 
 export function resolveMentionGroupTotalCount(
@@ -322,6 +329,9 @@ export function resolveMentionGroupTotalCount(
   totalCounts: Partial<Record<AgentMentionGroupId, number>>,
   itemCount: number
 ): number {
+  if (groupId.startsWith("issue-topic:")) {
+    return itemCount;
+  }
   if (groupId === "files") {
     return (
       (totalCounts.opened_files ?? 0) + (totalCounts.agent_generated_files ?? 0)

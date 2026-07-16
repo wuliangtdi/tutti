@@ -10,6 +10,8 @@ import type {
   AgentThinkingContentVM
 } from "../contracts/agentMessageRowVM";
 import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
+import { isApprovalToolCall } from "./agentToolRendererKind";
+import { resolveAgentTranscriptPresentationKind } from "./agentTranscriptPresentation";
 import { projectAgentToolCall } from "./agentToolProjection";
 import { projectConversationUserRow } from "./agentConversationUserProjection";
 
@@ -66,6 +68,9 @@ export function buildAgentTurnSequenceItems(
           kind: "thinking",
           thinking: projectThinking(entry.thinking, turn.id)
         });
+        return;
+      }
+      if (isApprovalToolCall(entry.call)) {
         return;
       }
       sequence.push({
@@ -169,6 +174,9 @@ function projectMessage(
     id: message.id,
     turnId: message.turnId ?? turnId,
     body: message.body,
+    presentationKind: resolveAgentTranscriptPresentationKind(
+      message.systemNotice ?? null
+    ),
     statusKind: message.statusKind ?? null,
     occurredAtUnixMs: message.occurredAtUnixMs ?? null,
     visibleError: message.visibleError ?? null,

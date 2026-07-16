@@ -2,6 +2,8 @@ package agentruntime
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -24,6 +26,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		return nil, ErrSessionDisconnected
 	}
 	session.ProviderSessionID = adapterSession.providerSessionID
+	a.beginClaudeSDKRootTurn(adapterSession, turnID, turnID)
 	explicitDisplayPrompt, visibleText := explicitAndVisiblePromptText(content, displayPrompt)
 	events := make([]activityshared.Event, 0, 4)
 	emitEvents := func(next []activityshared.Event) {
@@ -35,19 +38,17 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 			emit(next)
 		}
 	}
-	startEvents := make([]activityshared.Event, 0, 3)
-	if fallbackTitle := fallbackAgentSessionTitle(session.Title, visibleText, "", ProviderClaudeCode); fallbackTitle != "" {
-		startEvents = append(startEvents, newSessionTitleActivityEvent(session, fallbackTitle))
-		session.Title = fallbackTitle
-	}
-	startEvents = append(startEvents,
+	startEvents := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, visibleText, userPromptActivityPayload(content, explicitDisplayPrompt, userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}))),
 		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", map[string]any{
 			"adapter": claudeSDKSidecarAdapterName,
 		}),
-	)
+		claudeSDKRootProviderTurnStartedEvent(session, turnID, turnID, map[string]any{
+			"adapter": claudeSDKSidecarAdapterName,
+		}),
+	}
 	if event, ok := adapterSession.mirrorGoalSlashPrompt(session, visibleText); ok {
 		startEvents = append(startEvents, event)
 	}
@@ -56,6 +57,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	waiter := a.registerClaudeSDKTurn(adapterSession, turnID, emit)
 	if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, err)...)
 		return events, err
 	}
 	if err := adapterSession.send(claudeSDKSidecarRequest{
@@ -69,6 +71,7 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		},
 	}); err != nil {
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
+		events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, err)...)
 		return events, err
 	}
 
@@ -76,6 +79,9 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 	case result := <-waiter.done:
 		if len(result.events) > 0 {
 			events = append(events, result.events...)
+		}
+		if result.err != nil {
+			events = append(events, a.claudeSDKRootProviderFailureEvents(adapterSession, session, turnID, result.err)...)
 		}
 		return events, result.err
 	case <-ctx.Done():
@@ -92,6 +98,23 @@ func (a *ClaudeCodeSDKAdapter) Exec(
 		a.unregisterClaudeSDKTurn(adapterSession, turnID, waiter)
 		return events, ctx.Err()
 	}
+}
+
+func (a *ClaudeCodeSDKAdapter) claudeSDKRootProviderFailureEvents(adapterSession *claudeSDKAdapterSession, session Session, turnID string, err error) []activityshared.Event {
+	events := a.finishClaudeSDKTurnLifecycle(adapterSession, session, turnID, claudeSDKTurnFinishFailed, "provider_transport_failed")
+	metadata := map[string]any{"adapter": claudeSDKSidecarAdapterName}
+	if err != nil {
+		metadata["error"] = err.Error()
+	}
+	events = append(events, claudeSDKRootProviderTurnCompletedEvent(
+		session,
+		turnID,
+		turnID,
+		activityshared.TurnOutcomeFailed,
+		metadata,
+	))
+	a.consumeClaudeSDKRootProviderTurn(adapterSession, turnID)
+	return events
 }
 
 func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
@@ -138,23 +161,27 @@ func (a *ClaudeCodeSDKAdapter) GuideActiveTurn(
 	return events, nil
 }
 
-func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
+func (a *ClaudeCodeSDKAdapter) Cancel(ctx context.Context, session Session, _ string) ([]activityshared.Event, error) {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
-		return nil, nil
+		return nil, ErrSessionDisconnected
 	}
-	_ = adapterSession.send(claudeSDKSidecarRequest{
+	cancelCtx, cancel := context.WithTimeout(ctx, claudeSDKGoalCommandTimeout)
+	defer cancel()
+	if err := a.roundTripClaudeSDK(cancelCtx, session.AgentSessionID, adapterSession, claudeSDKSidecarRequest{
 		ID:   newID(),
 		Type: "cancel",
 		Payload: map[string]any{
 			"agentSessionId": session.AgentSessionID,
 		},
-	})
+	}); err != nil {
+		return nil, err
+	}
 	events := a.claudeSDKPendingRequestFailureEvents(adapterSession, session, "", errPermissionRequestCanceled)
 	// Finish open turn lifecycles by normalizer ownership, not by the live
-	// waiter registry. Controller Cancel cancels the Exec context first; Claude
-	// Exec then unregisters its waiter before adapter.Cancel runs. If we only
-	// finished live waiters, open Write/tool cards would stay "running" after
+	// waiter registry. The provider cancel response and local Exec cleanup can
+	// unregister the waiter independently of event projection. If we only
+	// finished live waiters, open Write/tool cards could stay "running" after
 	// the turn already settled canceled.
 	events = append(events, a.finishAllClaudeSDKTurnLifecycles(
 		adapterSession,
@@ -162,13 +189,36 @@ func (a *ClaudeCodeSDKAdapter) Cancel(_ context.Context, session Session, _ stri
 		claudeSDKTurnFinishInterrupted,
 		"user_interrupt",
 	)...)
-	for _, turnID := range a.liveClaudeSDKTurnIDs(adapterSession) {
-		if a.turnAlreadySettled(adapterSession, turnID) {
-			continue
-		}
-		events = append(events, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
-			"reason": "user",
-		}))
-	}
+	a.markClaudeSDKTurnClosed(adapterSession, a.claudeSDKRootTurnID(adapterSession, ""), "cancel_requested")
 	return a.stampTurnLifecycleSnapshots(adapterSession, events), nil
+}
+
+func (a *ClaudeCodeSDKAdapter) CancelTargets(ctx context.Context, rootSession Session, targets []CancelTarget, reason string) (TargetedCancelResult, error) {
+	for _, target := range targets {
+		if strings.TrimSpace(target.AgentSessionID) == strings.TrimSpace(rootSession.AgentSessionID) {
+			adapterSession := a.getSession(rootSession.AgentSessionID)
+			if adapterSession == nil {
+				return TargetedCancelResult{}, ErrSessionDisconnected
+			}
+			// services/tuttid owns the exact durable cancellation target set.
+			// Close those projection boundaries before asking the SDK to stop so
+			// cancellation-caused task/tool terminal events cannot race the
+			// durable canceled state and reinterpret a child as failed.
+			for _, cancelTarget := range targets {
+				a.markClaudeSDKTurnClosed(adapterSession, cancelTarget.TurnID, "cancel_requested")
+			}
+			// Claude SDK exposes cancellation for the root query. That provider
+			// operation stops its nested Task executions as part of the same
+			// query; services/tuttid supplied the exact durable target set.
+			events, err := a.Cancel(ctx, rootSession, reason)
+			if err != nil {
+				return TargetedCancelResult{}, err
+			}
+			return TargetedCancelResult{
+				Events:           events,
+				ConfirmedTargets: append([]CancelTarget(nil), targets...),
+			}, nil
+		}
+	}
+	return TargetedCancelResult{}, fmt.Errorf("claude SDK does not support canceling a child turn independently of its root turn")
 }

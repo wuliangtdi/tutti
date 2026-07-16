@@ -1,20 +1,13 @@
 import {
-  loadAllAgentSessionMessages,
   type AgentActivityMessagePage,
   type AgentActivitySession,
-  type AgentActivitySnapshot,
-  type AgentActivityUpdatedEvent
+  type AgentActivitySnapshot
 } from "@tutti-os/agent-activity-core";
 import {
   createAgentActivitySnapshotProjector,
   parseInlineActivityMessages,
   selectEngineSession
 } from "@tutti-os/agent-activity-core";
-import type {
-  TuttidClient,
-  TuttidEventStreamClient
-} from "@tutti-os/client-tuttid-ts";
-import type { DesktopRuntimeApi } from "@preload/types";
 import type {
   WorkspaceAgentActivityEnsureSessionSynchronizedInput,
   WorkspaceAgentModelCatalogInvalidatedEvent
@@ -29,21 +22,12 @@ import {
   stringifyError
 } from "./workspaceAgentActivityDiagnostics.ts";
 import { agentActivitySessionFromTuttidSession } from "../desktopAgentActivityAdapter.ts";
-
-interface WorkspaceAgentActivityReconcileDependencies {
-  eventStreamClient?: TuttidEventStreamClient;
-  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
-  tuttidClient: TuttidClient;
-}
-
-type WorkspaceAgentActivityBridgeEvent =
-  | AgentActivityUpdatedEvent
-  | {
-      agentSessionId: string;
-      data: unknown;
-      eventType: "state_patch";
-      workspaceId: string;
-    };
+import { reconcileAgentSessionMessagePages } from "./workspaceAgentActivityReconcileMessages.ts";
+import type {
+  AgentActivitySessionDetail,
+  WorkspaceAgentActivityBridgeEvent,
+  WorkspaceAgentActivityReconcileDependencies
+} from "./workspaceAgentActivityReconcileTypes.ts";
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -157,25 +141,28 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     return () => this.modelCatalogInvalidatedListeners.delete(listener);
   }
 
-  protected async fetchActivitySession(
+  protected async fetchActivitySessionDetail(
     workspaceId: string,
     agentSessionId: string,
     source: string
-  ): Promise<AgentActivitySession> {
+  ): Promise<AgentActivitySessionDetail> {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     this.reportReconcileTrace({
       agentSessionId,
       traceEvent: `${source}.requested`,
       workspaceId: normalizedWorkspaceId
     });
-    const session =
+    const detail =
       await this.reconcileDependencies.tuttidClient.getWorkspaceAgentSession(
         normalizedWorkspaceId,
         agentSessionId
       );
     const activitySession = agentActivitySessionFromTuttidSession(
       normalizedWorkspaceId,
-      session
+      detail.session
+    );
+    const childSessions = detail.childSessions.map((session) =>
+      agentActivitySessionFromTuttidSession(normalizedWorkspaceId, session)
     );
     this.reportReconcileTrace({
       agentSessionId,
@@ -183,10 +170,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId: normalizedWorkspaceId,
       fields: {
         incomingSession:
-          agentActivitySessionReconcileDiagnosticDetails(activitySession)
+          agentActivitySessionReconcileDiagnosticDetails(activitySession),
+        childSessionIds: childSessions.map((session) => session.agentSessionId)
       }
     });
-    return activitySession;
+    return { session: activitySession, childSessions };
   }
 
   protected upsertAuthoritativeSession(
@@ -199,6 +187,16 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       source,
       workspaceId: normalizeWorkspaceId(session.workspaceId)
     });
+  }
+
+  protected upsertAuthoritativeSessionDetail(
+    detail: AgentActivitySessionDetail,
+    source: string
+  ): void {
+    this.upsertAuthoritativeSession(detail.session, source);
+    for (const childSession of detail.childSessions) {
+      this.upsertAuthoritativeSession(childSession, source);
+    }
   }
 
   protected reportReconcileTrace(input: {
@@ -514,36 +512,59 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
     const entry = this.entry(workspaceId);
     const live = this.consumeNextReconcileLive(workspaceId, agentSessionId);
-    const messages =
-      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId];
-    const afterVersion = reconcileAfterVersion(messages ?? []);
-    this.reportReconcileTrace({
+    const discoveryDetail = await this.fetchActivitySessionDetail(
+      workspaceId,
       agentSessionId,
-      traceEvent: "reconcile.combined.messages_requested",
-      workspaceId,
-      fields: { afterVersion }
-    });
-    const page = await this.reconcileAgentSessionMessagePages(
-      workspaceId,
-      agentSessionId
+      "reconcile.combined.discovery_fetch"
     );
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
-    this.reportReconcileTrace({
-      agentSessionId,
-      traceEvent: "reconcile.combined.messages_resolved",
-      workspaceId,
-      fields: {
-        afterVersion,
-        latestVersion: page.latestVersion,
-        messageCount: page.messages.length
-      }
-    });
-    for (const message of page.messages) {
-      this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
+    const reconcileMessages = async (
+      sessions: AgentActivitySession[]
+    ): Promise<AgentActivityMessagePage[]> =>
+      Promise.all(
+        sessions.map(async (session) => {
+          const sessionId = session.agentSessionId;
+          const cached =
+            this.activitySnapshot(workspaceId).sessionMessagesById[sessionId];
+          const afterVersion = reconcileAfterVersion(cached ?? []);
+          this.reportReconcileTrace({
+            agentSessionId: sessionId,
+            traceEvent: "reconcile.combined.messages_requested",
+            workspaceId,
+            fields: { afterVersion, requestedSessionId: agentSessionId }
+          });
+          const page = await reconcileAgentSessionMessagePages({
+            adapter: entry.adapter,
+            agentSessionId: sessionId,
+            cached: cached ?? [],
+            shouldAbort: () => this.isSessionTombstoned(workspaceId, sessionId),
+            workspaceId
+          });
+          this.reportReconcileTrace({
+            agentSessionId: sessionId,
+            traceEvent: "reconcile.combined.messages_resolved",
+            workspaceId,
+            fields: {
+              afterVersion,
+              latestVersion: page.latestVersion,
+              messageCount: page.messages.length,
+              requestedSessionId: agentSessionId
+            }
+          });
+          return page;
+        })
+      );
+    const discoveredSessions = [
+      discoveryDetail.session,
+      ...discoveryDetail.childSessions
+    ];
+    const pages = await reconcileMessages(discoveredSessions);
+    if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
+      return;
     }
-    const session = await this.fetchActivitySession(
+    const detail = await this.fetchActivitySessionDetail(
       workspaceId,
       agentSessionId,
       "reconcile.combined.state_fetch"
@@ -551,15 +572,35 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
+    const discoveredSessionIds = new Set(
+      discoveredSessions.map((session) => session.agentSessionId)
+    );
+    const newlyDiscoveredSessions = detail.childSessions.filter(
+      (session) => !discoveredSessionIds.has(session.agentSessionId)
+    );
+    pages.push(...(await reconcileMessages(newlyDiscoveredSessions)));
+    if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
+      return;
+    }
     this.upsertEngineSession({
-      agentSessionId,
+      agentSessionId: detail.session.agentSessionId,
       live,
-      session,
+      session: detail.session,
       source: "reconcile.combined.state_upsert",
       workspaceId
     });
+    for (const childSession of detail.childSessions) {
+      this.upsertAuthoritativeSession(
+        childSession,
+        "reconcile.combined.child_state_upsert"
+      );
+    }
+    const reconciledMessages = pages.flatMap((page) => page.messages);
+    for (const message of reconciledMessages) {
+      this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
+    }
     entry.engine.dispatch({
-      messages: page.messages,
+      messages: reconciledMessages,
       type: "message/snapshotReceived",
       workspaceId
     });
@@ -635,10 +676,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       workspaceId,
       fields: { afterVersion }
     });
-    const page = await this.reconcileAgentSessionMessagePages(
-      workspaceId,
-      agentSessionId
-    );
+    const page = await reconcileAgentSessionMessagePages({
+      adapter: entry.adapter,
+      agentSessionId,
+      cached: messages ?? [],
+      shouldAbort: () => this.isSessionTombstoned(workspaceId, agentSessionId),
+      workspaceId
+    });
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) {
       return;
     }
@@ -662,52 +706,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     });
   }
 
-  private async reconcileAgentSessionMessagePages(
-    workspaceId: string,
-    agentSessionId: string
-  ): Promise<AgentActivityMessagePage> {
-    const entry = this.entry(workspaceId);
-    const cached =
-      this.activitySnapshot(workspaceId).sessionMessagesById[agentSessionId] ??
-      [];
-    if (cached.length === 0) {
-      return entry.adapter.listSessionMessages({
-        workspaceId,
-        agentSessionId,
-        limit: 100,
-        order: "desc"
-      });
-    }
-
-    const afterVersion = reconcileAfterVersion(cached);
-    const result = await loadAllAgentSessionMessages({
-      afterVersion,
-      listPage: (cursor) =>
-        entry.adapter.listSessionMessages({
-          workspaceId,
-          agentSessionId,
-          afterVersion: cursor,
-          order: "asc"
-        }),
-      shouldAbort: () => this.isSessionTombstoned(workspaceId, agentSessionId)
-    });
-    return {
-      hasMore: false,
-      latestVersion: result.messages.reduce(
-        (latest, message) => Math.max(latest, message.version),
-        afterVersion
-      ),
-      messages: result.messages
-    };
-  }
-
   private async reconcileAgentSessionState(
     workspaceId: string,
     agentSessionId: string
   ): Promise<void> {
     if (this.isSessionTombstoned(workspaceId, agentSessionId)) return;
     const live = this.consumeNextReconcileLive(workspaceId, agentSessionId);
-    const session = await this.fetchActivitySession(
+    const detail = await this.fetchActivitySessionDetail(
       workspaceId,
       agentSessionId,
       "reconcile.state_fetch"
@@ -716,12 +721,18 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       return;
     }
     this.upsertEngineSession({
-      agentSessionId,
+      agentSessionId: detail.session.agentSessionId,
       live,
-      session,
+      session: detail.session,
       source: "reconcile.state_upsert",
       workspaceId
     });
+    for (const childSession of detail.childSessions) {
+      this.upsertAuthoritativeSession(
+        childSession,
+        "reconcile.child_state_upsert"
+      );
+    }
     this.emitLatestStateEvent(workspaceId, agentSessionId);
   }
 

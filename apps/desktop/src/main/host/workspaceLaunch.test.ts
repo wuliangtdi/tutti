@@ -491,6 +491,12 @@ function createTransportClient(
     async goalControlWorkspaceAgentSession() {
       throw new Error("not used");
     },
+    async getWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
+    async reconcileWorkspaceAgentSessionGoal() {
+      throw new Error("not used");
+    },
     async sendWorkspaceAgentSessionInput() {
       throw new Error("not used");
     },
@@ -767,6 +773,31 @@ test("workspace launch prefers destroying owner windows after workspace handoff"
   await launch.showWorkspace(ownerWindow, "ws-destroy");
 
   assert.deepEqual(events, ["workspace:ws-destroy", "owner:destroyed"]);
+});
+
+test("workspace launch keeps a reused durable workspace owner open", async () => {
+  const events: string[] = [];
+  const ownerWindow: WorkspaceLaunchOwnerWindow = {
+    close() {
+      events.push("owner:closed");
+    },
+    destroy() {
+      events.push("owner:destroyed");
+    }
+  };
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showWorkspaceWindow(workspaceID) {
+        events.push(`workspace:${workspaceID}:reused`);
+        return ownerWindow;
+      }
+    }),
+    tuttidClient: createTransportClient()
+  });
+
+  await launch.showWorkspace(ownerWindow, "ws-existing-owner");
+
+  assert.deepEqual(events, ["workspace:ws-existing-owner:reused"]);
 });
 
 test("workspace launch keeps owner open when replacement workspace window fails", async () => {

@@ -13,6 +13,7 @@ import type { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderC
 import type { useAgentGUILocalState } from "./useAgentGUILocalState";
 import type { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabilities";
 import type { useAgentGUISessionDetailTransport } from "./useAgentGUISessionDetailTransport";
+import { resolveAgentGUIProviderReadinessGateForView } from "../model/agentGuiProviderReadiness";
 
 type ConversationPresentationInput = Parameters<
   typeof useAgentGUIConversationPresentation
@@ -21,6 +22,9 @@ type ConversationDetailInput = Omit<
   Parameters<typeof useAgentGUIConversationDetail>[0],
   "activeConversation" | "activeSessionView"
 >;
+type ActiveSessionViewProjection = Parameters<
+  typeof useAgentGUIConversationDetail
+>[0]["activeSessionView"];
 type ComposerPresentationInput = Omit<
   Parameters<typeof useAgentGUIComposerPresentation>[0],
   "activeConversation"
@@ -69,18 +73,29 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
 export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
   const { activeConversation, visibleConversations } =
     useAgentGUIConversationPresentation(input);
+  const stableActiveSessionViewProjection =
+    useMemo<ActiveSessionViewProjection>(
+      () =>
+        input.activeSessionView
+          ? {
+              hasOlderMessages: input.activeSessionView.hasOlderMessages,
+              isLoadingOlderMessages:
+                input.activeSessionView.isLoadingOlderMessages,
+              olderMessageCount: input.activeSessionView.olderMessages.length,
+              oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
+            }
+          : null,
+      [
+        input.activeSessionView?.hasOlderMessages,
+        input.activeSessionView?.isLoadingOlderMessages,
+        input.activeSessionView?.olderMessages.length,
+        input.activeSessionView?.oldestLoadedVersion
+      ]
+    );
   const detail = useAgentGUIConversationDetail({
     ...input,
     activeConversation,
-    activeSessionView: input.activeSessionView
-      ? {
-          hasOlderMessages: input.activeSessionView.hasOlderMessages,
-          isLoadingOlderMessages:
-            input.activeSessionView.isLoadingOlderMessages,
-          olderMessageCount: input.activeSessionView.olderMessages.length,
-          oldestLoadedVersion: input.activeSessionView.oldestLoadedVersion
-        }
-      : null
+    activeSessionView: stableActiveSessionViewProjection
   });
   const { stableComposerSettings } = useAgentGUIComposerPresentation({
     ...input,
@@ -109,12 +124,11 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     input.activeConversationId === null
       ? input.selectedComposerTargetData.data
       : input.data;
-  const providerReadinessGate =
-    input.activeConversationId === null
-      ? (input.providerReadinessGates?.[
-          input.effectiveSelectedProviderTarget.provider
-        ] ?? null)
-      : null;
+  const providerReadinessGate = resolveAgentGUIProviderReadinessGateForView({
+    activeConversationId: input.activeConversationId,
+    providerReadinessGates: input.providerReadinessGates,
+    selectedProvider: input.effectiveSelectedProviderTarget.provider
+  });
   const viewModel = useAgentGUIViewModel({
     shell: {
       workspaceId: input.workspaceId,
@@ -130,7 +144,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       comingSoonProviders: input.normalizedComingSoonProviders,
       conversationFilter: input.conversationFilter,
       conversations: visibleConversations,
-      userProjects: [...input.userProjects],
+      userProjects: input.userProjects,
       activeConversation,
       activeConversationId: input.activeConversationId,
       isLoadingConversations: input.isLoadingConversations,
@@ -143,7 +157,6 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
         input.activeSessionView?.isLoadingOlderMessages ?? false,
       hasOlderMessages: input.activeSessionView?.hasOlderMessages ?? false,
       usage: input.usage,
-      backgroundAgentCount: input.backgroundAgentCount,
       hasSentUserMessage: session.hasSentUserMessage,
       avoidGroupingEdits: input.avoidGroupingEdits,
       conversation: detail.conversation,
@@ -190,6 +203,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       providerReadinessGate
     },
     operations: {
+      goalClearNoticeSequence: input.goalClearNoticeSequence,
       isDeletingConversation: input.isDeletingConversation,
       isDeletingProjectConversations: input.isDeletingProjectConversations,
       pendingDeleteConversation: input.pendingDeleteConversation,

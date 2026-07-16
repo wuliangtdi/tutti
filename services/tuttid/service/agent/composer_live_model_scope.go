@@ -12,8 +12,7 @@ import (
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
-const claudeLiveModelCacheCwdScope = "account"
-const claudeLiveModelCacheWorkspaceScope = "account"
+const accountLiveModelCacheScope = "account"
 
 type composerLiveModelScope struct {
 	provider      string
@@ -35,8 +34,8 @@ func newComposerLiveModelScope(provider, workspaceID, cwd, agentTargetID string)
 
 func (s composerLiveModelScope) key() string {
 	workspaceScope := s.workspaceID
-	if isClaudeSDKLiveModelProvider(s.provider) {
-		workspaceScope = claudeLiveModelCacheWorkspaceScope
+	if liveModelCatalogUsesAccountScope(s.provider) {
+		workspaceScope = accountLiveModelCacheScope
 	}
 	targetScope := s.agentTargetID
 	if targetScope == "" {
@@ -51,10 +50,14 @@ func (s composerLiveModelScope) key() string {
 }
 
 func liveModelCacheCwdScope(provider string, cwd string) string {
-	if isClaudeSDKLiveModelProvider(provider) {
-		return claudeLiveModelCacheCwdScope
+	if liveModelCatalogUsesAccountScope(provider) {
+		return accountLiveModelCacheScope
 	}
 	return strings.TrimSpace(cwd)
+}
+
+func liveModelCatalogUsesAccountScope(provider string) bool {
+	return composerProfileFor(provider).LiveModelAccountScoped
 }
 
 func (s *Service) resolveLiveModelDiscoveryCwd(
@@ -62,7 +65,7 @@ func (s *Service) resolveLiveModelDiscoveryCwd(
 	provider string,
 	requestedCwd string,
 ) (string, error) {
-	if !isClaudeSDKLiveModelProvider(provider) {
+	if !liveModelCatalogUsesAccountScope(provider) {
 		resolvedCwd := strings.TrimSpace(requestedCwd)
 		if resolvedCwd == "" {
 			return "", nil
@@ -76,7 +79,7 @@ func (s *Service) resolveLiveModelDiscoveryCwd(
 	}
 	discoveryCwd := filepath.Join(stateDir, "agent", "discovery", agentprovider.NormalizeOpen(provider))
 	if err := os.MkdirAll(discoveryCwd, 0o700); err != nil {
-		return "", fmt.Errorf("create Claude live-model discovery directory: %w", err)
+		return "", fmt.Errorf("create live-model discovery directory: %w", err)
 	}
 	return discoveryCwd, nil
 }

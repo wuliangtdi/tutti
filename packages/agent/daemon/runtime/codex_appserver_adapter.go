@@ -109,6 +109,12 @@ const startupModelSteadyRetryCount = 36
 // before nudging it with a thread/goal/set re-send.
 const defaultCodexAppServerGoalContinuationGraceWindow = 1500 * time.Millisecond
 
+// defaultCodexAppServerGoalProvenanceGraceWindow bounds how long an
+// unowned provider turn may wait for the app-server's turn-scoped
+// thread/goal/updated evidence. turn/started alone carries no Goal generation
+// and must never inherit the session's latest desired Goal identity.
+const defaultCodexAppServerGoalProvenanceGraceWindow = 250 * time.Millisecond
+
 type CodexAppServerAdapter struct {
 	transport                  ProcessTransport
 	host                       HostMetadata
@@ -121,6 +127,9 @@ type CodexAppServerAdapter struct {
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
 	eventSink                  SessionEventSink
+	goalReconcileSink          GoalReconcileDurableSink
+	goalProvenanceSink         GoalProvenanceDurableSink
+	goalReconcileAckTimeout    time.Duration
 	configSink                 ConfigOptionsUpdateSink
 	// lifecycleMu guards lifecycleLocks; the per-session locks serialize
 	// Start/Resume/Close/ReleaseLiveSession per agent session so concurrent
@@ -144,6 +153,15 @@ type CodexAppServerAdapter struct {
 	// codex to auto-start the next turn before the adapter nudges it. Zero
 	// falls back to the default.
 	goalContinuationGraceWindow time.Duration
+	// goalProvenanceGraceWindow gives a turn-scoped goal update (or the
+	// matching goal/set response) a bounded window to establish immutable
+	// provider-turn provenance. Zero falls back to the default.
+	goalProvenanceGraceWindow time.Duration
+	// goalHandoffCommittedHook is test-only synchronization injected after the
+	// atomic pending->adopting commit and before TurnStarted/drain.
+	goalHandoffCommittedHook func()
+	goalBeforeAdoptHook      func()
+	goalHandoffDrainHook     func()
 }
 
 type codexAppServerSessionLock struct {
@@ -152,12 +170,33 @@ type codexAppServerSessionLock struct {
 }
 
 type codexAppServerSession struct {
-	client                 *codexAppServerClient
-	threadID               string
-	serverInfo             map[string]any
-	account                map[string]any
-	rateLimits             map[string]any
-	goal                   map[string]any
+	client     *codexAppServerClient
+	threadID   string
+	serverInfo map[string]any
+	account    map[string]any
+	rateLimits map[string]any
+	goal       map[string]any
+	// goalOperationID/revision identify the latest durable desired-goal write.
+	// They gate future scheduling; accepted Turns retain their own identity.
+	goalOperationID string
+	goalRevision    int64
+	goalRepairEpoch int64
+	// Goal provenance is deliberately separate from the mutable desired Goal
+	// identity above. A provider turn may only consume an immutable association
+	// established by matching a provider Goal generation observed in both a
+	// successful goal/set response and a turn-scoped goal/updated notification.
+	goalGenerationBindings           map[string]codexGoalGenerationBinding
+	goalGenerationOrder              []string
+	currentGoalGenerationFingerprint string
+	goalTurnEvidence                 map[string]*codexGoalTurnEvidence
+	pendingGoalTurns                 map[string]*codexPendingGoalTurn
+	// provenanceDegraded is fail-closed for the lifetime of this provider
+	// session. Once bounded evidence can no longer preserve ambiguity, no later
+	// notification may rebuild a partial cache and become adoptable.
+	provenanceDegraded bool
+	// goalMutationMu is the provider-side half of GoalActor. It serializes
+	// direct control, reconcile and delayed continuation nudges for this thread.
+	goalMutationMu         sync.Mutex
 	models                 []map[string]any
 	startupModelsReady     bool
 	startupRateLimitsReady bool
@@ -183,12 +222,23 @@ type codexAppServerSession struct {
 	// must not veto the running turn's terminal in settleActiveTurn. Guarded
 	// by the adapter mutex.
 	activeTurnStartConfirmed bool
-	// lastTurnID survives turn settlement so post-turn child lifecycle
-	// markers can carry a turn id (the activity store rejects turnless
-	// message updates).
-	lastTurnID   string
-	activeTurn   *codexAppServerActiveTurn
-	childThreads map[string]*codexAppServerThreadContext
+	// lastCanonicalTurnID survives provider-turn settlement so provider-native
+	// child registrations can still resolve the canonical root turn while they
+	// drain. It must never contain an app-server provider turn id.
+	lastCanonicalTurnID string
+	// canceledRootTurnID is an adapter-local execution boundary. Once the user
+	// cancels a canonical root turn, server-initiated root turns and child
+	// threads discovered after the durable cancel target snapshot are stopped
+	// instead of being adopted or projected as new canonical work. A later
+	// explicit canonical turn clears the boundary in beginActiveTurn.
+	canceledRootTurnID string
+	// canceledProviderThreads remembers late child provider threads that were
+	// discovered behind canceledRootTurnID. They never receive canonical child
+	// session identities; the set only lets later provider notifications be
+	// interrupted and dropped consistently.
+	canceledProviderThreads map[string]struct{}
+	activeTurn              *codexAppServerActiveTurn
+	childThreads            map[string]*codexAppServerThreadContext
 	// recentForeignDrops remembers recently dropped unknown thread ids so a
 	// late registration can report how many events the ordering gap lost.
 	recentForeignDrops map[string]int
@@ -197,9 +247,15 @@ type codexAppServerSession struct {
 }
 
 type codexAppServerThreadContext struct {
-	parentThreadID string
-	parentItemID   string
-	normalizer     *acpTurnNormalizer
+	agentSessionID       string
+	turnID               string
+	rootAgentSessionID   string
+	rootTurnID           string
+	parentAgentSessionID string
+	parentTurnID         string
+	parentThreadID       string
+	parentItemID         string
+	normalizer           *acpTurnNormalizer
 	// droppedBeforeRegistration counts events for this thread that arrived
 	// (and were dropped as unknown) before its receiverThreadIds registration
 	// - permanent telemetry for ADR 0003's ordering question.
@@ -214,15 +270,17 @@ type codexAppServerThreadContext struct {
 // finishes when the `turn/completed` notification delivers the final turn
 // payload through the reducer-owned terminal projection.
 type codexAppServerActiveTurn struct {
-	turnID       string
-	session      Session
-	ctx          context.Context
-	normalizer   *acpTurnNormalizer
-	emit         func([]activityshared.Event)
-	emitCommands CommandSnapshotSink
-	kind         codexAppServerTurnKind
-	phase        codexAppServerTurnPhase
-	terminal     chan codexAppServerTurnTerminal
+	processMu      sync.Mutex
+	turnID         string
+	providerTurnID string
+	session        Session
+	ctx            context.Context
+	normalizer     *acpTurnNormalizer
+	emit           func([]activityshared.Event)
+	emitCommands   CommandSnapshotSink
+	kind           codexAppServerTurnKind
+	phase          codexAppServerTurnPhase
+	terminal       chan codexAppServerTurnTerminal
 	// terminated is closed exactly once when the Exec goroutine for this turn
 	// returns (turn fully finalized). Cancel waits on it so it only responds
 	// after the turn has actually stopped.
@@ -385,6 +443,24 @@ func (a *CodexAppServerAdapter) SetSessionEventSink(sink SessionEventSink) {
 	}
 	a.mu.Lock()
 	a.eventSink = sink
+	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) SetGoalReconcileDurableSink(sink GoalReconcileDurableSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.goalReconcileSink = sink
+	a.mu.Unlock()
+}
+
+func (a *CodexAppServerAdapter) SetGoalProvenanceDurableSink(sink GoalProvenanceDurableSink) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.goalProvenanceSink = sink
 	a.mu.Unlock()
 }
 

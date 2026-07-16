@@ -8,11 +8,13 @@ export type TestCanUseToolOptions = Parameters<
 >[2];
 
 export function testCanUseToolOptions(input: {
+  agentID?: string;
   requestId: string;
   toolUseID: string;
 }): TestCanUseToolOptions {
   return {
     signal: new AbortController().signal,
+    ...(input.agentID ? { agentID: input.agentID } : {}),
     requestId: input.requestId,
     toolUseID: input.toolUseID
   } as TestCanUseToolOptions;

@@ -25,7 +25,7 @@ func cursorDescriptor() ProviderDescriptor {
 			AuthRequiredMessage: "Cursor ACP requires authentication; run `cursor-agent login` (or set CURSOR_API_KEY) on the host, then retry this session.",
 			StandardACP: StandardACPRuntimeDescriptor{
 				AdapterStrategy:    StandardACPAdapterStrategyCursor,
-				PermissionModes:    []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "plan"}, {InputID: "agent", RuntimeID: "agent"}, {InputID: "full-access", RuntimeID: "agent"}, {InputID: "plan", RuntimeID: "plan"}, {InputID: "ask", RuntimeID: "ask"}},
+				PermissionModes:    []RuntimePermissionModeDescriptor{{InputID: "read-only", RuntimeID: "ask"}, {InputID: "agent", RuntimeID: "agent"}, {InputID: "full-access", RuntimeID: "agent"}, {InputID: "plan", RuntimeID: "plan"}, {InputID: "ask", RuntimeID: "ask"}},
 				PlanModeRuntimeID:  "plan",
 				ProjectCurrentMode: true,
 			},
@@ -35,7 +35,10 @@ func cursorDescriptor() ProviderDescriptor {
 			Install: InstallerDescriptor{Kind: InstallerKindOfficialScript, DisplayCommand: "curl https://cursor.com/install -fsS | bash", ScriptURL: "https://cursor.com/install", ScriptShell: "bash"},
 		},
 		ComposerProfile: ComposerProfileDescriptor{
-			ModelSelection: true, LiveModelDiscovery: LiveModelDiscoveryDescriptor{Kind: LiveModelDiscoveryKindRuntimeSession}, Capabilities: []string{CapabilityImageInput, CapabilityModelImageInputRequired, CapabilityInterrupt, CapabilityPlanMode}, PermissionConfigurable: true, DefaultPermissionModeID: "agent",
+			// Cursor exposes its account-scoped model catalog from ACP session/new,
+			// so an empty composer needs a no-prompt hidden session before the first
+			// visible conversation can choose a non-default model.
+			ModelSelection: true, LiveModelDiscovery: LiveModelDiscoveryDescriptor{Kind: LiveModelDiscoveryKindRuntimeSession, HiddenProbe: true, AccountScoped: true}, Capabilities: []string{CapabilityImageInput, CapabilityModelImageInputRequired, CapabilityInterrupt, CapabilityPlanMode}, PermissionConfigurable: true, DefaultPermissionModeID: "agent",
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "agent", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model"},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
 				FallbackCommands:            []string{"plan"},

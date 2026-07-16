@@ -1,5 +1,7 @@
 import {
   createElement,
+  lazy,
+  Suspense,
   useState,
   type CSSProperties,
   type HTMLAttributes,
@@ -22,6 +24,12 @@ import { CreateChatIcon } from "@tutti-os/ui-system/icons";
 import openLinkLinedIconUrl from "../app/renderer/assets/icons/open-link-lined.svg";
 import { useAgentGuiWorkbenchBodyRenderError } from "./bodyRenderErrorRegistry.ts";
 
+const LazyAgentRichTextReadonly = lazy(() =>
+  import("../shared/AgentRichTextReadonly.tsx").then((module) => ({
+    default: module.AgentRichTextReadonly
+  }))
+);
+
 const headerChromeIconButtonClassName =
   "agent-gui-workbench-header__icon-button";
 
@@ -43,6 +51,7 @@ export interface AgentGuiWorkbenchHeaderCopy {
   newConversation: string;
   openDetachedWindow?: string;
   restore?: string;
+  untitledConversation?: string;
 }
 
 export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement> {
@@ -55,10 +64,12 @@ export interface AgentGuiWorkbenchHeaderProps extends HTMLAttributes<HTMLElement
   conversationRailWidthPx?: number | null;
   conversationIconUrl?: string | null;
   conversationIconFallbackUrl?: string | null;
+  hasConversation?: boolean;
   providerRailWidthPx?: number | null;
   primaryAccessory?: ReactNode;
   secondaryAccessory?: ReactNode;
   conversationTitle?: string | null;
+  conversationTitleDisplayPrompt?: string | null;
   nodeId: string;
   onCreateConversation?: () => void;
   onOpenDetachedWindow?: () => void;
@@ -84,10 +95,12 @@ export function AgentGuiWorkbenchHeader({
   conversationRailWidthPx,
   conversationIconUrl,
   conversationIconFallbackUrl,
+  hasConversation = false,
   providerRailWidthPx,
   primaryAccessory,
   secondaryAccessory,
   conversationTitle,
+  conversationTitleDisplayPrompt,
   nodeId,
   onCreateConversation,
   onOpenDetachedWindow,
@@ -106,7 +119,12 @@ export function AgentGuiWorkbenchHeader({
   const appTitle = _title?.trim() || copy.fallbackAgentLabel;
   const sessionTitle = hasBodyRenderError
     ? ""
-    : conversationTitle?.trim() || "";
+    : conversationTitle?.trim() ||
+      (hasConversation ? copy.untitledConversation?.trim() : "") ||
+      "";
+  const sessionTitleDisplayPrompt = hasBodyRenderError
+    ? ""
+    : conversationTitleDisplayPrompt?.trim() || "";
   const collapsedTitle = agentTitle?.trim() || sessionTitle;
   const sessionIconUrl = conversationIconUrl?.trim() || "";
   const sessionIconFallbackUrl = conversationIconFallbackUrl?.trim() || "";
@@ -280,15 +298,35 @@ export function AgentGuiWorkbenchHeader({
                   src: sessionIconUrl,
                   testId: "agent-gui-window-detail-title-icon"
                 }),
-                sessionTitle
+                sessionTitleDisplayPrompt
                   ? createElement(
-                      "span",
+                      Suspense,
                       {
-                        className: "agent-gui-workbench-header__title-text"
+                        fallback: createElement(
+                          "span",
+                          {
+                            className: "agent-gui-workbench-header__title-text"
+                          },
+                          sessionTitle
+                        )
                       },
-                      sessionTitle
+                      createElement(LazyAgentRichTextReadonly, {
+                        className:
+                          "agent-gui-workbench-header__title-text agent-gui-workbench-header__rich-title",
+                        editorClassName:
+                          "agent-gui-workbench-header__rich-title-editor",
+                        value: sessionTitleDisplayPrompt
+                      })
                     )
-                  : null
+                  : sessionTitle
+                    ? createElement(
+                        "span",
+                        {
+                          className: "agent-gui-workbench-header__title-text"
+                        },
+                        sessionTitle
+                      )
+                    : null
               )
             : null,
           secondaryAccessory

@@ -15,6 +15,18 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+func rootCancelInput(roomID string, agentSessionID string, turnID string, reason string) CancelInput {
+	return CancelInput{
+		RoomID:             roomID,
+		RootAgentSessionID: agentSessionID,
+		Targets: []CancelTarget{{
+			AgentSessionID: agentSessionID,
+			TurnID:         turnID,
+		}},
+		Reason: reason,
+	}
+}
+
 type recordingReporter struct {
 	mu      sync.Mutex
 	calls   []reportCall
@@ -23,6 +35,67 @@ type recordingReporter struct {
 
 type reportCall struct {
 	report agentsessionstore.ReportActivityInput
+}
+
+type goalPrepareBarrierReporter struct {
+	mu       sync.Mutex
+	prepared chan struct{}
+	release  chan struct{}
+	once     sync.Once
+	phases   []string
+}
+
+type blockingGoalReconcileReporter struct{}
+
+func (blockingGoalReconcileReporter) Report(ctx context.Context, _ agentsessionstore.ReportActivityInput) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (r *goalPrepareBarrierReporter) Report(ctx context.Context, report agentsessionstore.ReportActivityInput) error {
+	for _, request := range report.GoalReconcileRequests {
+		r.mu.Lock()
+		r.phases = append(r.phases, request.Phase)
+		r.mu.Unlock()
+		if request.Phase == "quiesce_pending" {
+			r.once.Do(func() { close(r.prepared) })
+			select {
+			case <-r.release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	return nil
+}
+
+func (r *goalPrepareBarrierReporter) phaseSnapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.phases...)
+}
+
+func TestGoalRecoveryCapabilitiesComeFromAdapterPolicy(t *testing.T) {
+	codex := (&CodexAppServerAdapter{}).GoalCapabilities()
+	if !codex.QuerySupported || !codex.ReplaySetAfterRestart {
+		t.Fatalf("codex capabilities=%#v", codex)
+	}
+	claude := (&ClaudeCodeSDKAdapter{}).GoalCapabilities()
+	if claude.QuerySupported || claude.ReplaySetAfterRestart {
+		t.Fatalf("claude capabilities=%#v", claude)
+	}
+
+	// A provider name is not a capability. Even an adapter registered under
+	// the codex string is rejected if it does not implement GoalAdapter.
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{RoomID: "room-policy", Provider: ProviderCodex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.GoalCapabilities(context.Background(), GoalReconcileInput{RoomID: "room-policy", AgentSessionID: started.Session.AgentSessionID}); err == nil {
+		t.Fatal("provider-name-only adapter unexpectedly acquired goal recovery capabilities")
+	}
 }
 
 func stringPtr(value string) *string {
@@ -312,6 +385,140 @@ func TestControllerSetTitleUpdatesLiveSession(t *testing.T) {
 	}
 	if _, err := controller.SetTitle(context.Background(), "room-1", "missing-session", "Title"); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("missing session error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestControllerExecInitialTitleCompareAndSetPreservesRename(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController([]Adapter{&recordingStartAdapter{provider: ProviderCodex}}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.SetTitle(context.Background(), "room-1", "agent-session-1", "Manual title"); err != nil {
+		t.Fatalf("SetTitle: %v", err)
+	}
+	if _, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:           "room-1",
+		AgentSessionID:   "agent-session-1",
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: "",
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	session, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("session missing after Exec")
+	}
+	if session.Title != "Manual title" {
+		t.Fatalf("session title = %q, want concurrent rename preserved", session.Title)
+	}
+}
+
+func TestControllerInitialTitleStateSurvivesResume(t *testing.T) {
+	t.Parallel()
+
+	adapter := &recordingStartAdapter{provider: ProviderCodex}
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if started.Session.InitialTitleEstablished {
+		t.Fatal("new empty session title unexpectedly established")
+	}
+	if established := started.Session.RuntimeContext[initialTitleEstablishedRuntimeContextKey]; established != false {
+		t.Fatalf("runtime title marker = %#v, want false", established)
+	}
+	reporter.waitForCalls(t, 1)
+	if _, err := controller.SetTitle(context.Background(), "room-1", "agent-session-1", ""); err != nil {
+		t.Fatalf("SetTitle: %v", err)
+	}
+	persisted, ok := controller.get("room-1", "agent-session-1")
+	if !ok {
+		t.Fatal("session missing after SetTitle")
+	}
+	if persisted.RuntimeContext[initialTitleEstablishedRuntimeContextKey] != true {
+		t.Fatalf("runtime title marker = %#v, want true", persisted.RuntimeContext)
+	}
+	reports := reporter.waitForCalls(t, 2)
+	lastReport := reports[len(reports)-1].report
+	if len(lastReport.StatePatches) != 1 ||
+		lastReport.StatePatches[0].RuntimeContext[initialTitleEstablishedRuntimeContextKey] != true {
+		t.Fatalf("persisted title marker report = %#v, want true", lastReport.StatePatches)
+	}
+
+	resumedController := NewController([]Adapter{adapter}, nil)
+	resumed, err := resumedController.Resume(context.Background(), ResumeInput{
+		RoomID:            "room-1",
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "provider-session-1",
+		CWD:               "/workspace",
+		RuntimeContext:    persisted.RuntimeContext,
+	})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if !resumed.InitialTitleEstablished {
+		t.Fatal("resumed empty title lost established state")
+	}
+	if _, err := resumedController.Exec(context.Background(), ExecInput{
+		RoomID:           "room-1",
+		AgentSessionID:   "agent-session-1",
+		Content:          textPrompt("later prompt"),
+		InitialTitle:     "later prompt",
+		InitialTitleBase: "",
+	}); err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	current, _ := resumedController.get("room-1", "agent-session-1")
+	if current.Title != "" {
+		t.Fatalf("resumed session title = %q, want explicit empty title preserved", current.Title)
+	}
+}
+
+func TestInitialTitleEstablishedStateFailsClosedWithoutMarker(t *testing.T) {
+	t.Parallel()
+
+	if !initialTitleEstablishedFromRuntimeContext(nil, "") {
+		t.Fatal("legacy empty session without marker must fail closed")
+	}
+	if initialTitleEstablishedFromRuntimeContext(
+		map[string]any{initialTitleEstablishedRuntimeContextKey: false},
+		"",
+	) {
+		t.Fatal("new empty session with false marker must remain eligible")
+	}
+
+	controller := NewController(
+		[]Adapter{&recordingStartAdapter{provider: ProviderCodex}},
+		nil,
+	)
+	resumed, err := controller.Resume(context.Background(), ResumeInput{
+		RoomID:            "room-1",
+		AgentSessionID:    "legacy-session",
+		Provider:          ProviderCodex,
+		ProviderSessionID: "provider-session-1",
+	})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if resumed.RuntimeContext[initialTitleEstablishedRuntimeContextKey] != true {
+		t.Fatalf("legacy resume marker = %#v, want true", resumed.RuntimeContext)
 	}
 }
 
@@ -787,7 +994,6 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
 		CWD:      "/workspace",
-		Title:    "Codex",
 		Visible:  boolPtr(false),
 	})
 	if err != nil {
@@ -818,9 +1024,11 @@ func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing
 	}
 
 	execResult, err := controller.Exec(ctx, ExecInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("hello"),
+		RoomID:           "room-1",
+		AgentSessionID:   started.Session.AgentSessionID,
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: started.Session.Title,
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -847,7 +1055,6 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 		RoomID:   "room-1",
 		Provider: ProviderCodex,
 		CWD:      "/workspace",
-		Title:    "Codex",
 	})
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -866,9 +1073,11 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 	defer unsubscribe()
 
 	execResult, err := controller.Exec(ctx, ExecInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Content:        textPrompt("hello"),
+		RoomID:           "room-1",
+		AgentSessionID:   started.Session.AgentSessionID,
+		Content:          textPrompt("hello"),
+		InitialTitle:     "hello",
+		InitialTitleBase: started.Session.Title,
 	})
 	if err != nil {
 		t.Fatalf("Exec: %v", err)
@@ -880,19 +1089,37 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 		t.Fatalf("exec session status = %q, want %q", execResult.SessionStatus, SessionStatusWorking)
 	}
 	waitForStatePatchTitle(t, events, "hello")
-	select {
-	case event := <-events:
-		update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
-		if event.EventType != StreamEventMessageUpdate ||
-			!ok ||
-			update.Kind != "text" ||
-			update.Role != "user" ||
-			update.Payload["text"] != "hello" {
-			t.Fatalf("published second exec event = %#v, want user message", event)
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			if event.EventType != StreamEventMessageUpdate {
+				continue
+			}
+			update, ok := event.Data.(agentsessionstore.WorkspaceAgentMessageUpdate)
+			if !ok || update.Kind != "text" || update.Role != "user" || update.Payload["text"] != "hello" {
+				t.Fatalf("published message event = %#v, want user message", event)
+			}
+			goto userMessagePublished
+		case <-deadline:
+			t.Fatal("expected user message event to be published")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected user message event to be published")
 	}
+
+userMessagePublished:
+	waitForCondition(t, func() bool {
+		updatedSession, ok := controller.get("room-1", started.Session.AgentSessionID)
+		return ok && updatedSession.Title == "Inspect repository structure"
+	})
+	reportCalls := reporter.waitForReports(t, "assistant and completed tool reports", func(calls []reportCall) bool {
+		reports := reportInputs(calls)
+		return len(reportsWithTimelineItem(reports, "message.assistant")) > 0 &&
+			len(reportsWithTimelineItem(reports, "call.completed")) > 0
+	})
+	controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+		RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID,
+		TurnID: execResult.TurnID, Outcome: "completed",
+	})
 	waitForCondition(t, func() bool {
 		updatedSession, ok := controller.get("room-1", started.Session.AgentSessionID)
 		return ok &&
@@ -900,22 +1127,13 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 			updatedSession.Title == "Inspect repository structure"
 	})
 
-	cancelResult, err := controller.Cancel(ctx, CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user",
-	})
+	cancelResult, err := controller.Cancel(ctx, rootCancelInput("room-1", started.Session.AgentSessionID, execResult.TurnID, "user"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 	if cancelResult.Canceled {
 		t.Fatalf("Cancel result = %#v, want no active turn cancel", cancelResult)
 	}
-	reportCalls := reporter.waitForReports(t, "assistant and turn completion reports", func(calls []reportCall) bool {
-		reports := reportInputs(calls)
-		return len(reportsWithTimelineItem(reports, "message.assistant")) > 0 &&
-			hasTurnCompletionPatchInReports(reports, execResult.TurnID)
-	})
 	if len(reportCalls[0].report.StatePatches) == 0 ||
 		reportCalls[0].report.StatePatches[0].LifecycleStatus != string(activityshared.SessionLifecycleStatusActive) {
 		t.Fatalf("first report = %#v, want session started state patch", reportCalls[0].report)
@@ -934,9 +1152,6 @@ func TestControllerStartExecCancelPublishesAndReports(t *testing.T) {
 	toolReport, ok := reportWithTimelineItem(reportInputs(reportCalls), "call.started")
 	if !ok || !hasTimelineItem(toolReport, "call.started", "running", "") {
 		t.Fatalf("report calls = %#v, want started tool report", reportCalls)
-	}
-	if !hasTurnCompletionPatchInReports(reportInputs(reportCalls), execResult.TurnID) {
-		t.Fatalf("report calls = %#v, want turn completion state patch", reportCalls)
 	}
 }
 
@@ -1042,18 +1257,18 @@ func TestControllerExecRunsOutsideRequestContext(t *testing.T) {
 	})
 
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		TurnID:         execResult.TurnID,
-		RequestID:      "permission-1",
-		OptionID:       "allow_once",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		TurnID:             execResult.TurnID,
+		RequestID:          "permission-1",
+		OptionID:           "allow_once",
 	}); err != nil {
 		t.Fatalf("SubmitInteractive after request context cancel: %v", err)
 	}
 	waitForCondition(t, func() bool {
 		return transport.conn.permissionOptionID() == "allow_once"
 	})
-	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
 func TestControllerExecTurnContextHasNoDeadline(t *testing.T) {
@@ -1321,20 +1536,17 @@ func TestControllerCancelCancelsActiveTurnContextWhenAdapterReturnsNoEvents(t *t
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("long prompt"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 	adapter.waitForPrompt(t, "long prompt")
 
-	cancelResult, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         started.Session.RoomID,
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user_interrupt",
-	})
+	cancelResult, err := controller.Cancel(context.Background(), rootCancelInput(started.Session.RoomID, started.Session.AgentSessionID, execResult.TurnID, "user_interrupt"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -1342,6 +1554,61 @@ func TestControllerCancelCancelsActiveTurnContextWhenAdapterReturnsNoEvents(t *t
 		t.Fatalf("Cancel result = %#v, want canceled active turn", cancelResult)
 	}
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusCanceled)
+}
+
+func TestControllerCancelInvokesProviderBeforeCancelingActiveTurnContext(t *testing.T) {
+	t.Parallel()
+
+	adapter := newCancelOrderingAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	execResult, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("long prompt"),
+	})
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	select {
+	case <-adapter.execStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec did not start")
+	}
+
+	result, err := controller.Cancel(context.Background(), rootCancelInput(
+		started.Session.RoomID,
+		started.Session.AgentSessionID,
+		execResult.TurnID,
+		"user_interrupt",
+	))
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !result.Canceled {
+		t.Fatalf("Cancel result = %#v, want canceled", result)
+	}
+	select {
+	case observed := <-adapter.providerCancelObservedContextError:
+		if observed != nil {
+			t.Fatalf("provider Cancel observed Exec context error = %v, want live context", observed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider Cancel was not invoked")
+	}
+	select {
+	case <-adapter.execDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exec context was not canceled after provider Cancel returned")
+	}
 }
 
 func TestControllerStateRoundTripsSessionSettingsAndPermissionUpdate(t *testing.T) {
@@ -1442,6 +1709,37 @@ func TestControllerStateRoundTripsSessionSettingsAndPermissionUpdate(t *testing.
 		state.Settings.ReasoningEffort != "high" ||
 		state.Settings.PlanMode {
 		t.Fatalf("state settings after update = %#v, want launch facts preserved", state.Settings)
+	}
+}
+
+func TestControllerRoutesChildInteractionThroughRootLiveSession(t *testing.T) {
+	t.Parallel()
+	adapter := &statefulInteractiveAdapter{}
+	adapter.submitHook = func(session Session) {
+		if session.AgentSessionID != "root-session" {
+			t.Fatalf("adapter session = %q, want root live session", session.AgentSessionID)
+		}
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	if _, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "root-session", Provider: ProviderCodex, Title: "Codex",
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
+		RoomID:             "room-1",
+		RootAgentSessionID: "root-session",
+		AgentSessionID:     "child-session",
+		TurnID:             "child-turn",
+		RequestID:          "child-request",
+		OptionID:           "allow",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	if adapter.interactiveInput.AgentSessionID != "child-session" ||
+		adapter.interactiveInput.TurnID != "child-turn" ||
+		adapter.interactiveInput.RequestID != "child-request" {
+		t.Fatalf("adapter target = %#v", adapter.interactiveInput)
 	}
 }
 
@@ -1949,20 +2247,16 @@ func TestControllerCancelStopsBackgroundTurn(t *testing.T) {
 	}
 	waitForPublishedSessionEvent(t, events, EventCallStarted, "approval", "waiting_approval")
 
-	if _, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user",
-	}); err != nil {
+	if _, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, execResult.TurnID, "user")); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusCanceled)
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		TurnID:         execResult.TurnID,
-		RequestID:      "permission-1",
-		OptionID:       "allow_once",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		TurnID:             execResult.TurnID,
+		RequestID:          "permission-1",
+		OptionID:           "allow_once",
 	}); !errors.Is(err, ErrInteractiveRequestNotLive) {
 		t.Fatalf("SubmitInteractive after cancel error = %v, want ErrInteractiveRequestNotLive", err)
 	}
@@ -1982,20 +2276,17 @@ func TestControllerCancelKeepsActiveTurnUntilAdapterFinishes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("first"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec first turn: %v", err)
 	}
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusWorking)
 
-	cancelResult, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user_interrupt",
-	})
+	cancelResult, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, execResult.TurnID, "user_interrupt"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -2035,11 +2326,12 @@ func TestControllerSessionUpdateDuringActiveTurnDoesNotExposeReady(t *testing.T)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	execResult, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         "room-1",
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("hello"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("Exec: %v", err)
 	}
 
@@ -2054,11 +2346,7 @@ func TestControllerSessionUpdateDuringActiveTurnDoesNotExposeReady(t *testing.T)
 		return ok && updated.Title == "Provider title" && updated.Status == SessionStatusWorking
 	})
 
-	cancelResult, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user",
-	})
+	cancelResult, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, execResult.TurnID, "user"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -2908,11 +3196,7 @@ func TestControllerCancelWithoutTurnRecordReconcilesWithAdapter(t *testing.T) {
 
 	// No Exec ran: the controller holds no turn record, but the adapter still
 	// has running children to stop.
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user requested",
-	})
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, "turn-1", "user requested"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -2940,10 +3224,7 @@ func TestControllerCancelWithoutAnyWorkReturnsNotCanceled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-	})
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, "turn-1", ""))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -2966,9 +3247,7 @@ func TestControllerExactCancelReportsTargetAbsentWithoutTurnRegistryRecord(t *te
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID: "room-1", AgentSessionID: started.Session.AgentSessionID, TurnID: "turn-1",
-	})
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, "turn-1", ""))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
@@ -3002,11 +3281,12 @@ func (*cancelReconcileAdapter) Exec(context.Context, Session, []PromptContentBlo
 func (a *cancelReconcileAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
 	a.cancelCalls.Add(1)
 	if a.empty {
-		return nil, nil
+		return nil, ErrSessionNoActiveTurn
 	}
-	// Shape produced by interruptLinkedChildThreads: canceled child markers.
+	// Shape produced by interruptLinkedChildThreads: a non-terminal child
+	// cancellation request while provider confirmation is still pending.
 	return []activityshared.Event{
-		appServerSubAgentLifecycleEvent(session, "child-thread-1", "turn-1", "canceled", "user requested"),
+		newTurnActivityEvent(session, EventTurnUpdated, "turn-1", SessionStatusWaiting, "", "", map[string]any{"cancelRequested": true}),
 	}, nil
 }
 
@@ -3054,6 +3334,57 @@ type blockingExecAdapter struct {
 	releases            chan struct{}
 	provider            string
 	interactiveOptionID string
+}
+
+type cancelOrderingAdapter struct {
+	mu                                 sync.Mutex
+	execContext                        context.Context
+	execStarted                        chan struct{}
+	execDone                           chan struct{}
+	providerCancelObservedContextError chan error
+}
+
+func newCancelOrderingAdapter() *cancelOrderingAdapter {
+	return &cancelOrderingAdapter{
+		execStarted:                        make(chan struct{}),
+		execDone:                           make(chan struct{}),
+		providerCancelObservedContextError: make(chan error, 1),
+	}
+}
+
+func (*cancelOrderingAdapter) Provider() string { return ProviderCodex }
+
+func (*cancelOrderingAdapter) Start(_ context.Context, session Session) ([]activityshared.Event, error) {
+	return []activityshared.Event{newSessionActivityEvent(session, EventSessionStarted, SessionStatusReady, nil)}, nil
+}
+
+func (*cancelOrderingAdapter) Resume(context.Context, Session) error { return nil }
+
+func (*cancelOrderingAdapter) Close(context.Context, Session) error { return nil }
+
+func (a *cancelOrderingAdapter) Exec(ctx context.Context, session Session, _ []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
+	a.mu.Lock()
+	a.execContext = ctx
+	a.mu.Unlock()
+	close(a.execStarted)
+	emit([]activityshared.Event{
+		newTurnActivityEvent(session, EventTurnStarted, turnID, SessionStatusWorking, "", "", nil),
+	})
+	<-ctx.Done()
+	close(a.execDone)
+	return nil, ctx.Err()
+}
+
+func (a *cancelOrderingAdapter) Cancel(context.Context, Session, string) ([]activityshared.Event, error) {
+	a.mu.Lock()
+	execCtx := a.execContext
+	a.mu.Unlock()
+	var observed error
+	if execCtx != nil {
+		observed = execCtx.Err()
+	}
+	a.providerCancelObservedContextError <- observed
+	return nil, nil
 }
 
 type guidanceBlockingAdapter struct {
@@ -3284,16 +3615,12 @@ func TestControllerCancelTreatsNoActiveTurnAfterSettleAsIdempotent(t *testing.T)
 	settled.SubmitAvailability = availableSubmitAvailability()
 	controller.store(settled)
 
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		Reason:         "user_interrupt",
-	})
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, turnID, "user_interrupt"))
 	if err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
-	if !result.Canceled {
-		t.Fatalf("Cancel result = %#v, want idempotent canceled result", result)
+	if result.Canceled || !result.TargetAbsent {
+		t.Fatalf("Cancel result = %#v, want provider target absent evidence", result)
 	}
 	if adapter.cancelCalls.Load() != 1 {
 		t.Fatalf("adapter cancel calls = %d, want 1", adapter.cancelCalls.Load())
@@ -4115,11 +4442,12 @@ func TestControllerSubmitInteractiveDelegatesToAdapter(t *testing.T) {
 	}
 
 	result, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "request-1",
-		Action:         "submit",
-		OptionID:       "option-1",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "request-1",
+		Action:             "submit",
+		OptionID:           "option-1",
 		Payload: map[string]any{
 			"answer": "Use the task renderer",
 		},
@@ -4179,11 +4507,12 @@ func TestControllerSubmitInteractiveSyncsClaudeCodePermissionModeSelection(t *te
 			_ = waitForStreamEventType(t, events, StreamEventStatePatch)
 
 			if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-				RoomID:         "room-1",
-				AgentSessionID: started.Session.AgentSessionID,
-				RequestID:      "permission-1",
-				OptionID:       tt.optionID,
-				Payload:        tt.payload,
+				RoomID:             "room-1",
+				RootAgentSessionID: started.Session.AgentSessionID,
+				AgentSessionID:     started.Session.AgentSessionID,
+				RequestID:          "permission-1",
+				OptionID:           tt.optionID,
+				Payload:            tt.payload,
 			}); err != nil {
 				t.Fatalf("SubmitInteractive: %v", err)
 			}
@@ -4277,10 +4606,11 @@ func TestControllerSubmitInteractiveExitsPlanModeOnPermissionSelection(t *testin
 	_ = waitForStreamEventType(t, events, StreamEventStatePatch)
 
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "permission-1",
-		OptionID:       "auto",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "permission-1",
+		OptionID:           "auto",
 	}); err != nil {
 		t.Fatalf("SubmitInteractive: %v", err)
 	}
@@ -4336,10 +4666,11 @@ func TestControllerSubmitInteractiveModeSurvivesActiveTurnStaleSession(t *testin
 	adapter.waitForPrompt(t, "implement")
 
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "permission-1",
-		OptionID:       "bypassPermissions",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "permission-1",
+		OptionID:           "bypassPermissions",
 	}); err != nil {
 		t.Fatalf("SubmitInteractive: %v", err)
 	}
@@ -4390,10 +4721,11 @@ func TestControllerSubmitInteractiveKeepPlanningStaysInPlanMode(t *testing.T) {
 	_ = waitForStreamEventType(t, events, StreamEventStatePatch)
 
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "permission-1",
-		OptionID:       "plan",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "permission-1",
+		OptionID:           "plan",
 	}); err != nil {
 		t.Fatalf("SubmitInteractive: %v", err)
 	}
@@ -4454,10 +4786,11 @@ func TestControllerSubmitInteractiveDoesNotSyncUnsupportedPermissionSelections(t
 			_ = waitForStreamEventType(t, events, StreamEventStatePatch)
 
 			if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-				RoomID:         "room-1",
-				AgentSessionID: started.Session.AgentSessionID,
-				RequestID:      "permission-1",
-				OptionID:       tt.optionID,
+				RoomID:             "room-1",
+				RootAgentSessionID: started.Session.AgentSessionID,
+				AgentSessionID:     started.Session.AgentSessionID,
+				RequestID:          "permission-1",
+				OptionID:           tt.optionID,
 			}); err != nil {
 				t.Fatalf("SubmitInteractive: %v", err)
 			}
@@ -4478,10 +4811,10 @@ func TestControllerKeepsTerminalInteractiveDispositionAfterSessionRemoval(t *tes
 	controller := NewController(nil, nil)
 	controller.recordTerminalInteractiveDisposition("session-1", "turn-1", "request-1", InteractiveDispositionAnswered)
 
-	if got := controller.InteractiveDisposition("room-1", "session-1", "turn-1", "request-1"); got != InteractiveDispositionAnswered {
+	if got := controller.InteractiveDisposition("room-1", "session-1", "session-1", "turn-1", "request-1"); got != InteractiveDispositionAnswered {
 		t.Fatalf("disposition without live session = %q, want answered", got)
 	}
-	if got := controller.InteractiveDisposition("room-1", "session-1", "turn-2", "request-1"); got != InteractiveDispositionUnknown {
+	if got := controller.InteractiveDisposition("room-1", "session-1", "session-1", "turn-2", "request-1"); got != InteractiveDispositionUnknown {
 		t.Fatalf("different-turn disposition = %q, want unknown", got)
 	}
 }
@@ -4518,10 +4851,11 @@ func TestControllerSubmitInteractivePermissionSyncPreservesCurrentSessionState(t
 	}
 
 	if _, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "permission-1",
-		OptionID:       "acceptEdits",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "permission-1",
+		OptionID:           "acceptEdits",
 	}); err != nil {
 		t.Fatalf("SubmitInteractive: %v", err)
 	}
@@ -4565,11 +4899,12 @@ func TestControllerSubmitInteractiveStartsDenyFollowUpAfterActiveTurn(t *testing
 	adapter.waitForPrompt(t, "run tests")
 
 	result, err := controller.SubmitInteractive(context.Background(), SubmitInteractiveInput{
-		RoomID:         "room-1",
-		AgentSessionID: started.Session.AgentSessionID,
-		RequestID:      "permission-1",
-		Action:         "deny",
-		OptionID:       "abort",
+		RoomID:             "room-1",
+		RootAgentSessionID: started.Session.AgentSessionID,
+		AgentSessionID:     started.Session.AgentSessionID,
+		RequestID:          "permission-1",
+		Action:             "deny",
+		OptionID:           "abort",
 		Payload: map[string]any{
 			"denyMessage": "Please split the work into smaller steps.",
 		},
@@ -4792,69 +5127,6 @@ func TestControllerFinishTurnReconcilesCreatedStatusToReady(t *testing.T) {
 	}
 	if stored.SubmitAvailability == nil || stored.SubmitAvailability.State != "available" {
 		t.Fatalf("submit availability = %#v, want available", stored.SubmitAvailability)
-	}
-}
-
-func TestControllerFinishTurnKeepsLiveBackgroundAgentsWorking(t *testing.T) {
-	t.Parallel()
-
-	controller := NewController(nil, nil)
-	turnID := "turn-1"
-	session := Session{
-		RoomID:         "room-1",
-		AgentSessionID: "agent-session-1",
-		Provider:       ProviderClaudeCode,
-		Status:         SessionStatusWorking,
-		TurnLifecycle: &TurnLifecycle{
-			ActiveTurnID: stringPtr(turnID),
-			Phase:        "running",
-		},
-		SubmitAvailability: blockedSubmitAvailability("active_turn"),
-		RuntimeContext: map[string]any{
-			"backgroundAgents": map[string]any{
-				"count": 1,
-				"items": []any{map[string]any{
-					"parentToolUseId": "call-agent-1",
-					"status":          "running",
-				}},
-			},
-		},
-	}
-	controller.store(session)
-	controller.mu.Lock()
-	controller.turns[sessionKey(session.RoomID, session.AgentSessionID)] = activeTurn{turnID: turnID}
-	controller.mu.Unlock()
-
-	outcome := "completed"
-	controller.finishTurn(Session{
-		RoomID:         session.RoomID,
-		AgentSessionID: session.AgentSessionID,
-		Provider:       session.Provider,
-		Status:         SessionStatusReady,
-		TurnLifecycle: &TurnLifecycle{
-			Phase:   "settled",
-			Outcome: &outcome,
-		},
-		SubmitAvailability: availableSubmitAvailability(),
-		RuntimeContext:     session.RuntimeContext,
-	}, turnID)
-
-	updated, ok := controller.get(session.RoomID, session.AgentSessionID)
-	if !ok {
-		t.Fatal("session missing after finish")
-	}
-	if updated.Status != SessionStatusWorking {
-		t.Fatalf("status = %q, want working while background agent runs", updated.Status)
-	}
-	if updated.SubmitAvailability == nil ||
-		updated.SubmitAvailability.State != "blocked" ||
-		updated.SubmitAvailability.Reason != "background_agent" {
-		t.Fatalf("submit availability = %#v, want blocked background_agent", updated.SubmitAvailability)
-	}
-	if updated.TurnLifecycle == nil ||
-		updated.TurnLifecycle.ActiveTurnID != nil ||
-		updated.TurnLifecycle.Phase != "settled" {
-		t.Fatalf("turn lifecycle = %#v, want settled parent turn", updated.TurnLifecycle)
 	}
 }
 
@@ -5087,7 +5359,7 @@ func hasSessionPhasePatch(reports []agentsessionstore.ReportActivityInput, phase
 	return false
 }
 
-func TestEnrichReportStatePatchesFillsSnapshotTitleAndIdentity(t *testing.T) {
+func TestEnrichReportStatePatchesWithSessionMetadataFillsSnapshotTitleAndIdentity(t *testing.T) {
 	t.Parallel()
 
 	report := &agentsessionstore.ReportActivityInput{
@@ -5096,7 +5368,7 @@ func TestEnrichReportStatePatchesFillsSnapshotTitleAndIdentity(t *testing.T) {
 			CurrentPhase:   "failed",
 		}},
 	}
-	enrichReportStatePatches(report, agentsessionstore.WorkspaceAgentStatePatch{
+	enrichReportStatePatchesWithSessionMetadata(report, agentsessionstore.WorkspaceAgentStatePatch{
 		AgentSessionID:    "agent-session-1",
 		Provider:          "codex",
 		ProviderSessionID: "provider-session-1",
@@ -5125,7 +5397,7 @@ func TestEnrichReportStatePatchesFillsSnapshotTitleAndIdentity(t *testing.T) {
 	}
 }
 
-func TestEnrichReportStatePatchesKeepsIncomingTitle(t *testing.T) {
+func TestEnrichReportStatePatchesWithSessionMetadataKeepsIncomingTitle(t *testing.T) {
 	t.Parallel()
 
 	report := &agentsessionstore.ReportActivityInput{
@@ -5134,13 +5406,49 @@ func TestEnrichReportStatePatchesKeepsIncomingTitle(t *testing.T) {
 			Title:          "Provider title",
 		}},
 	}
-	enrichReportStatePatches(report, agentsessionstore.WorkspaceAgentStatePatch{
+	enrichReportStatePatchesWithSessionMetadata(report, agentsessionstore.WorkspaceAgentStatePatch{
 		AgentSessionID: "agent-session-1",
 		Title:          "Automation Review",
 	})
 
 	if got := report.StatePatches[0].Title; got != "Provider title" {
 		t.Fatalf("title = %q, want incoming provider title", got)
+	}
+}
+
+func TestEnrichReportStatePatchesWithSessionMetadataDoesNotAttachTurnLifecycle(t *testing.T) {
+	t.Parallel()
+
+	activeTurnID := "root-turn-1"
+	report := &agentsessionstore.ReportActivityInput{
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{{
+			AgentSessionID: "agent-session-1",
+			RootProviderTurn: &agentsessionstore.WorkspaceAgentRootProviderTurnTransition{
+				RootTurnID:     "root-turn-1",
+				ProviderTurnID: "provider-turn-1",
+				Phase:          agentsessionstore.RootProviderTurnPhaseCompleted,
+			},
+		}},
+	}
+	enrichReportStatePatchesWithSessionMetadata(report, agentsessionstore.WorkspaceAgentStatePatch{
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderClaudeCode,
+		TurnLifecycle: &agentsessionstore.WorkspaceAgentTurnLifecycle{
+			ActiveTurnID: &activeTurnID,
+			Phase:        "waiting",
+		},
+		SubmitAvailability: &agentsessionstore.WorkspaceAgentSubmitAvailability{
+			State:  "blocked",
+			Reason: "active_turn",
+		},
+	})
+
+	patch := report.StatePatches[0]
+	if patch.Provider != ProviderClaudeCode {
+		t.Fatalf("provider = %q, want session metadata", patch.Provider)
+	}
+	if patch.TurnLifecycle != nil || patch.SubmitAvailability != nil {
+		t.Fatalf("persisted provider patch inherited runtime lifecycle: %#v", patch)
 	}
 }
 
@@ -5317,8 +5625,8 @@ func TestApplySessionEventsMergesRuntimeContextMetadata(t *testing.T) {
 	updated := applySessionEvents(session, []activityshared.Event{
 		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
 			"runtimeContext": map[string]any{
-				"backgroundAgents": map[string]any{
-					"count": 1,
+				"providerConfig": map[string]any{
+					"threadId": "thread-1",
 				},
 			},
 		}),
@@ -5326,52 +5634,9 @@ func TestApplySessionEventsMergesRuntimeContextMetadata(t *testing.T) {
 	if updated.RuntimeContext["cwd"] != "/workspace" {
 		t.Fatalf("runtime context = %#v, want existing cwd kept", updated.RuntimeContext)
 	}
-	backgroundAgents := payloadObject(updated.RuntimeContext["backgroundAgents"])
-	if backgroundAgents["count"] != 1 {
-		t.Fatalf("runtime context = %#v, want backgroundAgents count", updated.RuntimeContext)
-	}
-}
-
-func TestControllerSessionEventSinkKeepsLiveBackgroundAgentsWorking(t *testing.T) {
-	t.Parallel()
-
-	controller := NewController(nil, nil)
-	session := Session{
-		RoomID:         "room-1",
-		AgentSessionID: "agent-session-1",
-		Provider:       ProviderClaudeCode,
-		Status:         SessionStatusReady,
-		SubmitAvailability: &SubmitAvailability{
-			State: "available",
-		},
-	}
-	controller.store(session)
-
-	controller.applySessionEventsByAgentSessionID(session.AgentSessionID, []activityshared.Event{
-		newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
-			"runtimeContext": map[string]any{
-				"backgroundAgents": map[string]any{
-					"count": 1,
-					"items": []any{map[string]any{
-						"parentToolUseId": "call-agent-1",
-						"status":          "running",
-					}},
-				},
-			},
-		}),
-	})
-
-	updated, ok := controller.get(session.RoomID, session.AgentSessionID)
-	if !ok {
-		t.Fatal("session missing after session event sink")
-	}
-	if updated.Status != SessionStatusWorking {
-		t.Fatalf("status = %q, want working while background agent runs", updated.Status)
-	}
-	if updated.SubmitAvailability == nil ||
-		updated.SubmitAvailability.State != "blocked" ||
-		updated.SubmitAvailability.Reason != "background_agent" {
-		t.Fatalf("submit availability = %#v, want blocked background_agent", updated.SubmitAvailability)
+	providerConfig := payloadObject(updated.RuntimeContext["providerConfig"])
+	if providerConfig["threadId"] != "thread-1" {
+		t.Fatalf("runtime context = %#v, want provider config", updated.RuntimeContext)
 	}
 }
 
@@ -5454,62 +5719,6 @@ func TestControllerRejectsUnsupportedProvider(t *testing.T) {
 	}
 }
 
-// TestControllerCancelReconcilesStuckTurnView reproduces the desync where a turn
-// finished in the runtime (no active turn remains) but the GUI-facing view stayed
-// blocked/running because the turn-completed update never reached the persisted
-// session state. Pressing stop must settle the stale view instead of being a
-// no-op, otherwise the composer stays blocked forever.
-func TestControllerCancelReconcilesStuckTurnView(t *testing.T) {
-	t.Parallel()
-
-	reporter := &recordingReporter{}
-	adapter := &recordingStartAdapter{provider: ProviderCodex}
-	controller := NewController([]Adapter{adapter}, reporter)
-
-	turnID := "stuck-turn-1"
-	controller.store(Session{
-		RoomID:             "room-1",
-		AgentSessionID:     "agent-1",
-		Provider:           ProviderCodex,
-		ProviderSessionID:  "prov-1",
-		Status:             SessionStatusWorking,
-		TurnLifecycle:      &TurnLifecycle{ActiveTurnID: &turnID, Phase: "running"},
-		SubmitAvailability: blockedSubmitAvailability("active_turn"),
-		UpdatedAtUnixMS:    1,
-	})
-
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: "agent-1",
-		Reason:         "user",
-	})
-	if err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
-	if result.Canceled {
-		t.Fatalf("Cancel result = %#v, want Canceled=false (no live turn to cancel)", result)
-	}
-
-	settled, ok := controller.get("room-1", "agent-1")
-	if !ok {
-		t.Fatal("session missing after cancel")
-	}
-	if settled.SubmitAvailability == nil || settled.SubmitAvailability.State != "available" {
-		t.Fatalf("SubmitAvailability = %#v, want available", settled.SubmitAvailability)
-	}
-	if settled.TurnLifecycle == nil || settled.TurnLifecycle.Phase != "settled" {
-		t.Fatalf("TurnLifecycle = %#v, want settled phase", settled.TurnLifecycle)
-	}
-	if settled.TurnLifecycle.ActiveTurnID != nil {
-		t.Fatalf("settled TurnLifecycle.ActiveTurnID = %v, want nil", settled.TurnLifecycle.ActiveTurnID)
-	}
-
-	calls := reporter.waitForCalls(t, 1)
-	if len(calls[len(calls)-1].report.StatePatches) == 0 {
-		t.Fatalf("reconcile report = %#v, want a state patch", calls[len(calls)-1].report)
-	}
-}
-
 func TestControllerExactTurnCancelDoesNotCancelNewerActiveTurn(t *testing.T) {
 	t.Parallel()
 
@@ -5523,9 +5732,7 @@ func TestControllerExactTurnCancelDoesNotCancelNewerActiveTurn(t *testing.T) {
 	controller.turns[sessionKey("room-1", "agent-1")] = activeTurn{turnID: "turn-new"}
 	controller.mu.Unlock()
 
-	result, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID: "room-1", AgentSessionID: "agent-1", TurnID: "turn-old", Reason: "user",
-	})
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", "agent-1", "turn-old", "user"))
 	if err != nil {
 		t.Fatalf("Cancel() error = %v", err)
 	}
@@ -5560,9 +5767,7 @@ func TestControllerExactTurnCancelHoldsLifecycleLockThroughAdapterCancel(t *test
 
 	cancelDone := make(chan error, 1)
 	go func() {
-		_, err := controller.Cancel(context.Background(), CancelInput{
-			RoomID: "room-1", AgentSessionID: "agent-1", TurnID: "turn-1", Reason: "user",
-		})
+		_, err := controller.Cancel(context.Background(), rootCancelInput("room-1", "agent-1", "turn-1", "user"))
 		cancelDone <- err
 	}()
 	select {
@@ -5599,6 +5804,24 @@ func TestControllerExactTurnCancelHoldsLifecycleLockThroughAdapterCancel(t *test
 	}
 }
 
+func TestGoalCapabilitiesWaitObservesContextCancellation(t *testing.T) {
+	controller := NewController(nil, nil)
+	release := controller.acquireLifecycleLock("room-1", "session-1")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := controller.GoalCapabilities(ctx, GoalReconcileInput{RoomID: "room-1", AgentSessionID: "session-1"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("GoalCapabilities error = %v", err)
+	}
+	release()
+	controller.mu.Lock()
+	remaining := len(controller.lifecycleLocks)
+	controller.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("lifecycle lock references leaked: %d", remaining)
+	}
+}
+
 // TestControllerCancelLeavesSettledSessionUntouched guards against the
 // reconciliation disturbing healthy sessions: a session that is already settled
 // must not be re-settled or re-reported when stop is pressed with no active turn.
@@ -5621,39 +5844,11 @@ func TestControllerCancelLeavesSettledSessionUntouched(t *testing.T) {
 		UpdatedAtUnixMS:    1,
 	})
 
-	if _, err := controller.Cancel(context.Background(), CancelInput{
-		RoomID:         "room-1",
-		AgentSessionID: "agent-1",
-		Reason:         "user",
-	}); err != nil {
+	if _, err := controller.Cancel(context.Background(), rootCancelInput("room-1", "agent-1", "turn-1", "user")); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
 	if calls := reporter.snapshot(); len(calls) != 0 {
 		t.Fatalf("reporter calls = %d, want 0 for an already-settled session", len(calls))
-	}
-}
-
-func TestSessionViewHasUnsettledTurn(t *testing.T) {
-	t.Parallel()
-
-	active := "turn-1"
-	cases := []struct {
-		name    string
-		session Session
-		want    bool
-	}{
-		{"blocked submit", Session{SubmitAvailability: blockedSubmitAvailability("active_turn")}, true},
-		{"active turn id", Session{TurnLifecycle: &TurnLifecycle{ActiveTurnID: &active, Phase: "running"}}, true},
-		{"running phase only", Session{TurnLifecycle: &TurnLifecycle{Phase: "running"}}, true},
-		{"settled", Session{SubmitAvailability: availableSubmitAvailability(), TurnLifecycle: &TurnLifecycle{Phase: "settled"}}, false},
-		{"empty", Session{}, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := sessionViewHasUnsettledTurn(tc.session); got != tc.want {
-				t.Fatalf("sessionViewHasUnsettledTurn(%s) = %v, want %v", tc.name, got, tc.want)
-			}
-		})
 	}
 }

@@ -1,11 +1,5 @@
 import { type JSX, type ReactNode } from "react";
-import {
-  Button,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger
-} from "@tutti-os/ui-system";
+import { Button } from "@tutti-os/ui-system";
 import { CastIcon } from "../../app/renderer/components/icons/CastIcon";
 import { cn } from "../../app/renderer/lib/utils";
 import { approvalOptionDisplayLabel } from "../../shared/agentConversation/approvalOptionPresentation";
@@ -61,30 +55,6 @@ function LoadingEllipsis(): JSX.Element {
       <span />
       <span />
     </span>
-  );
-}
-
-function ChromeMessageTooltip({
-  message,
-  children
-}: {
-  message: string;
-  children: ReactNode;
-}): JSX.Element {
-  "use memo";
-  return (
-    <TooltipProvider delayDuration={250}>
-      <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent
-          className={styles.chromeMessageTooltip}
-          side="top"
-          sideOffset={6}
-        >
-          {message}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
@@ -168,11 +138,13 @@ export function AgentSessionChrome({
         <section className={cn(styles.chromeCard, styles.chromeCardWarning)}>
           <div className={styles.chromeMetaRow}>
             <div className={styles.chromeMessageSlot}>
-              <ChromeMessageTooltip message={visibleAuth.message}>
-                <p className={styles.chromeMessage} tabIndex={0}>
-                  {visibleAuth.message}
-                </p>
-              </ChromeMessageTooltip>
+              <p
+                className={styles.chromeMessage}
+                tabIndex={0}
+                title={visibleAuth.message}
+              >
+                {visibleAuth.message}
+              </p>
             </div>
             <div className={styles.chromeInlineActions}>
               {onAuthLogin ? (
@@ -263,28 +235,27 @@ export function AgentSessionChrome({
                   size={16}
                 />
               ) : null}
-              <ChromeMessageTooltip message={recoveryMessage}>
-                <p
-                  className={styles.chromeMessage}
-                  aria-label={
-                    visibleRecovery.kind === "activating"
-                      ? recoveryMessage
-                      : undefined
-                  }
-                  tabIndex={0}
-                >
-                  {visibleRecovery.kind === "activating" ? (
-                    <>
-                      <span className="tsh-inline-loading-label">
-                        {activatingMessage.label}
-                      </span>
-                      {activatingMessage.ellipsis ? <LoadingEllipsis /> : null}
-                    </>
-                  ) : (
-                    recoveryMessage
-                  )}
-                </p>
-              </ChromeMessageTooltip>
+              <p
+                className={styles.chromeMessage}
+                aria-label={
+                  visibleRecovery.kind === "activating"
+                    ? recoveryMessage
+                    : undefined
+                }
+                tabIndex={0}
+                title={recoveryMessage}
+              >
+                {visibleRecovery.kind === "activating" ? (
+                  <>
+                    <span className="tsh-inline-loading-label">
+                      {activatingMessage.label}
+                    </span>
+                    {activatingMessage.ellipsis ? <LoadingEllipsis /> : null}
+                  </>
+                ) : (
+                  recoveryMessage
+                )}
+              </p>
             </div>
             <div className={styles.chromeInlineActions}>
               {/* followupAction is required on this variant, so the kind

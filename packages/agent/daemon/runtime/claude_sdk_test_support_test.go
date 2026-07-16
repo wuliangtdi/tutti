@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func hasTimelineItemInReports(reports []agentsessionstore.ReportActivityInput, itemType string, status string, text string) bool {
@@ -22,39 +20,6 @@ func hasTimelineItemInReports(reports []agentsessionstore.ReportActivityInput, i
 		}
 	}
 	return false
-}
-
-func sdkBackgroundAgentsFromEvents(t *testing.T, events []activityshared.Event) map[string]any {
-	t.Helper()
-	for i := len(events) - 1; i >= 0; i-- {
-		event := events[i]
-		if event.Type != activityshared.EventSessionUpdated {
-			continue
-		}
-		runtimeContext := payloadMap(event.Payload.Metadata, "runtimeContext")
-		backgroundAgents := payloadMap(runtimeContext, "backgroundAgents")
-		if len(backgroundAgents) > 0 {
-			return backgroundAgents
-		}
-	}
-	t.Fatalf("events = %#v, missing runtimeContext.backgroundAgents", events)
-	return nil
-}
-
-func sdkBackgroundAgentStatusByParent(t *testing.T, backgroundAgents map[string]any, parentToolUseID string) string {
-	t.Helper()
-	items, ok := backgroundAgents["items"].([]any)
-	if !ok {
-		t.Fatalf("backgroundAgents items = %#v, want []any", backgroundAgents["items"])
-	}
-	for _, item := range items {
-		record := payloadMap(map[string]any{"item": item}, "item")
-		if record["parentToolUseId"] == parentToolUseID {
-			return fmt.Sprint(record["status"])
-		}
-	}
-	t.Fatalf("backgroundAgents = %#v, missing parentToolUseId %q", backgroundAgents, parentToolUseID)
-	return ""
 }
 
 func hasClaudeSDKModelConfigOptions(runtimeContext map[string]any) bool {

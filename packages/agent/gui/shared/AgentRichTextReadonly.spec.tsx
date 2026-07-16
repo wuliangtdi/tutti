@@ -1,9 +1,91 @@
 import "@testing-library/jest-dom/vitest";
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AgentRichTextReadonly } from "./AgentRichTextReadonly";
+import {
+  registerAgentCustomMentionKind,
+  resetAgentCustomMentionKindsForTests
+} from "./agentCustomMentionKinds";
+
+afterEach(() => {
+  resetAgentCustomMentionKindsForTests();
+});
 
 describe("AgentRichTextReadonly", () => {
+  it("renders readonly user content on the first commit", () => {
+    const { container } = render(
+      <AgentRichTextReadonly value="First-frame user message" />
+    );
+
+    expect(container).toHaveTextContent("First-frame user message");
+    expect(container.querySelector(".ProseMirror")).not.toBeNull();
+  });
+
+  it("renders historical browser-element hrefs whose entity id contains an unescaped colon", async () => {
+    registerAgentCustomMentionKind({
+      kind: "browser-element",
+      present: (mention) => ({
+        name: `<${mention.scope?.tag ?? mention.label}>`
+      }),
+      renderChip: ({ name }) => (
+        <span data-agent-browser-element-chip="true">{name}</span>
+      )
+    });
+    const first =
+      "[@<a>](mention://browser-element/browser-element:6e42f79e-8c12-4b91-833e-279a8542b71d?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1)";
+    const second =
+      "[@<a>](mention://browser-element/browser-element:a665f014-eec4-4f0f-aeac-5a88d8acb69e?path=%2Ftmp%2Fb.txt&tag=a&workspaceId=workspace-1)";
+    const { container } = render(
+      <AgentRichTextReadonly value={`${first}\n${second}这里面内容是什么`} />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll("[data-agent-browser-element-chip=true]")
+      ).toHaveLength(2)
+    );
+    expect(container.textContent?.replaceAll("\u200b", "")).toContain(
+      "<a><a>这里面内容是什么"
+    );
+    expect(container).not.toHaveTextContent("mention://browser-element");
+  });
+
+  it("renders browser element mentions as registered chips beside the concrete prompt", async () => {
+    registerAgentCustomMentionKind({
+      kind: "browser-element",
+      present: (mention) => ({
+        name: `<${mention.scope?.tag ?? mention.label}>`
+      }),
+      renderChip: ({ name }) => (
+        <span data-agent-browser-element-chip="true">{name}</span>
+      )
+    });
+    const firstHref =
+      "mention://browser-element/browser-element%3A1?path=%2Ftmp%2Fa.txt&tag=a&workspaceId=workspace-1";
+    const secondHref =
+      "mention://browser-element/browser-element%3A2?path=%2Ftmp%2Fdiv.txt&tag=div&workspaceId=workspace-1";
+    const { container } = render(
+      <AgentRichTextReadonly
+        value={`[@<a>](${firstHref}) [@<div>](${secondHref}) 这里说的什么`}
+      />
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll("[data-agent-browser-element-chip=true]")
+      ).toHaveLength(2)
+    );
+
+    const mentions = container.querySelectorAll(
+      '[data-agent-custom-mention="true"]'
+    );
+    expect(mentions).toHaveLength(2);
+    expect(mentions[0]).toHaveAttribute("data-agent-mention-href", firstHref);
+    expect(mentions[1]).toHaveAttribute("data-agent-mention-href", secondHref);
+    expect(container).toHaveTextContent("<a> <div> 这里说的什么");
+    expect(container).not.toHaveTextContent("@<a>");
+  });
+
   it("hydrates workspace app mention icons without putting icon data in the href", async () => {
     const iconUrl = "data:image/png;base64,weather";
     const { container } = render(

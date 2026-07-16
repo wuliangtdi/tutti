@@ -9,7 +9,6 @@ const styles = {
   chromeCardSuccess: "agent-gui-chrome__card--success",
   chromeIcon: "agent-gui-chrome__icon",
   chromeMessageSlot: "agent-gui-chrome__message-slot",
-  chromeMessageTooltip: "agent-gui-chrome__message-tooltip",
   chromeInlineActions: "agent-gui-chrome__inline-actions",
   chromeNoticeDescription: "agent-gui-chrome__notice-description",
   chromeNoticeMessage: "agent-gui-chrome__notice-message",

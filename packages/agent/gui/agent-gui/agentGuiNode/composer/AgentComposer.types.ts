@@ -20,8 +20,23 @@ import type {
 import type { AgentGUIProvider, AgentGUIAgentTarget } from "../../../types";
 import type { WorkspaceReferencePickResult } from "./useComposerDraftAttachments";
 import type { AgentGUIComposerEngagement } from "../engagement/agentGUIEngagement.types";
+import type { AgentActivitySubmitSettingsPatch } from "@tutti-os/agent-activity-core";
+import type {
+  ReferenceProvenanceFilterController,
+  ReferenceProvenanceFilterSnapshot
+} from "@tutti-os/workspace-file-reference/react";
 
-export interface AgentComposerSubmitOptions {}
+export interface AgentComposerReferenceProvenanceFilter {
+  snapshot: ReferenceProvenanceFilterSnapshot;
+  controller: Pick<
+    ReferenceProvenanceFilterController,
+    "reset" | "toggle" | "toggleAll"
+  >;
+}
+
+export interface AgentComposerSubmitOptions {
+  requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
+}
 
 export interface AgentComposerProps {
   workspaceId: string;
@@ -59,7 +74,6 @@ export interface AgentComposerProps {
   canQueueWhileBusy: boolean;
   showStopButton: boolean;
   activePrompt: AgentConversationPromptVM | null;
-  backgroundAgentStatusText?: string | null;
   activePromptKeyboardShortcutsEnabled?: boolean;
   promptTips?: readonly AgentComposerPromptTip[];
   isInterrupting: boolean;
@@ -295,6 +309,7 @@ export interface AgentComposerProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
+  referenceProvenanceFilter?: AgentComposerReferenceProvenanceFilter | null;
 }
 
 export type AgentComposerCapabilitySettingsTarget =

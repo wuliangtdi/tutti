@@ -10,12 +10,19 @@ func persistedSessionFromActivity(session agentactivitybiz.Session) PersistedSes
 	return PersistedSession{
 		ID:                     strings.TrimSpace(session.ID),
 		WorkspaceID:            strings.TrimSpace(session.WorkspaceID),
+		Kind:                   strings.TrimSpace(session.Kind),
+		RootAgentSessionID:     strings.TrimSpace(session.RootAgentSessionID),
+		RootTurnID:             strings.TrimSpace(session.RootTurnID),
+		ParentAgentSessionID:   strings.TrimSpace(session.ParentAgentSessionID),
+		ParentTurnID:           strings.TrimSpace(session.ParentTurnID),
+		ParentToolCallID:       strings.TrimSpace(session.ParentToolCallID),
 		Origin:                 strings.TrimSpace(session.Origin),
 		UserID:                 strings.TrimSpace(session.UserID),
 		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
 		Provider:               strings.TrimSpace(session.Provider),
 		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
 		Cwd:                    strings.TrimSpace(session.Cwd),
+		RailSectionKey:         strings.TrimSpace(session.RailSectionKey),
 		Settings:               composerSettingsFromPayload(session.Settings),
 		Metadata:               session.Metadata,
 		InternalRuntimeContext: clonePayload(session.InternalRuntimeContext),
@@ -51,6 +58,7 @@ func sessionMessagesFromActivity(messages []agentactivitybiz.Message) []SessionM
 			Role:              strings.TrimSpace(message.Role),
 			Kind:              strings.TrimSpace(message.Kind),
 			Status:            strings.TrimSpace(message.Status),
+			Semantics:         cloneActivityMessageSemantics(message.Semantics),
 			Payload:           message.Payload,
 			OccurredAtUnixMS:  message.OccurredAtUnixMS,
 			StartedAtUnixMS:   message.StartedAtUnixMS,
@@ -61,4 +69,12 @@ func sessionMessagesFromActivity(messages []agentactivitybiz.Message) []SessionM
 		})
 	}
 	return out
+}
+
+func cloneActivityMessageSemantics(value *agentactivitybiz.MessageSemantics) *agentactivitybiz.MessageSemantics {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

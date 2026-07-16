@@ -7,6 +7,11 @@
 已锁定；切片 7 只保留客户端覆盖窗口结束后删除私有持久化 migration reader 的
 发布生命周期任务，该 reader 不进入公共契约或新写路径。
 
+2026-07-15 补充：provider-native child agent 的后续实体设计以
+[`2026-07-15-provider-native-subagents.md`](../specs/2026-07-15-provider-native-subagents.md)
+为准。本文原始基线中曾使用的 session 级 child 汇总字段不再属于目标模型；child
+现在是带 immutable root/parent relation 的 `WorkspaceAgentSession`。
+
 范围：agent 活动数据的模型协议、`packages/agent/activity-core`、
 `packages/agent/gui`，以及它们的全部消费方。不在范围内：daemon 内部各
 provider 适配器的实现细节（这部分是健康的，见 2.8 节）。
@@ -216,8 +221,7 @@ export interface AgentActivitySession {
   currentPhase;        // 与 status / turnLifecycle.phase 三处冗余
   lastError;           // turn 失败与 session 失败混在一个字段
   // ---- 无类型的大杂烩 ----
-  runtimeContext?: Record<string, unknown>;  // capabilities / backgroundAgents
-                                             //   / goal / imported 全塞这里
+  runtimeContext?: Record<string, unknown>;  // public metadata 与 provider 私有状态混载
 }
 ```
 
@@ -485,7 +489,7 @@ erDiagram
 | 二   | 取消归 turn：`cancelTurn(turnId)`；session 层没有取消操作。取消是幂等操作：对已结束或不存在的 turn 调用 `cancelTurn` 返回幂等空操作，不是错误——用户点"停止"与 turn 自然结束的竞态在协议层面无害化                                                                                                         | `cancelSession` 返回"没有活动 turn"这种自相矛盾的接口                                                                          |
 | 三   | 派生值不进行为契约：会话展示状态、提交可用性一律由引擎读取函数从 turn 加 interaction 推导；接口值最多是显示提示                                                                                                                                                                                           | 接口值与本地推导打架；"session 失败是历史状态"的界面补丁                                                                       |
 | 四   | interaction 成为集合实体：待处理等于存在于集合且状态为 pending                                                                                                                                                                                                                                            | `pendingInteractive` 的三态 null 协议在多层补丁类型间的小心传递                                                                |
-| 五   | `runtimeContext` 大杂烩拆解为显式字段：`capabilities`、`backgroundAgents`、`goal`、`imported`；`(string & {})` 收紧为封闭联合加显式的未知分支                                                                                                                                                             | 每个消费方对无类型字典的各自解读                                                                                               |
+| 五   | `runtimeContext` 大杂烩拆解为显式字段：`capabilities`、`goal`、`imported`，provider-native child agent 则建模为带 root/parent relation 的 session；`(string & {})` 收紧为封闭联合加显式的未知分支                                                                                                         | 每个消费方对无类型字典的各自解读                                                                                               |
 | 六   | schema 先行加全链路生成，消灭手写镜像：openapi 是唯一事实源，跨边界传输类型（HTTP 加事件流，含补丁）的 Go 和 TypeScript 声明全部生成；daemon 内部的存储行结构、运行时域类型允许保留自有结构体，但只能经投影函数与生成类型互转，禁止绕过生成类型直接对外；层间只允许"生成类型加窄投影"，禁止手抄传输结构体 | Session 类型七份声明、补丁四份镜像、克隆映射函数的逐字段丢失点                                                                 |
 | 七   | 状态词汇表收敛为两套：turn 的机器状态（`phase` 加 `outcome`，封闭枚举）和读取函数推导的展示状态；`status`、`currentPhase` 字段废弃                                                                                                                                                                        | 五套词汇表互相映射，各层私自扩词                                                                                               |
 | 八   | 表示法统一：时间一律毫秒整数；消息身份收敛为 `messageId` 加 `version` 两元（自增 `id` 降级为存储实现细节，不出接口）；消息归属显式二选一——挂 turn（`turnId` 非空，外键指向真实 turn）或 session 级消息（`turnId` 为 NULL），空串被 CHECK 约束禁止                                                         | 时间双轨转换层；身份三字段的合并去重复杂度；现状空串三义性（历史脏数据、真 turn 外消息、适配器忘填共享同一个空串，无法区分）   |
@@ -493,23 +497,23 @@ erDiagram
 
 落到字段级的新旧对照（现状即 2.2 节代码块里的 session 混载结构）：
 
-| 现状                                            | v2 去向                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `status`（working/completed/failed...）         | 废弃；展示状态由 selector 从 `turn.phase` 加 `outcome` 推导       |
-| `turnLifecycle.activeTurnId`                    | `session.activeTurnId`——session 上唯一保留的 turn 引用            |
-| `turnLifecycle.phase`（自由字符串）             | `turn.phase`，封闭枚举 submitted/running/waiting/settling/settled |
-| `turnLifecycle.settling`（布尔）                | 被 `turn.phase` 枚举吸收，作为独立阶段值                          |
-| `turnLifecycle.outcome`                         | `turn.outcome`，封闭枚举，仅结束时有值                            |
-| `turnLifecycle.completedCommand`                | `turn.completedCommand`——某次 turn 的产物归 turn                  |
-| `submitAvailability`（字段存储）                | 废弃；selector 派生（规则三）                                     |
-| `pendingInteractive`（三态 null）               | interactions 集合，待处理即存在且 status 为 pending（规则四）     |
-| `currentPhase`                                  | 废弃（与 status、turnLifecycle.phase 三处冗余，规则七）           |
-| `lastError`（turn 失败与 session 失败混载）     | `turn.error`；session 层不再有 turn 结果性错误                    |
-| `runtimeContext`（无类型字典）                  | 拆为显式字段 `capabilities`/`backgroundAgents`/`goal`/`imported`  |
-| `cancelSession(sessionId)`                      | `cancelTurn(turnId)`（规则二）                                    |
-| messages 表 `turn_id` 允许空串                  | 非空外键或 NULL 二选一，空串被 CHECK 禁止（规则八）               |
-| 时间 RFC3339 与毫秒双轨                         | 统一毫秒整数（规则八）                                            |
-| 消息身份 `id`/`messageId`/`version`（又名 seq） | `messageId` 加 `version` 二元，自增 `id` 不出接口（规则八）       |
+| 现状                                            | v2 去向                                                                          |
+| ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| `status`（working/completed/failed...）         | 废弃；展示状态由 selector 从 `turn.phase` 加 `outcome` 推导                      |
+| `turnLifecycle.activeTurnId`                    | `session.activeTurnId`——session 上唯一保留的 turn 引用                           |
+| `turnLifecycle.phase`（自由字符串）             | `turn.phase`，封闭枚举 submitted/running/waiting/settling/settled                |
+| `turnLifecycle.settling`（布尔）                | 被 `turn.phase` 枚举吸收，作为独立阶段值                                         |
+| `turnLifecycle.outcome`                         | `turn.outcome`，封闭枚举，仅结束时有值                                           |
+| `turnLifecycle.completedCommand`                | `turn.completedCommand`——某次 turn 的产物归 turn                                 |
+| `submitAvailability`（字段存储）                | 废弃；selector 派生（规则三）                                                    |
+| `pendingInteractive`（三态 null）               | interactions 集合，待处理即存在且 status 为 pending（规则四）                    |
+| `currentPhase`                                  | 废弃（与 status、turnLifecycle.phase 三处冗余，规则七）                          |
+| `lastError`（turn 失败与 session 失败混载）     | `turn.error`；session 层不再有 turn 结果性错误                                   |
+| `runtimeContext`（无类型字典）                  | 拆为显式字段 `capabilities`/`goal`/`imported`；child agent 使用 session relation |
+| `cancelSession(sessionId)`                      | `cancelTurn(turnId)`（规则二）                                                   |
+| messages 表 `turn_id` 允许空串                  | 非空外键或 NULL 二选一，空串被 CHECK 禁止（规则八）                              |
+| 时间 RFC3339 与毫秒双轨                         | 统一毫秒整数（规则八）                                                           |
+| 消息身份 `id`/`messageId`/`version`（又名 seq） | `messageId` 加 `version` 二元，自增 `id` 不出接口（规则八）                      |
 
 turn 外消息是正常概念，不是数据缺陷。代码取证确认当前逻辑持续产生不属于任何 turn 的消息，且这是语义正确的行为，共三类：
 
@@ -650,7 +654,7 @@ overlay 符号扫描为零；切片 3 的旧 `AgentHostWorkspaceAgentSession/Mes
 
 第 0 步：立规矩（1~2 天）。✅ 检查脚本 `tools/scripts/check-agent-gui-degradation.mjs`（全量基线对比 + `--staged` 增量拦截）与基线 `tools/degradation-baseline/agent-gui.json` 已入库并接入 pre-commit、`check:changed`、`check:full` 与 PR CI；修复体量软门禁 `tools/scripts/check-fix-scope.mjs` 与 PR 模板兜底三问已接入；渲染预算基建 `packages/agent/gui/shared/testing/renderBudget.tsx` 已落地；约定文档已同步。5.3 节编辑器钩子即时反馈未交付。
 
-- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节全部检查项（禁同步定时器、禁静默吞错、缓存预算、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定），首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
+- 新增 `tools/scripts/check-agent-gui-degradation.mjs`，实现 5.2 节检查项（禁同步定时器、禁静默吞错、组件缓存预算、禁 render-time ref 镜像、禁视图内建 store、provider 行为分支冻结、禁模块级可变全局、订阅只走唯一绑定）；组件缓存与 ref 镜像报错会明确要求业务状态下沉 engine/controller、稳定投影进入 selector/read hook，首跑输出生成指标基线 JSON（口径以脚本为准，不照抄本文数字）；
 - 800 行规则对 agent 域生效，存量豁免清单只减不增；
 - 修复体量软门禁与提交模板"兜底三问"接入（5.2 四、5.3）；
 - 渲染次数预算测试的基建（Profiler `onRender` 断言工具）先行落地，预算用例随各功能模块切片交付；
@@ -710,6 +714,12 @@ engine pending record、typed command 和 selector 持有；旧 session-view/lis
 激活与普通提交共用同一 prompt envelope：pending record 保留用于投影的
 `content`/`displayPrompt`，物化后的 `runtimeContent` 只进入 typed transport
 command，不能覆盖乐观消息的展示语义。
+乐观消息准入同时认文本与可渲染的结构化 `content`；纯图片 prompt 即使派生文本
+为空，也必须沿 canonical 用户消息投影立即显示，并按 `clientSubmitId`/事件身份
+去重，禁止用 `[Image]` 占位或另建图片覆盖层。后续 `PendingBootstrapIntent` 必须
+复用这条投影契约，不能随 bootstrap submit 再造一套首消息展示逻辑。图片展示身份
+必须由稳定消息身份与内容位置派生；`path` 提升为 durable `attachmentId` 只更新读取
+定位，不能触发图片节点重挂载。
 Codex 合成的“实施计划”决策已收敛为 tuttid 语义 API 与 durable
 `plan_decision` saga：严格绑定 workspace/session/plan-turn/request/idempotency，
 设置目标值与发送步骤持久 checkpoint，发送未知结果只按稳定
@@ -722,7 +732,8 @@ notice 只携带语义标识，由消费端 i18n。
 provider 原生 exit-plan 继续走 durable `interactive_response`，不复用该合成决策接口。
 session read 契约已移除旧 `status/turnLifecycle/submitAvailability/lastError/runtimeContext`
 与 ISO 时间字段，`activeTurnId` 必带（允许 null）、`pendingInteractions` 必带（空集合为
-`[]`），capabilities/backgroundAgents/goal/imported 使用显式字段。SQLite 中同名 legacy
+`[]`），capabilities/goal/imported 使用显式字段，child agent 使用独立 session/turn 与
+root/parent relation。SQLite 中同名 legacy
 生命周期列与 raw runtime context 暂仅允许作为 runtime 恢复内部投影，不能再作为 API 或
 session 域事实。App Factory、CLI、wait、runtime operation coordinator 与 resume/read
 路径现已切到 durable Turn/Interaction；session get/resume 不再根据 provider runtime
@@ -894,6 +905,8 @@ flowchart TB
 - 延时修复在 `reducer` 里写不出来。`reducer` 是纯函数，没有地方塞`setTimeout`；时序问题必须被命名为状态机转移（等待哪个事件到达哪个状态）。兜底覆盖层也创建不出来：待确认意图的类型强制要求声明确认条件与超时策略，没有确认条件的"临时防御状态"无法通过编译。
 - 缓存失去必要性。层层加码的根因是宽订阅：56 字段的视图模型从单个 12.7k 行控制器灌进 8.3k 行视图，任何字段变化全树重渲染，于是只能逐点加缓存止血。读取函数细粒度订阅后，组件天然只在自己那份数据变化时渲染；必要的记忆化集中在读取函数层（可单元测试、身份稳定），功能模块的组件层原则上零 `useMemo`。
 
+这里的“天然”只覆盖状态传播边界，不表示任意投影都会自动获得稳定引用。读取函数若每次返回新数组，controller 若复制 canonical 数组，host 若内联 callback，依然会把一次真实更新放大到无关子树。完成后的实现要求在数据拥有者处稳定 selector / projection 输出，并用真实 engine 事件的 render-budget 测试锁住引用语义；禁止用叶组件 `memo` 掩盖上游 churn。组件层可为局部计算使用必要的 `useMemo`，但它不能成为替代细粒度订阅的第二套缓存架构。
+
 ### 5.2 机械护栏：基线、检查、预算
 
 全部挂在已有基建上：提交前钩子、`check:changed` 泳道、推送前钩子、持续集成。按仓库惯例新增 `tools/scripts/check-agent-gui-degradation.mjs`（参照 `check-agent-activity-runtime-boundaries.mjs` 的模式）。
@@ -921,15 +934,16 @@ flowchart TB
 
 （二）劣化模式检查（增量、暂存区级，提交前即拦截）：
 
-| 规则              | 内容                                                                                                |
-| ----------------- | --------------------------------------------------------------------------------------------------- |
-| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行 |
-| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                      |
-| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                          |
-| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                               |
-| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增      |
-| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                       |
-| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免） |
+| 规则              | 内容                                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 禁同步定时器      | 引擎、`reducer`、`selector` 内禁止 `setTimeout`；其余位置数值字面量定时器必须带说明原因的注释才放行                                                                                 |
+| 禁静默吞错        | `catch` 块必须上报诊断或重新抛出；静默吞错报错                                                                                                                                      |
+| 缓存预算          | 功能模块组件文件的 `useMemo`、`useCallback` 上限（建议 5）；读取函数层不限                                                                                                          |
+| 禁 ref 镜像缓存   | 禁止用 render-time ref 镜像 props/state 或手写 projection cache；业务状态进 engine/controller，稳定投影进 selector/read hook；DOM、timer、abort 等 imperative 生命周期 ref 不在此列 |
+| 禁视图内建 store  | 组件文件禁止创建 valtio 或 zustand store（现状视图内嵌 proxy 即反例）                                                                                                               |
+| provider 分支冻结 | 按 provider 名字的行为分支新增即报错（存量在基线里递减）；身份展示分支走豁免清单，清单只减不增                                                                                      |
+| 禁模块级可变全局  | 发包公共接口中禁止新增模块级可变全局（见 3.3 节外部宿主约束）                                                                                                                       |
+| 订阅只走唯一绑定  | 组件文件禁止直接调用 `useSyncExternalStore`，引擎订阅一律经 `useEngineSelector`（唯一绑定文件豁免）                                                                                 |
 
 （三）渲染性能回归测试——用预算取代缓存直觉。
 

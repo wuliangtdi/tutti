@@ -11,6 +11,7 @@ import {
 import { fakeQueryWithInitializationModels } from "./sessionRuntimeTestQueries.assistant.ts";
 import {
   fakeCompactBoundaryQuery,
+  fakeFailedCompactQuery,
   fakeGuidancePromptQuery,
   fakePermissionCheckQuery,
   fakeStatusOnlyCompactQuery
@@ -57,6 +58,69 @@ test("guidance prompt stays on the active SDK turn", async () => {
       ),
       false
     );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("goal set scheduling ack followed by immediate clear coalesces before SDK activation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-goal",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeSimpleResultQuery(prompt)
+    );
+
+    await session.start();
+    // Both calls have crossed the sidecar scheduling/ACK boundary before the
+    // deferred Goal dispatcher hands either command to the SDK iterable.
+    session.exec("goal-set-turn", "/goal ship it", undefined, "goal_arm", {
+      operationId: "goal-op-set",
+      revision: 1,
+      action: "set"
+    });
+    session.exec("goal-clear-command", "/goal clear", undefined, undefined, {
+      operationId: "goal-op-clear",
+      revision: 2,
+      action: "clear"
+    });
+
+    await waitForEvent(events, "goal_command_started");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_started" &&
+          event.payload?.turnId === "goal-set-turn"
+      ),
+      false
+    );
+    const superseded = events.find(
+      (event) => event.type === "goal_command_superseded"
+    );
+    assert.equal(superseded?.payload?.operationId, "goal-op-set");
+    const started = events.find(
+      (event) => event.type === "goal_command_started"
+    );
+    assert.equal(started?.payload?.operationId, "goal-op-clear");
+    assert.equal(started?.payload?.revision, 2);
   } finally {
     restoreSink();
   }
@@ -315,6 +379,53 @@ test("compact success reported only via status message still refreshes usage", a
     assert.equal(usage?.payload?.turnId, "turn-status-only");
     assert.equal(contextWindow?.usedTokens, 4_061);
     assert.equal(contextWindow?.totalTokens, 1_000_000);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("compact failure preserves the status reason and assistant response", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => fakeFailedCompactQuery(prompt)
+    );
+
+    await session.start();
+    session.exec("turn-compact-failed", "/compact");
+    await waitForEvent(events, "compact_failed");
+    await waitForEvent(events, "turn_completed");
+
+    assert.equal(
+      events.find((event) => event.type === "compact_failed")?.payload?.content,
+      "Compacting failed: Not enough messages to compact."
+    );
+    assert.equal(
+      events.find((event) => event.type === "compact_failed")?.payload?.reason,
+      "Not enough messages to compact."
+    );
+    assert.equal(
+      events.find((event) => event.type === "assistant_completed")?.payload
+        ?.content,
+      "Not enough messages to compact."
+    );
   } finally {
     restoreSink();
   }
