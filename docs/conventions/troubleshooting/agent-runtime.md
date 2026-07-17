@@ -24,6 +24,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Codex session fails with not connected when model_catalog_json is relative](./agent-provider-setup.md#codex-session-fails-with-not-connected-when-modelcatalogjson-is-relative)
 - [Codex custom model_provider mixes models, duplicates replies, or shows metadata warnings](./agent-provider-setup.md#codex-custom-modelprovider-mixes-models-duplicates-replies-or-shows-metadata-warnings)
 - [Claude SDK Grep or Glob unavailable despite Claude Code preset](./agent-provider-setup.md#claude-sdk-grep-or-glob-unavailable-despite-claude-code-preset)
+- [Provider process loses final stdout or a sidecar fails during startup](./agent-provider-setup.md#provider-process-loses-final-stdout-or-a-sidecar-fails-during-startup)
 - [Concurrent agent CLI installs corrupt shared npm global state](./agent-provider-setup.md#concurrent-agent-cli-installs-corrupt-shared-npm-global-state)
 - [Agent provider install looks idle while a non-Codex installer is running](./agent-provider-setup.md#agent-provider-install-looks-idle-while-a-non-codex-installer-is-running)
 - [Legacy Claude ACP adapter appears stale after external registry migration](./agent-provider-setup.md#legacy-claude-acp-adapter-appears-stale-after-external-registry-migration)

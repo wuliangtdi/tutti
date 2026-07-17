@@ -48,6 +48,7 @@ type Fixture struct {
 	PreparedSubmitID   string
 	RecoverInteractive bool
 	DisableGoalInbox   bool
+	FailCommitObserver bool
 }
 
 type SessionObservation struct {
@@ -95,6 +96,9 @@ type Metrics struct {
 	UpdateSettingsCalls      int
 	GoalControlCalls         int
 	GoalReconcileCalls       int
+	RuntimeOperationCommits  int
+	GoalOperationCommits     int
+	RootTurnSettlements      int
 	LastCancelTargets        []agenthost.RuntimeCancelTarget
 	LastInteractiveTurnID    string
 	LastInteractiveRequestID string
@@ -176,6 +180,16 @@ func GoalScenarios() []Scenario {
 		{Name: "goal reconcile observation", run: runGoalReconcileObservation},
 		{Name: "goal revision actor fence", run: runGoalRevisionActorFence},
 		{Name: "goal inbox consumer preflight", run: runGoalInboxConsumerPreflight},
+	}
+}
+
+// CommitObserverScenarios verify the typed post-commit seam independently of
+// any adapter-specific event transport. They intentionally include a failing
+// observer because observer delivery is advisory after the durable commit.
+func CommitObserverScenarios() []Scenario {
+	return []Scenario{
+		{Name: "runtime commit observer failure is post-commit", run: runRuntimeCommitObserverFailure},
+		{Name: "goal operation emits committed deltas", run: runGoalOperationCommittedDeltas},
 	}
 }
 
@@ -663,6 +677,49 @@ func runGoalInboxConsumerPreflight(ctx context.Context, driver Driver) error {
 	}
 	if steps := driver.Metrics().RecoverySteps; len(steps) != 0 {
 		return fmt.Errorf("missing goal consumer ran recovery before preflight failure: %v", steps)
+	}
+	return nil
+}
+
+func runRuntimeCommitObserverFailure(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-observer-runtime", "turn-observer-runtime")
+	fixture.Turn = &TurnSeed{TurnID: "turn-observer-runtime", Phase: canonical.TurnPhaseWaiting}
+	fixture.Interaction = &InteractionSeed{
+		RequestID: "request-observer-runtime", TurnID: "turn-observer-runtime",
+		Kind: canonical.InteractionKindQuestion, Status: canonical.InteractionStatusPending,
+	}
+	fixture.FailCommitObserver = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	optionID := "approve"
+	if _, err := driver.SubmitInteractive(ctx,
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-observer-runtime"},
+		"request-observer-runtime", agenthost.SubmitInteractiveInput{TurnID: "turn-observer-runtime", OptionID: &optionID},
+	); err != nil {
+		return fmt.Errorf("observer failure escaped committed runtime command: %w", err)
+	}
+	if commits := driver.Metrics().RuntimeOperationCommits; commits < 2 {
+		return fmt.Errorf("runtime committed deltas=%d, want prepare and completion", commits)
+	}
+	return nil
+}
+
+func runGoalOperationCommittedDeltas(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-observer-goal", "")
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	result, err := driver.GoalControl(ctx, agenthost.GoalControlInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-observer-goal",
+		Action: "set", Objective: "observe durable goal",
+	})
+	if err != nil {
+		return fmt.Errorf("goal control: %w", err)
+	}
+	metrics := driver.Metrics()
+	if result.SyncStatus != storesqlite.GoalSyncStatusSynced || metrics.GoalOperationCommits < 3 {
+		return fmt.Errorf("goal result=%#v committed deltas=%d, want prepare/dispatch/complete", result, metrics.GoalOperationCommits)
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ go 1.24.3
 toolchain go1.24.5
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0
 	github.com/tutti-os/tutti/packages/agent/daemon v0.0.0
 	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
@@ -13,7 +14,6 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect

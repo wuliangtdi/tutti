@@ -31,7 +31,7 @@ type Service struct {
 	TurnStore                      TurnStore
 	RuntimeOperationStore          RuntimeOperationStore
 	GoalStateStore                 GoalStateStore
-	GoalAuditPublisher             GoalAuditPublisher
+	CommitObserver                 agenthost.CommitObserver
 	GoalReconcileInboxStore        GoalReconcileInboxStore
 	SubmitClaimStore               SubmitClaimStore
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
@@ -77,7 +77,6 @@ type Service struct {
 	liveModelPersistedScanMissAtUnixMS map[string]int64
 }
 
-type GoalAuditPublisher = agenthost.GoalAuditPublisher
 type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
 type SubmitClaimStore interface {
