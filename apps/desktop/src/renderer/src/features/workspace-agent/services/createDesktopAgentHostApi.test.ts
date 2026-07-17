@@ -355,7 +355,7 @@ test("desktop agent host api delegates user project calls to the workspace user 
     projectLocked: true,
     selectedPath: "/workspace/listed"
   });
-  await api.userProjects.move({
+  await api.userProjects.move?.({
     beforeProjectId: "project-listed",
     projectId: "project-used"
   });
