@@ -40,6 +40,63 @@ test("flags new *Worker and *Actor type declarations, struct and interface", () 
   );
 });
 
+test("flags orchestration type declarations inside a grouped type block", () => {
+  const source = [
+    "package agent",
+    "",
+    "type (",
+    "\tsessionRef struct {",
+    "\t\tid string",
+    "\t}",
+    "\tturnResumeCoordinator struct {",
+    "\t\tstore CanonicalStore",
+    "\t}",
+    "\tgoalSagaWorker interface {",
+    "\t\tRun(ctx context.Context) error",
+    "\t}",
+    ")"
+  ].join("\n");
+  assert.deepEqual(
+    findBoundaryViolations(
+      "services/tuttid/service/agent/turn_orchestration.go",
+      source
+    ),
+    [
+      "services/tuttid/service/agent/turn_orchestration.go:7: turnResumeCoordinator struct {",
+      "services/tuttid/service/agent/turn_orchestration.go:10: goalSagaWorker interface {"
+    ]
+  );
+});
+
+test("allows non-orchestration types inside a grouped type block", () => {
+  const source = [
+    "package agent",
+    "",
+    "type (",
+    "\tsessionFilter struct {",
+    "\t\tworkerPool string",
+    "\t}",
+    "\tcoordinatorHandle struct {",
+    "\t\tref string",
+    "\t}",
+    "\tmodelCatalog interface {",
+    "\t\tList(ctx context.Context) ([]string, error)",
+    "\t}",
+    ")",
+    "",
+    "func afterGroup() {",
+    "\t// a later brace-heavy body must not leak group state",
+    "}"
+  ].join("\n");
+  assert.deepEqual(
+    findBoundaryViolations(
+      "services/tuttid/service/agent/composer_options.go",
+      source
+    ),
+    []
+  );
+});
+
 test("flags a new orchestration-named production file by filename", () => {
   const violations = findBoundaryViolations(
     "services/tuttid/service/agent/turn_send_worker.go",

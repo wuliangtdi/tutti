@@ -32,6 +32,14 @@ const ALLOWLIST = new Set([
 const ORCHESTRATION_TYPE =
   /^\s*type\s+[A-Za-z0-9_]*(?:Coordinator|Worker|Actor)\s+(?:struct|interface)\b/u;
 
+// The same declaration inside a grouped `type ( ... )` block, where the `type`
+// keyword is on the opening line instead of the declaration line.
+const GROUPED_ORCHESTRATION_TYPE =
+  /^\s*[A-Za-z0-9_]*(?:Coordinator|Worker|Actor)\s+(?:struct|interface)\b/u;
+
+// Opens a grouped `type ( ... )` declaration block.
+const TYPE_GROUP_OPEN = /^\s*type\s*\(/u;
+
 // A production file whose name ends in one of these words is treated as an
 // application-core orchestration file.
 const ORCHESTRATION_FILENAME = /_(?:coordinator|worker|actor)\.go$/iu;
@@ -59,13 +67,61 @@ export function findBoundaryViolations(path, source) {
     );
   }
 
+  // Track grouped `type ( ... )` blocks so declarations inside them are
+  // checked too. `braceDepth` keeps struct/interface bodies (and their fields)
+  // from being treated as top-level declarations of the group.
+  let inTypeGroup = false;
+  let braceDepth = 0;
+
   for (const [index, line] of source.split(/\r?\n/u).entries()) {
     if (ORCHESTRATION_TYPE.test(line)) {
       violations.push(`${path}:${index + 1}: ${line.trim()}`);
+      continue;
+    }
+
+    if (inTypeGroup) {
+      if (braceDepth === 0) {
+        if (/^\s*\)/u.test(line)) {
+          inTypeGroup = false;
+          continue;
+        }
+        if (GROUPED_ORCHESTRATION_TYPE.test(line)) {
+          violations.push(`${path}:${index + 1}: ${line.trim()}`);
+        }
+      }
+      braceDepth += countUnquotedBraces(line);
+      continue;
+    }
+
+    if (TYPE_GROUP_OPEN.test(line)) {
+      inTypeGroup = true;
+      braceDepth = 0;
+      const remainder = line.slice(line.indexOf("(") + 1);
+      if (GROUPED_ORCHESTRATION_TYPE.test(remainder)) {
+        violations.push(`${path}:${index + 1}: ${line.trim()}`);
+      }
+      braceDepth += countUnquotedBraces(remainder);
     }
   }
 
   return violations;
+}
+
+function countUnquotedBraces(line) {
+  const withoutComments = line.replace(/\/\/.*$/u, "");
+  const withoutStrings = withoutComments.replace(
+    /"(?:[^"\\]|\\.)*"|`[^`]*`/gu,
+    ""
+  );
+  let depth = 0;
+  for (const character of withoutStrings) {
+    if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+    }
+  }
+  return depth;
 }
 
 export function findStaleAllowlistEntries(fileExists = existsSync) {
