@@ -496,6 +496,16 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+An explicit permission choice from the currently rendered target-scoped menu
+must also survive a concurrent options refresh. The settings action may use a
+runtime options snapshot to clean up older stored defaults, but it must not
+erase the user's current or just-selected permission merely because that
+snapshot lags the menu render. Unrelated patches such as clearing plan mode must
+not mutate permission as collateral cleanup; the daemon remains the authority
+that validates provider settings.
+Controlled permission selects may emit a transient empty value while closing or
+restoring focus. This is presentation state, not a user request to clear the
+permission default, and must be rejected at the selection boundary.
 Providers whose model catalog exists only after runtime session bootstrap must
 declare hidden live-model probing and its cache scope in their provider
 descriptor. The daemon may
@@ -3551,13 +3561,13 @@ provenance-aware generated-file provider for either active dimension, even when
 the ordinary generated-files group is otherwise disabled. Generated-file and
 picker result groups remain source-owned. The Agent Session and Agent target
 `@` lists are the exceptions when a host injects an Agent provenance catalog.
-Session rows group by exact `agentTargetId` in Agent catalog order. Agent target
-rows use each Agent option's `parentMemberId` to group under the matching Member
-catalog entry, so one member's targets share a group while filtering still uses
-the individual target ids. Collaboration hosts should build this catalog from
-the complete Agent directory, using `AgentGUIAgent.owner.userId` for shared
-targets, rather than deriving ownership only from sessions; targets without
-history must still join their owner's group. Hosts that omit a matching Member entry retain the
+Session and Agent target rows use each Agent option's `parentMemberId` to group
+under the matching Member catalog entry, so one member's sessions and targets
+share a group across Agent targets while filtering still uses the individual
+target ids. Collaboration hosts should build this catalog from the complete
+Agent directory, using `AgentGUIAgent.owner.userId` for shared targets, rather
+than deriving ownership only from sessions; targets without history must still
+join their owner's group. Hosts that omit a matching Member entry retain the
 per-Agent group. AgentGUI does not synthesize owner-aware row labels because
 that presentation remains host-owned. Rows outside the catalog remain visible
 in stable uncatalogued groups only while no explicit Agent filter is selected.
@@ -3625,6 +3635,17 @@ merges the unresolved in-flight patch, any queued patch, and the latest selectio
 in that order, so the newest value wins without losing settings that the daemon
 may not have applied before the timeout.
 
+Provider-specific safety confirmation belongs at the composer setting selection
+boundary, before the settings change reaches the engine. Selecting Codex
+`full-access` opens a localized warning and must not dispatch a settings change
+until the user confirms; canceling preserves the previous selection. Confirmation
+still dispatches exactly one ordinary settings patch, so the engine and daemon do
+not acquire a second safety-dialog state machine. Other providers' modes continue
+to follow their provider contracts without inheriting this Codex-specific gate.
+The warning's safety-reference link uses the host link-action boundary. Workspace
+surfaces may route it to their Browser node; the standalone Agent window must fall
+back to the desktop external-browser bridge rather than silently dropping the URL.
+
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable
 activity projection directly and publishes reconciliation without resuming the
@@ -3667,6 +3688,16 @@ path does not open a misleading workbench node. Both workspace and standalone
 Agent window host routes must honor that validation intent and surface the same
 localized missing-target feedback instead of opening an empty files surface or
 silently doing nothing.
+
+Bare HTTP links use the GFM literal-autolink parser, but transcript rendering
+also repairs CJK sentence punctuation boundaries after Markdown parsing because
+the upstream GFM boundary set is ASCII-oriented. This repair applies only to
+literal autolinks and must preserve explicit Markdown links, angle autolinks,
+code, and intentionally authored Unicode link destinations. Streaming and
+settled transcript rendering must use the same boundary transform so an href
+does not change when a turn finishes. Raw CJK punctuation in a literal autolink
+is a sentence boundary; a URL that intentionally contains that punctuation must
+percent-encode it or use an explicit Markdown link destination.
 
 Provider host-app-context prompts should mirror that contract: when agents
 reference code or workspace files in responses, instruct them to emit Markdown

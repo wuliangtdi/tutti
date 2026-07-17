@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AgentMessageMarkdown,
@@ -13,6 +19,7 @@ import {
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
+    vi.useRealTimers();
     resetCachedMarkdownImagesForTests();
   });
 
@@ -191,6 +198,121 @@ describe("AgentMessageMarkdown", () => {
       fireEvent.click(screen.getByRole("link", { name: label }));
       expect(onLinkClick).toHaveBeenLastCalledWith(href);
     }
+  });
+
+  it.each([
+    "，",
+    "。",
+    "；",
+    "：",
+    "！",
+    "？",
+    "、",
+    "…",
+    "）",
+    "】",
+    "》",
+    "」",
+    "』",
+    "〉",
+    "〕",
+    "］",
+    "｝",
+    "”",
+    "’"
+  ])(
+    "keeps the CJK %s sentence boundary outside bare http links",
+    (punctuation) => {
+      const onLinkClick = vi.fn();
+      const url = "https://github.com/settings/applications";
+      render(
+        <AgentMessageMarkdown
+          content={`请打开 ${url}${punctuation}然后继续`}
+          onLinkClick={onLinkClick}
+        />
+      );
+
+      const link = screen.getByRole("link", { name: url });
+      expect(link).toHaveAttribute("data-agent-link-href", url);
+      expect(link).not.toHaveTextContent(`${punctuation}然后继续`);
+      expect(link.parentElement).toHaveTextContent(
+        `请打开 ${url}${punctuation}然后继续`
+      );
+
+      fireEvent.click(link);
+      expect(onLinkClick).toHaveBeenCalledWith(url);
+    }
+  );
+
+  it.each([",", ".", ";", ":", "!", "?", ")", "]"])(
+    "keeps the ASCII %s sentence boundary outside bare http links",
+    (punctuation) => {
+      const url = "https://github.com/settings/applications";
+      render(
+        <AgentMessageMarkdown
+          content={`请打开 ${url}${punctuation} 然后继续`}
+        />
+      );
+
+      const link = screen.getByRole("link", { name: url });
+      expect(link).toHaveAttribute("data-agent-link-href", url);
+      expect(link).not.toHaveTextContent(`${punctuation} 然后继续`);
+    }
+  );
+
+  it("preserves explicit markdown links containing CJK punctuation", () => {
+    const target = "https://example.com/发布，版本";
+    render(<AgentMessageMarkdown content={`打开 [发布记录](${target})`} />);
+
+    expect(screen.getByRole("link", { name: "发布记录" })).toHaveAttribute(
+      "data-agent-link-href",
+      new URL(target).toString()
+    );
+  });
+
+  it("preserves percent-encoded CJK punctuation in bare http links", () => {
+    const target = "https://example.com/search?q=%E7%94%B2%EF%BC%8C%E4%B9%99";
+    render(<AgentMessageMarkdown content={`打开 ${target}，继续`} />);
+
+    expect(screen.getByRole("link", { name: target })).toHaveAttribute(
+      "data-agent-link-href",
+      target
+    );
+  });
+
+  it("preserves explicitly authored angle autolinks", () => {
+    const target = "https://example.com/releases/a,b";
+    render(<AgentMessageMarkdown content={`打开 <${target}>`} />);
+
+    expect(screen.getByRole("link", { name: target })).toHaveAttribute(
+      "data-agent-link-href",
+      target
+    );
+  });
+
+  it("applies CJK sentence boundaries to www literal autolinks", () => {
+    const label = "www.example.com/releases";
+    render(<AgentMessageMarkdown content={`打开 ${label}，继续`} />);
+
+    expect(screen.getByRole("link", { name: label })).toHaveAttribute(
+      "data-agent-link-href",
+      `http://${label}`
+    );
+  });
+
+  it("applies CJK bare-link boundaries while streaming markdown", () => {
+    const url = "https://github.com/settings/applications";
+    render(
+      <AgentMessageMarkdown content={`请打开 ${url}，然后继续`} streaming />
+    );
+
+    expect(screen.getByRole("link", { name: url })).toHaveAttribute(
+      "data-agent-link-href",
+      url
+    );
+    expect(screen.getByRole("link", { name: url })).not.toHaveTextContent(
+      "，然后继续"
+    );
   });
 
   it("renders unsafe markdown links as plain text", () => {
@@ -800,6 +922,7 @@ describe("AgentMessageMarkdown", () => {
   });
 
   it("copies and downloads a workspace markdown image from preview actions", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const readFile = vi.fn().mockResolvedValue({
       bytes: new Uint8Array([137, 80, 78, 71])
     });
@@ -882,6 +1005,13 @@ describe("AgentMessageMarkdown", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download image" }));
     expect(clickDownload).toHaveBeenCalledTimes(1);
     expect(downloadedName).toMatch(/^dance-\d{8}-\d{6}-[a-z0-9]{4}\.png$/);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1600);
+    });
+    expect(
+      document.querySelector('[data-tsh-image-copy-status="true"]')
+    ).toBeNull();
 
     clickDownload.mockRestore();
   });

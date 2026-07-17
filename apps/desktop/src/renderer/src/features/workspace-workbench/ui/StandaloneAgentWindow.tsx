@@ -586,6 +586,7 @@ export function StandaloneAgentWindow({
     headerProvider,
     homeDirectory: desktopApi.platform.homeDirectory,
     hostWindowApi,
+    openExternalUrl: desktopApi.host.files.openExternal,
     openFileInSidebar,
     setActivation,
     setNodeState,
