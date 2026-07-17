@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,34 @@ func TestLegacyServiceAgentHostConformance(t *testing.T) {
 	}
 }
 
+func TestDirectHostApplicationCoreConformance(t *testing.T) {
+	scenarios := append(hostconformance.ApplicationCoreScenarios(), hostconformance.ResumePolicyScenarios()...)
+	scenarios = append(scenarios, hostconformance.SubmissionFenceScenarios()...)
+	scenarios = append(scenarios, hostconformance.TitlePolicyScenarios()...)
+	for _, scenario := range scenarios {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestLegacyServiceResumePolicyConformance(t *testing.T) {
+	scenarios := append(hostconformance.ResumePolicyScenarios(), hostconformance.SubmissionFenceScenarios()...)
+	for _, scenario := range scenarios {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t}
+			if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 type legacyHostConformanceDriver struct {
 	t          *testing.T
 	service    *Service
@@ -30,6 +59,7 @@ type legacyHostConformanceDriver struct {
 	sessions   *fakeSessionReader
 	turns      *legacyHostConformanceTurnStore
 	operations *runtimeOperationMemoryStore
+	directHost bool
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
@@ -53,17 +83,36 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		return nil
 	}
 	seed := *fixture.Session
+	kind := strings.TrimSpace(seed.Kind)
+	if kind == "" {
+		kind = agentactivitybiz.SessionKindRoot
+	}
 	settings := ComposerSettings{PlanMode: true}
+	runtimeContext := map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished}
+	if seed.ExternalResumeSupported != nil {
+		runtimeContext["externalImportResumeSupported"] = *seed.ExternalResumeSupported
+	}
 	persisted := PersistedSession{
-		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: agentactivitybiz.SessionKindRoot,
+		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: kind, Origin: seed.Origin,
 		Provider: seed.Provider, ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd,
 		RailSectionKey: "conversations", Settings: settings,
 		Metadata:               agentactivitybiz.SessionMetadata{Visible: true, Capabilities: []string{}},
-		InternalRuntimeContext: map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished},
+		InternalRuntimeContext: runtimeContext,
 		Title:                  seed.Title, ActiveTurnID: seed.ActiveTurnID,
 		CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2, LastEventUnixMS: 2,
 	}
 	d.sessions.sessions[seed.WorkspaceID+":"+seed.AgentSessionID] = persisted
+	if fixture.PreparedSubmitID != "" {
+		if _, _, err := d.service.SubmitClaimStore.PrepareSubmitClaim(context.Background(), agentactivitybiz.SubmitClaimPrepare{
+			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
+			ClientSubmitID: fixture.PreparedSubmitID, NowUnixMS: 1,
+		}); err != nil {
+			return err
+		}
+	}
+	if seed.Deleted {
+		d.sessions.tombstoned[seed.WorkspaceID+":"+seed.AgentSessionID] = true
+	}
 	d.turns.sessions[seed.AgentSessionID] = agentactivitybiz.Session{
 		ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Kind: agentactivitybiz.SessionKindRoot,
 		Provider: seed.Provider, ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd,
@@ -107,6 +156,18 @@ func (d *legacyHostConformanceDriver) Create(
 	if agentTargetID == "target-1" {
 		agentTargetID = agenttargetbiz.IDLocalCodex
 	}
+	if d.directHost {
+		input.AgentTargetID = agentTargetID
+		prepared := preparedRuntime{Cwd: "/workspace"}
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service, prepared: &prepared}).CreateSession(ctx, workspaceID, input)
+		if err != nil {
+			return hostconformance.SessionObservation{}, "", err
+		}
+		persisted := persistedSessionFromHost(result.Canonical)
+		session := serviceSessionWithPersistedFreshness(result.Session, persisted, d.runtime.CanResume(runtimeResumeInputFromRuntimeSession(result.Session)))
+		d.recordSubmittedTurn(workspaceID, session.ID, result.TurnID)
+		return legacyHostSessionObservation(session), result.TurnID, nil
+	}
 	session, err := d.service.Create(ctx, workspaceID, CreateSessionInput{
 		AgentSessionID: input.AgentSessionID, AgentTargetID: agentTargetID, Provider: input.Provider,
 		InitialContent: input.InitialContent, InitialDisplayPrompt: input.InitialDisplayPrompt,
@@ -129,6 +190,13 @@ func (d *legacyHostConformanceDriver) Create(
 }
 
 func (d *legacyHostConformanceDriver) EnsureSession(ctx context.Context, ref agenthost.SessionRef) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		if _, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).EnsureRuntimeSession(ctx, ref); err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
+		return legacyHostSessionObservation(session), err
+	}
 	if _, err := d.service.ensureRuntimeSession(ctx, ref.WorkspaceID, ref.AgentSessionID); err != nil {
 		return hostconformance.SessionObservation{}, err
 	}
@@ -141,6 +209,15 @@ func (d *legacyHostConformanceDriver) SendInput(
 	ref agenthost.SessionRef,
 	input agenthost.SendInput,
 ) (hostconformance.SendObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).SendInput(ctx, ref, input)
+		if err != nil {
+			return hostconformance.SendObservation{}, err
+		}
+		d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
+		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
+		return hostconformance.SendObservation{Session: legacyHostSessionObservation(session), TurnID: result.TurnID}, err
+	}
 	result, err := d.service.SendInput(ctx, ref.WorkspaceID, ref.AgentSessionID, input)
 	if err != nil {
 		return hostconformance.SendObservation{}, err
@@ -191,6 +268,17 @@ func (d *legacyHostConformanceDriver) SubmitPlanDecision(
 }
 
 func (d *legacyHostConformanceDriver) UpdateTitle(ctx context.Context, input agenthost.UpdateTitleInput) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).UpdateTitle(ctx, input)
+		if err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		persisted := persistedSessionFromHost(result.Canonical)
+		if strings.TrimSpace(result.Session.ID) != "" {
+			return legacyHostSessionObservation(serviceSessionWithPersistedFreshness(result.Session, persisted, true)), nil
+		}
+		return legacyHostSessionObservation(sessionFromPersisted(persisted, true)), nil
+	}
 	session, err := d.service.UpdateTitle(ctx, input.WorkspaceID, input.AgentSessionID, input.Title)
 	return legacyHostSessionObservation(session), err
 }
@@ -211,6 +299,9 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	}
 	if len(d.runtime.execCalls) > 0 {
 		metrics.LastInitialTitle = d.runtime.execCalls[len(d.runtime.execCalls)-1].InitialTitle
+	}
+	if len(d.runtime.resumeCalls) > 0 {
+		metrics.LastResumeRecreate = d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].RecreateIfMissing
 	}
 	return metrics
 }

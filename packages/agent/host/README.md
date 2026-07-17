@@ -1,9 +1,10 @@
 # Agent Host contracts
 
 `packages/agent/host` is the provider-neutral application boundary for
-canonical agent session and turn lifecycle orchestration. This first extraction
-slice publishes contracts, narrow ports, and a reusable conformance harness; it
-does not own a production implementation or change `tuttid` routing.
+canonical agent session and turn lifecycle orchestration. The package now owns
+the create, resume, send, durable submit-claim, and canonical title application
+core. `tuttid` routes those commands through `Host`; transport and HTTP shapes
+remain unchanged.
 
 The module owns:
 
@@ -11,6 +12,14 @@ The module owns:
 - narrow canonical store, runtime, preparation, attachment, clock, scheduler,
   and post-commit observer ports;
 - typed conformance scenarios under `conformance`.
+
+`CreateSession` has two explicit modes: an empty session, or one command with
+`InitialContent`. The latter prepares its submit claim before provider delivery
+and rolls back the provisional canonical shell when delivery fails. Resume
+eligibility is decided by `ResolveResumePolicy`: root sessions resume normally,
+explicit imports may recreate a missing provider session, and child,
+tombstoned, or non-resumable imports are rejected. Canonical titles may be
+empty; only an explicit title or the first eligible prompt establishes one.
 
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.

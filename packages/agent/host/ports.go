@@ -10,6 +10,8 @@ import (
 
 type CanonicalSessionStore interface {
 	GetSession(context.Context, string, string) (storesqlite.Session, bool, error)
+	SessionDeleted(context.Context, string, string) (bool, error)
+	RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
 	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error)
 	UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error)
 }
@@ -68,11 +70,22 @@ type RuntimePreparationInput struct {
 	ReasoningEffort        string
 	ConversationDetailMode string
 	Metadata               map[string]any
+	RuntimeContext         map[string]any
+	SessionOrigin          string
+	ProviderSessionID      string
+	CreatedAtUnixMS        int64
+	UpdatedAtUnixMS        int64
+	Visible                bool
+	Settings               ComposerSettings
+	SessionMetadata        storesqlite.SessionMetadata
 }
 
 type PreparedRuntime struct {
-	Cwd string
-	Env []string
+	Cwd               string
+	Env               []string
+	ProviderTargetRef map[string]any
+	Settings          *ComposerSettings
+	RuntimeContext    map[string]any
 }
 
 type RuntimeCleanupInput struct {
@@ -97,6 +110,34 @@ type Clock interface {
 
 type Scheduler interface {
 	Sleep(context.Context, time.Duration) error
+}
+
+// SessionLocker serializes application commands for one canonical session.
+// Implementations may use an in-process keyed lock; the Host does not assume a
+// database, process, or transport-specific locking mechanism.
+type SessionLocker interface {
+	Acquire(context.Context, SessionRef) (release func(), err error)
+}
+
+// RuntimeStartGate protects provider-specific startup critical sections. For
+// example, an adapter may serialize credential-touching provider startup.
+type RuntimeStartGate interface {
+	Acquire(context.Context, string) (release func(), err error)
+}
+
+type LifecycleStep struct {
+	Flow           string
+	Name           string
+	AgentSessionID string
+	Provider       string
+	StartedAt      time.Time
+	Err            error
+}
+
+// LifecycleObserver receives diagnostic step outcomes. It must not influence
+// command correctness; durable state remains in CanonicalStore.
+type LifecycleObserver interface {
+	ObserveLifecycleStep(context.Context, LifecycleStep)
 }
 
 // CommitObserver is a post-commit wake surface. Implementations must not treat

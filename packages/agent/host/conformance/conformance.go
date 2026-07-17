@@ -4,6 +4,7 @@ package conformance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -20,6 +21,10 @@ type SessionSeed struct {
 	ActiveTurnID            string
 	InitialTitleEstablished bool
 	Live                    bool
+	Kind                    string
+	Origin                  string
+	Deleted                 bool
+	ExternalResumeSupported *bool
 }
 
 type TurnSeed struct {
@@ -36,9 +41,10 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session     *SessionSeed
-	Turn        *TurnSeed
-	Interaction *InteractionSeed
+	Session          *SessionSeed
+	Turn             *TurnSeed
+	Interaction      *InteractionSeed
+	PreparedSubmitID string
 }
 
 type SessionObservation struct {
@@ -78,6 +84,7 @@ type Metrics struct {
 	LastInteractiveTurnID    string
 	LastInteractiveRequestID string
 	LastInitialTitle         string
+	LastResumeRecreate       bool
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
@@ -114,6 +121,39 @@ func Scenarios() []Scenario {
 	}
 }
 
+func ResumePolicyScenarios() []Scenario {
+	return []Scenario{
+		{Name: "resume imported session by recreate policy", run: runResumeImportedSession},
+		{Name: "reject imported session without resume support", run: runRejectUnsupportedImport},
+		{Name: "reject child independent resume", run: runRejectChildResume},
+		{Name: "reject tombstoned resume", run: runRejectTombstonedResume},
+	}
+}
+
+func SubmissionFenceScenarios() []Scenario {
+	return []Scenario{{Name: "prepared submit claim does not replay provider", run: runPreparedSubmitClaim}}
+}
+
+func TitlePolicyScenarios() []Scenario {
+	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
+}
+
+// ApplicationCoreScenarios are the create/resume/send/title scenarios owned by
+// the PR2 Host slice. The remaining scenarios stay in Scenarios and move to
+// direct Host execution with their coordinators in the following extraction.
+func ApplicationCoreScenarios() []Scenario {
+	result := make([]Scenario, 0)
+	for _, scenario := range Scenarios() {
+		switch scenario.Name {
+		case "exact turn cancel", "interactive response", "plan decision":
+			continue
+		default:
+			result = append(result, scenario)
+		}
+	}
+	return result
+}
+
 func Run(ctx context.Context, driver Driver, scenario Scenario) error {
 	if driver == nil {
 		return fmt.Errorf("agent host conformance driver is required")
@@ -136,6 +176,9 @@ func runCreateEmptySession(ctx context.Context, driver Driver) error {
 	}
 	if session.SessionID != "session-empty" || turnID != "" {
 		return fmt.Errorf("create empty session = %#v turn %q", session, turnID)
+	}
+	if session.Title != "" {
+		return fmt.Errorf("empty create canonical title=%q", session.Title)
 	}
 	metrics := driver.Metrics()
 	if metrics.StartCalls != 1 || metrics.ExecCalls != 0 {
@@ -187,6 +230,61 @@ func runResumePersistedSession(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runResumeImportedSession(ctx context.Context, driver Driver) error {
+	fixture := Fixture{Session: &SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-imported", Provider: "codex",
+		ProviderSessionID: "imported-provider-session", Cwd: "/workspace", Origin: agenthost.WorkspaceAgentSessionOriginImported,
+	}}
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	if _, err := driver.EnsureSession(ctx, agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-imported"}); err != nil {
+		return fmt.Errorf("resume imported session: %w", err)
+	}
+	metrics := driver.Metrics()
+	if metrics.ResumeCalls != 1 || !metrics.LastResumeRecreate {
+		return fmt.Errorf("imported resume metrics=%#v", metrics)
+	}
+	return nil
+}
+
+func runRejectUnsupportedImport(ctx context.Context, driver Driver) error {
+	supported := false
+	return runRejectedResume(ctx, driver, SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-export", Provider: "codex",
+		ProviderSessionID: "web-export", Origin: agenthost.WorkspaceAgentSessionOriginImported,
+		ExternalResumeSupported: &supported,
+	})
+}
+
+func runRejectChildResume(ctx context.Context, driver Driver) error {
+	return runRejectedResume(ctx, driver, SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-child", Provider: "codex",
+		ProviderSessionID: "child-provider", Kind: canonical.SessionKindChild,
+	})
+}
+
+func runRejectTombstonedResume(ctx context.Context, driver Driver) error {
+	return runRejectedResume(ctx, driver, SessionSeed{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-deleted", Provider: "codex",
+		ProviderSessionID: "deleted-provider", Deleted: true,
+	})
+}
+
+func runRejectedResume(ctx context.Context, driver Driver, seed SessionSeed) error {
+	if err := driver.Reset(ctx, Fixture{Session: &seed}); err != nil {
+		return err
+	}
+	_, err := driver.EnsureSession(ctx, agenthost.SessionRef{WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID})
+	if !errors.Is(err, agenthost.ErrSessionNotFound) {
+		return fmt.Errorf("rejected resume error=%v", err)
+	}
+	if metrics := driver.Metrics(); metrics.ResumeCalls != 0 {
+		return fmt.Errorf("rejected resume calls=%d", metrics.ResumeCalls)
+	}
+	return nil
+}
+
 func runSendInput(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, liveSessionFixture("session-send", "")); err != nil {
 		return err
@@ -228,6 +326,28 @@ func runDuplicateClientSubmitID(ctx context.Context, driver Driver) error {
 	}
 	if metrics := driver.Metrics(); metrics.ExecCalls != 1 {
 		return fmt.Errorf("duplicate submit exec calls=%d", metrics.ExecCalls)
+	}
+	return nil
+}
+
+func runPreparedSubmitClaim(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-prepared", "")
+	fixture.PreparedSubmitID = "submit-prepared-1"
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	_, err := driver.SendInput(ctx,
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-prepared"},
+		agenthost.SendInput{
+			Content:  []agenthost.PromptContentBlock{{Type: "text", Text: "do not replay"}},
+			Metadata: map[string]any{"clientSubmitId": "submit-prepared-1"},
+		},
+	)
+	if !errors.Is(err, agenthost.ErrSubmitDeliveryUnknown) {
+		return fmt.Errorf("prepared submit error=%v", err)
+	}
+	if metrics := driver.Metrics(); metrics.ExecCalls != 0 {
+		return fmt.Errorf("prepared submit exec calls=%d", metrics.ExecCalls)
 	}
 	return nil
 }
@@ -332,6 +452,22 @@ func runInitialTitleCAS(ctx context.Context, driver Driver) error {
 	}
 	if result.Session.Title != "Explicit title" || driver.Metrics().LastInitialTitle != "" {
 		return fmt.Errorf("title CAS result=%#v metrics=%#v", result, driver.Metrics())
+	}
+	return nil
+}
+
+func runClearCanonicalTitle(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, liveSessionFixture("session-clear-title", "")); err != nil {
+		return err
+	}
+	session, err := driver.UpdateTitle(ctx, agenthost.UpdateTitleInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-clear-title", Title: "",
+	})
+	if err != nil {
+		return fmt.Errorf("clear canonical title: %w", err)
+	}
+	if session.Title != "" {
+		return fmt.Errorf("cleared title=%q", session.Title)
 	}
 	return nil
 }

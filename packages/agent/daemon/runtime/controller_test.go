@@ -292,6 +292,9 @@ func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	if sessions := controller.Sessions("room-1"); len(sessions) != 0 {
+		t.Fatalf("Sessions() before first turn acceptance = %#v, want provisional session hidden", sessions)
+	}
 	result, err := controller.Exec(context.Background(), ExecInput{
 		RoomID: "room-1", AgentSessionID: "agent-session-1",
 		Content: []PromptContentBlock{{Type: "text", Text: "hello"}},
@@ -302,6 +305,9 @@ func TestControllerProvisionalStartCommitsWithFirstTurn(t *testing.T) {
 	reports := reporter.waitForCalls(t, 1)
 	if len(reports[0].report.StatePatches) == 0 {
 		t.Fatalf("commit report = %#v, want session and turn state", reports[0].report)
+	}
+	if sessions := controller.Sessions("room-1"); len(sessions) != 1 || sessions[0].AgentSessionID != "agent-session-1" {
+		t.Fatalf("Sessions() after first turn acceptance = %#v, want committed session", sessions)
 	}
 	controller.mu.Lock()
 	defer controller.mu.Unlock()

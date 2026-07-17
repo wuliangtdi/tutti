@@ -53,6 +53,7 @@ type ProviderRuntimeSession struct {
 	Visible                 bool
 	Title                   string
 	InitialTitleEstablished bool
+	Provisional             bool
 	LastError               string
 	PinnedAtUnixMS          int64
 	CreatedAtUnixMS         int64
@@ -286,4 +287,24 @@ type UpdateTitleInput struct {
 	WorkspaceID    string
 	AgentSessionID string
 	Title          string
+}
+
+type CreateSessionResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
+	TurnID    string
+}
+
+type SendInputResult struct {
+	Session            ProviderRuntimeSession
+	Canonical          storesqlite.Session
+	Turn               *storesqlite.Turn
+	TurnID             string
+	TurnLifecycle      TurnLifecycle
+	SubmitAvailability SubmitAvailability
+}
+
+type UpdateTitleResult struct {
+	Session   ProviderRuntimeSession
+	Canonical storesqlite.Session
 }
