@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -100,6 +101,49 @@ func TestHostCancelAcceptanceDoesNotImplyCanonicalSettlement(t *testing.T) {
 	}
 	if result.Turn == nil || result.Turn.Phase == agentactivitybiz.TurnPhaseSettled {
 		t.Fatalf("cancel turn = %#v, want canonical turn to remain authoritative", result.Turn)
+	}
+}
+
+func TestHostCancelDoesNotUseLiveRuntimeAsMissingCanonicalSession(t *testing.T) {
+	driver := &legacyHostConformanceDriver{t: t, directHost: true}
+	fixture := hostconformance.Fixture{
+		Session: &hostconformance.SessionSeed{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-orphan", Provider: "codex",
+			ProviderSessionID: "provider-session-orphan", Cwd: "/workspace", ActiveTurnID: "turn-orphan", Live: true,
+		},
+		Turn: &hostconformance.TurnSeed{TurnID: "turn-orphan", Phase: agentactivitybiz.TurnPhaseWaiting},
+	}
+	if err := driver.Reset(context.Background(), fixture); err != nil {
+		t.Fatal(err)
+	}
+	delete(driver.sessions.sessions, "workspace-1:session-orphan")
+	delete(driver.turns.sessions, "session-orphan")
+
+	_, err := driver.service.applicationHost(serviceHostPreparation{service: driver.service}).CancelTurn(context.Background(), agenthost.CancelTurnInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-orphan", TurnID: "turn-orphan",
+	})
+	if !errors.Is(err, agenthost.ErrSessionNotFound) {
+		t.Fatalf("CancelTurn() error = %v, want canonical session not found", err)
+	}
+	if len(driver.runtime.cancelCalls) != 0 {
+		t.Fatalf("runtime cancel calls = %d, want no provider call for orphan canonical turn", len(driver.runtime.cancelCalls))
+	}
+}
+
+func TestHostFindTurnByClientSubmitIDUsesPublicCanonicalPort(t *testing.T) {
+	driver := &legacyHostConformanceDriver{t: t, directHost: true}
+	if err := driver.Reset(context.Background(), hostconformance.Fixture{}); err != nil {
+		t.Fatal(err)
+	}
+	driver.operations.confirmedTurnID = "turn-confirmed"
+
+	turnID, found, err := driver.service.applicationHost(serviceHostPreparation{service: driver.service}).FindTurnByClientSubmitID(
+		context.Background(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"submit-1",
+	)
+	if err != nil || !found || turnID != "turn-confirmed" {
+		t.Fatalf("FindTurnByClientSubmitID() = %q, %v, %v", turnID, found, err)
 	}
 }
 

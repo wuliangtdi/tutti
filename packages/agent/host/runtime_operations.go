@@ -21,8 +21,8 @@ const (
 	runtimeOperationLogPrefix      = "[agent-runtime-operation]"
 )
 
-// RuntimeOperationID is stable across retries and process restarts.
-func RuntimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
+// runtimeOperationID is stable across retries and process restarts.
+func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
 	name := strings.Join([]string{
 		strings.TrimSpace(workspaceID), strings.TrimSpace(agentSessionID),
 		strings.TrimSpace(kind), strings.TrimSpace(subjectID),
@@ -30,9 +30,7 @@ func RuntimeOperationID(workspaceID, agentSessionID, kind, subjectID string) str
 	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(name)).String()
 }
 
-// RuntimeOperationPayloadText is exported for thin transport adapters and
-// conformance assertions; coordinator identity remains owned by Host.
-func RuntimeOperationPayloadText(payload map[string]any, key string) string {
+func runtimeOperationPayloadText(payload map[string]any, key string) string {
 	value, _ := payload[key].(string)
 	return strings.TrimSpace(value)
 }
@@ -52,7 +50,7 @@ func (h *Host) prepareInteractiveRuntimeOperation(
 	if expectedTurnID != "" {
 		operationSubjectID = expectedTurnID + "\x00" + requestID
 	}
-	operationID := RuntimeOperationID(ref.WorkspaceID, ref.AgentSessionID, storesqlite.RuntimeOperationKindInteractiveResponse, operationSubjectID)
+	operationID := runtimeOperationID(ref.WorkspaceID, ref.AgentSessionID, storesqlite.RuntimeOperationKindInteractiveResponse, operationSubjectID)
 	payload := map[string]any{
 		"rootAgentSessionId": strings.TrimSpace(rootAgentSessionID),
 		"action":             value(input.Action), "optionId": value(input.OptionID),
@@ -106,7 +104,7 @@ func (h *Host) prepareCancelRuntimeOperation(
 		reason = "user requested turn cancellation"
 	}
 	operation, _, err := h.operations.PrepareRuntimeOperation(ctx, storesqlite.RuntimeOperationPrepare{
-		OperationID: RuntimeOperationID(input.WorkspaceID, input.AgentSessionID, storesqlite.RuntimeOperationKindCancelTurn, input.TurnID),
+		OperationID: runtimeOperationID(input.WorkspaceID, input.AgentSessionID, storesqlite.RuntimeOperationKindCancelTurn, input.TurnID),
 		WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
 		Kind: storesqlite.RuntimeOperationKindCancelTurn, TurnID: input.TurnID,
 		Payload:      map[string]any{"reason": reason, "rootAgentSessionId": strings.TrimSpace(rootAgentSessionID), "targets": runtimeCancelTargetsPayload(targets)},
@@ -164,22 +162,22 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 	runtimeDisposition := RuntimeInteractiveDispositionUnknown
 	var submissionErr error
 	if recovering {
-		runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, RuntimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
+		runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
 		if runtimeDisposition == RuntimeInteractiveDispositionUnknown && !runtimeSessionFound {
 			return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after runtime session removal", operation.RequestID), true)
 		}
 	}
 	if runtimeDisposition != RuntimeInteractiveDispositionAnswered && runtimeDisposition != RuntimeInteractiveDispositionSuperseded && runtimeDisposition != RuntimeInteractiveDispositionInterrupted {
 		result, err := h.runtime.SubmitInteractive(ctx, RuntimeSubmitInteractiveInput{
-			WorkspaceID: operation.WorkspaceID, RootAgentSessionID: RuntimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
+			WorkspaceID: operation.WorkspaceID, RootAgentSessionID: runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
 			AgentSessionID: operation.AgentSessionID, TurnID: operation.TurnID, RequestID: operation.RequestID,
-			Action: RuntimeOperationPayloadText(operation.Payload, "action"), OptionID: RuntimeOperationPayloadText(operation.Payload, "optionId"),
+			Action: runtimeOperationPayloadText(operation.Payload, "action"), OptionID: runtimeOperationPayloadText(operation.Payload, "optionId"),
 			Payload: runtimeOperationPayloadMap(operation.Payload, "payload"),
 		})
 		submissionErr = err
 		runtimeDisposition = result.Disposition
 		if runtimeDisposition == "" {
-			runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, RuntimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
+			runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
 		}
 	}
 	dispositionErr := submissionErr
@@ -204,7 +202,7 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 	}
 	completion, _, err := h.operations.CompleteInteractiveRuntimeOperation(ctx, storesqlite.CompleteInteractiveRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		Disposition: disposition, Output: map[string]any{"action": RuntimeOperationPayloadText(operation.Payload, "action"), "optionId": RuntimeOperationPayloadText(operation.Payload, "optionId")},
+		Disposition: disposition, Output: map[string]any{"action": runtimeOperationPayloadText(operation.Payload, "action"), "optionId": runtimeOperationPayloadText(operation.Payload, "optionId")},
 		NowUnixMS: h.now().UnixMilli(),
 	})
 	if err != nil {
@@ -219,15 +217,15 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 func (h *Host) executeCancelRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, owner string) (storesqlite.RuntimeOperation, error) {
 	targets := runtimeCancelTargetsFromPayload(operation.Payload)
 	result, err := h.runtime.Cancel(ctx, RuntimeCancelInput{
-		WorkspaceID: operation.WorkspaceID, RootAgentSessionID: RuntimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
-		Targets: targets, Reason: RuntimeOperationPayloadText(operation.Payload, "reason"),
+		WorkspaceID: operation.WorkspaceID, RootAgentSessionID: runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
+		Targets: targets, Reason: runtimeOperationPayloadText(operation.Payload, "reason"),
 	})
 	if err != nil {
 		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
 	}
 	completion, _, err := h.operations.CompleteCancelRuntimeOperation(ctx, storesqlite.CompleteCancelRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		TargetOutcomes: runtimeCancelTargetOutcomes(RuntimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, result.ConfirmedTargets),
+		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, result.ConfirmedTargets),
 		NowUnixMS:      h.now().UnixMilli(),
 	})
 	if err != nil {
@@ -277,7 +275,7 @@ func runtimeCancelTargetsFromPayload(payload map[string]any) []RuntimeCancelTarg
 	result := make([]RuntimeCancelTarget, 0, len(raw))
 	for _, item := range raw {
 		value, _ := item.(map[string]any)
-		target := RuntimeCancelTarget{AgentSessionID: RuntimeOperationPayloadText(value, "agentSessionId"), TurnID: RuntimeOperationPayloadText(value, "turnId")}
+		target := RuntimeCancelTarget{AgentSessionID: runtimeOperationPayloadText(value, "agentSessionId"), TurnID: runtimeOperationPayloadText(value, "turnId")}
 		if target.AgentSessionID != "" && target.TurnID != "" {
 			result = append(result, target)
 		}
@@ -360,7 +358,10 @@ func (h *Host) Recover(ctx context.Context) error {
 }
 
 func (h *Host) RunRuntimeOperationWorker(ctx context.Context) {
-	if h == nil || h.scheduler == nil {
+	if h == nil {
+		return
+	}
+	if h.scheduler == nil {
 		ticker := time.NewTicker(runtimeOperationWorkerInterval)
 		defer ticker.Stop()
 		for {
@@ -412,10 +413,6 @@ func isRetryableRuntimeOperationError(err error) bool {
 	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected))
 }
 
-func IsRetryableRuntimeOperationError(err error) bool {
-	return isRetryableRuntimeOperationError(err)
-}
-
 func runtimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int64 {
 	if failed {
 		return 0
@@ -428,10 +425,6 @@ func runtimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int6
 		shift = 8
 	}
 	return now.Add(time.Second * time.Duration(1<<shift)).UnixMilli()
-}
-
-func RuntimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int64 {
-	return runtimeOperationNextAttemptAt(now, attempt, failed)
 }
 
 func runtimeOperationPayloadEqual(left, right map[string]any) bool {

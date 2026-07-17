@@ -27,16 +27,22 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 			return session, ok, err
 		}
 	}
-	if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
-		activeTurnID := ""
-		if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
-			activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
+	// Runtime-only Service configurations predate the canonical store port and
+	// remain useful to isolated consumers and tests. Once either durable reader
+	// is configured, absence is authoritative and must never fall back to a
+	// provider observation.
+	if a.service.SessionReader == nil && a.service.TurnStore == nil {
+		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
+			activeTurnID := ""
+			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
+				activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
+			}
+			return storesqlite.Session{
+				ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
+				ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd, Title: session.Title,
+				Kind: storesqlite.SessionKindRoot, ActiveTurnID: activeTurnID,
+			}, true, nil
 		}
-		return storesqlite.Session{
-			ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
-			ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd, Title: session.Title,
-			Kind: storesqlite.SessionKindRoot, ActiveTurnID: activeTurnID,
-		}, true, nil
 	}
 	return storesqlite.Session{}, false, nil
 }

@@ -24,9 +24,12 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 	if err != nil {
 		return CancelTurnResult{}, err
 	}
-	canonical, _, readErr := h.store.GetSession(ctx, input.WorkspaceID, input.AgentSessionID)
+	canonical, sessionFound, readErr := h.store.GetSession(ctx, input.WorkspaceID, input.AgentSessionID)
 	if readErr != nil {
 		return CancelTurnResult{}, readErr
+	}
+	if !sessionFound {
+		return CancelTurnResult{}, ErrSessionNotFound
 	}
 	if !found {
 		return CancelTurnResult{Canonical: canonical, State: CancelStateNotFound}, nil
@@ -55,9 +58,12 @@ func (h *Host) CancelTurn(ctx context.Context, input CancelTurnInput) (CancelTur
 	if err != nil {
 		return result, err
 	}
-	canonical, _, err = h.store.GetSession(ctx, input.WorkspaceID, input.AgentSessionID)
+	canonical, sessionFound, err = h.store.GetSession(ctx, input.WorkspaceID, input.AgentSessionID)
 	if err != nil {
 		return result, err
+	}
+	if !sessionFound {
+		return result, ErrSessionNotFound
 	}
 	result.Canonical = canonical
 	if settled, ok, readErr := h.store.GetTurn(ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID); readErr != nil {
@@ -99,8 +105,15 @@ func (h *Host) SubmitInteractive(ctx context.Context, ref SessionRef, requestID 
 	if err != nil {
 		return result, err
 	}
-	result.Canonical, _, err = h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
-	return result, err
+	canonical, sessionFound, err := h.store.GetSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return result, err
+	}
+	if !sessionFound {
+		return result, ErrSessionNotFound
+	}
+	result.Canonical = canonical
+	return result, nil
 }
 
 func (h *Host) resolveRuntimeControlRoute(ctx context.Context, workspaceID, agentSessionID string) (runtimeControlRoute, error) {

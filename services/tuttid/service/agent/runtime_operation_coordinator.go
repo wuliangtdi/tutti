@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -18,20 +19,22 @@ type RuntimeOperationEventPublisher = agenthost.RuntimeOperationEventPublisher
 var ErrRuntimeOperationInProgress = agenthost.ErrRuntimeOperationInProgress
 var ErrRuntimeOperationFailed = agenthost.ErrRuntimeOperationFailed
 
-func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
-	return agenthost.RuntimeOperationID(workspaceID, agentSessionID, kind, subjectID)
-}
-
-func payloadText(payload map[string]any, key string) string {
-	return agenthost.RuntimeOperationPayloadText(payload, key)
-}
-
 func isRetryableRuntimeOperationError(err error) bool {
-	return agenthost.IsRetryableRuntimeOperationError(err)
+	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected))
 }
 
 func runtimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int64 {
-	return agenthost.RuntimeOperationNextAttemptAt(now, attempt, failed)
+	if failed {
+		return 0
+	}
+	if attempt < 1 {
+		attempt = 1
+	}
+	shift := attempt - 1
+	if shift > 8 {
+		shift = 8
+	}
+	return now.Add(time.Second * time.Duration(1<<shift)).UnixMilli()
 }
 
 func (s *Service) StepRuntimeOperationWorker(ctx context.Context, recovering bool) error {

@@ -67,7 +67,7 @@ func ValidatePlanDecisionStrategy(provider string, input SubmitPlanDecisionInput
 
 func (h *Host) preparePlanDecisionRuntimeOperation(ctx context.Context, ref SessionRef, turnID, requestID string, input SubmitPlanDecisionInput) (storesqlite.RuntimeOperation, error) {
 	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
-	operationID := RuntimeOperationID(ref.WorkspaceID, ref.AgentSessionID, storesqlite.RuntimeOperationKindPlanDecision, turnID)
+	operationID := runtimeOperationID(ref.WorkspaceID, ref.AgentSessionID, storesqlite.RuntimeOperationKindPlanDecision, turnID)
 	payload := map[string]any{
 		"promptKind": strings.TrimSpace(input.PromptKind), "action": strings.TrimSpace(input.Action),
 		"idempotencyKey": idempotencyKey, "step": "prepared", "clientSubmitId": "plan-decision:" + operationID,
@@ -91,7 +91,7 @@ func (h *Host) preparePlanDecisionRuntimeOperation(ctx context.Context, ref Sess
 
 func planDecisionPayloadIdentityEqual(existing, expected map[string]any) bool {
 	for _, key := range []string{"promptKind", "action", "idempotencyKey", "clientSubmitId"} {
-		if RuntimeOperationPayloadText(existing, key) != RuntimeOperationPayloadText(expected, key) {
+		if runtimeOperationPayloadText(existing, key) != runtimeOperationPayloadText(expected, key) {
 			return false
 		}
 	}
@@ -102,20 +102,20 @@ func (h *Host) executePlanDecisionRuntimeOperation(ctx context.Context, operatio
 	if err := validateExecutablePlanDecisionOperation(operation); err != nil {
 		return h.releaseRuntimeOperation(ctx, operation, owner, err, true)
 	}
-	if RuntimeOperationPayloadText(operation.Payload, "promptKind") != "plan-implementation" {
+	if runtimeOperationPayloadText(operation.Payload, "promptKind") != "plan-implementation" {
 		return h.releaseRuntimeOperation(ctx, operation, owner, ErrInvalidArgument, true)
 	}
 	return h.executePlanImplementationRuntimeOperation(ctx, operation, owner)
 }
 
 func validateExecutablePlanDecisionOperation(operation storesqlite.RuntimeOperation) error {
-	if RuntimeOperationPayloadText(operation.Payload, "promptKind") != "plan-implementation" ||
-		RuntimeOperationPayloadText(operation.Payload, "action") != "implement" ||
-		RuntimeOperationPayloadText(operation.Payload, "idempotencyKey") == "" ||
-		RuntimeOperationPayloadText(operation.Payload, "clientSubmitId") != "plan-decision:"+operation.OperationID {
+	if runtimeOperationPayloadText(operation.Payload, "promptKind") != "plan-implementation" ||
+		runtimeOperationPayloadText(operation.Payload, "action") != "implement" ||
+		runtimeOperationPayloadText(operation.Payload, "idempotencyKey") == "" ||
+		runtimeOperationPayloadText(operation.Payload, "clientSubmitId") != "plan-decision:"+operation.OperationID {
 		return ErrInvalidArgument
 	}
-	switch RuntimeOperationPayloadText(operation.Payload, "step") {
+	switch runtimeOperationPayloadText(operation.Payload, "step") {
 	case "prepared", "settings_applied", "send_dispatched", "send_confirmed":
 		return nil
 	default:
@@ -124,7 +124,7 @@ func validateExecutablePlanDecisionOperation(operation storesqlite.RuntimeOperat
 }
 
 func (h *Host) executePlanImplementationRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, owner string) (storesqlite.RuntimeOperation, error) {
-	step := RuntimeOperationPayloadText(operation.Payload, "step")
+	step := runtimeOperationPayloadText(operation.Payload, "step")
 	if step == "prepared" {
 		ref := SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID}
 		release, err := h.acquireSession(ctx, ref)
@@ -152,7 +152,7 @@ func (h *Host) executePlanImplementationRuntimeOperation(ctx context.Context, op
 		}
 		step = "settings_applied"
 	}
-	clientSubmitID := RuntimeOperationPayloadText(operation.Payload, "clientSubmitId")
+	clientSubmitID := runtimeOperationPayloadText(operation.Payload, "clientSubmitId")
 	if confirmed, err := h.confirmPlanDecisionSubmit(ctx, operation, owner, clientSubmitID); err != nil || confirmed.Status == storesqlite.RuntimeOperationStatusCompleted {
 		return confirmed, err
 	}
@@ -215,7 +215,7 @@ func (h *Host) checkpointPlanDecision(ctx context.Context, operation storesqlite
 func (h *Host) completePlanDecision(ctx context.Context, operation storesqlite.RuntimeOperation, owner string) (storesqlite.RuntimeOperation, error) {
 	completion, _, err := h.operations.CompletePlanDecisionRuntimeOperation(ctx, storesqlite.CompletePlanDecisionRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		Output: map[string]any{"step": RuntimeOperationPayloadText(operation.Payload, "step")}, NowUnixMS: h.now().UnixMilli(),
+		Output: map[string]any{"step": runtimeOperationPayloadText(operation.Payload, "step")}, NowUnixMS: h.now().UnixMilli(),
 	})
 	if err != nil {
 		return operation, err
