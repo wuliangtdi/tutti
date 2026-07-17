@@ -28,6 +28,7 @@ Repository entrypoints:
 - `pnpm typecheck`
 - `pnpm check:codexproto-generated`
 - `pnpm check:agent-gui-provider-catalog-generated`
+- `pnpm check:agent-host-boundary`
 - `pnpm check:agent-provider-strategy-boundaries`
 
 `pnpm check:full` remains the full local and CI validation command and includes linting and typechecking.
@@ -190,6 +191,26 @@ change touches `packages/agent/gui`, `packages/agent/activity-core`, Desktop's
 `workspace-agent` or `workspace-workbench` features, or the checker/fixture
 implementation itself. This keeps the same boundary in the normal changed-file
 loop instead of discovering violations only in `check:full`.
+
+`pnpm check:agent-host-boundary` protects the Agent Host boundary. Agent
+application-core lifecycle semantics (session/turn/goal/runtime-operation
+creation, sendability, terminal state, recovery) belong to
+`packages/agent/host`; `services/tuttid/service/agent` is an adapter that
+delegates through `ApplicationHost()`. The check scans production (non
+`_test.go`) Go files under `services/tuttid/service/agent` and rejects new
+`*Coordinator`, `*Worker`, or `*Actor` orchestration surfaces, detected as a
+type declaration whose name ends in one of those words or a file whose name
+ends in `_coordinator.go`, `_worker.go`, or `_actor.go`. It is a ratchet: the
+`ALLOWLIST` in the checker is the current snapshot (only
+`composer_live_model_coordinator.go`, a provider-catalog adapter concern), may
+only shrink, and rejects stale entries whose files no longer exist. A new
+violation fails until the orchestration moves to `packages/agent/host` or the
+file is added to `ALLOWLIST` with a reviewed ownership reason. The rule runs in
+`pnpm check:full`, in the `check:changed` `boundary:agent-host` lane whenever a
+change touches `services/tuttid/service/agent` or the checker/fixture itself,
+and in the PR `go-lint` job. The boundary rationale and adapter rules live in
+the root `AGENTS.md` `Agent Host Boundary` section and
+`services/tuttid/service/agent/AGENTS.md`.
 
 ## Agent GUI Degradation Ratchet
 
