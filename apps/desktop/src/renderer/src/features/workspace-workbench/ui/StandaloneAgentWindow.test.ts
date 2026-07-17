@@ -220,9 +220,9 @@ test("standalone Agent hides home identity and shows it after local session star
   );
 });
 
-test("standalone Agent hides the generic app title", () => {
-  assert.match(standaloneWindowSource, /showAppTitle=\{false\}/);
-  assert.doesNotMatch(
+test("standalone Agent shows the generic app title", () => {
+  assert.match(standaloneWindowSource, /showAppTitle\b(?!=\{false\})/);
+  assert.match(
     standaloneWindowSource,
     /title=\{i18n\.t\("workspace\.agentGui\.fallbackAgentLabel"\)\}/
   );

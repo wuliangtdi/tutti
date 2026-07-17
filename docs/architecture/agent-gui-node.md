@@ -330,8 +330,8 @@ dock-entry reuse for AgentGUI, otherwise it collapses into the normal
 restore/focus behavior instead of opening a fresh Agent window.
 Unified dock and launchpad chrome should keep the generic Agent title and
 generic Agent artwork instead of provider-branded entries. Workbench Agent node
-headers show the generic Agent title while the conversation rail is expanded;
-standalone native Agent window headers omit that redundant app title. When the
+headers and standalone native Agent window headers both show the generic Agent
+title while the conversation rail is expanded. When the
 conversation rail is collapsed, the title area shows the active conversation's
 agent icon and conversation title as soon as a local session id exists. The
 engine-owned optimistic title bridges conversation-title persistence; the
