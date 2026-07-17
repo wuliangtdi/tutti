@@ -14,11 +14,13 @@ type CanonicalSessionStore interface {
 	RollbackRuntimeSessionInitialization(context.Context, string, string) (bool, error)
 	InitializeRuntimeSession(context.Context, ProviderRuntimeSession) (storesqlite.Session, error)
 	UpdateSessionTitle(context.Context, string, string, string) (storesqlite.Session, bool, error)
+	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
 type CanonicalTurnStore interface {
 	GetTurn(context.Context, string, string, string) (storesqlite.Turn, bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
+	ListSessionInteractions(context.Context, storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error)
 }
 
 type CanonicalSubmitClaimStore interface {
@@ -27,9 +29,9 @@ type CanonicalSubmitClaimStore interface {
 	DeleteSubmitClaim(context.Context, string, string, string) (bool, error)
 }
 
-// CanonicalStore composes only the lifecycle facets required by the first Host
-// extraction slices. Operation and goal facets remain separate until their
-// coordinators move in later slices.
+// CanonicalStore composes the session, turn, and submit-claim facts shared by
+// lifecycle commands. Runtime-operation and goal saga stores stay separate so
+// adapters cannot accidentally substitute one durability boundary for another.
 type CanonicalStore interface {
 	CanonicalSessionStore
 	CanonicalTurnStore
@@ -48,10 +50,82 @@ type RuntimeController interface {
 	ValidatePromptContent(context.Context, RuntimeExecInput) error
 	Cancel(context.Context, RuntimeCancelInput) (RuntimeCancelResult, error)
 	SubmitInteractive(context.Context, RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error)
+	InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID string) RuntimeInteractiveDisposition
 	UpdateSettings(context.Context, RuntimeUpdateSettingsInput) error
 	SetTitle(context.Context, RuntimeSetTitleInput) (ProviderRuntimeSession, error)
 	SetVisible(context.Context, RuntimeSetVisibleInput) (ProviderRuntimeSession, error)
 	Close(context.Context, RuntimeCloseInput) error
+}
+
+// RuntimeOperationStore is the complete durable coordinator boundary. Keeping
+// every transition on one port prevents adapters from reimplementing only the
+// transport-facing half of the state machine.
+type RuntimeOperationStore interface {
+	PrepareRuntimeOperation(context.Context, storesqlite.RuntimeOperationPrepare) (storesqlite.RuntimeOperation, bool, error)
+	GetRuntimeOperation(context.Context, string, string) (storesqlite.RuntimeOperation, bool, error)
+	ListClaimableRuntimeOperations(context.Context, storesqlite.ListClaimableRuntimeOperationsInput) ([]storesqlite.RuntimeOperation, error)
+	ClaimRuntimeOperationLease(context.Context, storesqlite.ClaimRuntimeOperationLeaseInput) (storesqlite.RuntimeOperation, bool, error)
+	ReleaseOrFailRuntimeOperation(context.Context, storesqlite.ReleaseOrFailRuntimeOperationInput) (storesqlite.RuntimeOperation, bool, error)
+	CheckpointRuntimeOperation(context.Context, storesqlite.CheckpointRuntimeOperationInput) (storesqlite.RuntimeOperation, bool, error)
+	RequeueLeasedRuntimeOperationsOnStartup(context.Context, int64) (int64, error)
+	CompleteInteractiveRuntimeOperation(context.Context, storesqlite.CompleteInteractiveRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	CompleteCancelRuntimeOperation(context.Context, storesqlite.CompleteCancelRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	CompletePlanDecisionRuntimeOperation(context.Context, storesqlite.CompletePlanDecisionRuntimeOperationInput) (storesqlite.RuntimeOperationCompletion, bool, error)
+	ListPendingRuntimeOperationEvents(context.Context, string, int) ([]storesqlite.RuntimeOperationEvent, error)
+	MarkRuntimeOperationEventPublished(context.Context, string, int64, int64) (bool, error)
+}
+
+type RuntimeOperationEventPublisher interface {
+	PublishRuntimeOperationEvent(context.Context, storesqlite.RuntimeOperationEvent) error
+}
+
+// StaleTurnSettler is the final startup-recovery stage. Host invokes it only
+// after durable runtime operations, goal operations, and goal reconcile inbox
+// work have been recovered.
+type StaleTurnSettler interface {
+	SettleStaleTurnsOnStartup(context.Context) error
+}
+
+type GoalStateStore interface {
+	PrepareGoalControlOperation(context.Context, storesqlite.GoalControlOperationPrepare) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error)
+	GetGoalControlAudit(context.Context, string, string, string) (storesqlite.Message, bool, error)
+	MarkGoalControlOperationDispatched(context.Context, string, string, int64) (storesqlite.GoalControlOperation, bool, error)
+	AcknowledgeGoalControlOperation(context.Context, storesqlite.GoalControlOperationAcknowledge) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error)
+	CompleteGoalControlOperation(context.Context, storesqlite.GoalControlOperationComplete) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error)
+	GetSessionGoalState(context.Context, string, string) (storesqlite.SessionGoalState, bool, error)
+	ReconcileSessionGoalObservation(context.Context, storesqlite.GoalObservationReconcile) (storesqlite.SessionGoalState, error)
+	MarkGoalRevisionTerminalIncident(context.Context, storesqlite.GoalTerminalIncidentInput) (storesqlite.SessionGoalState, error)
+	GetGoalControlOperation(context.Context, string, string) (storesqlite.GoalControlOperation, bool, error)
+	ListClaimableGoalControlOperations(context.Context, storesqlite.ListClaimableGoalControlOperationsInput) ([]storesqlite.GoalControlOperation, error)
+	ClaimGoalControlOperation(context.Context, storesqlite.ClaimGoalControlOperationInput) (storesqlite.GoalControlOperation, bool, error)
+	ReleaseGoalControlOperation(context.Context, storesqlite.ReleaseGoalControlOperationInput) (storesqlite.GoalControlOperation, bool, error)
+	RecordGoalControlOperationEvidence(context.Context, storesqlite.GoalControlOperationEvidence) (storesqlite.GoalControlOperation, bool, error)
+	EnsureOrWakeGoalRepairOperation(context.Context, storesqlite.EnsureGoalRepairOperationInput) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error)
+	RequeueLeasedGoalControlOperationsOnStartup(context.Context, int64) (int64, error)
+}
+
+type GoalReconcileInboxStore interface {
+	ListClaimableGoalReconcileInbox(context.Context, int64, int) ([]storesqlite.GoalReconcileInboxItem, error)
+	ClaimGoalReconcileInbox(context.Context, storesqlite.ClaimGoalReconcileInboxInput) (storesqlite.GoalReconcileInboxItem, bool, error)
+	CompleteGoalReconcileInbox(context.Context, string, string, int64) (bool, error)
+	ReleaseGoalReconcileInbox(context.Context, storesqlite.ReleaseGoalReconcileInboxInput) (bool, error)
+	RequeueLeasedGoalReconcileInboxOnStartup(context.Context, int64) (int64, error)
+}
+
+type GoalAuditPublisher interface {
+	PublishGoalControlAudit(context.Context, string, string, storesqlite.Message)
+}
+
+type GoalRuntimeController interface {
+	GoalControl(context.Context, RuntimeGoalControlInput) (RuntimeGoalControlResult, error)
+}
+
+type GoalRuntimeReconciler interface {
+	ReconcileGoal(context.Context, RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error)
+}
+
+type GoalRuntimeRecoveryPolicyResolver interface {
+	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 }
 
 type RuntimePreparationInput struct {

@@ -42,11 +42,20 @@ function createAdapters(
 function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
-  return {
+  const client: TuttidClient = {
     async listAgentTargets() {
       throw new Error("not used");
     },
     async setSystemAgentTargetEnabled() {
+      throw new Error("not used");
+    },
+    async getAgentTargetSetup() {
+      throw new Error("not used");
+    },
+    async installAgentTargetRuntime() {
+      throw new Error("not used");
+    },
+    async authenticateAgentTargetRuntime() {
       throw new Error("not used");
     },
     async startAccountLogin() {
@@ -413,6 +422,9 @@ function createTransportClient(
     async listUserProjects() {
       throw new Error("not used");
     },
+    async moveUserProject() {
+      throw new Error("not used");
+    },
     async deleteUserProject() {
       throw new Error("not used");
     },
@@ -596,9 +608,9 @@ function createTransportClient(
         targetDirectoryPath: request.targetDirectoryPath,
         workspaceId: workspaceID
       };
-    },
-    ...overrides
+    }
   };
+  return Object.assign(client, overrides);
 }
 
 test("workspace launch opens daemon-provided startup workspace", async () => {

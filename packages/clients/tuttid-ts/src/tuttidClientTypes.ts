@@ -13,6 +13,9 @@ import type {
   AppReferenceSearchRequest,
   AppReferenceSearchResponse,
   AgentProviderStatusListResponse,
+  AgentTargetSetupSnapshot,
+  AuthenticateAgentTargetRuntimeRequest,
+  InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
@@ -75,6 +78,7 @@ import type {
   ListWorkspacesResponse,
   CopyWorkspaceFileEntryRequest,
   MoveWorkspaceFileEntryRequest,
+  MoveUserProjectRequest,
   RenameWorkspaceFileEntryRequest,
   PrepareWorkspaceAppUploadRequest,
   PrepareWorkspaceAppUploadResponse,
@@ -154,6 +158,20 @@ export interface TuttidClient {
     agentTargetID: string,
     enabled: boolean
   ): Promise<AgentTarget>;
+  getAgentTargetSetup(
+    workspaceID: string,
+    agentTargetID: string
+  ): Promise<AgentTargetSetupSnapshot>;
+  installAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: InstallAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
+  authenticateAgentTargetRuntime(
+    workspaceID: string,
+    agentTargetID: string,
+    request: AuthenticateAgentTargetRuntimeRequest
+  ): Promise<AgentTargetSetupSnapshot>;
   startAccountLogin(): Promise<AccountLoginStartResponse>;
   getAccountLoginStatus(attemptID: string): Promise<AccountLoginStatusResponse>;
   getAccountUserInfo(): Promise<AccountUserInfo | null>;
@@ -609,6 +627,9 @@ export interface TuttidClient {
     request: CheckUserProjectPathRequest
   ): Promise<UserProjectPathCheckResponse>;
   listUserProjects(): Promise<UserProjectListResponse>;
+  moveUserProject(
+    request: MoveUserProjectRequest
+  ): Promise<UserProjectListResponse>;
   openWorkspace(workspaceID: string): Promise<WorkspaceSummary>;
   removeWorkspaceIssueContextRef(
     workspaceID: string,

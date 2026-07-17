@@ -40,6 +40,9 @@ func TestPublicCommandTypesContainNoAdapterIdentityOrTransportFields(t *testing.
 		reflect.TypeOf(SubmitPlanDecisionInput{}),
 		reflect.TypeOf(CancelTurnInput{}),
 		reflect.TypeOf(UpdateTitleInput{}),
+		reflect.TypeOf(GoalControlInput{}),
+		reflect.TypeOf(GoalReconcileRequiredInput{}),
+		reflect.TypeOf(RuntimeGoalControlInput{}),
 		reflect.TypeOf(RuntimePreparationInput{}),
 	}
 	forbidden := []string{

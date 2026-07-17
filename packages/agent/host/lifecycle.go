@@ -23,7 +23,14 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 	if err != nil {
 		return CreateSessionResult{}, err
 	}
-	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, input.Metadata)
+	typedGoal, isTypedGoal := ParseTypedGoalControl(normalized, false)
+	goalMetadata := clonePayload(input.Metadata)
+	claimMetadata := input.Metadata
+	if isTypedGoal {
+		normalized = nil
+		claimMetadata = nil
+	}
+	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, claimMetadata)
 	if err != nil {
 		return CreateSessionResult{}, err
 	}
@@ -108,8 +115,29 @@ func (h *Host) CreateSession(ctx context.Context, workspaceID string, input Crea
 		return CreateSessionResult{}, cleanup(identityErr, true, true)
 	}
 	h.observeStep(ctx, "session_create", "session_persisted", session.ID, session.Provider, startedAt, nil)
-	if len(normalized) == 0 {
+	if len(normalized) == 0 && !isTypedGoal {
 		return CreateSessionResult{Session: session, Canonical: canonicalSession}, nil
+	}
+	if isTypedGoal {
+		goalResult, goalErr := h.goalControl(ctx, GoalControlInput{
+			WorkspaceID: workspaceID, AgentSessionID: session.ID,
+			Action: typedGoal.Action, Objective: typedGoal.Objective,
+			SubmissionMetadata: goalMetadata,
+		})
+		if goalErr != nil {
+			// A typed goal starts from a non-provisional, already published
+			// session. Preserve that canonical session on command failure just as
+			// the legacy Service did; rolling it back would leave subscribers with
+			// an unpaired session-created event.
+			return CreateSessionResult{}, cleanup(goalErr, true, false)
+		}
+		if refreshed, ok := h.runtime.Session(workspaceID, session.ID); ok {
+			session = refreshed
+		}
+		return CreateSessionResult{
+			Session: session, Canonical: goalResult.Canonical,
+			Kind: "goalControl", GoalControl: &goalResult,
+		}, nil
 	}
 	startedAt = h.now()
 	if err := h.runtime.ValidatePromptContent(ctx, RuntimeExecInput{WorkspaceID: workspaceID, AgentSessionID: session.ID, Content: normalized}); err != nil {
@@ -239,6 +267,21 @@ func (h *Host) SendInput(ctx context.Context, ref SessionRef, input SendInput) (
 	normalized, promptText, err := normalizePromptContent(input.Content)
 	if err != nil {
 		return SendInputResult{}, err
+	}
+	if typedGoal, ok := ParseTypedGoalControl(normalized, input.Guidance); ok {
+		goalResult, goalErr := h.goalControl(ctx, GoalControlInput{
+			WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
+			Action: typedGoal.Action, Objective: typedGoal.Objective,
+			SubmissionMetadata: input.Metadata,
+		})
+		if goalErr != nil {
+			return SendInputResult{}, goalErr
+		}
+		session, _ := h.runtime.Session(ref.WorkspaceID, ref.AgentSessionID)
+		return SendInputResult{
+			Session: session, Canonical: goalResult.Canonical,
+			Kind: "goalControl", GoalControl: &goalResult,
+		}, nil
 	}
 	claim, claimPending, err := h.prepareSubmitClaim(ctx, ref, input.Metadata)
 	if err != nil {

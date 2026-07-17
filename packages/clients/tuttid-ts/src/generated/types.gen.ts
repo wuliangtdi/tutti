@@ -485,6 +485,99 @@ export type SetSystemAgentTargetEnabledRequest = {
   enabled: boolean;
 };
 
+export type AgentTargetInstallPlan = {
+  agentTargetId: string;
+  extensionInstallationId: string;
+  agentKey: string;
+  extensionVersion: string;
+  runtimeKind: string;
+  platform: string;
+  runner: "npm" | "pnpm" | "uv";
+  packageName: string;
+  packageVersion: string;
+  installRoot: string;
+  installCommand: Array<string>;
+  executable: string;
+  launchArgs: Array<string>;
+  planDigest: string;
+};
+
+export type AgentTargetSetupStatus =
+  | "ready"
+  | "auth_required"
+  | "not_installed"
+  | "installing"
+  | "authenticating"
+  | "failed";
+
+export type AgentTargetRuntimeSource = "local" | "managed";
+
+export type AgentTargetSetupActionKind = "install" | "authenticate";
+
+export type AgentTargetSetupActionStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "interrupted";
+
+export type AgentTargetSetupActionPhase =
+  | "preparing"
+  | "installing"
+  | "verifying"
+  | "probing"
+  | "activating"
+  | "authenticating"
+  | "complete";
+
+export type AgentTargetSetupAction = {
+  actionId: string;
+  clientActionId: string;
+  kind: AgentTargetSetupActionKind;
+  status: AgentTargetSetupActionStatus;
+  phase: AgentTargetSetupActionPhase;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  createdAtUnixMs: number;
+  updatedAtUnixMs: number;
+};
+
+export type AgentTargetAuthenticatedAccount = {
+  id: string;
+  displayName: string;
+  authMethodId: string;
+  organization?: string | null;
+};
+
+export type AgentTargetSetupSnapshot = {
+  workspaceId: string;
+  agentTargetId: string;
+  status: AgentTargetSetupStatus;
+  runtimeSource: AgentTargetRuntimeSource | null;
+  runtimeVersion: string | null;
+  reason: string | null;
+  authMethods: Array<AgentTargetAuthMethod>;
+  account: AgentTargetAuthenticatedAccount | null;
+  plan: AgentTargetInstallPlan | null;
+  action: AgentTargetSetupAction | null;
+};
+
+export type AgentTargetAuthMethod = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+export type InstallAgentTargetRuntimeRequest = {
+  planDigest: string;
+  clientActionId: string;
+};
+
+export type AuthenticateAgentTargetRuntimeRequest = {
+  methodId: string;
+  clientActionId: string;
+};
+
 export type ListWorkspacesResponse = {
   workspaces: Array<WorkspaceSummary>;
   totalCount: number;
@@ -1025,16 +1118,39 @@ export type AgentProviderComposerOptionsResponse = {
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
   reasoningConfig: AgentProviderComposerConfig;
+  reasoningOptionsByModel: AgentProviderComposerReasoningOptionsByModel;
   speedConfig?: AgentProviderComposerConfig;
   effectiveSettings: AgentSessionComposerSettings;
+  /**
+   * Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
+   */
   runtimeContext: {
     [key: string]: unknown;
   };
+  /**
+   * Commands advertised by the resolved runtime session.
+   */
+  commands: Array<AgentProviderComposerCommandOption>;
   capabilities?: WorkspaceAgentCapabilities;
   skills: Array<AgentProviderSkillOption>;
   capabilityCatalog: Array<AgentProviderCapabilityOption>;
   behavior: AgentProviderComposerBehavior;
   slashCommandPolicy?: AgentSlashCommandPolicy;
+};
+
+export type AgentProviderComposerCommandOption = {
+  name: string;
+  description?: string;
+  inputHint?: string;
+};
+
+export type AgentProviderComposerReasoningOptionsByModel = {
+  [key: string]: AgentProviderComposerReasoningProfile;
+};
+
+export type AgentProviderComposerReasoningProfile = {
+  defaultValue?: string | null;
+  options: Array<AgentProviderComposerConfigOptionValue>;
 };
 
 export type AgentProviderComposerBehavior = {
@@ -1988,6 +2104,11 @@ export type UseUserProjectRequest = {
 
 export type DeleteUserProjectRequest = {
   path: string;
+};
+
+export type MoveUserProjectRequest = {
+  projectId: string;
+  beforeProjectId: string | null;
 };
 
 export type CheckUserProjectPathRequest = {
@@ -3373,6 +3494,49 @@ export type CheckUserProjectPathResponses = {
 export type CheckUserProjectPathResponse =
   CheckUserProjectPathResponses[keyof CheckUserProjectPathResponses];
 
+export type MoveUserProjectData = {
+  body: MoveUserProjectRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/user-projects/move";
+};
+
+export type MoveUserProjectErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Desktop preferences operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type MoveUserProjectError =
+  MoveUserProjectErrors[keyof MoveUserProjectErrors];
+
+export type MoveUserProjectResponses = {
+  /**
+   * Complete ordered user project list
+   */
+  200: UserProjectListResponse;
+};
+
+export type MoveUserProjectResponse =
+  MoveUserProjectResponses[keyof MoveUserProjectResponses];
+
 export type AttachEventStreamData = {
   body?: never;
   path?: never;
@@ -3492,6 +3656,156 @@ export type SetSystemAgentTargetEnabledResponses = {
 
 export type SetSystemAgentTargetEnabledResponse =
   SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
+
+export type GetAgentTargetSetupData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup";
+};
+
+export type GetAgentTargetSetupErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAgentTargetSetupError =
+  GetAgentTargetSetupErrors[keyof GetAgentTargetSetupErrors];
+
+export type GetAgentTargetSetupResponses = {
+  /**
+   * Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type GetAgentTargetSetupResponse =
+  GetAgentTargetSetupResponses[keyof GetAgentTargetSetupResponses];
+
+export type InstallAgentTargetRuntimeData = {
+  body: InstallAgentTargetRuntimeRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install";
+};
+
+export type InstallAgentTargetRuntimeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type InstallAgentTargetRuntimeError =
+  InstallAgentTargetRuntimeErrors[keyof InstallAgentTargetRuntimeErrors];
+
+export type InstallAgentTargetRuntimeResponses = {
+  /**
+   * Current Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type InstallAgentTargetRuntimeResponse =
+  InstallAgentTargetRuntimeResponses[keyof InstallAgentTargetRuntimeResponses];
+
+export type AuthenticateAgentTargetRuntimeData = {
+  body: AuthenticateAgentTargetRuntimeRequest;
+  path: {
+    workspaceID: string;
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate";
+};
+
+export type AuthenticateAgentTargetRuntimeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type AuthenticateAgentTargetRuntimeError =
+  AuthenticateAgentTargetRuntimeErrors[keyof AuthenticateAgentTargetRuntimeErrors];
+
+export type AuthenticateAgentTargetRuntimeResponses = {
+  /**
+   * Current Target setup state
+   */
+  200: AgentTargetSetupSnapshot;
+};
+
+export type AuthenticateAgentTargetRuntimeResponse =
+  AuthenticateAgentTargetRuntimeResponses[keyof AuthenticateAgentTargetRuntimeResponses];
 
 export type ListWorkspacesData = {
   body?: never;

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
@@ -56,19 +57,7 @@ type RootTurnObserver interface {
 	ObserveRootTurnSettled(context.Context, string, string, agentactivitybiz.Turn)
 }
 
-type GoalReconcileRequiredInput struct {
-	WorkspaceID         string
-	AgentSessionID      string
-	RequestID           string
-	ProviderTurnID      string
-	Reason              string
-	FenceMode           string
-	ExpectedOperationID string
-	ExpectedRevision    int64
-	ExpectedRepairEpoch int64
-	QuiesceSucceeded    bool
-	QuiesceError        string
-}
+type GoalReconcileRequiredInput = agenthost.GoalReconcileRequiredInput
 
 type GoalReconcileInboxWriter interface {
 	PutGoalReconcileInbox(context.Context, agentactivitybiz.GoalReconcileInboxItem) (bool, error)

@@ -902,6 +902,9 @@ function createDependenciesStub(): {
     tuttidClient: {
       listAgentTargets: fail,
       setSystemAgentTargetEnabled: fail,
+      getAgentTargetSetup: fail,
+      installAgentTargetRuntime: fail,
+      authenticateAgentTargetRuntime: fail,
       startAccountLogin: fail,
       getAccountLoginStatus: fail,
       getAccountUserInfo: fail,
@@ -975,6 +978,7 @@ function createDependenciesStub(): {
       scanWorkspaceExternalAgentSessionImports: fail,
       importWorkspaceExternalAgentSessions: fail,
       listUserProjects: fail,
+      moveUserProject: fail,
       deleteUserProject: fail,
       checkUserProjectPath: fail,
       listWorkspaceIssues: fail,

@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
 	agentactivitybiz "github.com/tutti-os/tutti/services/tuttid/biz/agentactivity"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
 func TestLegacyServiceAgentHostConformance(t *testing.T) {
@@ -52,14 +55,132 @@ func TestLegacyServiceResumePolicyConformance(t *testing.T) {
 	}
 }
 
+func TestHostCoordinatorConformance(t *testing.T) {
+	for _, directHost := range []bool{false, true} {
+		name := "legacy_delegate"
+		if directHost {
+			name = "direct_host"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, scenario := range hostconformance.CoordinatorScenarios() {
+				scenario := scenario
+				t.Run(scenario.Name, func(t *testing.T) {
+					driver := &legacyHostConformanceDriver{t: t, directHost: directHost}
+					if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestHostGoalConformance(t *testing.T) {
+	for _, directHost := range []bool{false, true} {
+		name := "legacy_delegate"
+		if directHost {
+			name = "direct_host"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, scenario := range hostconformance.GoalScenarios() {
+				scenario := scenario
+				t.Run(scenario.Name, func(t *testing.T) {
+					driver := &legacyHostConformanceDriver{t: t, directHost: directHost}
+					if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestHostCancelAcceptanceDoesNotImplyCanonicalSettlement(t *testing.T) {
+	driver := &legacyHostConformanceDriver{t: t, directHost: true}
+	fixture := hostconformance.Fixture{
+		Session: &hostconformance.SessionSeed{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-cancel-semantics", Provider: "codex",
+			ProviderSessionID: "provider-session-cancel-semantics", Cwd: "/workspace",
+			ActiveTurnID: "turn-cancel-semantics", Live: true,
+		},
+		Turn: &hostconformance.TurnSeed{TurnID: "turn-cancel-semantics", Phase: agentactivitybiz.TurnPhaseWaiting},
+	}
+	if err := driver.Reset(context.Background(), fixture); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := driver.service.applicationHost(serviceHostPreparation{service: driver.service}).CancelTurn(context.Background(), agenthost.CancelTurnInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-cancel-semantics", TurnID: "turn-cancel-semantics",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IntentAccepted || !result.ProviderConfirmed {
+		t.Fatalf("cancel acceptance/confirmation = accepted:%v confirmed:%v", result.IntentAccepted, result.ProviderConfirmed)
+	}
+	if result.Settled || result.State != agenthost.CancelStateRequested {
+		t.Fatalf("cancel settlement = settled:%v state:%q, want durable request without inferred terminal state", result.Settled, result.State)
+	}
+	if result.Turn == nil || result.Turn.Phase == agentactivitybiz.TurnPhaseSettled {
+		t.Fatalf("cancel turn = %#v, want canonical turn to remain authoritative", result.Turn)
+	}
+}
+
+func TestHostCancelDoesNotUseLiveRuntimeAsMissingCanonicalSession(t *testing.T) {
+	driver := &legacyHostConformanceDriver{t: t, directHost: true}
+	fixture := hostconformance.Fixture{
+		Session: &hostconformance.SessionSeed{
+			WorkspaceID: "workspace-1", AgentSessionID: "session-orphan", Provider: "codex",
+			ProviderSessionID: "provider-session-orphan", Cwd: "/workspace", ActiveTurnID: "turn-orphan", Live: true,
+		},
+		Turn: &hostconformance.TurnSeed{TurnID: "turn-orphan", Phase: agentactivitybiz.TurnPhaseWaiting},
+	}
+	if err := driver.Reset(context.Background(), fixture); err != nil {
+		t.Fatal(err)
+	}
+	delete(driver.sessions.sessions, "workspace-1:session-orphan")
+	delete(driver.turns.sessions, "session-orphan")
+
+	_, err := driver.service.applicationHost(serviceHostPreparation{service: driver.service}).CancelTurn(context.Background(), agenthost.CancelTurnInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-orphan", TurnID: "turn-orphan",
+	})
+	if !errors.Is(err, agenthost.ErrSessionNotFound) {
+		t.Fatalf("CancelTurn() error = %v, want canonical session not found", err)
+	}
+	if len(driver.runtime.cancelCalls) != 0 {
+		t.Fatalf("runtime cancel calls = %d, want no provider call for orphan canonical turn", len(driver.runtime.cancelCalls))
+	}
+}
+
+func TestHostFindTurnByClientSubmitIDUsesPublicCanonicalPort(t *testing.T) {
+	driver := &legacyHostConformanceDriver{t: t, directHost: true}
+	if err := driver.Reset(context.Background(), hostconformance.Fixture{}); err != nil {
+		t.Fatal(err)
+	}
+	driver.operations.confirmedTurnID = "turn-confirmed"
+
+	turnID, found, err := driver.service.applicationHost(serviceHostPreparation{service: driver.service}).FindTurnByClientSubmitID(
+		context.Background(),
+		agenthost.SessionRef{WorkspaceID: "workspace-1", AgentSessionID: "session-1"},
+		"submit-1",
+	)
+	if err != nil || !found || turnID != "turn-confirmed" {
+		t.Fatalf("FindTurnByClientSubmitID() = %q, %v, %v", turnID, found, err)
+	}
+}
+
 type legacyHostConformanceDriver struct {
-	t          *testing.T
-	service    *Service
-	runtime    *fakeRuntime
-	sessions   *fakeSessionReader
-	turns      *legacyHostConformanceTurnStore
-	operations *runtimeOperationMemoryStore
-	directHost bool
+	t             *testing.T
+	service       *Service
+	runtime       *fakeRuntime
+	sessions      *fakeSessionReader
+	turns         *legacyHostConformanceTurnStore
+	operations    *runtimeOperationMemoryStore
+	operationPort *conformanceRuntimeOperationStore
+	goalStore     *conformanceGoalStateStore
+	goalInbox     *conformanceGoalInboxStore
+	recoverySteps *[]string
+	directHost    bool
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
@@ -71,18 +192,72 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		interactions: map[string][]agentactivitybiz.Interaction{},
 	}
 	d.operations = &runtimeOperationMemoryStore{}
+	steps := make([]string, 0)
+	d.recoverySteps = &steps
+	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
 	d.service = newTestService(d.runtime)
 	d.service.SessionReader = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
-	d.service.SubmitClaimStore = openAgentServiceSQLiteStore(d.t)
-	d.service.RuntimeOperationStore = d.operations
+	canonicalStore := openAgentServiceSQLiteStore(d.t)
+	d.service.SubmitClaimStore = canonicalStore
+	d.service.RuntimeOperationStore = d.operationPort
+	d.service.StaleTurnSettler = conformanceStaleTurnSettler{steps: &steps}
 	d.service.RuntimeOperationOwner = "host-conformance-worker"
 	d.service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1_000) }
+	d.goalStore = &conformanceGoalStateStore{GoalStateStore: canonicalStore, steps: &steps}
+	d.goalInbox = &conformanceGoalInboxStore{GoalReconcileInboxStore: canonicalStore, steps: &steps}
+	d.service.GoalStateStore = d.goalStore
+	d.service.GoalReconcileInboxStore = d.goalInbox
+	d.service.GoalOperationOwner = "host-goal-conformance-worker"
+	d.service.GoalOperationClock = func() time.Time { return time.UnixMilli(1_000) }
+	if fixture.DisableGoalInbox {
+		d.service.GoalReconcileInboxStore = nil
+	}
+
+	var goalMu sync.Mutex
+	var providerGoal map[string]any
+	d.runtime.goalControlHook = func(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalControlResult, error) {
+		goalMu.Lock()
+		defer goalMu.Unlock()
+		switch input.Action {
+		case "set":
+			providerGoal = map[string]any{"objective": input.Objective, "status": "active"}
+		case "pause":
+			providerGoal = clonePayload(providerGoal)
+			providerGoal["status"] = "paused"
+		case "resume":
+			providerGoal = clonePayload(providerGoal)
+			providerGoal["status"] = "active"
+		case "clear":
+			providerGoal = nil
+		}
+		return RuntimeGoalControlResult{
+			AgentSessionID: input.AgentSessionID, Goal: clonePayload(providerGoal), ProviderPhase: "applied",
+			Evidence: map[string]any{"confidence": "authoritative"},
+		}, nil
+	}
+	d.runtime.goalReconcileHook = func(_ context.Context, input RuntimeGoalControlInput) (RuntimeGoalReconcileResult, error) {
+		goalMu.Lock()
+		defer goalMu.Unlock()
+		return RuntimeGoalReconcileResult{
+			AgentSessionID: input.AgentSessionID, Goal: clonePayload(providerGoal),
+			Evidence: map[string]any{"confidence": "authoritative"},
+		}, nil
+	}
 
 	if fixture.Session == nil {
 		return nil
 	}
 	seed := *fixture.Session
+	if err := canonicalStore.Create(context.Background(), workspacebiz.Summary{ID: seed.WorkspaceID, Name: "Host conformance"}); err != nil {
+		return err
+	}
+	if _, err := canonicalStore.ReportSessionState(context.Background(), agentactivitybiz.SessionStateReport{
+		WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
+		Provider: seed.Provider, ProviderSessionID: seed.ProviderSessionID, OccurredAtUnixMS: 1,
+	}); err != nil {
+		return err
+	}
 	kind := strings.TrimSpace(seed.Kind)
 	if kind == "" {
 		kind = agentactivitybiz.SessionKindRoot
@@ -142,6 +317,19 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			Kind: interaction.Kind, Status: interaction.Status,
 		}}
 		d.service.TurnStore = d.turns
+	}
+	if fixture.RecoverInteractive {
+		d.operations.operation = agentactivitybiz.RuntimeOperation{
+			OperationID: runtimeOperationID(seed.WorkspaceID, seed.AgentSessionID, agentactivitybiz.RuntimeOperationKindInteractiveResponse, fixture.Interaction.TurnID+"\x00"+fixture.Interaction.RequestID),
+			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
+			Kind: agentactivitybiz.RuntimeOperationKindInteractiveResponse, Status: agentactivitybiz.RuntimeOperationStatusLeased,
+			TurnID: fixture.Interaction.TurnID, RequestID: fixture.Interaction.RequestID,
+			Payload: map[string]any{
+				"rootAgentSessionId": seed.AgentSessionID, "action": "", "optionId": "approve",
+				"payload": (map[string]any)(nil), "turnId": fixture.Interaction.TurnID,
+			},
+			LeaseOwner: "dead-worker", LeaseExpiresAtMS: time.UnixMilli(1_000).Add(time.Hour).UnixMilli(),
+		}
 	}
 	return nil
 }
@@ -216,20 +404,52 @@ func (d *legacyHostConformanceDriver) SendInput(
 		}
 		d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
 		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
-		return hostconformance.SendObservation{Session: legacyHostSessionObservation(session), TurnID: result.TurnID}, err
+		observation := hostconformance.SendObservation{
+			Session: legacyHostSessionObservation(session), TurnID: result.TurnID, Kind: result.Kind,
+		}
+		if result.GoalControl != nil {
+			observation.Goal = clonePayload(result.GoalControl.Goal)
+			if result.GoalControl.GoalState != nil {
+				observation.Revision = result.GoalControl.GoalState.Revision
+			}
+		}
+		return observation, err
 	}
 	result, err := d.service.SendInput(ctx, ref.WorkspaceID, ref.AgentSessionID, input)
 	if err != nil {
 		return hostconformance.SendObservation{}, err
 	}
 	d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
-	return hostconformance.SendObservation{
+	observation := hostconformance.SendObservation{
 		Session: legacyHostSessionObservation(result.Session),
-		TurnID:  result.TurnID,
-	}, nil
+		TurnID:  result.TurnID, Kind: result.Kind,
+	}
+	if result.GoalControl != nil {
+		observation.Goal = clonePayload(result.GoalControl.Goal)
+		if result.GoalControl.GoalState != nil {
+			observation.Revision = result.GoalControl.GoalState.Revision
+		}
+	}
+	return observation, nil
 }
 
 func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agenthost.CancelTurnInput) (hostconformance.CancelObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).CancelTurn(ctx, input)
+		if err != nil {
+			return hostconformance.CancelObservation{}, err
+		}
+		session, err := d.service.Get(ctx, input.WorkspaceID, input.AgentSessionID)
+		turnID := ""
+		if result.Turn != nil {
+			turnID = result.Turn.TurnID
+		}
+		return hostconformance.CancelObservation{
+			Session: legacyHostSessionObservation(session), TurnID: turnID,
+			Canceled: result.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
+			Reason:   string(CancelTurnReasonTurnCanceled),
+		}, err
+	}
 	result, err := d.service.CancelTurn(ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if err != nil {
 		return hostconformance.CancelObservation{}, err
@@ -250,6 +470,14 @@ func (d *legacyHostConformanceDriver) SubmitInteractive(
 	requestID string,
 	input agenthost.SubmitInteractiveInput,
 ) (hostconformance.SessionObservation, error) {
+	if d.directHost {
+		_, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).SubmitInteractive(ctx, ref, requestID, input)
+		if err != nil {
+			return hostconformance.SessionObservation{}, err
+		}
+		session, err := d.service.Get(ctx, ref.WorkspaceID, ref.AgentSessionID)
+		return legacyHostSessionObservation(session), err
+	}
 	session, err := d.service.SubmitInteractive(ctx, ref.WorkspaceID, ref.AgentSessionID, requestID, input)
 	return legacyHostSessionObservation(session), err
 }
@@ -261,7 +489,13 @@ func (d *legacyHostConformanceDriver) SubmitPlanDecision(
 	requestID string,
 	input agenthost.SubmitPlanDecisionInput,
 ) (hostconformance.OperationObservation, error) {
-	operation, err := d.service.SubmitPlanDecision(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID, requestID, input)
+	var operation agentactivitybiz.RuntimeOperation
+	var err error
+	if d.directHost {
+		operation, err = d.service.applicationHost(serviceHostPreparation{service: d.service}).SubmitPlanDecision(ctx, ref, turnID, requestID, input)
+	} else {
+		operation, err = d.service.SubmitPlanDecision(ctx, ref.WorkspaceID, ref.AgentSessionID, turnID, requestID, input)
+	}
 	return hostconformance.OperationObservation{
 		OperationID: operation.OperationID, Status: operation.Status, Result: operation.Result,
 	}, err
@@ -283,11 +517,72 @@ func (d *legacyHostConformanceDriver) UpdateTitle(ctx context.Context, input age
 	return legacyHostSessionObservation(session), err
 }
 
+func (d *legacyHostConformanceDriver) GoalControl(ctx context.Context, input agenthost.GoalControlInput) (hostconformance.GoalObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).GoalControl(ctx, input)
+		return hostGoalControlObservation(result), err
+	}
+	result, err := d.service.goalControl(ctx, input.WorkspaceID, input.AgentSessionID, input.Action, input.Objective, input.SubmissionMetadata)
+	if err != nil {
+		return hostconformance.GoalObservation{}, err
+	}
+	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), PendingOperationID: result.OperationID}
+	if result.GoalState != nil {
+		observation.Revision = result.GoalState.Revision
+		observation.PendingOperationID = result.GoalState.PendingOperationID
+		observation.SyncStatus = result.GoalState.SyncStatus
+	}
+	return observation, nil
+}
+
+func (d *legacyHostConformanceDriver) GetGoalState(ctx context.Context, ref agenthost.SessionRef) (hostconformance.GoalObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).GetGoalState(ctx, ref)
+		return hostGoalStateObservation(result), err
+	}
+	result, err := d.service.GetGoalState(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return hostconformance.GoalObservation{}, err
+	}
+	return hostGoalStateObservation(agenthost.GoalStateResult{State: result.State}), nil
+}
+
+func (d *legacyHostConformanceDriver) ReconcileGoal(ctx context.Context, ref agenthost.SessionRef) (hostconformance.GoalObservation, error) {
+	if d.directHost {
+		result, err := d.service.applicationHost(serviceHostPreparation{service: d.service}).ReconcileGoal(ctx, ref)
+		return hostGoalStateObservation(result), err
+	}
+	result, err := d.service.ReconcileGoal(ctx, ref.WorkspaceID, ref.AgentSessionID)
+	if err != nil {
+		return hostconformance.GoalObservation{}, err
+	}
+	return hostGoalStateObservation(agenthost.GoalStateResult{State: result.State}), nil
+}
+
+func hostGoalControlObservation(result agenthost.GoalControlResult) hostconformance.GoalObservation {
+	observation := hostconformance.GoalObservation{Goal: clonePayload(result.Goal), PendingOperationID: result.OperationID}
+	if result.GoalState != nil {
+		observation.Revision = result.GoalState.Revision
+		observation.PendingOperationID = result.GoalState.PendingOperationID
+		observation.SyncStatus = result.GoalState.SyncStatus
+	}
+	return observation
+}
+
+func hostGoalStateObservation(result agenthost.GoalStateResult) hostconformance.GoalObservation {
+	return hostconformance.GoalObservation{
+		Goal: clonePayload(result.State.Desired), Revision: result.State.Revision,
+		PendingOperationID: result.State.PendingOperationID, SyncStatus: result.State.SyncStatus,
+	}
+}
+
 func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	metrics := hostconformance.Metrics{
 		StartCalls: len(d.runtime.startCalls), ResumeCalls: len(d.runtime.resumeCalls),
 		ExecCalls: len(d.runtime.execCalls), CancelCalls: len(d.runtime.cancelCalls),
 		InteractiveCalls: len(d.runtime.submitInteractiveCalls), UpdateSettingsCalls: len(d.runtime.updateSettingsCalls),
+		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
+		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
 	}
 	if len(d.runtime.cancelCalls) > 0 {
 		metrics.LastCancelTargets = append([]RuntimeCancelTarget(nil), d.runtime.cancelCalls[len(d.runtime.cancelCalls)-1].Targets...)
@@ -304,6 +599,55 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		metrics.LastResumeRecreate = d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].RecreateIfMissing
 	}
 	return metrics
+}
+
+func (d *legacyHostConformanceDriver) Recover(ctx context.Context) error {
+	if d.directHost {
+		return d.service.applicationHost(serviceHostPreparation{service: d.service}).Recover(ctx)
+	}
+	return d.service.Recover(ctx)
+}
+
+type conformanceRuntimeOperationStore struct {
+	*runtimeOperationMemoryStore
+	steps *[]string
+}
+
+type conformanceGoalStateStore struct {
+	agenthost.GoalStateStore
+	steps *[]string
+}
+
+func (s *conformanceGoalStateStore) RequeueLeasedGoalControlOperationsOnStartup(ctx context.Context, now int64) (int64, error) {
+	*s.steps = append(*s.steps, "goal_requeue")
+	return s.GoalStateStore.RequeueLeasedGoalControlOperationsOnStartup(ctx, now)
+}
+
+type conformanceGoalInboxStore struct {
+	agenthost.GoalReconcileInboxStore
+	steps *[]string
+}
+
+func (s *conformanceGoalInboxStore) RequeueLeasedGoalReconcileInboxOnStartup(ctx context.Context, now int64) (int64, error) {
+	*s.steps = append(*s.steps, "goal_inbox_requeue")
+	return s.GoalReconcileInboxStore.RequeueLeasedGoalReconcileInboxOnStartup(ctx, now)
+}
+
+func (s *conformanceRuntimeOperationStore) RequeueLeasedRuntimeOperationsOnStartup(ctx context.Context, now int64) (int64, error) {
+	*s.steps = append(*s.steps, "runtime_requeue")
+	return s.runtimeOperationMemoryStore.RequeueLeasedRuntimeOperationsOnStartup(ctx, now)
+}
+
+func (s *conformanceRuntimeOperationStore) CompleteInteractiveRuntimeOperation(ctx context.Context, input agentactivitybiz.CompleteInteractiveRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error) {
+	*s.steps = append(*s.steps, "runtime_complete")
+	return s.runtimeOperationMemoryStore.CompleteInteractiveRuntimeOperation(ctx, input)
+}
+
+type conformanceStaleTurnSettler struct{ steps *[]string }
+
+func (s conformanceStaleTurnSettler) SettleStaleTurnsOnStartup(context.Context) error {
+	*s.steps = append(*s.steps, "stale_settle")
+	return nil
 }
 
 func (d *legacyHostConformanceDriver) recordSubmittedTurn(workspaceID, sessionID, turnID string) {

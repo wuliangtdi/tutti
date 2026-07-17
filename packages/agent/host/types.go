@@ -283,6 +283,35 @@ type CancelTurnInput struct {
 	Reason         string
 }
 
+type CancelState string
+
+const (
+	CancelStateNotFound       CancelState = "not_found"
+	CancelStateAlreadySettled CancelState = "already_settled"
+	CancelStateRequested      CancelState = "cancel_requested"
+	CancelStateSettled        CancelState = "settled"
+)
+
+// CancelTurnResult keeps durable intent acceptance, provider confirmation,
+// and canonical settlement separate. Adapters must not infer a terminal
+// canceled turn merely from IntentAccepted.
+type CancelTurnResult struct {
+	Canonical         storesqlite.Session
+	Turn              *storesqlite.Turn
+	Operation         storesqlite.RuntimeOperation
+	State             CancelState
+	IntentAccepted    bool
+	ProviderConfirmed bool
+	Settled           bool
+	Outcome           string
+}
+
+type SubmitInteractiveResult struct {
+	Canonical   storesqlite.Session
+	Operation   storesqlite.RuntimeOperation
+	Disposition RuntimeInteractiveDisposition
+}
+
 type UpdateTitleInput struct {
 	WorkspaceID    string
 	AgentSessionID string
@@ -290,9 +319,11 @@ type UpdateTitleInput struct {
 }
 
 type CreateSessionResult struct {
-	Session   ProviderRuntimeSession
-	Canonical storesqlite.Session
-	TurnID    string
+	Session     ProviderRuntimeSession
+	Canonical   storesqlite.Session
+	TurnID      string
+	Kind        string
+	GoalControl *GoalControlResult
 }
 
 type SendInputResult struct {
@@ -302,9 +333,74 @@ type SendInputResult struct {
 	TurnID             string
 	TurnLifecycle      TurnLifecycle
 	SubmitAvailability SubmitAvailability
+	Kind               string
+	GoalControl        *GoalControlResult
 }
 
 type UpdateTitleResult struct {
 	Session   ProviderRuntimeSession
 	Canonical storesqlite.Session
+}
+
+type RuntimeGoalControlInput struct {
+	WorkspaceID        string
+	AgentSessionID     string
+	Action             string
+	Objective          string
+	OperationID        string
+	GoalRevision       int64
+	RepairEpoch        int64
+	SubmissionMetadata map[string]any
+}
+
+type RuntimeGoalControlResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+	Evidence       map[string]any
+	ProviderPhase  string
+}
+
+type RuntimeGoalReconcileResult struct {
+	AgentSessionID string
+	Goal           map[string]any
+	Evidence       map[string]any
+}
+
+type RuntimeGoalRecoveryPolicy struct {
+	QuerySupported        bool
+	ReplaySetAfterRestart bool
+}
+
+type GoalControlInput struct {
+	WorkspaceID        string
+	AgentSessionID     string
+	Action             string
+	Objective          string
+	SubmissionMetadata map[string]any
+}
+
+type GoalControlResult struct {
+	Canonical   storesqlite.Session
+	Goal        map[string]any
+	OperationID string
+	GoalState   *storesqlite.SessionGoalState
+}
+
+type GoalStateResult struct {
+	Canonical storesqlite.Session
+	State     storesqlite.SessionGoalState
+}
+
+type GoalReconcileRequiredInput struct {
+	WorkspaceID         string
+	AgentSessionID      string
+	RequestID           string
+	ProviderTurnID      string
+	Reason              string
+	FenceMode           string
+	ExpectedOperationID string
+	ExpectedRevision    int64
+	ExpectedRepairEpoch int64
+	QuiesceSucceeded    bool
+	QuiesceError        string
 }

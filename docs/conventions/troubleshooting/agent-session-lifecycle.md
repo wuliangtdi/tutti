@@ -257,6 +257,44 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [sessionLifecycle.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionLifecycle.reducer.ts)
   [controller_exec.go](../../../packages/agent/daemon/runtime/controller_exec.go)
 
+### Queued AgentGUI prompt stalls after no-active-turn failure
+
+- Symptom:
+  A prompt submitted while an AgentGUI turn is busy appears in the local queue
+  or as an optimistic user row, but does not start after the previous turn
+  settles. Submit traces show the same `clientSubmitId` first failing with
+  `errorReason = agent.no_active_turn`, then succeeding only after a later
+  manual retry or another queue-draining trigger.
+- Quick checks:
+  Search desktop and daemon logs for the queued `clientSubmitId`. A local queue
+  acceptance has `send_input.requested` with `queued=true` and
+  `optimistic_user_message_painted`. The failure pattern is a delayed
+  `renderer_adapter.send.failed` with `errorCode=invalid_request` and
+  `errorReason=agent.no_active_turn`, plus daemon `runtime_adapter.exec.failed`
+  with `agent session has no active turn`.
+- Root cause:
+  The daemon exposes the domain-specific reason as the protocol error
+  `reason`, while the Agent session engine previously kept only the generic
+  `errorCode`. The queue reducer therefore treated the race like a permanent
+  send failure, set `failedPromptId`, and stopped automatic drain until
+  send-now or another retry path cleared the failure.
+- Fix:
+  Preserve protocol `reason` on `EngineCommandResultIntent`. For
+  `queue/sendPrompt` failures whose reason is `agent.no_active_turn`, clear the
+  in-flight send, request a session reconcile, and skip same-reducer drain so
+  the queued prompt retries only after canonical state refresh. Keep ordinary
+  send failures blocked until explicit send-now retry.
+- Validation:
+  Add reducer coverage where a queued send fails with
+  `errorReason = agent.no_active_turn`: it should emit one
+  `session/reconcile`, leave the prompt queued without `failedPromptId`, and
+  avoid an immediate second `queue/sendPrompt` until a later canonical lifecycle
+  update. Keep the existing generic failure test blocked until send-now.
+- References:
+  [promptQueue.reducer.ts](../../../packages/agent/activity-core/src/engine/promptQueue.reducer.ts)
+  [effectExecutor.ts](../../../packages/agent/activity-core/src/engine/effectExecutor.ts)
+  [daemon_agent_submit_handlers.go](../../../services/tuttid/api/daemon_agent_submit_handlers.go)
+
 ### Cursor or OpenCode turn settles before late ACP activity arrives
 
 - Symptom:
@@ -908,7 +946,41 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   [agentGuiConversationModel.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationModel.ts)
   [desktopWorkspaceUserProjectService.ts](../../../apps/desktop/src/renderer/src/features/workspace-user-project/services/internal/desktopWorkspaceUserProjectService.ts)
   [agentGuiConversationProjectResolver.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationProjectResolver.ts)
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
+
+### Extension history becomes non-resumable after daemon restart
+
+- Symptom:
+  An Agent Extension conversation works until `tuttid` restarts. Its history
+  remains visible, but AgentGUI says it cannot resume on this device and only
+  offers continuing through an `@` mention.
+- Quick checks:
+  Confirm the persisted session still has `provider_session_id` and
+  `agent_target_id`. If the Target remains enabled and names a fixed extension
+  installation, compare list-time `resumable` calculation with the actual
+  Resume path. An empty process-local adapter registry after restart is not
+  evidence that the session cannot be restored.
+- Root cause:
+  Dynamic Agent Extension adapters are created on demand and cached only for
+  the daemon lifetime. Computing `resumable` from that cache maps restart state
+  to a false domain result before Resume can re-resolve the persisted Target.
+- Fix:
+  At the service boundary, re-derive `ProviderTargetRef` from the persisted
+  session's enabled `agentTargetId`. At the runtime boundary, validate the
+  provider, Target, and fixed installation binding; when a dynamic resolver is
+  configured, treat that authorized binding as eligible for a Resume attempt.
+  Keep installation validation and ACP `session/load` in the actual Resume
+  path. Never use an open provider id or adapter-cache presence as launch
+  authority.
+- Validation:
+  Start from a controller with no cached extension adapter. Assert a persisted
+  Target-bound session is resumable, malformed or mismatched bindings fail
+  closed, and the eligibility check does not launch the provider. Then run
+  `go test ./packages/agent/daemon/runtime ./services/tuttid/service/agent`.
+- References:
+  [controller_session_registry.go](../../../packages/agent/daemon/runtime/controller_session_registry.go)
+  [service_session.go](../../../services/tuttid/service/agent/service_session.go)
+  [agent-extensions.md](../../architecture/agent-extensions.md)
 
 ### Agent session restore breaks when durable snapshot ownership is split
 
@@ -1325,12 +1397,12 @@ Turn state, loading, cancel, restore, file-change undo, rail projection, event u
   filters, but exclude `runtimeContext.imported` items from unread-completion
   lamps and recently-completed groups.
 - Validation:
-  For Agent GUI rail read-state changes, run
-  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.spec.ts`.
+  For Agent GUI rail projection changes, run
+  `pnpm --dir packages/agent/gui exec vitest run --environment jsdom contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.spec.tsx agent-gui/agentGuiNode/model/agentGuiConversationModel.spec.ts`.
   For Message Center grouping changes, run
   `pnpm --dir packages/agent/gui exec vitest run --environment jsdom agent-message-center/workspaceAgentMessageCenterModel.spec.ts agent-message-center/workspaceAgentMessageCenterViewModel.spec.ts`.
 - References:
-  [agentGuiConversationListStore.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/agentGuiConversationListStore.ts)
+  [useAgentGuiConversationList.ts](../../../packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/useAgentGuiConversationList.ts)
   [workspaceAgentMessageCenterModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterModel.ts)
   [workspaceAgentMessageCenterViewModel.ts](../../../packages/agent/gui/agent-message-center/workspaceAgentMessageCenterViewModel.ts)
 

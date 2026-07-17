@@ -12,15 +12,38 @@ import (
 
 type serviceHostStore struct{ service *Service }
 
-func (a serviceHostStore) GetSession(_ context.Context, workspaceID, sessionID string) (storesqlite.Session, bool, error) {
-	if a.service == nil || a.service.SessionReader == nil {
+func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID string) (storesqlite.Session, bool, error) {
+	if a.service == nil {
 		return storesqlite.Session{}, false, nil
 	}
-	session, ok := a.service.SessionReader.GetSession(workspaceID, sessionID)
-	if !ok {
-		return storesqlite.Session{}, false, nil
+	if a.service.SessionReader != nil {
+		if session, ok := a.service.SessionReader.GetSession(workspaceID, sessionID); ok {
+			return activitySessionFromPersisted(session), true, nil
+		}
 	}
-	return activitySessionFromPersisted(session), true, nil
+	if a.service.TurnStore != nil {
+		if session, ok, err := a.service.TurnStore.GetSession(ctx, workspaceID, sessionID); err != nil || ok {
+			return session, ok, err
+		}
+	}
+	// Runtime-only Service configurations predate the canonical store port and
+	// remain useful to isolated consumers and tests. Once either durable reader
+	// is configured, absence is authoritative and must never fall back to a
+	// provider observation.
+	if a.service.SessionReader == nil && a.service.TurnStore == nil {
+		if session, ok := a.service.controller().Session(workspaceID, sessionID); ok {
+			activeTurnID := ""
+			if session.TurnLifecycle != nil && session.TurnLifecycle.ActiveTurnID != nil {
+				activeTurnID = strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID)
+			}
+			return storesqlite.Session{
+				ID: session.ID, WorkspaceID: session.WorkspaceID, Provider: session.Provider,
+				ProviderSessionID: session.ProviderSessionID, Cwd: session.Cwd, Title: session.Title,
+				Kind: storesqlite.SessionKindRoot, ActiveTurnID: activeTurnID,
+			}, true, nil
+		}
+	}
+	return storesqlite.Session{}, false, nil
 }
 
 func (a serviceHostStore) SessionDeleted(ctx context.Context, workspaceID, sessionID string) (bool, error) {
@@ -60,6 +83,22 @@ func (a serviceHostStore) UpdateSessionTitle(ctx context.Context, workspaceID, s
 	return activitySessionFromPersisted(persisted), updated, err
 }
 
+func (a serviceHostStore) ListChildSessions(ctx context.Context, workspaceID, sessionID string) ([]storesqlite.Session, error) {
+	reader, ok := a.service.SessionReader.(ChildSessionReader)
+	if !ok {
+		return nil, nil
+	}
+	children, err := reader.ListChildSessions(ctx, workspaceID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]storesqlite.Session, 0, len(children))
+	for _, child := range children {
+		result = append(result, activitySessionFromPersisted(child))
+	}
+	return result, nil
+}
+
 func (a serviceHostStore) GetTurn(ctx context.Context, workspaceID, sessionID, turnID string) (storesqlite.Turn, bool, error) {
 	if a.service.TurnStore == nil {
 		return storesqlite.Turn{}, false, nil
@@ -68,13 +107,17 @@ func (a serviceHostStore) GetTurn(ctx context.Context, workspaceID, sessionID, t
 }
 
 func (a serviceHostStore) FindTurnByClientSubmitID(ctx context.Context, workspaceID, sessionID, clientSubmitID string) (string, bool, error) {
-	store, ok := a.service.TurnStore.(interface {
-		FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
-	})
-	if !ok {
+	if a.service.RuntimeOperationStore == nil {
 		return "", false, nil
 	}
-	return store.FindTurnByClientSubmitID(ctx, workspaceID, sessionID, clientSubmitID)
+	return a.service.RuntimeOperationStore.FindTurnByClientSubmitID(ctx, workspaceID, sessionID, clientSubmitID)
+}
+
+func (a serviceHostStore) ListSessionInteractions(ctx context.Context, input storesqlite.ListSessionInteractionsInput) ([]storesqlite.Interaction, error) {
+	if a.service.TurnStore == nil {
+		return nil, nil
+	}
+	return a.service.TurnStore.ListSessionInteractions(ctx, input)
 }
 
 func (a serviceHostStore) PrepareSubmitClaim(ctx context.Context, input storesqlite.SubmitClaimPrepare) (storesqlite.SubmitClaim, bool, error) {
@@ -186,8 +229,11 @@ func (a serviceHostRuntime) Cancel(ctx context.Context, input RuntimeCancelInput
 func (a serviceHostRuntime) SubmitInteractive(ctx context.Context, input RuntimeSubmitInteractiveInput) (RuntimeSubmitInteractiveResult, error) {
 	return a.service.controller().SubmitInteractive(ctx, input)
 }
+func (a serviceHostRuntime) InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID string) RuntimeInteractiveDisposition {
+	return a.service.controller().InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID)
+}
 func (a serviceHostRuntime) UpdateSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
-	return a.service.controller().UpdateSettings(ctx, input)
+	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
 }
 func (a serviceHostRuntime) SetTitle(ctx context.Context, input RuntimeSetTitleInput) (ProviderRuntimeSession, error) {
 	return a.service.controller().SetTitle(ctx, input)
@@ -199,9 +245,47 @@ func (a serviceHostRuntime) Close(ctx context.Context, input RuntimeCloseInput) 
 	return a.service.controller().Close(ctx, input)
 }
 
-type serviceHostClock struct{}
+type serviceHostGoalRuntime struct{ service *Service }
 
-func (serviceHostClock) Now() time.Time { return time.Now() }
+func (a serviceHostGoalRuntime) GoalControl(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalControlResult, error) {
+	result, err := a.service.controller().GoalControl(ctx, input)
+	return result, normalizeRuntimeError(err)
+}
+
+func (a serviceHostGoalRuntime) ReconcileGoal(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalReconcileResult, error) {
+	reconciler, ok := a.service.controller().(RuntimeGoalReconciler)
+	if !ok {
+		return agenthost.RuntimeGoalReconcileResult{}, errors.New("agent runtime goal reconciliation is unavailable")
+	}
+	result, err := reconciler.ReconcileGoal(ctx, input)
+	return result, normalizeRuntimeError(err)
+}
+
+func (a serviceHostGoalRuntime) GoalRecoveryPolicy(ctx context.Context, input agenthost.RuntimeGoalControlInput) (agenthost.RuntimeGoalRecoveryPolicy, error) {
+	resolver, ok := a.service.controller().(RuntimeGoalRecoveryPolicyResolver)
+	if !ok {
+		return agenthost.RuntimeGoalRecoveryPolicy{}, nil
+	}
+	return resolver.GoalRecoveryPolicy(ctx, input)
+}
+
+type serviceHostClock struct{ service *Service }
+
+func (c serviceHostClock) Now() time.Time {
+	if c.service != nil && c.service.RuntimeOperationClock != nil {
+		return c.service.RuntimeOperationClock().UTC()
+	}
+	return time.Now().UTC()
+}
+
+type serviceHostGoalClock struct{ service *Service }
+
+func (c serviceHostGoalClock) Now() time.Time {
+	if c.service != nil && c.service.GoalOperationClock != nil {
+		return c.service.GoalOperationClock().UTC()
+	}
+	return time.Now().UTC()
+}
 
 type serviceHostLifecycleObserver struct{ service *Service }
 
@@ -222,20 +306,24 @@ func (s *Service) applicationHostLocked(preparation serviceHostPreparation) *age
 }
 
 func (s *Service) newApplicationHost(preparation serviceHostPreparation, locker agenthost.SessionLocker) *agenthost.Host {
+	s.goalActorOnce.Do(func() {
+		s.goalActor = agenthost.NewGoalActor()
+	})
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: serviceHostStore{service: s}, Runtime: serviceHostRuntime{service: s},
 		RuntimePreparation: preparation, Attachments: s.PromptAttachmentStore,
-		Clock: serviceHostClock{}, SessionLocker: locker,
+		Clock: serviceHostClock{service: s}, SessionLocker: locker,
 		RuntimeStartGate:  serviceHostStartupGate{service: s},
 		LifecycleObserver: serviceHostLifecycleObserver{service: s},
+		RuntimeOperations: s.RuntimeOperationStore, OperationEvents: s.RuntimeOperationEventPublisher,
+		OperationOwner: s.RuntimeOperationOwner, StaleTurnSettler: s.StaleTurnSettler,
+		GoalStore: s.GoalStateStore, GoalRuntime: serviceHostGoalRuntime{service: s},
+		GoalAudits: s.GoalAuditPublisher, GoalInbox: s.GoalReconcileInboxStore,
+		GoalOwner: s.GoalOperationOwner, GoalClock: serviceHostGoalClock{service: s},
+		GoalAttemptTimeout: s.GoalOperationAttemptTimeout, GoalRecoveryBudget: s.GoalOperationRecoveryBudget,
+		GoalMaxAttempts: s.GoalOperationMaxAttempts, GoalDispatchDeadline: s.GoalOperationDispatchDeadline,
+		GoalActor: s.goalActor,
 	})
-}
-
-func (s *Service) cleanupHostCreateFailure(ctx context.Context, workspaceID, sessionID string, cause error) error {
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	closeErr := s.controller().Close(cleanupCtx, RuntimeCloseInput{WorkspaceID: workspaceID, AgentSessionID: sessionID})
-	return errors.Join(cause, closeErr, s.cleanupRuntime(cleanupCtx, workspaceID, sessionID))
 }
 
 func activitySessionFromPersisted(session PersistedSession) storesqlite.Session {

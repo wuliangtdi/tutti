@@ -37,6 +37,7 @@ type Service struct {
 	RuntimeOperationEventPublisher RuntimeOperationEventPublisher
 	RuntimeOperationClock          func() time.Time
 	RuntimeOperationOwner          string
+	StaleTurnSettler               agenthost.StaleTurnSettler
 	GoalOperationOwner             string
 	GoalOperationClock             func() time.Time
 	GoalOperationAttemptTimeout    time.Duration
@@ -66,8 +67,8 @@ type Service struct {
 	liveModelDiscoveryGroup        singleflight.Group
 	sessionSettingsMu              sync.Mutex
 	sessionSettingsLocks           map[string]*serviceSessionSettingsLock
-	goalActorsMu                   sync.Mutex
-	goalActors                     map[string]*goalActorEntry
+	goalActorOnce                  sync.Once
+	goalActor                      *agenthost.GoalActor
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
@@ -76,17 +77,8 @@ type Service struct {
 	liveModelPersistedScanMissAtUnixMS map[string]int64
 }
 
-type GoalAuditPublisher interface {
-	PublishGoalControlAudit(context.Context, string, string, agentactivitybiz.Message)
-}
-
-type GoalReconcileInboxStore interface {
-	ListClaimableGoalReconcileInbox(context.Context, int64, int) ([]agentactivitybiz.GoalReconcileInboxItem, error)
-	ClaimGoalReconcileInbox(context.Context, agentactivitybiz.ClaimGoalReconcileInboxInput) (agentactivitybiz.GoalReconcileInboxItem, bool, error)
-	CompleteGoalReconcileInbox(context.Context, string, string, int64) (bool, error)
-	ReleaseGoalReconcileInbox(context.Context, agentactivitybiz.ReleaseGoalReconcileInboxInput) (bool, error)
-	RequeueLeasedGoalReconcileInboxOnStartup(context.Context, int64) (int64, error)
-}
+type GoalAuditPublisher = agenthost.GoalAuditPublisher
+type GoalReconcileInboxStore = agenthost.GoalReconcileInboxStore
 
 type SubmitClaimStore interface {
 	PrepareSubmitClaim(context.Context, agentactivitybiz.SubmitClaimPrepare) (agentactivitybiz.SubmitClaim, bool, error)
@@ -130,7 +122,19 @@ type ExtensionComposerProfileResolver interface {
 }
 
 type ExtensionComposerProfile struct {
-	Skills *ExtensionComposerSkillProfile
+	Capabilities                     []string
+	ModelConfigOptionID              string
+	PermissionConfigOptionID         string
+	PermissionModes                  []ExtensionComposerPermissionMode
+	ReasoningConfigOptionID          string
+	Skills                           *ExtensionComposerSkillProfile
+	SlashCommands                    []ExtensionComposerSlashCommand
+	SlashCommandCatalogAuthoritative bool
+}
+
+type ExtensionComposerPermissionMode struct {
+	RuntimeID string
+	Semantic  PermissionModeSemantic
 }
 
 type ExtensionComposerSkillProfile struct {
@@ -142,6 +146,11 @@ type ExtensionComposerSkillProfile struct {
 type ExtensionComposerSkillRoot struct {
 	Scope string
 	Path  string
+}
+
+type ExtensionComposerSlashCommand struct {
+	Name   string
+	Effect string
 }
 
 type Session struct {
@@ -387,38 +396,10 @@ type RuntimeCancelInput = agenthost.RuntimeCancelInput
 type RuntimeCancelTarget = agenthost.RuntimeCancelTarget
 type RuntimeCancelResult = agenthost.RuntimeCancelResult
 
-type RuntimeGoalControlInput struct {
-	WorkspaceID    string
-	AgentSessionID string
-	Action         string
-	Objective      string
-	OperationID    string
-	GoalRevision   int64
-	RepairEpoch    int64
-	// SubmissionMetadata is present only when a typed /goal command entered
-	// through the composer. It preserves the client submit identity for the
-	// turnless transcript audit message; direct goal controls and recovery
-	// operations leave it empty.
-	SubmissionMetadata map[string]any
-}
-
-type RuntimeGoalControlResult struct {
-	AgentSessionID string
-	Goal           map[string]any
-	Evidence       map[string]any
-	ProviderPhase  string
-}
-
-type RuntimeGoalReconcileResult struct {
-	AgentSessionID string
-	Goal           map[string]any
-	Evidence       map[string]any
-}
-
-type RuntimeGoalRecoveryPolicy struct {
-	QuerySupported        bool
-	ReplaySetAfterRestart bool
-}
+type RuntimeGoalControlInput = agenthost.RuntimeGoalControlInput
+type RuntimeGoalControlResult = agenthost.RuntimeGoalControlResult
+type RuntimeGoalReconcileResult = agenthost.RuntimeGoalReconcileResult
+type RuntimeGoalRecoveryPolicy = agenthost.RuntimeGoalRecoveryPolicy
 type RuntimeGoalRecoveryPolicyResolver interface {
 	GoalRecoveryPolicy(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 }

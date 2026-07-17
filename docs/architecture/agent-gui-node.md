@@ -91,6 +91,11 @@ observations update only observed state, so a late snapshot cannot erase a
 newer desired state or clear tombstone. Provider differences are normalized by
 the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
 than sending goal banner actions through the prompt pipeline.
+Goal-control `session_audit` messages remain durable recovery and diagnostic
+evidence, but Agent GUI excludes audits marked `goalControl` from the user
+conversation. Goal state and controls are presented through the canonical Goal
+projection instead of exposing internal `/goal` control commands as user
+messages.
 
 Codex Goal continuation provenance has two ordered paths. A
 `thread/goal/updated` notification with `turnId` remains exact provider
@@ -624,7 +629,7 @@ rail, below the system-settings control and not below the conversation-list
 configuration footer. This slot must stay outside the provider tile scroll area
 so the footer keeps a fixed bottom placeholder while overflowing provider tiles
 scroll above it with a bottom fade. It must also stay outside the controller
-view model and conversation rail valtio store: pass it as a direct function
+view model and conversation rail query/controller state: pass it as a direct function
 prop and give it only existing neutral context such as `currentUserId` and
 `activeConversation`. Product concepts such as sharing, ownership,
 availability, quota, or authorization live entirely inside the React node
@@ -691,6 +696,30 @@ Auth-required local providers should remain selectable; product surfaces may
 label the setup affordance as `Connect`, but the host action should still
 dispatch the provider's `login` operation when that is the daemon-reported
 action.
+
+Declarative Agent Extension setup is owned by the exact selected Target. One
+Target-scoped controller owns its host watch, snapshot, dialog state, pending
+action, auth selection, and failure notification; the empty-home gate and
+config menu consume that controller instead of opening parallel polls. Target
+changes reset transient UI state. On empty home, the visible-target projection
+resolves the effective selected Target once; composer UI and setup controller
+consume that same exact Target, including hidden-selected fallback. Desktop
+explicitly projects generated daemon setup snapshots into the minimal Host UI
+shape and drops workspace and action timestamp transport metadata. The Dialog
+remains mounted through controlled close/ready transitions so document locks
+are released correctly.
+
+A ready setup dialog renders the normalized signed-in account and an explicit
+re-authentication action. The auth-method selector appears only while
+authentication is required; re-authentication reuses the account's method when
+that method is still advertised by the runtime.
+
+Setup gates only the empty new-conversation surface. It never replaces active
+or historical conversations, never opens merely because Target selection
+changed, and never branches on provider name. The daemon-authored plan,
+install/auth lifecycle, persistence, trust checks, account projection, and ACP
+auth invalidation rules are defined once in
+[Agent Extensions](./agent-extensions.md#target-managed-runtime-setup).
 
 UI-local state may include draft text, selected panel, rail layout, open menus,
 scroll position, and temporary presentation focus. UI-local state must not own
@@ -1264,16 +1293,16 @@ controller action
   -> projection rebuild
 ```
 
-Local overlays are allowed only to bridge UI latency:
+UI-latency bridges have explicit owners:
 
-- pending create/submit/delete state in `agentGuiConversationListStore`
-- session overlay messages in `agentSessionViewStore`
-- transient active conversation fallback while runtime data catches up
-- optimistic pin or working status while a command is in flight
+- create and submit records in `AgentSessionEngine.pendingIntents`
+- optimistic prompt projections derived from pending-intent selectors
+- transient active-conversation fallback while runtime data catches up
+- controller-local detail paging, loading, and error state
 
-Every overlay must have a reconciliation path back to the runtime snapshot.
-Optimistic prompt messages must stay overlay-owned even when they are used to
-scope the selected detail window. Do not promote them into durable/detail
+Every pending intent declares its authoritative confirmation path.
+Optimistic prompt messages must stay pending-intent projections even when they
+are used to scope the selected detail window. Do not promote them into durable/detail
 message bases: their local timestamp-derived versions can outrank lower
 authoritative daemon versions and suppress the durable user prompt during merge.
 Existing-session submit must record the optimistic user prompt before the
@@ -1577,7 +1606,7 @@ AgentGUI / AgentGuiNode mount
   -> live RuntimeController sessions + persisted ActivityProjection sessions
   -> AgentSessionEngine session/snapshotReceived (historical)
   -> memoized AgentActivitySnapshot projection
-  -> conversation-list projection/store
+  -> conversation-list selector/projection
   -> rail and active-session fallback selection
 ```
 
@@ -1605,6 +1634,22 @@ sections come from current `userProjects` and use the stable
 `project:/canonical/path` `sectionKey`; the Chats section uses
 `conversations`. This inventory is the durable registered-project list; rail
 loading must not probe project paths or implicitly remove unavailable folders.
+The daemon-owned `user_projects.sort_order` is the single global project order.
+New projects enter at the front, repeated use updates compatibility timestamps
+without moving them, and delete/move transactions rewrite a continuous order.
+Every renderer window mirrors the complete ordered snapshot in its one
+workspace-user-project service store. A drop updates that store optimistically,
+then `user.project.updated` broadcasts the committed complete snapshot to every
+window; project selectors, file-manager locations, AgentGUI, and workspace-app
+bridges consume that same store rather than keeping another persistent order.
+An event received while a move is in flight is held until the move response is
+reconciled, and a conflicting held snapshot triggers one authoritative refresh.
+The same renderer service snapshot owns `isMutationPending` for move and
+project removal. Every AgentGUI rail in that renderer subscribes to this flag
+and disables new project drags for the full mutation lifetime; per-Rail drag
+state is only transient interaction state, not the shared mutation lock.
+Move failures deliberately retain the current window's optimistic order until a
+later reload and produce diagnostics without user-visible error UI.
 Path availability and explicit removal belong to the user-project domain. The
 daemon pages sessions by `rail_section_key`, so AgentGUI
 must render returned section props and use backend `hasMore`/`nextCursor`
@@ -1657,8 +1702,11 @@ the search controller stores only result ids, cursor, and request state, then
 the rail joins those ids to canonical entities. It must not recreate the old
 conversation-summary cache. An initial backend-search failure renders a
 localized retry action; retry reissues the current target-scoped query instead
-of presenting the failure as an empty result. Search grouping renders only sections containing
-matching rows; empty user-project and Chats sections remain hidden. Hosts without `listSessionsPage`, including
+of presenting the failure as an empty result. Search and agent-target filtering
+retain every registered user-project title even when its filtered session items
+are empty, so the durable project order remains visible and draggable. Pinned
+stays above all projects and Chats stays after them. Hosts without
+`listSessionsPage`, including
 preview-only hosts, may fall back to local title filtering of loaded rows.
 Ordinary section pages and backend search pages share one deterministic order:
 `latestTurn.startedAtUnixMs DESC`, falling back to
@@ -1771,7 +1819,11 @@ response owns bootstrap membership and must upsert returned entities into the
 workspace engine before publishing membership ids. Once reconciliation is ready,
 later canonical membership mutations continue through the targeted refresh path.
 The aggregate first-page section query is reserved for workspace, rail filter,
-or user-project inventory changes. Session membership changes use only the
+or user-project inventory changes. Its user-project cache identity is based on
+the project set, not array order: a pure project reorder must not refetch section
+pages or enter loading because `userProjects` owns templates, labels, and order,
+while `sessionSections` owns only membership, counts, and pagination. Session
+membership changes use only the
 affected section/pinned first-page endpoints; Show more continues to use the
 same page endpoints with its cursor.
 Pending activation becoming canonical is one of those session membership
@@ -1827,7 +1879,7 @@ reconcile back to `AgentActivityRuntime`.
 
 ```text
 activeConversationId changes
-  -> session view store / controller detail load
+  -> session detail transport and controller paging state
   -> AgentActivityRuntime.listSessionMessages
   -> WorkspaceAgentActivityService.listSessionMessages
   -> desktopAgentActivityAdapter.listSessionMessages
@@ -1840,8 +1892,9 @@ activeConversationId changes
 ```
 
 Detail loading is separate from list loading. A conversation can appear in the
-rail before its messages are loaded. The detail panel should show message
-loading from the session view store, not infer it from the send button state.
+rail before its messages are loaded. The detail panel reads the explicit
+message-loading state owned by `useAgentSessionControllerState`; it does not
+infer loading from the send button state.
 The root session detail response also contains a flat collection of every
 nested child session. Desktop reconcile upserts the root and all children into
 the same workspace engine, then loads each session's messages through the
@@ -2190,7 +2243,7 @@ agent.activity.updated
   -> historical pull dispatches session/snapshotReceived
   -> engine projection updates the runtime snapshot
   -> conversation list projection updates rail
-  -> session view store updates transcript loading/live state
+  -> detail controller reconciles UI-local paging/loading state
   -> shared transcript projection updates rows/cards
   -> AgentGUINodeView renders the new view model
 ```
@@ -2287,17 +2340,17 @@ markers are display data, not lifecycle authority.
 
 ### Layer Ownership Summary
 
-| Layer                                    | Owns                                                                                                                | Must not own                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `tuttid` agent service                   | provider runtime start, exec, resume/cancel, validation, persistence reports                                        | AgentGUI view state                                                       |
-| `ActivityProjection`                     | persisted session/message projection and `agent.activity.updated` publication                                       | React projection or local UI overlays                                     |
-| desktop `WorkspaceAgentActivityService`  | activity facade, canonical engine/controller access, mutation/reconcile coordination                                | transcript rendering semantics or large query/import adapters             |
-| desktop activity query/import operations | normalized daemon query projection and external-session import refresh workflow                                     | engine/controller ownership or independent activity state                 |
-| `AgentActivityRuntime`                   | AgentGUI-facing source of durable activity data and commands                                                        | independent session/message storage                                       |
-| workspace `AgentSessionEngine`           | canonical frontend session/turn/interaction entities, pending intents, ephemeral prompt queues, correlated commands | daemon persistence or provider transport implementation                   |
-| AgentGuiNode controller/stores           | selection, drafts, loading/error state, pending overlays                                                            | authoritative session/message state, queued prompts, or provider strategy |
-| shared projection/model helpers          | deterministic conversion from snapshots/messages to view models                                                     | provider transport calls                                                  |
-| React views                              | DOM interaction and rendering from `viewModel`/`actions`                                                            | fetching or mutating durable activity directly                            |
+| Layer                                    | Owns                                                                                                                | Must not own                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `tuttid` agent service                   | provider runtime start, exec, resume/cancel, validation, persistence reports                                        | AgentGUI view state                                                                        |
+| `ActivityProjection`                     | persisted session/message projection and `agent.activity.updated` publication                                       | React projection or local UI overlays                                                      |
+| desktop `WorkspaceAgentActivityService`  | activity facade, canonical engine/controller access, mutation/reconcile coordination                                | transcript rendering semantics or large query/import adapters                              |
+| desktop activity query/import operations | normalized daemon query projection and external-session import refresh workflow                                     | engine/controller ownership or independent activity state                                  |
+| `AgentActivityRuntime`                   | AgentGUI-facing source of durable activity data and commands                                                        | independent session/message storage                                                        |
+| workspace `AgentSessionEngine`           | canonical frontend session/turn/interaction entities, pending intents, ephemeral prompt queues, correlated commands | daemon persistence or provider transport implementation                                    |
+| AgentGuiNode vertical controllers        | selection, drafts, UI-local paging/loading/error state, and typed engine intent dispatch                            | authoritative session/message state, pending intents, queued prompts, or provider strategy |
+| shared projection/model helpers          | deterministic conversion from snapshots/messages to view models                                                     | provider transport calls                                                                   |
+| React views                              | DOM interaction and rendering from `viewModel`/`actions`                                                            | fetching or mutating durable activity directly                                             |
 
 The standalone Agent window follows the same composition rule: the sidebar
 shell owns panel selection, width, and mount timing; file/app/message routing,
@@ -2694,12 +2747,20 @@ other desktop feature orchestration:
 
 - `@tutti-os/agent-gui` owns the pure setup flow and i18n-agnostic view model in
   `shared/agentEnv`.
+- The public `agent-env` subpath remains React-free so desktop Node tests and
+  orchestration can consume setup logic. Shared Dialog/step presentation is
+  exported separately through `agent-env-ui`.
 - Desktop owns `agentEnvWizardStore`, `agentEnvWizardController`, and
   `useAgentEnvWizard`; these subscribe to the provider-status service, dedupe
   per-open automatic actions, and coordinate anomaly reporting and progressive
   reveal.
 - `AgentEnvPanel` subscribes and renders. It must not duplicate readiness
   detection, installation, login, or reporting workflows in React effects.
+- Agent Target runtime setup failure notifications follow the same boundary: a
+  React-free notification controller detects the current action's
+  running-to-failed transition and emits one semantic event; the component only
+  localizes that event and forwards it to the host toast capability. Historical
+  failed actions initialize controller state without replaying a toast.
 
 The provider-status service remains the source of truth for installed,
 authenticated, network, and active-action state. Wizard-local state is
@@ -2709,8 +2770,8 @@ ephemeral presentation state and resets with the panel lifecycle.
 
 Busy-session queued prompts are AgentGUI-owned ephemeral interaction state. They
 live in the workspace `AgentSessionEngine` prompt-queue reducer, not in
-Workbench node snapshots, daemon session/message persistence, conversation-list
-compatibility stores, or a second server-side queue. Queue identity is the
+Workbench node snapshots, daemon session/message persistence, UI-local query
+caches, or a second server-side queue. Queue identity is the
 engine workspace identity plus `agentSessionId`, so every AgentGUI surface using
 the same injected workspace engine observes the same queue.
 
@@ -2837,16 +2898,17 @@ User-visible rules:
 
 ### Loading State Taxonomy
 
-| Visible state                  | Primary owner                    | Starts when                                             | Clears when                                                                    |
-| ------------------------------ | -------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Rail skeleton or empty loading | conversation list query/store    | runtime list load starts                                | list load resolves or errors                                                   |
-| Selected detail skeleton       | session view store/controller    | active session messages load starts                     | `listSessionMessages` resolves or active session changes                       |
-| Home first-create busy         | active session activation record | home `startConversation` begins                         | that new-session activation succeeds, fails, or is abandoned as stale          |
-| "Connecting conversation"      | existing-session activation      | existing session open/retry calls `activate`            | activation succeeds, fails, or is abandoned as stale                           |
-| Transcript processing row      | transcript/session projection    | runtime reports working/turn phase                      | runtime reports ready/completed/failed or newer message projection replaces it |
-| Send button spinner            | controller local submit state    | `executePrompt` or approval submit begins               | command promise settles                                                        |
-| Composer settings loading      | composer options/settings model  | provider options load starts or settings source missing | options/settings resolve or fallback state is applied                          |
-| Approval response spinner      | controller approval submit state | prompt/approval option submit begins                    | runtime command settles and prompt projection updates                          |
+| Visible state                  | Primary owner                       | Starts when                                                                            | Clears when                                                                    |
+| ------------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Rail skeleton or empty loading | conversation rail query controller  | runtime list load starts                                                               | list load resolves or errors                                                   |
+| Selected detail skeleton       | session detail transport/controller | active session messages load starts                                                    | `listSessionMessages` resolves or active session changes                       |
+| Home first-create busy         | active session activation record    | home `startConversation` begins                                                        | that new-session activation succeeds, fails, or is abandoned as stale          |
+| "Connecting conversation"      | existing-session activation         | existing session open/retry calls `activate`                                           | activation succeeds, fails, or is abandoned as stale                           |
+| Transcript processing row      | transcript/session projection       | runtime reports working/turn phase                                                     | runtime reports ready/completed/failed or newer message projection replaces it |
+| Send button spinner            | controller local submit state       | `executePrompt` or approval submit begins                                              | command promise settles                                                        |
+| Composer settings loading      | composer options/settings model     | provider options load starts or settings source missing                                | options/settings resolve or fallback state is applied                          |
+| Provider setup notice          | desktop provider status adapter     | captured provider status says the active provider is not ready after a settled recheck | captured status says provider is ready or user fixes setup                     |
+| Approval response spinner      | controller approval submit state    | prompt/approval option submit begins                                                   | runtime command settles and prompt projection updates                          |
 
 When a loading state is wrong, first identify which row in this table is
 visible. Then debug that owner and clearing condition. Avoid moving a spinner
@@ -2946,7 +3008,7 @@ Use this map before editing:
 | `packages/agent/gui/app/renderer/i18n/locales/*.agentGui.ts`                                                | AgentGUI locale vertical              | Owns the complete `agentHost.agentGui` dictionary per locale and composes smaller provider/runtime/slash fragments internally.                                             |
 | `packages/agent/gui/shared/agentConversation/**`                                                            | Transcript module                     | Reusable contracts, projection, rules, and rendering components shared by AgentGuiNode, Message Center, and standalone conversation rendering.                             |
 | `packages/agent/gui/contexts/workspace/presentation/renderer/agentGuiConversationList/**`                   | AgentGUI conversation-list projection | Engine selector boundary despite the legacy path name. Projects canonical sessions plus engine-owned pending intents; owns no durable or local pending store.              |
-| `packages/agent/gui/contexts/workspace/presentation/renderer/agentSessions/**`                              | Active session UI store               | Package-owned active-session view state, overlay messages, control state, watcher counts, and event retention.                                                             |
+| `packages/agent/gui/contexts/workspace/presentation/renderer/agentSessions/**`                              | Session detail paging hooks           | UI-local older-page transport, loading, and error state; canonical messages and optimistic prompts remain engine projections.                                              |
 | `packages/agent/gui/agent-message-center/**`                                                                | Message center surface                | Consumes activity/prompt projections to show attention items outside the full node.                                                                                        |
 | `packages/agent/gui/agent-conversation/**`                                                                  | Standalone transcript export          | Reuses the same detail-to-conversation projection and transcript components without the full node.                                                                         |
 
@@ -2960,8 +3022,9 @@ Use this map before editing:
   runtime.
 - Projection helpers should be pure whenever possible; they convert snapshots,
   messages, timeline items, or session state into view models.
-- UI stores may cache UI concerns and optimistic overlays, but each overlay
-  needs a deterministic reconciliation path.
+- UI-local hooks and controllers may cache paging and presentation concerns.
+  Optimistic session/prompt intent remains in the engine and declares a
+  deterministic reconciliation path.
 - React views should render `viewModel` and call `actions`; controller or model
   helpers own sequencing and derived state.
 - Package exports should stay narrow. Do not export an internal helper only
@@ -3313,12 +3376,12 @@ composer document
   -> prompt content normalization
   -> optional asset upload / mention serialization
   -> runtime send or create-session command
-  -> pending local overlay
+  -> engine pending-intent projection
   -> runtime snapshot refresh and live events
   -> timeline projection
 ```
 
-Never fix send bugs only in the composer UI. Also inspect the pending overlay,
+Never fix send bugs only in the composer UI. Also inspect the pending intent,
 runtime command input, and timeline merge path.
 
 Host-generated context must enter the composer through a domain-specific,
@@ -3751,8 +3814,8 @@ pnpm --filter @tutti-os/desktop test -- src/renderer/src/features/workspace-file
 Quick checks:
 
 - Confirm the selected `agentSessionId` still exists in the runtime snapshot.
-- Check whether local deleted or locally created overlays are hiding or
-  replacing the runtime conversation.
+- Check whether engine pending activations, deletion state, or the transient
+  selected-conversation fallback is hiding or replacing the runtime conversation.
 - Inspect message loading state and `ensureSessionSynchronized` calls.
 - Check whether a React mounted ref or cleanup guard is dropping a successful
   async continuation.
@@ -3760,8 +3823,8 @@ Quick checks:
 Likely fix area:
 
 - selection fallback helper
-- conversation list store pending overlay
-- session view store loading/error state
+- engine pending-intent selectors
+- session detail transport/controller loading and error state
 - controller synchronization effect
 
 Validation:
@@ -3776,7 +3839,7 @@ Quick checks:
 
 - Confirm `AgentActivityRuntime.sendInput` or create-session command was called
   with the expected session ID and content blocks.
-- Confirm pending overlay messages are inserted and later reconciled.
+- Confirm the pending-intent prompt projection is inserted and later reconciled.
 - Confirm live events or message page reload contains a newer version.
 - Inspect timeline item merge and dedupe keys.
 - Confirm `message_update` payloads already include `turnId`,
