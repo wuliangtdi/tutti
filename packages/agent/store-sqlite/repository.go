@@ -16,7 +16,7 @@ import (
 // All methods are scoped by a host-defined workspace ID.
 type Repository interface {
 	ClearSessions(context.Context, string) (ClearSessionsResult, error)
-	DeleteSession(context.Context, string, string) (bool, error)
+	DeleteSessionWithCommit(context.Context, string, string) (DeleteSessionResult, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
@@ -63,6 +63,16 @@ type GoalProvenanceLedger interface {
 }
 
 type ClearSessionsResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
+	RemovedMessages   int
+	RemovedSessions   int
+	RemovedSessionIDs []string
+}
+
+type DeleteSessionResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
@@ -153,6 +163,8 @@ type DeleteSessionsBatchInput struct {
 }
 
 type DeleteSessionsBatchResult struct {
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
@@ -177,8 +189,8 @@ type SessionSectionsPage struct {
 type Session struct {
 	// CommitTransactionID is populated only by a successful mutating call and
 	// is not persisted as canonical session state.
-	CommitTransactionID    string
-	CommitDelta            TransactionDelta
+	CommitTransactionID    string           `json:"-"`
+	CommitDelta            TransactionDelta `json:"-"`
 	ID                     string
 	WorkspaceID            string
 	Kind                   string
@@ -229,8 +241,8 @@ type ActivityStateReport struct {
 }
 
 type ActivityStateReportResult struct {
-	TransactionID     string
-	CommitDelta       TransactionDelta
+	TransactionID     string           `json:"-"`
+	CommitDelta       TransactionDelta `json:"-"`
 	State             StateReportResult
 	Turn              Turn
 	TurnAccepted      bool
@@ -405,8 +417,8 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
-	TransactionID  string
-	CommitDelta    TransactionDelta
+	TransactionID  string           `json:"-"`
+	CommitDelta    TransactionDelta `json:"-"`
 	WorkspaceID    string
 	AgentSessionID string
 	TurnID         string
@@ -444,8 +456,8 @@ type SessionStateReport struct {
 }
 
 type StateReportResult struct {
-	TransactionID    string
-	CommitDelta      TransactionDelta
+	TransactionID    string           `json:"-"`
+	CommitDelta      TransactionDelta `json:"-"`
 	Accepted         bool
 	StateApplied     bool
 	LastEventUnixMS  int64
@@ -480,8 +492,8 @@ type MessageUpdate struct {
 }
 
 type MessageReportResult struct {
-	TransactionID    string
-	CommitDelta      TransactionDelta
+	TransactionID    string           `json:"-"`
+	CommitDelta      TransactionDelta `json:"-"`
 	AcceptedCount    int
 	LatestVersion    uint64
 	Messages         []Message

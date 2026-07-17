@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,11 @@ import (
 type durableMarkerParticipant struct{}
 
 func (durableMarkerParticipant) Participate(ctx context.Context, writer storesqlite.TransactionWriter, delta storesqlite.TransactionDelta) error {
-	_, err := writer.ExecContext(ctx, `INSERT INTO test_durable_outbox (transaction_id, delivered) VALUES (?, 0)`, delta.TransactionID)
+	payload, err := json.Marshal(delta)
+	if err != nil {
+		return err
+	}
+	_, err = writer.ExecContext(ctx, `INSERT INTO test_durable_outbox (transaction_id, payload_json, delivered) VALUES (?, ?, 0)`, delta.TransactionID, string(payload))
 	return err
 }
 
@@ -43,7 +48,7 @@ func TestDurableMarkerSurvivesObserverFailureAndCanReplay(t *testing.T) {
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE TABLE test_durable_outbox (transaction_id TEXT PRIMARY KEY, delivered INTEGER NOT NULL)`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE test_durable_outbox (transaction_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, delivered INTEGER NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,16 +58,26 @@ func TestDurableMarkerSurvivesObserverFailureAndCanReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	delta := agenthost.CanonicalDelta(result.CommitDelta)
 	observer := &replayObserver{fail: true}
-	agenthost.NotifyCommitted(context.Background(), observer, delta)
+	agenthost.NotifyCommitted(context.Background(), observer, agenthost.CanonicalDelta(result.CommitDelta))
 
 	var delivered int
-	if err := db.QueryRow(`SELECT delivered FROM test_durable_outbox WHERE transaction_id = ?`, result.TransactionID).Scan(&delivered); err != nil || delivered != 0 {
+	var payloadJSON string
+	if err := db.QueryRow(`SELECT payload_json, delivered FROM test_durable_outbox WHERE transaction_id = ?`, result.TransactionID).Scan(&payloadJSON, &delivered); err != nil || delivered != 0 {
 		t.Fatalf("durable marker after observer failure delivered=%d error=%v", delivered, err)
 	}
+	var replayed storesqlite.TransactionDelta
+	if err := json.Unmarshal([]byte(payloadJSON), &replayed); err != nil {
+		t.Fatalf("decode durable committed delta: %v", err)
+	}
+	if replayed.TransactionID != result.TransactionID || len(replayed.Mutations) != len(result.CommitDelta.Mutations) {
+		t.Fatalf("replayed delta=%#v, committed=%#v", replayed, result.CommitDelta)
+	}
+	if _, found, err := store.GetSession(context.Background(), "workspace-1", "session-1"); err != nil || !found {
+		t.Fatalf("canonical fact after observer failure found=%v error=%v", found, err)
+	}
 	observer.fail = false
-	agenthost.NotifyCommitted(context.Background(), observer, delta)
+	agenthost.NotifyCommitted(context.Background(), observer, agenthost.CanonicalDelta(replayed))
 	if observer.calls != 2 {
 		t.Fatalf("observer calls=%d, want failed delivery plus replay", observer.calls)
 	}

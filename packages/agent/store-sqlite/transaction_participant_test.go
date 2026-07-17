@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -63,6 +64,14 @@ func TestTransactionParticipantCommitsWithSessionTurnAndInteraction(t *testing.T
 		t.Fatalf("commit delta = %#v", result.CommitDelta)
 	}
 	assertParticipantMutationKinds(t, result.CommitDelta, MutationEntitySession, MutationEntityTurn, MutationEntityInteraction)
+	assertParticipantMutationEntityID(t, result.CommitDelta, MutationEntityInteraction, "turn-1\x00request-1")
+	encodedSession, err := json.Marshal(result.State.Session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedSession), "CommitTransactionID") || strings.Contains(string(encodedSession), "CommitDelta") || strings.Contains(string(encodedSession), result.TransactionID) {
+		t.Fatalf("transient commit metadata leaked into session JSON: %s", encodedSession)
+	}
 	var mutationCount int
 	if err := store.db.QueryRow(`SELECT mutation_count FROM test_transaction_markers WHERE transaction_id = ?`, result.TransactionID).Scan(&mutationCount); err != nil || mutationCount != 3 {
 		t.Fatalf("participant marker mutation_count=%d error=%v", mutationCount, err)
@@ -156,6 +165,7 @@ func TestRuntimeOperationCompletionParticipatesWithCanonicalAndOutboxFacts(t *te
 	}
 	assertParticipantMutationKinds(t, completion.CommitDelta,
 		MutationEntityRuntimeOperation, MutationEntityRuntimeEvent, MutationEntityInteraction)
+	assertParticipantMutationEntityID(t, completion.CommitDelta, MutationEntityInteraction, "turn-1\x00request-1")
 }
 
 func TestRuntimeOperationCompletionRollsBackWhenParticipantFails(t *testing.T) {
@@ -270,6 +280,66 @@ func TestSessionTitleUpdateRollsBackWhenParticipantFails(t *testing.T) {
 	}
 }
 
+func TestSessionDeleteCommitsDurableMarkerWithTombstone(t *testing.T) {
+	t.Parallel()
+	participant := &testTransactionParticipant{}
+	store := openParticipantTestStore(t, participant)
+	if _, err := store.ReportSessionState(context.Background(), SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
+		Provider: "codex", OccurredAtUnixMS: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := store.DeleteSessionWithCommit(context.Background(), "ws-1", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemovedSessions != 1 || result.TransactionID == "" {
+		t.Fatalf("delete result=%#v", result)
+	}
+	assertParticipantMutationEntityID(t, result.CommitDelta, MutationEntitySession, "session-1")
+	if len(result.CommitDelta.Mutations) != 1 || result.CommitDelta.Mutations[0].Operation != "delete" {
+		t.Fatalf("delete delta=%#v", result.CommitDelta)
+	}
+}
+
+func TestSessionDeleteAndInitializationRollbackPreserveCanonicalFactWhenParticipantFails(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		name string
+		run  func(*Store) error
+	}{
+		{name: "user deletion", run: func(store *Store) error {
+			_, err := store.DeleteSessionWithCommit(context.Background(), "ws-1", "session-1")
+			return err
+		}},
+		{name: "initialization compensation", run: func(store *Store) error {
+			_, err := store.RollbackRuntimeSessionInitialization(context.Background(), "ws-1", "session-1")
+			return err
+		}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			participant := &testTransactionParticipant{}
+			store := openParticipantTestStore(t, participant)
+			if _, err := store.ReportSessionState(context.Background(), SessionStateReport{
+				WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "WORKSPACE_AGENT_SESSION_ORIGIN_RUNTIME",
+				Provider: "codex", OccurredAtUnixMS: 1,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			participant.fail = true
+
+			if err := testCase.run(store); err == nil || !strings.Contains(err.Error(), "participant failure") {
+				t.Fatalf("mutation error=%v", err)
+			}
+			if _, found, err := store.GetSession(context.Background(), "ws-1", "session-1"); err != nil || !found {
+				t.Fatalf("session after participant rollback found=%v error=%v", found, err)
+			}
+		})
+	}
+}
+
 func assertParticipantMutationKinds(t *testing.T, delta TransactionDelta, want ...string) {
 	t.Helper()
 	got := make([]string, 0, len(delta.Mutations))
@@ -284,4 +354,17 @@ func assertParticipantMutationKinds(t *testing.T, delta TransactionDelta, want .
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("mutation kinds=%v want=%v", got, want)
 	}
+}
+
+func assertParticipantMutationEntityID(t *testing.T, delta TransactionDelta, entityKind, want string) {
+	t.Helper()
+	for _, mutation := range delta.Mutations {
+		if mutation.EntityKind == entityKind {
+			if mutation.EntityID != want {
+				t.Fatalf("%s mutation entity id=%q, want %q", entityKind, mutation.EntityID, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("%s mutation not found in %#v", entityKind, delta.Mutations)
 }

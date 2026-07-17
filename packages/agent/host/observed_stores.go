@@ -151,7 +151,11 @@ func (s *observedGoalStateStore) CompleteGoalControlOperation(ctx context.Contex
 func (s *observedGoalStateStore) ReleaseGoalControlOperation(ctx context.Context, input storesqlite.ReleaseGoalControlOperationInput) (storesqlite.GoalControlOperation, bool, error) {
 	op, changed, err := s.GoalStateStore.ReleaseGoalControlOperation(ctx, input)
 	if err == nil && changed {
-		s.host.notifyCommitted(ctx, goalOperationDelta(GoalOperationReleased, op, storesqlite.SessionGoalState{}, nil))
+		stage := GoalOperationReleased
+		if input.Fail {
+			stage = GoalOperationFailed
+		}
+		s.host.notifyCommitted(ctx, goalOperationDelta(stage, op, storesqlite.SessionGoalState{}, nil))
 	}
 	return op, changed, err
 }
@@ -175,9 +179,24 @@ func (s *observedGoalStateStore) ReconcileSessionGoalObservation(ctx context.Con
 func (s *observedGoalStateStore) EnsureOrWakeGoalRepairOperation(ctx context.Context, input storesqlite.EnsureGoalRepairOperationInput) (storesqlite.GoalControlOperation, storesqlite.SessionGoalState, bool, error) {
 	op, state, changed, err := s.GoalStateStore.EnsureOrWakeGoalRepairOperation(ctx, input)
 	if err == nil && (op.CommitTransactionID != "" || state.CommitTransactionID != "") {
-		s.host.notifyCommitted(ctx, goalOperationDelta(GoalOperationRepairPrepared, op, state, nil))
+		stage := GoalOperationRepairPrepared
+		if goalCommitContainsOperation(op, state, "terminal") {
+			stage = GoalOperationTerminal
+		}
+		s.host.notifyCommitted(ctx, goalOperationDelta(stage, op, state, nil))
 	}
 	return op, state, changed, err
+}
+
+func goalCommitContainsOperation(op storesqlite.GoalControlOperation, state storesqlite.SessionGoalState, operation string) bool {
+	for _, delta := range []storesqlite.TransactionDelta{op.CommitDelta, state.CommitDelta} {
+		for _, mutation := range delta.Mutations {
+			if mutation.Operation == operation {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *observedGoalStateStore) MarkGoalRevisionTerminalIncident(ctx context.Context, input storesqlite.GoalTerminalIncidentInput) (storesqlite.SessionGoalState, error) {

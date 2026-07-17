@@ -544,14 +544,14 @@ func (p *ActivityProjection) DeleteSession(ctx context.Context, workspaceID stri
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
-	removed, err := p.repo.DeleteSession(ctx, workspaceID, agentSessionID)
+	result, err := p.repo.DeleteSessionWithCommit(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return false, err
 	}
-	if removed {
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+	if result.RemovedSessions > 0 {
+		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
 	}
-	return removed, nil
+	return result.RemovedSessions > 0, nil
 }
 
 func (p *ActivityProjection) RollbackRuntimeSessionInitialization(ctx context.Context, workspaceID string, agentSessionID string) (bool, error) {
@@ -603,12 +603,8 @@ func (p *ActivityProjection) DeleteSessionsBatch(
 		)
 		return agentactivitybiz.DeleteSessionsBatchResult{}, err
 	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		agentSessionID = strings.TrimSpace(agentSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		p.publishActivityUpdated(ctx, input.WorkspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(input.WorkspaceID, agentSessionID))
+	if result.RemovedSessions > 0 {
+		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
 	}
 	return result, nil
 }
@@ -622,12 +618,8 @@ func (p *ActivityProjection) ClearSessions(ctx context.Context, workspaceID stri
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
-	for _, agentSessionID := range result.RemovedSessionIDs {
-		agentSessionID = strings.TrimSpace(agentSessionID)
-		if agentSessionID == "" {
-			continue
-		}
-		p.publishActivityUpdated(ctx, workspaceID, agentSessionID, "session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
+	if result.RemovedSessions > 0 {
+		agenthost.NotifyCommitted(ctx, p, agenthost.CanonicalDelta(result.CommitDelta))
 	}
 	return ClearSessionsResult{
 		RemovedMessages:   result.RemovedMessages,

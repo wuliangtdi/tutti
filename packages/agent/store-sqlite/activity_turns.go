@@ -477,7 +477,7 @@ WHERE status = ?
 	for _, interaction := range pendingInteractions {
 		mutations = append(mutations, transactionMutation(
 			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
-			interaction.TurnID+"\x00"+interaction.RequestID, "supersede", now,
+			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "supersede", now,
 		))
 	}
 	for key, message := range notifiedSessions {

@@ -4513,6 +4513,14 @@ func TestActivityProjectionPreservesMixedMessageAuditOrder(t *testing.T) {
 func TestActivityProjectionPublishesDeletedEventsForClearedSessions(t *testing.T) {
 	repo := &activityProjectionRepoStub{
 		clearResult: agentactivitybiz.ClearSessionsResult{
+			TransactionID: "tx-clear",
+			CommitDelta: agentactivitybiz.TransactionDelta{
+				TransactionID: "tx-clear",
+				Mutations: []agentactivitybiz.TransactionMutation{
+					{WorkspaceID: "ws-1", AgentSessionID: "session-1", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-1", Operation: "delete"},
+					{WorkspaceID: "ws-1", AgentSessionID: "session-2", EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-2", Operation: "delete"},
+				},
+			},
 			RemovedMessages:   5,
 			RemovedSessions:   2,
 			RemovedSessionIDs: []string{"session-1", "session-2"},
@@ -7656,8 +7664,8 @@ func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (age
 	return r.clearResult, nil
 }
 
-func (*activityProjectionRepoStub) DeleteSession(context.Context, string, string) (bool, error) {
-	return false, nil
+func (*activityProjectionRepoStub) DeleteSessionWithCommit(context.Context, string, string) (agentactivitybiz.DeleteSessionResult, error) {
+	return agentactivitybiz.DeleteSessionResult{}, nil
 }
 
 func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {

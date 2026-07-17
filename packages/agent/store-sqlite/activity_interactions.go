@@ -37,7 +37,7 @@ func (s *Store) UpsertInteraction(ctx context.Context, upsert InteractionUpsert)
 	if result == InteractionTransitionApplied {
 		mutations = append(mutations, transactionMutation(
 			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
-			interaction.TurnID+"\x00"+interaction.RequestID, "upsert", interaction.UpdatedAtUnixMS,
+			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "upsert", interaction.UpdatedAtUnixMS,
 		))
 	}
 	if _, err := s.commitTransaction(ctx, tx, upsert.WorkspaceID, mutations); err != nil {

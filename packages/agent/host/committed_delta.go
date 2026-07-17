@@ -51,6 +51,7 @@ const (
 	GoalOperationAcknowledged   GoalOperationCommitStage = "acknowledged"
 	GoalOperationCompleted      GoalOperationCommitStage = "completed"
 	GoalOperationReleased       GoalOperationCommitStage = "released"
+	GoalOperationFailed         GoalOperationCommitStage = "failed"
 	GoalOperationEvidence       GoalOperationCommitStage = "evidence"
 	GoalOperationReconciled     GoalOperationCommitStage = "reconciled"
 	GoalOperationRepairPrepared GoalOperationCommitStage = "repair_prepared"

@@ -35,8 +35,8 @@ var (
 type RuntimeOperation struct {
 	// CommitTransactionID is populated only on a successful mutation return;
 	// it is not persisted as operation state.
-	CommitTransactionID string
-	CommitDelta         TransactionDelta
+	CommitTransactionID string           `json:"-"`
+	CommitDelta         TransactionDelta `json:"-"`
 	OperationID         string
 	WorkspaceID         string
 	AgentSessionID      string
@@ -149,8 +149,8 @@ type RuntimeOperationEvent struct {
 }
 
 type RuntimeOperationCompletion struct {
-	TransactionID string
-	CommitDelta   TransactionDelta
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
 	Operation     RuntimeOperation
 	Event         RuntimeOperationEvent
 }

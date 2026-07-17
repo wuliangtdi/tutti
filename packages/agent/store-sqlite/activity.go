@@ -159,7 +159,11 @@ func activityStateMutations(result ActivityStateReportResult) []TransactionMutat
 		mutations = append(mutations, transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS))
 	}
 	if result.InteractionResult == InteractionTransitionApplied {
-		mutations = append(mutations, transactionMutation(result.Interaction.WorkspaceID, result.Interaction.AgentSessionID, MutationEntityInteraction, result.Interaction.RequestID, "upsert", result.Interaction.UpdatedAtUnixMS))
+		mutations = append(mutations, transactionMutation(
+			result.Interaction.WorkspaceID, result.Interaction.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(result.Interaction.TurnID, result.Interaction.RequestID),
+			"upsert", result.Interaction.UpdatedAtUnixMS,
+		))
 	}
 	return mutations
 }

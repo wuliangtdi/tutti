@@ -32,8 +32,8 @@ var (
 type SessionGoalState struct {
 	// CommitTransactionID is populated only on a successful mutation return;
 	// it is not persisted as goal state.
-	CommitTransactionID string
-	CommitDelta         TransactionDelta
+	CommitTransactionID string           `json:"-"`
+	CommitDelta         TransactionDelta `json:"-"`
 	WorkspaceID         string
 	AgentSessionID      string
 	Desired             map[string]any
@@ -52,8 +52,8 @@ type SessionGoalState struct {
 type GoalControlOperation struct {
 	// CommitTransactionID is populated only on a successful mutation return;
 	// it is not persisted as operation state.
-	CommitTransactionID     string
-	CommitDelta             TransactionDelta
+	CommitTransactionID     string           `json:"-"`
+	CommitDelta             TransactionDelta `json:"-"`
 	OperationID             string
 	WorkspaceID             string
 	AgentSessionID          string

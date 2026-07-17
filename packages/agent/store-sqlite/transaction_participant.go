@@ -8,15 +8,16 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	activityreplication "github.com/tutti-os/tutti/packages/agent/activity-replication"
 )
 
 const (
-	MutationEntitySession          = "session"
-	MutationEntityTurn             = "turn"
-	MutationEntityInteraction      = "interaction"
-	MutationEntityMessage          = "message"
-	MutationEntityRuntimeOperation = "runtime_operation"
-	MutationEntityRuntimeEvent     = "runtime_operation_event"
+	MutationEntitySession          = string(activityreplication.EntitySession)
+	MutationEntityTurn             = string(activityreplication.EntityTurn)
+	MutationEntityInteraction      = string(activityreplication.EntityInteraction)
+	MutationEntityMessage          = string(activityreplication.EntityMessage)
+	MutationEntityRuntimeOperation = string(activityreplication.EntityRuntimeOperation)
+	MutationEntityRuntimeEvent     = string(activityreplication.EntityRuntimeOperationEvent)
 	MutationEntityGoalState        = "goal_state"
 	MutationEntityGoalOperation    = "goal_operation"
 	MutationEntityGoalInbox        = "goal_reconcile_inbox"
@@ -36,19 +37,19 @@ type TransactionParticipant interface {
 }
 
 type TransactionMutation struct {
-	MutationID     string
-	WorkspaceID    string
-	AgentSessionID string
-	EntityKind     string
-	EntityID       string
-	Operation      string
-	Version        int64
+	MutationID     string `json:"mutationId"`
+	WorkspaceID    string `json:"workspaceId"`
+	AgentSessionID string `json:"agentSessionId"`
+	EntityKind     string `json:"entityKind"`
+	EntityID       string `json:"entityId"`
+	Operation      string `json:"operation"`
+	Version        int64  `json:"version"`
 }
 
 type TransactionDelta struct {
-	TransactionID string
-	WorkspaceID   string
-	Mutations     []TransactionMutation
+	TransactionID string                `json:"transactionId"`
+	WorkspaceID   string                `json:"workspaceId"`
+	Mutations     []TransactionMutation `json:"mutations"`
 }
 
 func transactionMutation(workspaceID, agentSessionID, entityKind, entityID, operation string, version int64) TransactionMutation {
@@ -59,7 +60,22 @@ func transactionMutation(workspaceID, agentSessionID, entityKind, entityID, oper
 	}
 }
 
+func interactionMutationEntityID(turnID, requestID string) string {
+	return strings.TrimSpace(turnID) + "\x00" + strings.TrimSpace(requestID)
+}
+
 func (s *Store) commitTransaction(ctx context.Context, tx *sql.Tx, workspaceID string, mutations []TransactionMutation) (TransactionDelta, error) {
+	delta, err := s.participateTransaction(ctx, tx, workspaceID, mutations)
+	if err != nil {
+		return TransactionDelta{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return TransactionDelta{}, err
+	}
+	return delta, nil
+}
+
+func (s *Store) participateTransaction(ctx context.Context, tx *sql.Tx, workspaceID string, mutations []TransactionMutation) (TransactionDelta, error) {
 	delta := TransactionDelta{WorkspaceID: strings.TrimSpace(workspaceID)}
 	for _, mutation := range mutations {
 		if mutation.EntityKind == "" || mutation.EntityID == "" {
@@ -80,9 +96,6 @@ func (s *Store) commitTransaction(ctx context.Context, tx *sql.Tx, workspaceID s
 				return TransactionDelta{}, fmt.Errorf("participate in canonical transaction: %w", err)
 			}
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return TransactionDelta{}, err
 	}
 	return delta, nil
 }

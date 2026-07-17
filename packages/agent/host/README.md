@@ -53,6 +53,10 @@ Re-derivable adapter projections are deliberately outside the participant
 contract. Adapters repair those while consuming canonical state rather than
 coupling their schema to every Host transaction.
 
+Canonical deletion tombstones are not re-derivable after hard deletion, so
+session delete, batch clear, and failed-create compensation also participate
+before commit.
+
 The conformance harness depends only on the public Host contract. An
 implementation supplies a `conformance.Driver`, seeds its own canonical and
 runtime fakes in `Reset`, and runs every value returned by

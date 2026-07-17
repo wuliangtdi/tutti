@@ -45,6 +45,11 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 	}
 	if delta.ActivityState == nil && delta.SessionMessages == nil && delta.RuntimeOperation == nil && delta.GoalOperation == nil {
 		for _, invalidated := range delta.ViewsInvalidated {
+			if canonicalSessionDeleted(delta, invalidated) {
+				p.publishActivityUpdated(ctx, invalidated.WorkspaceID, invalidated.AgentSessionID,
+					"session_deleted", activitySessionDeletedEventPayload(invalidated.WorkspaceID, invalidated.AgentSessionID))
+				continue
+			}
 			p.publishActivityUpdated(ctx, invalidated.WorkspaceID, invalidated.AgentSessionID,
 				"session_reconcile_required", activitySessionUpdateEventPayload(
 					invalidated.WorkspaceID, invalidated.AgentSessionID, committedSessionVersion(delta, invalidated),
@@ -63,6 +68,16 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 			activityTurnUpdateEventPayload(mutation.WorkspaceID, mutation.AgentSessionID, turn, time.Now().UnixMilli()))
 	}
 	return nil
+}
+
+func canonicalSessionDeleted(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) bool {
+	for _, mutation := range delta.ProjectionDirty {
+		if mutation.WorkspaceID == invalidated.WorkspaceID && mutation.AgentSessionID == invalidated.AgentSessionID &&
+			mutation.EntityKind == storesqlite.MutationEntitySession && mutation.Operation == "delete" {
+			return true
+		}
+	}
+	return false
 }
 
 func committedSessionVersion(delta agenthost.CommittedDelta, invalidated agenthost.CanonicalViewInvalidated) int64 {

@@ -60,10 +60,10 @@ checked against the same behavior baseline.
 
 `store-sqlite` owns the transaction implementation. Its caller-owned
 `TransactionParticipant` seam lets an adapter append a durable outbox marker
-to the same transaction as runtime/goal operation intent and canonical facts
-without exposing `*sql.Tx` to Host domain code. The seam is reserved for facts
-that must commit or roll back together; re-derivable projection gates are
-repaired by consumers instead.
+to the same transaction as runtime/goal operation intent, canonical facts, and
+non-re-derivable deletion tombstones without exposing `*sql.Tx` to Host domain
+code. The seam is reserved for facts that must commit or roll back together;
+re-derivable projection gates are repaired by consumers instead.
 
 After commit, Host emits typed `CommittedDelta` values through one
 `CommitObserver`. Activity state, messages, root settlement, runtime and goal

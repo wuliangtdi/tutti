@@ -378,7 +378,10 @@ func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op Run
 	}
 	switch event.Kind {
 	case RuntimeOperationEventInteractiveCompleted:
-		mutations = append(mutations, transactionMutation(op.WorkspaceID, op.AgentSessionID, MutationEntityInteraction, op.RequestID, "upsert", op.UpdatedAtUnixMS))
+		mutations = append(mutations, transactionMutation(
+			op.WorkspaceID, op.AgentSessionID, MutationEntityInteraction,
+			interactionMutationEntityID(op.TurnID, op.RequestID), "upsert", op.UpdatedAtUnixMS,
+		))
 	case RuntimeOperationEventTurnCanceled:
 		if targets, ok := event.Payload["targets"].([]any); ok {
 			for _, raw := range targets {
@@ -434,7 +437,7 @@ ORDER BY request_id
 		}
 		mutations = append(mutations, transactionMutation(
 			workspaceID, agentSessionID, MutationEntityInteraction,
-			turnID+"\x00"+requestID, "supersede", updatedAt,
+			interactionMutationEntityID(turnID, requestID), "supersede", updatedAt,
 		))
 	}
 	if err := rows.Err(); err != nil {
