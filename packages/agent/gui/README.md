@@ -230,7 +230,11 @@ handle install/login/refresh requests through `onAgentAvailabilityAction`.
 Hosts that launch handoffs across session-runtime boundaries may also pass
 `handoffAgentDirectory`. Its ready entries populate only the active-conversation
 Handoff menu; the conversation rail, session queries, and empty composer remain
-owned by `agentDirectory`. When omitted, Handoff uses `agentDirectory`.
+owned by `agentDirectory`. When omitted, Handoff uses `agentDirectory`. Handoff
+rows keep the Agent name as the primary identity and render ownership separately:
+entries without owner presentation are labeled as the current user's Agent,
+while entries with `owner.name` or `owner.avatarUrl` are labeled as shared and
+show the available owner identity.
 
 The old public `providerTargets`, `providerRailMode`, provider-target renderers,
 and `defaultProviderTargetId` contract is intentionally unsupported. Workbench

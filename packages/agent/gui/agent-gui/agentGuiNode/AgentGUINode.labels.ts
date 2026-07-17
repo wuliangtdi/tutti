@@ -704,7 +704,9 @@ export function useAgentGUIViewLabels(input: {
       handoffConversationTooltip: t(
         "agentHost.agentGui.handoffConversationTooltip"
       ),
-      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu")
+      handoffConversationMenu: t("agentHost.agentGui.handoffConversationMenu"),
+      handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
+      handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
     }),
     [
       displayProviderLabel,

@@ -68,9 +68,7 @@ import type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSideba
 import { WorkspaceAppExternalBridge } from "./WorkspaceAppExternalBridge";
 import {
   createStandaloneAgentDockPreviewCache,
-  createStandaloneAgentHost,
-  readStandaloneAgentWindowFrame,
-  readStandaloneAgentWindowMaximizedState
+  createStandaloneAgentHost
 } from "./standaloneAgentWindowHost.ts";
 import { useWorkspaceSettingsService } from "./useWorkspaceSettingsService";
 import type { WorkspaceWorkbenchCapabilitySettingsTarget } from "../services/workspaceWorkbenchHostService.interface";
@@ -83,6 +81,7 @@ import {
 import { StandaloneAgentWindowContentReady } from "./StandaloneAgentWindowContentReady.tsx";
 import { showWorkspaceFileMissingToast } from "../services/workspaceFilesLaunchFeedback.ts";
 import { Toast } from "@renderer/lib/toast";
+import { useStandaloneAgentWindowLayout } from "./useStandaloneAgentWindowLayout.ts";
 import { createStandaloneAgentWorkspaceAppSurfacePresenter } from "../services/standaloneAgentWorkspaceAppSurfacePresenter.ts";
 import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "../services/standaloneAgentWorkspaceFilePreviewPresenter.ts";
 
@@ -116,6 +115,7 @@ export interface StandaloneAgentWindowProps {
     DesktopHostWindowApi,
     | "approveClose"
     | "minimize"
+    | "onLayout"
     | "openAgentWindow"
     | "resizeContentWidth"
     | "toggleMaximize"
@@ -290,10 +290,8 @@ export function StandaloneAgentWindow({
       null
     );
   }, [agents, launchAgentTargetId, launchProvider]);
-  const [frame, setFrame] = useState(readStandaloneAgentWindowFrame);
-  const [isWindowMaximized, setIsWindowMaximized] = useState(
-    readStandaloneAgentWindowMaximizedState
-  );
+  const { frame, isWindowMaximized, resizeContentWidth } =
+    useStandaloneAgentWindowLayout(hostWindowApi);
   const [nodeState, setNodeState] = useState<DesktopAgentGUIWorkbenchState>(
     () => ({
       agentTargetId: defaultAgentTargetId,
@@ -516,37 +514,12 @@ export function StandaloneAgentWindow({
   );
 
   useEffect(() => {
-    const handleResize = () => {
-      setFrame(readStandaloneAgentWindowFrame());
-    };
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
-
-  useEffect(() => {
-    // The main process pushes maximize/fullscreen transitions through the host
-    // window layout event; keep the traffic-light icon in sync with it.
-    const handleLayout = (event: Event) => {
-      const detail = (event as CustomEvent<{ maximized?: boolean }>).detail;
-      setIsWindowMaximized(detail?.maximized === true);
-    };
-    window.addEventListener("tutti-host-window-layout", handleLayout);
-    return () => {
-      window.removeEventListener("tutti-host-window-layout", handleLayout);
-    };
-  }, []);
-
-  useEffect(() => {
     void agentsService.refresh().catch(() => undefined);
   }, [agentsService]);
   const handleConversationRailToggle = useCallback(
     (collapsed: boolean) => {
       if (!collapsed && frame.width < 640) {
-        void hostWindowApi.resizeContentWidth({
-          width: AGENT_GUI_EXPANDED_TARGET_WIDTH_PX
-        });
+        void resizeContentWidth(AGENT_GUI_EXPANDED_TARGET_WIDTH_PX);
       }
       setNodeState((current) => ({
         ...current,
@@ -564,7 +537,7 @@ export function StandaloneAgentWindow({
         )
       );
     },
-    [frame.width, hostWindowApi, instanceId]
+    [frame.width, instanceId, resizeContentWidth]
   );
   const handleCreateConversation = useCallback(() => {
     window.dispatchEvent(
@@ -595,9 +568,8 @@ export function StandaloneAgentWindow({
     workspaceId
   });
   const resizeStandaloneAgentWindowContentWidth = useCallback(
-    (width: number, animate = false) =>
-      hostWindowApi.resizeContentWidth({ animate, width }),
-    [hostWindowApi]
+    (width: number, animate = false) => resizeContentWidth(width, animate),
+    [resizeContentWidth]
   );
   const handleCapabilitySettingsRequest = useCallback(
     (target: WorkspaceWorkbenchCapabilitySettingsTarget) => {

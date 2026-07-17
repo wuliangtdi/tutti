@@ -58,6 +58,21 @@ hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
 the legacy `tuttid` service, the extracted Host, and downstream adapters can be
 checked against the same behavior baseline.
 
+`store-sqlite` owns the transaction implementation. Its caller-owned
+`TransactionParticipant` seam lets an adapter append a durable outbox marker
+to the same transaction as runtime/goal operation intent, canonical facts, and
+non-re-derivable deletion tombstones without exposing `*sql.Tx` to Host domain
+code. The seam is reserved for facts that must commit or roll back together;
+re-derivable projection gates are repaired by consumers instead.
+
+After commit, Host emits typed `CommittedDelta` values through one
+`CommitObserver`. Activity state, messages, root settlement, runtime and goal
+operation milestones, projection-dirty identities, and canonical view
+invalidations all use that path. Observer failure cannot roll back an already
+committed command. Reliable delivery therefore depends on the durable marker,
+while event-stream publication and cache invalidation remain post-commit wake
+hints.
+
 The module does not own transport, authorization, room or device identity,
 process or VM implementations, HTTP/OpenAPI shapes, Electron integration, or
 control-plane DTOs. `tuttid` remains the production implementation until the

@@ -490,7 +490,12 @@ while offering both runtimes as launch targets. Omitting the handoff directory
 uses the runtime directory, preserving the single-runtime host contract. The
 handoff catalog must not change rail contents, session queries, or empty-home
 provider selection, and it must not synthesize a provider catalog or infer
-runnable agents from provider metadata.
+runnable agents from provider metadata. Handoff row presentation keeps the
+directory-owned Agent name unchanged and renders ownership as separate metadata:
+targets without owner presentation are current-user Agents, while targets with
+`owner.name` or `owner.avatarUrl` are shared Agents and expose the available
+owner identity. Duplicate Agent names must therefore remain distinguishable
+without mutating launch identity or display names.
 When provider selection happens from the empty-home composer or title control
 while the rail is already scoped to a provider target in multi-provider scope,
 it must update the rail conversation filter to the matching agent target so the
@@ -842,19 +847,20 @@ also reserved by layout and does not change the native window bounds. Closing
 the panel restores the captured baseline width.
 Opening must be renderer-first: update the active panel immediately and defer
 the host-window resize request until the next animation frame. Do not await
-native IPC before showing the panel. Commit the sidebar's final layout width in
-one step; do not animate `width`, `flex-basis`, or another layout property,
-because that repeatedly reflows both the panel and the adjacent conversation.
+native IPC before showing the panel. The desktop host may coordinate the native
+window and sidebar width transition so opening and closing remain smooth, but
+intermediate native resize frames are host chrome and must not enter the shared
+AgentGUI surface context. CSS follows the live window bounds; React commits the
+final frame from the host's resize-completion event so the conversation subtree
+does not rerender on every native resize tick.
 When a tool switch resolves to the current native content width, the host-window
 resize request must be skipped; a previously clamped native width must also be
 treated as settled for the same target so tool switching does not cause a
 redundant resize pulse.
-The sidebar may animate only its fixed-size inner surface with a short
-right-to-left `transform` and opacity entrance. Files, Browser, Apps, and other expensive first-use
-bodies mount after that short compositor entrance, then remain mounted while
-hidden for instant later switches. Native bounds changes are applied without a
-parallel window animation. Respect `prefers-reduced-motion` by removing the
-inner entrance and the content-mount delay.
+Files, Browser, Apps, and other expensive first-use bodies mount after the
+sidebar entrance, then remain mounted while hidden for instant later switches.
+Respect `prefers-reduced-motion` by removing the native/sidebar transition,
+inner entrance, and content-mount delay.
 Lazy mounting also applies to module loading. The standalone shell may derive a
 small reminder count from the activity engine, but it must not statically import
 BrowserNode, TerminalNode, File Manager, App Center, or the full Message Center

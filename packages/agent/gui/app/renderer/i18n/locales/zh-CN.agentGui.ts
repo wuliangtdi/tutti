@@ -386,6 +386,8 @@ export const zhCNAgentGui = {
   handoffConversation: "Handoff",
   handoffConversationTooltip: "交接给其他 Agent",
   handoffConversationMenu: "选择要交接的 Agent",
+  handoffTargetSelf: "我的 Agent",
+  handoffTargetShared: "共享 Agent",
   startConversation: "开始会话",
   selectConversation: "选择一个会话",
   loadingConversations: "正在加载会话...",

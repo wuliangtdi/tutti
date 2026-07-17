@@ -234,6 +234,8 @@ export interface AgentComposerProps {
     handoffConversation: string;
     handoffConversationTooltip: string;
     handoffConversationMenu: string;
+    handoffTargetSelf: string;
+    handoffTargetShared: string;
     providerSwitchLabel: string;
     projectLocked: string;
     projectMissingDescription: string;

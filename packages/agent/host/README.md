@@ -39,8 +39,28 @@ selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.
 Adapter-only create fields such as transcript source paths and materialized
 skill bundles intentionally remain outside the Host contract.
 
+Canonical commits have two distinct extension points. A store-sqlite
+`TransactionParticipant` may append a caller-owned durable marker inside the
+same transaction as runtime/goal intent and canonical facts; it receives a
+narrow transaction writer rather than `*sql.Tx`. After commit, Host emits a
+typed `CommittedDelta` to `CommitObserver` for view invalidation, event-stream
+wakeups, analytics, and worker scheduling. Observer failure never rolls back or
+changes the command result. Work that must survive observer failure must first
+be represented by the transaction participant's durable marker; legacy
+workspace-only change notifiers are optional latency optimizations.
+
+Re-derivable adapter projections are deliberately outside the participant
+contract. Adapters repair those while consuming canonical state rather than
+coupling their schema to every Host transaction.
+
+Canonical deletion tombstones are not re-derivable after hard deletion, so
+session delete, batch clear, and failed-create compensation also participate
+before commit.
+
 The conformance harness depends only on the public Host contract. An
 implementation supplies a `conformance.Driver`, seeds its own canonical and
 runtime fakes in `Reset`, and runs every value returned by
 `conformance.Scenarios`. This lets `tuttid`, the extracted Host, and downstream
 adapters share one behavior baseline without importing one another.
+Coordinator, goal, and commit-observer scenario groups extend the same driver
+with recovery ordering and post-commit failure semantics.

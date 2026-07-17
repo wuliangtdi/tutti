@@ -95,6 +95,26 @@ func TestHostGoalConformance(t *testing.T) {
 	}
 }
 
+func TestHostCommitObserverConformance(t *testing.T) {
+	for _, directHost := range []bool{false, true} {
+		name := "legacy_delegate"
+		if directHost {
+			name = "direct_host"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, scenario := range hostconformance.CommitObserverScenarios() {
+				scenario := scenario
+				t.Run(scenario.Name, func(t *testing.T) {
+					driver := &legacyHostConformanceDriver{t: t, directHost: directHost}
+					if err := hostconformance.Run(context.Background(), driver, scenario); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestHostCancelAcceptanceDoesNotImplyCanonicalSettlement(t *testing.T) {
 	driver := &legacyHostConformanceDriver{t: t, directHost: true}
 	fixture := hostconformance.Fixture{
@@ -170,17 +190,18 @@ func TestHostFindTurnByClientSubmitIDUsesPublicCanonicalPort(t *testing.T) {
 }
 
 type legacyHostConformanceDriver struct {
-	t             *testing.T
-	service       *Service
-	runtime       *fakeRuntime
-	sessions      *fakeSessionReader
-	turns         *legacyHostConformanceTurnStore
-	operations    *runtimeOperationMemoryStore
-	operationPort *conformanceRuntimeOperationStore
-	goalStore     *conformanceGoalStateStore
-	goalInbox     *conformanceGoalInboxStore
-	recoverySteps *[]string
-	directHost    bool
+	t              *testing.T
+	service        *Service
+	runtime        *fakeRuntime
+	sessions       *fakeSessionReader
+	turns          *legacyHostConformanceTurnStore
+	operations     *runtimeOperationMemoryStore
+	operationPort  *conformanceRuntimeOperationStore
+	goalStore      *conformanceGoalStateStore
+	goalInbox      *conformanceGoalInboxStore
+	commitObserver *conformanceCommitObserver
+	recoverySteps  *[]string
+	directHost     bool
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
@@ -196,6 +217,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.recoverySteps = &steps
 	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
 	d.service = newTestService(d.runtime)
+	d.commitObserver = &conformanceCommitObserver{fail: fixture.FailCommitObserver}
+	d.service.CommitObserver = d.commitObserver
 	d.service.SessionReader = d.sessions
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{sessions: d.sessions}
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
@@ -584,6 +607,15 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		GoalControlCalls: len(d.runtime.goalControlCalls), GoalReconcileCalls: len(d.runtime.goalReconcileCalls),
 		RecoverySteps: append([]string(nil), (*d.recoverySteps)...),
 	}
+	for _, delta := range d.commitObserver.snapshot() {
+		if delta.RuntimeOperation != nil {
+			metrics.RuntimeOperationCommits++
+		}
+		if delta.GoalOperation != nil {
+			metrics.GoalOperationCommits++
+		}
+		metrics.RootTurnSettlements += len(delta.RootTurnsSettled)
+	}
 	if len(d.runtime.cancelCalls) > 0 {
 		metrics.LastCancelTargets = append([]RuntimeCancelTarget(nil), d.runtime.cancelCalls[len(d.runtime.cancelCalls)-1].Targets...)
 	}
@@ -599,6 +631,31 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		metrics.LastResumeRecreate = d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].RecreateIfMissing
 	}
 	return metrics
+}
+
+type conformanceCommitObserver struct {
+	mu     sync.Mutex
+	deltas []agenthost.CommittedDelta
+	fail   bool
+}
+
+func (o *conformanceCommitObserver) ObserveCommitted(_ context.Context, delta agenthost.CommittedDelta) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.deltas = append(o.deltas, delta)
+	if o.fail {
+		return errors.New("conformance commit observer failure")
+	}
+	return nil
+}
+
+func (o *conformanceCommitObserver) snapshot() []agenthost.CommittedDelta {
+	if o == nil {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]agenthost.CommittedDelta(nil), o.deltas...)
 }
 
 func (d *legacyHostConformanceDriver) Recover(ctx context.Context) error {

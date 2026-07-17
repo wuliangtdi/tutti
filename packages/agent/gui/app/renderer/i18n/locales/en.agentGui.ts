@@ -419,6 +419,8 @@ export const enAgentGui = {
   handoffConversation: "Handoff",
   handoffConversationTooltip: "Hand off to another agent",
   handoffConversationMenu: "Choose an agent for handoff",
+  handoffTargetSelf: "My Agent",
+  handoffTargetShared: "Shared Agent",
   startConversation: "Start session",
   selectConversation: "Select a session",
   loadingConversations: "Loading sessions...",

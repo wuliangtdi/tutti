@@ -283,7 +283,7 @@ export type AgentHostUserProjectsApi = AgentHostRecord & {
   list: () => AgentHostAsyncResult<{
     projects: AgentHostUserProject[];
   }>;
-  move: (input: {
+  move?: (input: {
     beforeProjectId: string | null;
     projectId: string;
   }) => AgentHostAsyncResult<void>;

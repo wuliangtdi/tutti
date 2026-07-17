@@ -354,6 +354,8 @@ export interface AgentGUIViewLabels {
   handoffConversation: string;
   handoffConversationTooltip: string;
   handoffConversationMenu: string;
+  handoffTargetSelf: string;
+  handoffTargetShared: string;
   projectLocked: string;
   projectMissingDescription: string;
   syncPending: string;
