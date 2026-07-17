@@ -116,6 +116,8 @@ function transcriptConversationRenderInputEquals(
         next.sourceDetail.session.agentSessionId &&
       previous.sourceDetail.session.activeTurnId ===
         next.sourceDetail.session.activeTurnId &&
+      previous.sourceDetail.session.imported ===
+        next.sourceDetail.session.imported &&
       previous.sourceDetail.cwd === next.sourceDetail.cwd &&
       transcriptTurnIdentityEquals(
         previous.sourceDetail.turns,
@@ -228,7 +230,11 @@ export const AgentTranscriptView = memo(function AgentTranscriptView({
         buildAgentTurnWorkSectionModel(
           group,
           group.turnId ? (canonicalTurnById.get(group.turnId) ?? null) : null,
-          isActiveTurn
+          isActiveTurn,
+          {
+            collapseIntermediateAssistantReplies:
+              !conversation.sourceDetail.session.imported
+          }
         )
       ] as const;
     })

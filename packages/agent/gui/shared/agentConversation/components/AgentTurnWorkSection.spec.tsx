@@ -203,7 +203,7 @@ describe("AgentTurnWorkSection", () => {
     ]);
   });
 
-  it("keeps ordinary assistant replies and follow-up guidance visible by default", () => {
+  it("collapses ordinary assistant replies while keeping follow-up guidance visible", () => {
     render(
       <AgentTurnWorkSection
         group={interleavedTurnGroup()}
@@ -223,7 +223,7 @@ describe("AgentTurnWorkSection", () => {
       />
     );
 
-    expect(screen.getByText("Earlier answer")).toBeTruthy();
+    expect(screen.queryByText("Earlier answer")).toBeNull();
     expect(screen.getByText("Follow-up")).toBeTruthy();
     expect(screen.getByText("Final answer")).toBeTruthy();
     expect(screen.queryByText("tools")).toBeNull();
@@ -280,7 +280,9 @@ function AgentTurnWorkSection({
     renderKey?: string
   ) => JSX.Element;
 }): JSX.Element {
-  const model = buildAgentTurnWorkSectionModel(group, turn, isActiveTurn);
+  const model = buildAgentTurnWorkSectionModel(group, turn, isActiveTurn, {
+    collapseIntermediateAssistantReplies: true
+  });
   if (!model) {
     throw new Error("Test expected a timing-enabled turn disclosure model");
   }
