@@ -91,6 +91,11 @@ observations update only observed state, so a late snapshot cannot erase a
 newer desired state or clear tombstone. Provider differences are normalized by
 the daemon `GoalAdapter`; GUI and service code use the typed Goal API rather
 than sending goal banner actions through the prompt pipeline.
+Goal-control `session_audit` messages remain durable recovery and diagnostic
+evidence, but Agent GUI excludes audits marked `goalControl` from the user
+conversation. Goal state and controls are presented through the canonical Goal
+projection instead of exposing internal `/goal` control commands as user
+messages.
 
 Codex Goal continuation provenance has two ordered paths. A
 `thread/goal/updated` notification with `turnId` remains exact provider
