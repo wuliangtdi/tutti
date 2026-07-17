@@ -496,6 +496,16 @@ When an empty composer has an `agentTargetId`, model, permission, reasoning,
 and speed options are target-scoped. Do not fall back to provider-level options
 for that target; a missing target-scoped option snapshot should remain a
 loading/missing state until the target options arrive.
+An explicit permission choice from the currently rendered target-scoped menu
+must also survive a concurrent options refresh. The settings action may use a
+runtime options snapshot to clean up older stored defaults, but it must not
+erase the user's current or just-selected permission merely because that
+snapshot lags the menu render. Unrelated patches such as clearing plan mode must
+not mutate permission as collateral cleanup; the daemon remains the authority
+that validates provider settings.
+Controlled permission selects may emit a transient empty value while closing or
+restoring focus. This is presentation state, not a user request to clear the
+permission default, and must be rejected at the selection boundary.
 Providers whose model catalog exists only after runtime session bootstrap must
 declare hidden live-model probing and its cache scope in their provider
 descriptor. The daemon may
@@ -3624,6 +3634,17 @@ selection carries retry intent instead of being silently dropped. That retry
 merges the unresolved in-flight patch, any queued patch, and the latest selection
 in that order, so the newest value wins without losing settings that the daemon
 may not have applied before the timeout.
+
+Provider-specific safety confirmation belongs at the composer setting selection
+boundary, before the settings change reaches the engine. Selecting Codex
+`full-access` opens a localized warning and must not dispatch a settings change
+until the user confirms; canceling preserves the previous selection. Confirmation
+still dispatches exactly one ordinary settings patch, so the engine and daemon do
+not acquire a second safety-dialog state machine. Other providers' modes continue
+to follow their provider contracts without inheriting this Codex-specific gate.
+The warning's safety-reference link uses the host link-action boundary. Workspace
+surfaces may route it to their Browser node; the standalone Agent window must fall
+back to the desktop external-browser bridge rather than silently dropping the URL.
 
 The daemon selects the mutation path from session liveness. A live session
 updates through its provider adapter. A historical session updates the durable

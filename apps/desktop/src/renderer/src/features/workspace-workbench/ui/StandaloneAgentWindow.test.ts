@@ -105,6 +105,18 @@ test("standalone Agent opens files like Finder and routes links into the right s
   );
   assert.match(
     standaloneWindowSource,
+    /openExternalUrl: desktopApi\.host\.files\.openExternal/
+  );
+  assert.match(
+    standaloneLaunchRoutingSource,
+    /openBrowserUrl: async \(\{ url \}\) => \{[\s\S]*?await openExternalUrl\(url\);[\s\S]*?return true;/
+  );
+  assert.doesNotMatch(
+    standaloneLaunchRoutingSource,
+    /openBrowserUrl: \(\) => false/
+  );
+  assert.match(
+    standaloneWindowSource,
     /validateExists &&[\s\S]*?workspaceFileManagerService\.entryExists\([\s\S]*?showWorkspaceFileMissingToast\(\)/
   );
   assert.match(
