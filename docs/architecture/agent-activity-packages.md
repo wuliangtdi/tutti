@@ -31,6 +31,9 @@ packages/agent/gui
 packages/agent/activity-replication
   github.com/tutti-os/tutti/packages/agent/activity-replication
 
+packages/agent/host
+  github.com/tutti-os/tutti/packages/agent/host
+
 packages/agent/store-sqlite
   github.com/tutti-os/tutti/packages/agent/store-sqlite
 
@@ -44,6 +47,22 @@ origin, interaction-kind, and interaction-status definitions rather than
 redeclaring them.
 
 ## Responsibilities
+
+### `packages/agent/host`
+
+`host` is the provider-neutral Go application boundary for canonical agent
+session and turn lifecycle work. It owns lifecycle input/result contracts,
+narrow canonical-store and runtime ports, runtime preparation and attachment
+materialization ports, clock and scheduler ports, and post-commit observer
+hooks. The `conformance` subpackage owns reusable typed lifecycle scenarios so
+the legacy `tuttid` service, the extracted Host, and downstream adapters can be
+checked against the same behavior baseline.
+
+The module does not own transport, authorization, room or device identity,
+process or VM implementations, HTTP/OpenAPI shapes, Electron integration, or
+control-plane DTOs. `tuttid` remains the production implementation until the
+later extraction slices explicitly switch its wiring; introducing this module
+does not change production routing.
 
 ### `packages/agent/activity-replication`
 
