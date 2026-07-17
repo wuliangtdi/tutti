@@ -5,19 +5,19 @@ import (
 	"log/slog"
 	"strings"
 
-	agentactivity "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
 type ActivityStateCommitted struct {
-	Input  agentactivity.ReportSessionStateInput
-	Reply  agentactivity.ReportSessionStateReply
+	Input  canonical.ReportSessionStateInput
+	Reply  canonical.ReportSessionStateReply
 	Result storesqlite.ActivityStateReportResult
 }
 
 type SessionMessagesCommitted struct {
-	Input  agentactivity.ReportSessionMessagesInput
-	Reply  agentactivity.ReportSessionMessagesReply
+	Input  canonical.ReportSessionMessagesInput
+	Reply  canonical.ReportSessionMessagesReply
 	Result storesqlite.MessageReportResult
 }
 
@@ -94,7 +94,7 @@ type CommittedDelta struct {
 	ViewsInvalidated []CanonicalViewInvalidated
 }
 
-func ActivityStateDelta(input agentactivity.ReportSessionStateInput, reply agentactivity.ReportSessionStateReply, result storesqlite.ActivityStateReportResult) CommittedDelta {
+func ActivityStateDelta(input canonical.ReportSessionStateInput, reply canonical.ReportSessionStateReply, result storesqlite.ActivityStateReportResult) CommittedDelta {
 	delta := committedDeltaFromMutations(result.TransactionID, result.CommitDelta.Mutations)
 	delta.ActivityState = &ActivityStateCommitted{Input: input, Reply: reply, Result: result}
 	if result.RootTurnAccepted && result.RootTurn.Phase == storesqlite.TurnPhaseSettled {
@@ -109,7 +109,7 @@ func ActivityStateDelta(input agentactivity.ReportSessionStateInput, reply agent
 	return delta
 }
 
-func SessionMessagesDelta(input agentactivity.ReportSessionMessagesInput, reply agentactivity.ReportSessionMessagesReply, result storesqlite.MessageReportResult) CommittedDelta {
+func SessionMessagesDelta(input canonical.ReportSessionMessagesInput, reply canonical.ReportSessionMessagesReply, result storesqlite.MessageReportResult) CommittedDelta {
 	delta := committedDeltaFromMutations(result.TransactionID, result.CommitDelta.Mutations)
 	delta.SessionMessages = &SessionMessagesCommitted{Input: input, Reply: reply, Result: result}
 	delta.addView(input.WorkspaceID, canonicalMessageSessionID(input.AgentSessionID, result.Messages))

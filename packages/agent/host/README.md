@@ -41,7 +41,12 @@ skill bundles intentionally remain outside the Host contract.
 
 `tuttid` production wiring constructs one long-lived `Host`, installs it on the
 agent service adapter, invokes `Host.Recover` before serving traffic, and starts
-the Host-owned runtime and goal workers. The service package translates
+the Host-owned runtime and goal workers. Adapters can use the supervised
+`Host.Run` entrypoint to start the runtime-operation, goal-operation, and goal
+reconcile-inbox workers as one lifecycle; an infrastructure-level worker exit
+cancels its siblings, while retryable item failures remain worker-local. The
+individual worker entrypoints remain available for existing focused wiring and
+tests. The service package translates
 HTTP/query/composer/analytics concerns and provider-specific preparation only;
 session, turn, runtime-operation, and goal lifecycle decisions remain in Host.
 Isolated service tests may lazily compose the same adapter set, but production
@@ -72,3 +77,11 @@ runtime fakes in `Reset`, and runs every value returned by
 adapters share one behavior baseline without importing one another.
 Coordinator, goal, and commit-observer scenario groups extend the same driver
 with recovery ordering and post-commit failure semantics.
+
+The Host release module depends on `store-sqlite` and
+`store-sqlite/canonical`, but not on `daemon`, sidecars, or `tuttid`. Canonical
+activity snapshots, report observer types, provider identities, capability
+vocabulary, and plan-decision strategy live in `store-sqlite/canonical`.
+Daemon packages retain source-compatible aliases for existing consumers;
+runtime mechanics remain daemon-owned. Title normalization and initial-title
+CAS derivation are Host application behavior rather than canonical vocabulary.
