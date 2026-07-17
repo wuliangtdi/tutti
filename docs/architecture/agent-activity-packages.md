@@ -30,7 +30,18 @@ packages/agent/gui
 
 packages/agent/activity-replication
   github.com/tutti-os/tutti/packages/agent/activity-replication
+
+packages/agent/store-sqlite
+  github.com/tutti-os/tutti/packages/agent/store-sqlite
+
+packages/agent/store-sqlite/canonical
+  github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical
 ```
+
+`packages/agent/store-sqlite/canonical` is the single authority for canonical
+activity contract vocabulary; other packages import its phase, outcome,
+origin, interaction-kind, and interaction-status definitions rather than
+redeclaring them.
 
 ## Responsibilities
 
