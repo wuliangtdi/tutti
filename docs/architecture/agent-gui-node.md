@@ -2355,7 +2355,17 @@ completes. Outer status badges should keep authoritative non-error lifecycle
 states, but when the outer projection is `failed`, they should let the latest
 turn's message status clear or confirm that failure. Keep unrecoverable
 activation/resume failures session-scoped; keep ordinary historical turn
-failures on the transcript row that produced them.
+failures on the transcript row that produced them. A terminal
+`AgentActivityTurn.error` is authoritative even when the provider emitted no
+assistant error message. The shared transcript projection must attach that
+error to the exact `turnId`: reuse an existing structured visible-error
+message, upgrade a matching plain assistant failure, or create one view-only
+error row keyed by `(agentSessionId, turnId)`. That fallback row is derived
+state, not a durable message or a replacement session-level `lastError`.
+Engine selectors for session operation errors must never fall back to active or
+latest Turn errors. Likewise, a successful create/attach response remains an
+attached session even when its initial or historical Turn failed; activation
+failure must come from the activation operation itself, not from Turn outcome.
 
 ### Message Parsing And Rendering
 
@@ -2366,6 +2376,10 @@ AgentActivityMessage payloads
   -> shared/agentConversation/projection
   -> transcript rows, tool calls, plans, approvals, interactive prompts
   -> AgentConversationFlow inside AgentGUINodeView
+
+AgentActivityTurn.error
+  -> shared transcript projection, reconciled with message errors by turnId
+  -> one fallback visible-error row on the owning Turn when messages lack one
 ```
 
 Message parsing belongs in shared projection/model helpers. React components

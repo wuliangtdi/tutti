@@ -4,6 +4,43 @@
 
 Turn state, loading, cancel, restore, file-change undo, rail projection, event updates, imports, and performance.
 
+### AgentGUI rail shows a failed Turn but the detail has no error
+
+- Symptom:
+  The AgentGUI rail marks a conversation failed, but opening the conversation
+  shows only the preceding tool or assistant rows. Reloading the session does
+  not reveal why the Turn failed.
+- Quick checks:
+  Inspect the canonical Turn snapshot before debugging React state. Confirm the
+  owning Turn is terminal with `outcome = failed` or `interrupted` and has a
+  non-empty `error.message`. Then inspect that Turn's timeline messages for a
+  structured `visibleError` or a plain assistant message with the same error
+  text.
+- Root cause:
+  Turn outcome and error are durable canonical state, while provider transcript
+  messages are optional evidence. If detail rendering only projects transcript
+  messages, a runtime that settles `AgentActivityTurn.error` without emitting a
+  visible-error message leaves the rail and detail inconsistent. Reading only
+  the active Turn also loses the error as soon as settlement clears
+  `activeTurnId`.
+- Fix:
+  Reconcile terminal `AgentActivityTurn.error` in the shared transcript
+  projection by exact `turnId`. Reuse a structured visible error, upgrade a
+  matching plain assistant failure, or synthesize one view-only row with a
+  stable `(agentSessionId, turnId)` identity. Do not restore session
+  `lastError`, let session-operation selectors fall back to Turn errors,
+  reinterpret a successful attach as activation failure, persist a duplicate
+  message, or add component-local failure state.
+- Validation:
+  Cover a failed Turn with no provider error message, a matching plain failure,
+  and an existing structured visible error. The first must render one fallback
+  row and the latter two must remain single rows. Verify the result from both a
+  live snapshot and rebuilt session history.
+- References:
+  [workspaceAgentTurnErrorProjection.ts](../../../packages/agent/gui/shared/workspaceAgentTurnErrorProjection.ts)
+  [workspaceAgentTimelineCanonical.ts](../../../packages/agent/gui/shared/workspaceAgentTimelineCanonical.ts)
+  [agent-gui-node.md](../../architecture/agent-gui-node.md)
+
 ### Codex WebSocket reconnect rejects a long prompt metadata header
 
 - Symptom:

@@ -12,7 +12,7 @@ import {
   selectEngineSessionDeleted,
   selectEngineSessionDetailHydrated,
   selectEngineSessionDetailLoading,
-  selectEngineSessionError,
+  selectEngineSessionOperationError,
   selectEngineSessionIsRespondingToInteraction,
   selectEngineSessionReconcile,
   selectEngineSessionSettingsUpdate,
@@ -150,8 +150,8 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineActiveTurn,
     activeEngineSession
   ]);
-  const activeEngineLifecycleError = useEngineSelector(sessionEngine, (state) =>
-    selectEngineSessionError(state, activeConversationId)
+  const activeEngineOperationError = useEngineSelector(sessionEngine, (state) =>
+    selectEngineSessionOperationError(state, activeConversationId)
   );
   const activeEngineQueueError = useEngineSelector(sessionEngine, (state) =>
     selectEnginePromptQueueError(state, activeConversationId)
@@ -164,7 +164,7 @@ export function useAgentGUISessionEngineState(input: {
     selectEngineSessionSettingsUpdate(state, activeConversationId)
   );
   const activeEngineError =
-    activeEngineLifecycleError ??
+    activeEngineOperationError ??
     activeEngineInteractionError ??
     activeEngineSettingsUpdate?.errorMessage ??
     activeEngineQueueError;

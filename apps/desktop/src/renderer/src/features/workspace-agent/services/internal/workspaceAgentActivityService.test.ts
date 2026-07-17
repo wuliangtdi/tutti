@@ -277,6 +277,51 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
   assert.equal(canonicalSession.settings?.model, "default");
 });
 
+test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activation failure", async () => {
+  const failedSession = workspaceAgentSession({
+    latestTurn: {
+      ...workspaceAgentTurn({ outcome: "failed", phase: "settled" }),
+      error: { message: "Selected model is at capacity" }
+    },
+    status: "failed"
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      createWorkspaceAgentSession: async () => failedSession,
+      getWorkspaceAgentSession: async () => ({
+        childSessions: [],
+        session: failedSession,
+        turns: []
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+
+  const created = await service.activateSession({
+    agentSessionId: "session-1",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-create-failed-turn",
+    initialContent: [{ type: "text", text: "Run it" }],
+    mode: "new",
+    visible: true,
+    workspaceId: "ws-1"
+  });
+  const reopened = await service.activateSession({
+    agentSessionId: "session-1",
+    mode: "existing",
+    visible: true,
+    workspaceId: "ws-1"
+  });
+
+  assert.deepEqual(created.activation, { mode: "new", status: "attached" });
+  assert.equal(created.error, undefined);
+  assert.deepEqual(reopened.activation, {
+    mode: "existing",
+    status: "already_attached"
+  });
+  assert.equal(reopened.error, undefined);
+});
+
 test("WorkspaceAgentActivityService returns the authoritative canonical session after settings update", async () => {
   const updatedSession = workspaceAgentSession({
     provider: "claude-code",
