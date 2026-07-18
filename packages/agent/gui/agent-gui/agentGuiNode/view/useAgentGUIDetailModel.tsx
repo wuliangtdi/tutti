@@ -382,6 +382,8 @@ export function useAgentGUIDetailModel(input: Input) {
       permissionModeReadOnly: labels.permissionModeReadOnly,
       permissionModeAuto: labels.permissionModeAuto,
       permissionModeFullAccess: labels.permissionModeFullAccess,
+      permissionModeChangeUnavailableDuringTurn:
+        labels.permissionModeChangeUnavailableDuringTurn,
       modelDescriptions: labels.modelDescriptions,
       planModeLabel: labels.planModeLabel,
       planModeOnLabel: labels.planModeOnLabel,
@@ -513,6 +515,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.modelTooltipVersionLabel,
       labels.permissionLabel,
       labels.permissionModeAuto,
+      labels.permissionModeChangeUnavailableDuringTurn,
       labels.permissionModeFullAccess,
       labels.permissionModeReadOnly,
       labels.planModeLabel,

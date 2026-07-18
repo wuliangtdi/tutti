@@ -212,6 +212,9 @@ export function useAgentGUIViewLabels(input: {
       permissionModeFullAccess: t(
         "agentHost.agentGui.permissionModeFullAccess"
       ),
+      permissionModeChangeUnavailableDuringTurn: t(
+        "agentHost.agentGui.permissionModeChangeUnavailableDuringTurn"
+      ),
       modelDescriptions: {
         frontierComplexCoding: t(
           "agentHost.agentGui.modelDescriptions.frontierComplexCoding"

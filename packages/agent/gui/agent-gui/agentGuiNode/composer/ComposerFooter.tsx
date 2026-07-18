@@ -490,6 +490,11 @@ export function ComposerFooter({
             <AgentPermissionModeDropdown
               composerSettings={composerSettings}
               disabled={permissionModeControlsDisabled}
+              disabledTooltip={
+                permissionModeControlsDisabled
+                  ? labels.permissionModeChangeUnavailableDuringTurn
+                  : undefined
+              }
               onLinkAction={onLinkAction}
               previewMode={previewMode}
               provider={provider}
