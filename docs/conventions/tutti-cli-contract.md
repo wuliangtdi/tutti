@@ -186,6 +186,9 @@ The first responder atomically claims the pending interaction. Later responses
 with the same action/option/payload return `answered`; different responses
 return `superseded`. The result exposes the request and turn ids plus that Host
 disposition, without surfacing raw operation conflict or in-progress errors.
+After a successful claim, an authoritative terminal runtime disposition still
+wins; for example, a runtime `superseded` result must not be rewritten to
+`answered` merely because the durable claim already marked the Interaction.
 
 `agent turn-resources --json` is the narrow helper for looking up resources from
 one explicit session turn. It requires `--session-id` and `--turn-id`, filters at

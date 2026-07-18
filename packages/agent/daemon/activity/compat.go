@@ -35,17 +35,29 @@ func ReportActivityAsSessionUpdates(
 			}
 		}
 	}
-	for _, auditInput := range SessionAuditInputsFromActivity(input) {
+	auditInputs := SessionAuditInputsFromActivity(input)
+	messageInputs, err := SessionMessageInputsFromActivity(input)
+	if err != nil {
+		return reply, err
+	}
+	earlyStates, terminalStates := partitionSessionStateInputs(SessionStateInputsFromActivity(input))
+	for _, stateInput := range earlyStates {
+		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
+		if err != nil {
+			return reply, err
+		}
+		if stateReply.Accepted {
+			reply.AcceptedStatePatchCount++
+		}
+		reply.RequestBodyBytes += stateReply.RequestBodyBytes
+	}
+	for _, auditInput := range auditInputs {
 		auditReply, err := reporter.ReportSessionMessages(ctx, auditInput)
 		if err != nil {
 			return reply, err
 		}
 		reply.AcceptedSessionAuditCount += auditReply.AcceptedCount
 		reply.RequestBodyBytes += auditReply.RequestBodyBytes
-	}
-	messageInputs, err := SessionMessageInputsFromActivity(input)
-	if err != nil {
-		return reply, err
 	}
 	for _, messagesInput := range messageInputs {
 		messagesReply, err := reporter.ReportSessionMessages(ctx, messagesInput)
@@ -55,9 +67,8 @@ func ReportActivityAsSessionUpdates(
 		reply.AcceptedMessageUpdateCount += messagesReply.AcceptedCount
 		reply.RequestBodyBytes += messagesReply.RequestBodyBytes
 	}
-	stateInputs := SessionStateInputsFromActivity(input)
-	anchorFinalAssistantMessages(stateInputs, messageInputs)
-	for _, stateInput := range stateInputs {
+	anchorFinalAssistantMessages(terminalStates, messageInputs)
+	for _, stateInput := range terminalStates {
 		stateReply, err := reporter.ReportSessionState(ctx, stateInput)
 		if err != nil {
 			return reply, err
@@ -68,6 +79,31 @@ func ReportActivityAsSessionUpdates(
 		reply.RequestBodyBytes += stateReply.RequestBodyBytes
 	}
 	return reply, nil
+}
+
+// partitionSessionStateInputs builds the three-stage projection barrier used
+// by live activity reports: non-terminal state creates the session, Turn, and
+// Interaction first; audits and messages can then satisfy their foreign keys;
+// settling/settled state is committed last so settlement visibility cannot
+// overtake messages from the same report.
+func partitionSessionStateInputs(inputs []ReportSessionStateInput) ([]ReportSessionStateInput, []ReportSessionStateInput) {
+	early := make([]ReportSessionStateInput, 0, len(inputs))
+	terminal := make([]ReportSessionStateInput, 0, len(inputs))
+	for _, input := range inputs {
+		turn := input.State.Turn
+		phase := ""
+		settling := false
+		if turn != nil {
+			phase = strings.ToLower(strings.TrimSpace(turn.Phase))
+			settling = turn.Settling
+		}
+		if settling || phase == "settling" || phase == "settled" {
+			terminal = append(terminal, input)
+			continue
+		}
+		early = append(early, input)
+	}
+	return early, terminal
 }
 
 func anchorFinalAssistantMessages(states []ReportSessionStateInput, messages []ReportSessionMessagesInput) {

@@ -174,6 +174,34 @@ func TestCompleteInteractiveRuntimeOperationIsAtomicAndSessionScoped(t *testing.
 	}
 }
 
+func TestCompleteInteractiveRuntimeOperationPreservesRuntimeSupersededAfterClaim(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-claim", "turn-claim", "request-claim")
+	operation, interaction, transition, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "operation-claim", WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-claim", RequestID: "request-claim",
+		Payload: map[string]any{"action": "approve", "optionId": "", "payload": (map[string]any)(nil)}, OccurredAtMS: 10,
+	})
+	if err != nil || transition != InteractionTransitionApplied || interaction.Status != InteractionStatusAnswered {
+		t.Fatalf("prepare claim operation=%#v interaction=%#v transition=%v error=%v", operation, interaction, transition, err)
+	}
+	claimRuntimeOperation(t, store, operation.OperationID, "worker-a")
+	completion, changed, err := store.CompleteInteractiveRuntimeOperation(context.Background(), CompleteInteractiveRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: operation.OperationID, LeaseOwner: "worker-a",
+		Disposition: InteractionStatusSuperseded, NowUnixMS: 30,
+	})
+	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultSuperseded {
+		t.Fatalf("completion=%#v changed=%v error=%v, want runtime superseded", completion, changed, err)
+	}
+	interactions, err := store.ListSessionInteractions(context.Background(), ListSessionInteractionsInput{
+		WorkspaceID: "ws-1", AgentSessionID: "session-claim",
+	})
+	if err != nil || len(interactions) != 1 || interactions[0].Status != InteractionStatusAnswered {
+		t.Fatalf("claimed interaction=%#v error=%v", interactions, err)
+	}
+}
+
 func TestInteractiveAnswerAndCallCompletionConvergeWhenCommittedConcurrently(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))

@@ -363,13 +363,21 @@ typed runtime disposition (`pending`, `resolving`, `answered`, `superseded`, or
 `interrupted`) and commits the completed operation and outbox event. Competing
 responders compare against the claimed output and normalize to `answered` or
 `superseded`; absence from an in-memory request map is not evidence of success.
+The claim's provisional Interaction status must not overwrite the terminal
+runtime disposition: the completed operation result follows the runtime even
+when the claim already moved the Interaction to `answered`.
 
-Activity compatibility projection commits session audits and turn messages
-before session state. This is the write-side barrier for settlement: once a
-settled Turn is visible, all messages from the same report are durable. The
-settled Turn stores the final assistant text message ID in its existing
-completed-command payload so result readers can select the exact message;
-legacy turns use only a bounded fallback scan.
+Activity compatibility projection uses a three-stage write barrier. It first
+commits non-terminal session state so provider-initiated Turns and Interactions
+exist, then commits session audits and turn messages, and finally commits only
+settling or settled state. Thus message foreign keys are satisfied without
+letting settlement visibility overtake messages from the same report. During
+the first SQLite settlement transaction, the store selects the latest already
+persisted assistant text message for that Turn and freezes its ID in the
+existing completed-command payload. A same-report anchor is only a validated
+fast path; cross-report provider event batches derive the same watermark from
+durable messages. Late messages cannot move it. Result readers use that exact
+message, while legacy turns use only a bounded fallback scan.
 
 Cancellation of the caller waiting on an interactive-response operation is not
 a provider outcome and must not terminalize the runtime request. Before a

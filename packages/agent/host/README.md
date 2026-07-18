@@ -56,7 +56,10 @@ operation atomically moves the interaction from `pending` to `answered` with
 the requested action, option, and payload. A competing response compares its
 request with that durable output: an identical response is `answered`, while a
 different response is `superseded`; neither path leaks operation-conflict or
-in-progress errors to the responder.
+in-progress errors to the responder. The Interaction's pre-delivery `answered`
+state is a durable claim marker, not the runtime's terminal result; completed
+operation and responder dispositions follow an authoritative runtime
+`superseded` result instead of being overwritten by that marker.
 
 Adapters retain authorization and identity, transport, runtime process or VM
 selection, desktop APIs, attachment ingress, and cloud inbox/outbox behavior.

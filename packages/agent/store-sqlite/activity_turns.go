@@ -96,6 +96,14 @@ func (*Store) recordTurnTransitionTx(
 	}
 
 	merged := mergeTurnTransition(existing, hasExisting, transition, phase, occurred, now)
+	if merged.Phase == TurnPhaseSettled {
+		merged.FinalAssistantMessageID, err = finalAssistantMessageIDAtSettlementTx(
+			ctx, tx, workspaceID, agentSessionID, turnID, transition.FinalAssistantMessageID,
+		)
+		if err != nil {
+			return Turn{}, false, err
+		}
+	}
 
 	fileChangesJSON, err := marshalNullableJSONMap(merged.FileChanges)
 	if err != nil {
@@ -763,48 +771,6 @@ func isKnownInteractionKind(kind string) bool {
 
 func isKnownInteractionStatus(status string) bool {
 	return canonical.IsKnownInteractionStatus(status)
-}
-
-func encodeTurnErrorJSON(message string, code string) any {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		return nil
-	}
-	payload := map[string]any{"message": message}
-	if code = strings.TrimSpace(code); code != "" {
-		payload["code"] = code
-	}
-	encoded, err := marshalJSONMap(payload)
-	if err != nil {
-		return nil
-	}
-	return encoded
-}
-
-func encodeCompletedCommandJSON(kind string, status string, finalAssistantMessageIDs ...string) any {
-	kind = strings.TrimSpace(kind)
-	finalAssistantMessageID := ""
-	if len(finalAssistantMessageIDs) > 0 {
-		finalAssistantMessageID = strings.TrimSpace(finalAssistantMessageIDs[0])
-	}
-	if kind == "" && finalAssistantMessageID == "" {
-		return nil
-	}
-	payload := map[string]any{}
-	if kind != "" {
-		payload["kind"] = kind
-	}
-	if status = strings.TrimSpace(status); status != "" {
-		payload["status"] = status
-	}
-	if finalAssistantMessageID != "" {
-		payload["finalAssistantMessageId"] = finalAssistantMessageID
-	}
-	encoded, err := marshalJSONMap(payload)
-	if err != nil {
-		return nil
-	}
-	return encoded
 }
 
 func marshalNullableJSONMap(value map[string]any) (any, error) {
