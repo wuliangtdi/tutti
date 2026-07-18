@@ -84,6 +84,40 @@
   Search workflows for `pnpm/action-setup` and confirm no step still passes a
   `version` input. Push a new commit to rerun the PR checks.
 
+### Multi-entry tsup declaration build exhausts its worker heap
+
+- Symptom:
+  A package build finishes its ESM phase, then fails during `DTS Build start`
+  with `ERR_WORKER_OUT_OF_MEMORY`. The failure is more frequent when
+  `check:changed --push-ready` runs package builds beside tests and other
+  builds, while an isolated retry may pass.
+- Quick checks:
+  Confirm the error comes from tsup's declaration worker after the JavaScript
+  output reports success. Measure an isolated build with `/usr/bin/time -l`
+  and compare the package's declaration entry count; raising the parent Node
+  heap does not prove the worker's declaration graph is bounded.
+- Root cause:
+  tsup sends every configured declaration entry through one worker. A package
+  with many overlapping public entrypoints can keep repeated TypeScript and
+  Rollup declaration graphs in that worker until it approaches the V8 heap
+  limit. Concurrent validation makes the near-limit build unreliable.
+- Fix:
+  Keep the runtime bundle as one build, then partition declaration entrypoints
+  into complete, non-overlapping groups and build those groups concurrently in
+  separate workers. Keep the group manifest separate from tsup itself so a
+  normal unit test can prove every runtime entry appears exactly once. Do not
+  make a global `NODE_OPTIONS` increase the default fix; it preserves the
+  oversized declaration graph and moves the failure threshold.
+- Validation:
+  Measure the isolated package build before and after, run the entry-coverage
+  test, typecheck imports from both the root and a subpath declaration, run the
+  package pack check, and reproduce the original changed-aware concurrent
+  build without a heap override.
+- References:
+  [agentGuiBuildEntries.ts](../../../packages/agent/gui/build/agentGuiBuildEntries.ts)
+  [tsup.dts.config.ts](../../../packages/agent/gui/tsup.dts.config.ts)
+  [tsup.dts.config.test.ts](../../../packages/agent/gui/tsup.dts.config.test.ts)
+
 ### Browser CLI cold start timeout looks like an unreachable daemon
 
 - Symptom:
