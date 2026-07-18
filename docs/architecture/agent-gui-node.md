@@ -470,7 +470,8 @@ Do not start by adding a fallback to the visible component.
 
 ## 10. Validation
 
-Architecture boundaries:
+Follow the repository [Validation Selection](../conventions/testing.md#validation-selection).
+The Agent architecture boundary commands available to that workflow are:
 
 ```sh
 pnpm check:agent-host-boundary
@@ -478,15 +479,6 @@ pnpm check:agent-activity-runtime-boundaries
 pnpm check:agent-provider-strategy-boundaries
 pnpm check:agent-gui-degradation
 pnpm check:renderer-boundaries
-```
-
-Focused AgentGUI checks:
-
-```sh
-pnpm --filter @tutti-os/agent-gui test
-pnpm --filter @tutti-os/agent-gui typecheck
-pnpm --filter @tutti-os/agent-activity-core test
-pnpm check:changed
 ```
 
 `check:agent-gui-degradation` is executable architecture. Its business-file 800-line limit and budgets for effects, memoization, render-mirror refs, provider branches, timers, component stores, and module globals may only stay level or decrease. Tighten the baseline when a metric drops; never raise it to merge new drift.
