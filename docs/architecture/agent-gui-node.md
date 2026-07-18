@@ -2796,6 +2796,11 @@ User-visible rules:
 - Model, permission, plan mode, reasoning, speed, project, branch, prompt image,
   file mention, and skill/capability controls must read from composer settings
   and provider options. They should not be reconstructed from transcript rows.
+- Permission mode remains fixed for the lifetime of an active Turn. AgentGUI
+  disables the permission selector from prompt submission through every
+  non-settled phase (including waiting and interrupting), regardless of whether
+  the provider can apply permission changes live, and explains the lock on
+  hover/focus. The selector becomes available again only after the Turn settles.
 - Reasoning options are model capabilities, not provider-wide constants. The
   daemon model catalog must preserve each model's advertised effort values and
   default, pre-session composer options must use the selected model's catalog

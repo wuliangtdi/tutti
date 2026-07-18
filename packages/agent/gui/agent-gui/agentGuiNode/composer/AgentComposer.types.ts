@@ -121,6 +121,7 @@ export interface AgentComposerProps {
     permissionModeReadOnly: string;
     permissionModeAuto: string;
     permissionModeFullAccess: string;
+    permissionModeChangeUnavailableDuringTurn: string;
     modelDescriptions: {
       frontierComplexCoding: string;
       everydayCoding: string;

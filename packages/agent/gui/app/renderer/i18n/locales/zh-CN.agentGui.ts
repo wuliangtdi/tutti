@@ -89,6 +89,7 @@ export const zhCNAgentGui = {
   permissionModeReadOnly: "请求批准",
   permissionModeAuto: "替我审批",
   permissionModeFullAccess: "完全访问权限",
+  permissionModeChangeUnavailableDuringTurn: "无法在运行过程中切换权限",
   fullAccessWarning: {
     title: "确定启用完全访问权限吗？",
     description: "完全访问权限允许 Codex 无需你的批准即可操作这台电脑。",

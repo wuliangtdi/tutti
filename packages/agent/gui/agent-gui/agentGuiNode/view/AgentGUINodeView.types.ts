@@ -102,6 +102,7 @@ export interface AgentGUIViewLabels {
   permissionModeReadOnly: string;
   permissionModeAuto: string;
   permissionModeFullAccess: string;
+  permissionModeChangeUnavailableDuringTurn: string;
   modelDescriptions: {
     frontierComplexCoding: string;
     everydayCoding: string;

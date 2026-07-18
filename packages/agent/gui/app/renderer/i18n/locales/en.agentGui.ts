@@ -95,6 +95,8 @@ export const enAgentGui = {
   permissionModeReadOnly: "Ask for approval",
   permissionModeAuto: "Approve for me",
   permissionModeFullAccess: "Full access",
+  permissionModeChangeUnavailableDuringTurn:
+    "Permissions can’t be changed while a conversation is running",
   fullAccessWarning: {
     title: "Enable full access?",
     description:
