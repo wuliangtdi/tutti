@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { AgentActivityTurn } from "@tutti-os/agent-activity-core";
 import type { JSX } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -227,6 +227,37 @@ describe("AgentTurnWorkSection", () => {
     expect(screen.getByText("Follow-up")).toBeTruthy();
     expect(screen.getByText("Final answer")).toBeTruthy();
     expect(screen.queryByText("tools")).toBeNull();
+  });
+
+  it("makes the duration text part of the turn disclosure button", () => {
+    const setExpandedOverride = vi.fn();
+    render(
+      <AgentTurnWorkSection
+        group={interleavedTurnGroup()}
+        sessionId="session-1"
+        turn={canonicalTurn({
+          phase: "settled",
+          outcome: "completed",
+          settledAtUnixMs: 15_000
+        })}
+        isActiveTurn={false}
+        disclosureStore={{
+          expandedOverrides: {},
+          setExpandedOverride
+        }}
+        renderRow={(row) => <div key={row.id}>{row.id}</div>}
+      />
+    );
+
+    const duration = screen.getByText("agentHost.agentGui.turnTotalSeconds");
+    const toggle = screen.getByRole("button", {
+      name: "agentHost.agentGui.expandTurnWork"
+    });
+    expect(toggle).toContainElement(duration);
+
+    fireEvent.click(duration);
+
+    expect(setExpandedOverride).toHaveBeenCalledWith("session-1:turn-1", true);
   });
 
   it("keeps dynamic section spacing inside the animated height", () => {

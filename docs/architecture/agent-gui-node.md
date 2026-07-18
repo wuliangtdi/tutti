@@ -272,10 +272,17 @@ reveal height. Do not place a conditionally mounted reveal directly in a parent
 a terminal height jump. A reveal that has settled to `height: auto` must keep
 tracking content resizes and lock its current rendered height before collapse,
 so streaming or asynchronously rendered work cannot collapse from a stale
-measurement. In virtualized transcripts, the virtualizer is the sole scroll
-anchor owner; opt its measured subtree out of browser-native scroll anchoring
-to avoid two independent corrections moving the whole timeline and then
-snapping it back.
+measurement. In virtualized transcripts, the virtualizer owns scroll anchoring
+during normal rendering and streaming; opt its measured subtree out of
+browser-native scroll anchoring to avoid two independent corrections moving the
+whole timeline and then snapping it back. An explicit user Turn-disclosure
+animation temporarily transfers that ownership to the disclosure-motion
+controller, which captures the trigger row's viewport position and holds it
+until every affected reveal height settles. During that motion it opts out of
+both browser-native scroll anchoring and the virtualizer's end anchor and
+item-size adjustment, and it corrects any outer timeline scroll change against
+the captured row. When the motion settles, ownership returns to the virtualizer
+for subsequent rendering and streaming updates.
 
 Generic processing fallback is decided only after transcript normalization has
 removed diagnostic-only notices and merged presentation rows. Canonical live
