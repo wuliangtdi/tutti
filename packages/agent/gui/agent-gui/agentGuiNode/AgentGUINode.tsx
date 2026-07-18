@@ -126,7 +126,6 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerReadinessGates = null,
     defaultAgentTargetId = null,
     providerAuthAccountLabels,
-    contextMentionProviders,
     mentionService,
     workspaceAppIcons,
     disabledHomeSuggestions,
@@ -548,10 +547,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
 
   return (
-    <AgentGUIMentionServiceBoundary
-      legacyProviders={contextMentionProviders}
-      service={mentionService}
-    >
+    <AgentGUIMentionServiceBoundary service={mentionService}>
       <WorkspaceNodeWindow
         nodeId={nodeId}
         kind="agentGui"
@@ -702,7 +698,6 @@ export const AgentGUINode = memo(function AgentGUINode({
                 resolveWorkspaceReferenceInitialTarget
               }
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
-              contextMentionProviders={contextMentionProviders}
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilter={referenceProvenanceFilter}
             />

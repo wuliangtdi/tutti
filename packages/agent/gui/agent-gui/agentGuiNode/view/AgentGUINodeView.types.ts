@@ -28,7 +28,6 @@ import type {
   AgentComposerPromptTip,
   AgentComposerSlashStatusLimit
 } from "../AgentComposer";
-import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type {
   AgentComposerDraft,
@@ -625,7 +624,6 @@ export interface AgentGUINodeViewProps {
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   workspaceFileReferenceCopy?: WorkspaceFileReferenceCopy | null;
-  contextMentionProviders?: readonly AgentContextMentionProvider[];
   referenceSourceAggregator?: ReferenceSourceAggregator | null;
   resolveWorkspaceReferenceEntryIconUrl?: (
     entry: WorkspaceFileEntry

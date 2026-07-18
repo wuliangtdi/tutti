@@ -46,7 +46,6 @@ import { useDesktopAgentProbes } from "./useDesktopAgentProbes.ts";
 import {
   AGENT_PROBE_REFRESH_DEBOUNCE_MS,
   DESKTOP_AGENT_GUI_AGENT_SETTINGS,
-  DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS,
   DESKTOP_AGENT_GUI_NOOP,
   DESKTOP_AGENT_GUI_POSITION,
   areDesktopAgentGUIWorkbenchBodyPropsEqual,
@@ -138,16 +137,19 @@ function DesktopAgentGUISurfaceImpl({
     trackAgentProviderChatReady,
     workspaceId
   });
-  const { effectiveContextMentionProviders, workspaceAppIcons } =
-    useDesktopAgentGUIContextMentions({
-      agentActivityRuntime,
-      appCenterService,
-      contextMentionProviders,
-      dockPreviewCache,
-      host: surface.host,
-      previewMode,
-      workspaceId
-    });
+  const {
+    effectiveContextMentionProviders,
+    mentionService,
+    workspaceAppIcons
+  } = useDesktopAgentGUIContextMentions({
+    agentActivityRuntime,
+    appCenterService,
+    contextMentionProviders,
+    dockPreviewCache,
+    host: surface.host,
+    previewMode,
+    workspaceId
+  });
   useEffect(() => {
     preloadDesktopAgentGuiMentionBrowse({
       agentActivityRuntime,
@@ -666,9 +668,7 @@ function DesktopAgentGUISurfaceImpl({
       providerReadinessGates,
       defaultAgentTargetId,
       providerAuthAccountLabels,
-      contextMentionProviders: previewMode
-        ? DESKTOP_AGENT_GUI_EMPTY_CONTEXT_MENTION_PROVIDERS
-        : effectiveContextMentionProviders,
+      mentionService,
       workspaceAppIcons
     },
     hostActions: {

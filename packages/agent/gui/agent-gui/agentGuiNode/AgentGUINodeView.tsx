@@ -127,7 +127,6 @@ export function AgentGUINodeView({
   selectProjectDirectory,
   workspaceFileReferenceCopy = null,
   onRequestGitBranches = null,
-  contextMentionProviders,
   referenceSourceAggregator = null,
   resolveWorkspaceReferenceEntryIconUrl,
   resolveMentionReferenceTarget = null,
@@ -733,7 +732,6 @@ export function AgentGUINodeView({
               selectProjectDirectory={selectProjectDirectory}
               onRequestGitBranches={onRequestGitBranches}
               onRequestComposerFocus={requestComposerFocus}
-              contextMentionProviders={contextMentionProviders}
               workspaceAppIcons={effectiveWorkspaceAppIcons}
               workspaceUserProjectI18n={workspaceUserProjectI18n}
               renderProviderUnavailableState={renderProviderUnavailableState}
