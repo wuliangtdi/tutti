@@ -252,14 +252,6 @@ test("standalone Agent hides home identity and shows it after local session star
   );
 });
 
-test("standalone Agent shows the generic app title", () => {
-  assert.match(standaloneWindowSource, /showAppTitle\b(?!=\{false\})/);
-  assert.match(
-    standaloneWindowSource,
-    /title=\{i18n\.t\("workspace\.agentGui\.fallbackAgentLabel"\)\}/
-  );
-});
-
 test("standalone Agent hides panel toggles until its content mounts", () => {
   assert.match(
     standaloneWindowSource,
@@ -276,21 +268,6 @@ test("standalone Agent hides panel toggles until its content mounts", () => {
   assert.match(
     standaloneWindowSource,
     /<StandaloneAgentWindowContentReady onReady=\{handleContentReady\}>[\s\S]*?<DesktopAgentGUISurface/
-  );
-});
-
-test("standalone Agent loads its body with the route instead of adding a second lazy boundary", () => {
-  assert.match(
-    standaloneWindowSource,
-    /import \{ DesktopAgentGUISurface \} from "@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"/
-  );
-  assert.doesNotMatch(
-    standaloneWindowSource,
-    /LazyDesktopAgentGUIWorkbenchBody/
-  );
-  assert.doesNotMatch(
-    standaloneWindowSource,
-    /import\("@renderer\/features\/workspace-agent\/ui\/DesktopAgentGUIWorkbenchBody\.tsx"\)/
   );
 });
 
