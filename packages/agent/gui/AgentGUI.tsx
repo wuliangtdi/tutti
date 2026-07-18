@@ -1,4 +1,4 @@
-import { memo, type JSX } from "react";
+import { memo, useMemo, type JSX } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import type { AgentActivityRuntime } from "./agentActivityRuntime";
@@ -73,26 +73,45 @@ export const AgentGUI = memo(function AgentGUI({
   locale,
   ...props
 }: AgentGUIProps): JSX.Element {
-  const normalizedAgents = normalizeAgentGUIAgents(agentDirectory.agents);
+  const normalizedAgents = useMemo(
+    () => normalizeAgentGUIAgents(agentDirectory.agents),
+    [agentDirectory.agents]
+  );
+  const agentTargets = useMemo(
+    () => projectAgentGUIAgentsToInternalTargets(normalizedAgents),
+    [normalizedAgents]
+  );
   const effectiveHandoffAgentDirectory =
     handoffAgentDirectory ?? agentDirectory;
-  const normalizedHandoffAgents = normalizeAgentGUIAgents(
-    effectiveHandoffAgentDirectory.agents
+  const normalizedHandoffAgents = useMemo(
+    () =>
+      effectiveHandoffAgentDirectory.agents === agentDirectory.agents
+        ? normalizedAgents
+        : normalizeAgentGUIAgents(effectiveHandoffAgentDirectory.agents),
+    [
+      agentDirectory.agents,
+      effectiveHandoffAgentDirectory.agents,
+      normalizedAgents
+    ]
+  );
+  const handoffAgentTargets = useMemo(
+    () =>
+      normalizedHandoffAgents === normalizedAgents
+        ? agentTargets
+        : projectAgentGUIAgentsToInternalTargets(normalizedHandoffAgents),
+    [agentTargets, normalizedAgents, normalizedHandoffAgents]
   );
   const hostCapabilities = props.hostCapabilities;
   const renderSlots = props.renderSlots;
-  const nodeProps: AgentGUINodeProps = {
-    ...props,
-    hostCapabilities: {
+  const nodeHostCapabilities = useMemo<AgentGUINodeProps["hostCapabilities"]>(
+    () => ({
       ...hostCapabilities,
-      agentTargets: projectAgentGUIAgentsToInternalTargets(normalizedAgents),
+      agentTargets,
       agentTargetsLoading:
         agentDirectory.agents.length === 0 &&
         (agentDirectory.status === "idle" ||
           agentDirectory.status === "loading"),
-      handoffAgentTargets: projectAgentGUIAgentsToInternalTargets(
-        normalizedHandoffAgents
-      ),
+      handoffAgentTargets,
       handoffAgentTargetsLoading:
         effectiveHandoffAgentDirectory.agents.length === 0 &&
         (effectiveHandoffAgentDirectory.status === "idle" ||
@@ -100,11 +119,30 @@ export const AgentGUI = memo(function AgentGUI({
       disabledHomeSuggestions: disabled,
       providerRailAllPresentation: allAgentsPresentation ?? null,
       providerRailMode: "exact"
-    },
-    renderSlots: {
+    }),
+    [
+      agentDirectory.agents.length,
+      agentDirectory.status,
+      agentTargets,
+      allAgentsPresentation,
+      disabled,
+      effectiveHandoffAgentDirectory.agents.length,
+      effectiveHandoffAgentDirectory.status,
+      handoffAgentTargets,
+      hostCapabilities
+    ]
+  );
+  const nodeRenderSlots = useMemo<AgentGUINodeProps["renderSlots"]>(
+    () => ({
       ...renderSlots,
       providerRailEmpty: renderAgentsEmpty
-    }
+    }),
+    [renderAgentsEmpty, renderSlots]
+  );
+  const nodeProps: AgentGUINodeProps = {
+    ...props,
+    hostCapabilities: nodeHostCapabilities,
+    renderSlots: nodeRenderSlots
   };
   const content = (
     <AgentGuiI18nProvider runtime={i18n} locale={locale}>

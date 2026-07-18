@@ -10,7 +10,24 @@ Turn a large trace into an evidence chain ending at concrete files, symbols, and
 ## Start safely
 
 1. Read repository instructions and relevant architecture docs before interpreting ownership or editing.
-2. Inspect file size and envelope; never print or load a huge trace into model context:
+2. If no trace is supplied or discoverable, ask the user to capture the smallest reproducible desktop window. For this repository, have them launch Tutti with tracing enabled:
+
+   ```sh
+   TUTTI_ELECTRON_REMOTE_DEBUGGING_PORT=9223 \
+   TUTTI_ELECTRON_JS_FLAGS=--max-old-space-size=8192 \
+   VITE_TUTTI_WHY_DID_YOU_RENDER=0 \
+   make dev-gui
+   ```
+
+   Then have them reproduce the issue while recording from another terminal:
+
+   ```sh
+   pnpm trace:desktop -- --duration 15
+   ```
+
+   Ask for the generated `TuttiTrace-<timestamp>.json` path before trace-backed analysis. Do not invent trace findings while waiting. If the user explicitly wants source-only analysis, proceed but label conclusions as hypotheses without trace evidence.
+
+3. Inspect file size and envelope; never print or load a huge trace into model context:
 
    ```sh
    ls -lh TRACE.json
@@ -18,13 +35,13 @@ Turn a large trace into an evidence chain ending at concrete files, symbols, and
    tail -c 512 TRACE.json
    ```
 
-3. Run the bundled bounded-memory summarizer:
+4. Run the bundled bounded-memory summarizer:
 
    ```sh
-   node <skill-dir>/scripts/summarize_trace.mjs TRACE.json --top 40 --min-ms 16
+   node <skill-dir>/scripts/summarize-trace TRACE.json --top 40 --min-ms 16
    ```
 
-4. Record whether the trace includes development-only profiling, React component tracks, source maps, screenshots, or multiple renderer processes. Treat profiler startup and instrumentation cost separately from product cost.
+5. Record whether the trace includes development-only profiling, React component tracks, source maps, screenshots, or multiple renderer processes. Treat profiler startup and instrumentation cost separately from product cost.
 
 ## Build the evidence chain
 
@@ -105,4 +122,4 @@ Never claim millisecond or frame-rate improvement without a comparable post-chan
 
 ## Bundled script
 
-`scripts/summarize_trace.mjs` streams `traceEvents`, keeps bounded top-event state, and outputs JSON containing thread metadata, event totals, long tasks, frame signals, and source hints. Use it for the first pass; write narrow follow-up scripts only after a specific hypothesis exists.
+`scripts/summarize-trace` streams `traceEvents`, keeps bounded top-event state, and outputs JSON containing thread metadata, event totals, long tasks, frame signals, and source hints. Use it for the first pass; write narrow follow-up scripts only after a specific hypothesis exists.

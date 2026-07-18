@@ -277,7 +277,7 @@ async function streamTraceEvents(path, onEvent) {
 function parseArguments(args) {
   if (args.length === 0 || args.includes("--help")) {
     process.stderr.write(
-      "Usage: summarize_trace.mjs TRACE.json [--top N] [--min-ms N]\n"
+      "Usage: summarize-trace TRACE.json [--top N] [--min-ms N]\n"
     );
     process.exit(args.includes("--help") ? 0 : 1);
   }

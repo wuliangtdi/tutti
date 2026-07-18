@@ -1,7 +1,27 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentGUI, type AgentGUIProps } from "./AgentGUI";
+
+const { agentGuiNodeSpy } = vi.hoisted(() => ({
+  agentGuiNodeSpy: vi.fn()
+}));
+
+interface AgentGUINodeProbeProps {
+  hostCapabilities: {
+    agentTargets?: readonly {
+      agentTargetId?: string;
+      availability: unknown;
+      ref: unknown;
+    }[];
+    disabledHomeSuggestions?: readonly string[];
+    handoffAgentTargets?: readonly {
+      agentTargetId?: string;
+      availability: unknown;
+      ref: unknown;
+    }[];
+  };
+}
 
 function createAgentGUIProps(locale: AgentGUIProps["locale"]): AgentGUIProps {
   return {
@@ -27,13 +47,8 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
   >("@tutti-os/ui-system");
 
   return {
-    AgentGUINode: (props: {
-      hostCapabilities: {
-        agentTargets?: readonly { agentTargetId?: string }[];
-        disabledHomeSuggestions?: readonly string[];
-        handoffAgentTargets?: readonly { agentTargetId?: string }[];
-      };
-    }) => {
+    AgentGUINode: (props: AgentGUINodeProbeProps) => {
+      agentGuiNodeSpy(props);
       const { t } = useTranslation();
       const activityRuntime = useOptionalAgentActivityRuntime();
       return (
@@ -76,6 +91,10 @@ vi.mock("./agent-gui/agentGuiNode/AgentGUINode", async () => {
 });
 
 describe("AgentGUI i18n", () => {
+  beforeEach(() => {
+    agentGuiNodeSpy.mockClear();
+  });
+
   it("rerenders agent copy when the host locale changes", () => {
     const { rerender } = render(<AgentGUI {...createAgentGUIProps("en")} />);
 
@@ -152,6 +171,94 @@ describe("AgentGUI i18n", () => {
     expect(
       screen.getByTestId("agent-gui-handoff-targets-probe")
     ).toHaveTextContent('["local-codex","shared-agent:claude"]');
+  });
+
+  it("reuses agent target projections across frame-only renders", () => {
+    const agents = [agent("local-codex", "codex")];
+    const props = {
+      ...createAgentGUIProps("en"),
+      agentDirectory: {
+        agents,
+        capturedAtUnixMs: null,
+        error: null,
+        status: "ready" as const
+      }
+    };
+    const { rerender } = render(<AgentGUI {...props} />);
+    const first = agentGuiNodeSpy.mock.calls.at(-1)?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+
+    rerender(
+      <AgentGUI
+        {...props}
+        frame={{ ...props.frame, width: 960, height: 640 }}
+      />
+    );
+    const second = agentGuiNodeSpy.mock.calls.at(-1)?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+
+    expect(second?.hostCapabilities.agentTargets).toBe(
+      first?.hostCapabilities.agentTargets
+    );
+    expect(second?.hostCapabilities.handoffAgentTargets).toBe(
+      first?.hostCapabilities.handoffAgentTargets
+    );
+    expect(second?.hostCapabilities.handoffAgentTargets).toBe(
+      second?.hostCapabilities.agentTargets
+    );
+    expect(second?.hostCapabilities.agentTargets?.[0]?.availability).toBe(
+      first?.hostCapabilities.agentTargets?.[0]?.availability
+    );
+    expect(second?.hostCapabilities.agentTargets?.[0]?.ref).toBe(
+      first?.hostCapabilities.agentTargets?.[0]?.ref
+    );
+  });
+
+  it("rebuilds agent target projections when the directory changes", () => {
+    const firstAgent = agent("local-codex", "codex");
+    const props = {
+      ...createAgentGUIProps("en"),
+      agentDirectory: {
+        agents: [firstAgent],
+        capturedAtUnixMs: null,
+        error: null,
+        status: "ready" as const
+      }
+    };
+    const { rerender } = render(<AgentGUI {...props} />);
+    const first = agentGuiNodeSpy.mock.calls.at(-1)?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+
+    rerender(
+      <AgentGUI
+        {...props}
+        agentDirectory={{
+          ...props.agentDirectory,
+          agents: [
+            {
+              ...firstAgent,
+              availability: { status: "auth_required" as const }
+            }
+          ]
+        }}
+      />
+    );
+    const second = agentGuiNodeSpy.mock.calls.at(-1)?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+
+    expect(second?.hostCapabilities.agentTargets).not.toBe(
+      first?.hostCapabilities.agentTargets
+    );
+    expect(second?.hostCapabilities.agentTargets?.[0]?.availability).not.toBe(
+      first?.hostCapabilities.agentTargets?.[0]?.availability
+    );
+    expect(second?.hostCapabilities.agentTargets?.[0]?.ref).not.toBe(
+      first?.hostCapabilities.agentTargets?.[0]?.ref
+    );
   });
 });
 
