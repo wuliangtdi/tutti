@@ -17,6 +17,11 @@ import {
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
 import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
+import {
+  agentComposerFileMentionReferences,
+  createAgentComposerFileMentionMarkdown,
+  updateAgentComposerFileMentionStatuses
+} from "./agentMentionMarkdown";
 
 const placeholderSchema = new Schema({
   nodes: {
@@ -48,6 +53,38 @@ function editorForPlaceholder(text: string): { editor: Editor; range: Range } {
 }
 
 describe("parseAgentMentionMarkdown", () => {
+  it("round-trips composer file identity and upload status", () => {
+    const uploading = createAgentComposerFileMentionMarkdown({
+      id: "file-1",
+      name: "report.pdf",
+      status: "uploading"
+    });
+
+    expect(parseAgentMentionMarkdown(uploading)).toMatchObject({
+      item: {
+        kind: "file",
+        attachmentId: "file-1",
+        attachmentStatus: "uploading",
+        name: "report.pdf"
+      }
+    });
+    expect(
+      agentComposerFileMentionReferences(`before ${uploading} after`)
+    ).toEqual([expect.objectContaining({ id: "file-1", status: "uploading" })]);
+    expect(
+      updateAgentComposerFileMentionStatuses(
+        uploading,
+        new Map([["file-1", "ready"]])
+      )
+    ).toBe(
+      createAgentComposerFileMentionMarkdown({
+        id: "file-1",
+        name: "report.pdf",
+        status: "ready"
+      })
+    );
+  });
+
   it("accepts plain workspace file markdown links without an @ prefix", () => {
     expect(
       parseAgentMentionMarkdown("[README.md](/workspace/docs/README.md)")

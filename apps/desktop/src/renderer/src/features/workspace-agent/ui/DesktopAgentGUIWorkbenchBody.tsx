@@ -99,7 +99,7 @@ function DesktopAgentGUISurfaceImpl({
   onEngagementEvent,
   trackWorkspaceFileReferences,
   workspaceFileReferenceAdapter,
-  resolveDroppedFileReferences,
+  prepareExternalPromptFiles,
   onRequestGitBranches,
   referenceSourceAggregator,
   renderSidebarFooter,
@@ -620,9 +620,10 @@ function DesktopAgentGUISurfaceImpl({
       path: "",
       fileReferenceAdapter: previewMode ? null : workspaceFileReferenceAdapter,
       onRequestGitBranches: previewMode ? null : onRequestGitBranches,
-      resolveDroppedFileReferences: previewMode
+      prepareExternalPromptFiles: previewMode
         ? null
-        : resolveDroppedFileReferences,
+        : prepareExternalPromptFiles,
+      promptAssetLimit: 16,
       referenceSourceAggregator: previewMode ? null : referenceSourceAggregator,
       resolveReferenceEntryIconUrl: previewMode
         ? undefined

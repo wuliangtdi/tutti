@@ -10,8 +10,32 @@ import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKin
 import { translate } from "../../../i18n/index";
 import type {
   AgentContextMentionItem,
+  AgentComposerFileMentionStatus,
   ParsedAgentMentionMarkdown
 } from "./agentFileMentionContracts";
+
+export const AGENT_COMPOSER_FILE_MENTION_KIND = "composer-file";
+
+export interface AgentComposerFileMentionReference {
+  end: number;
+  id: string;
+  name: string;
+  start: number;
+  status: AgentComposerFileMentionStatus;
+}
+
+export function createAgentComposerFileMentionMarkdown(input: {
+  id: string;
+  name: string;
+  status: AgentComposerFileMentionStatus;
+}): string {
+  return createRichTextMentionMarkdown({
+    providerId: AGENT_COMPOSER_FILE_MENTION_KIND,
+    entityId: input.id,
+    label: input.name,
+    scope: { status: input.status }
+  });
+}
 
 export function dirnameFromPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
@@ -86,6 +110,13 @@ export function formatAgentMentionMarkdown(
   // 所有 entity(含 workspace-reference)统一序列化成单条 mention 链接。
   // workspace-reference 不再展开成文件路径——agent 拿到 URI 后经 skill+CLI 按需解析。
   if (item.kind === "file") {
+    if (item.attachmentId) {
+      return createAgentComposerFileMentionMarkdown({
+        id: item.attachmentId,
+        name: item.name,
+        status: item.attachmentStatus ?? "ready"
+      });
+    }
     const label = item.name.trim().startsWith("@")
       ? item.name
       : `@${item.name}`;
@@ -293,6 +324,24 @@ export function parseMentionItemFromHref(input: {
   const targetId = mention.entityId.trim();
   const workspaceId = mention.scope?.workspaceId?.trim() ?? "";
   const name = mention.label;
+  if (resource === AGENT_COMPOSER_FILE_MENTION_KIND) {
+    if (!targetId) {
+      return null;
+    }
+    const status = normalizeAgentComposerFileMentionStatus(
+      mention.scope?.status
+    );
+    return {
+      kind: "file",
+      href,
+      path: "",
+      name,
+      entryKind: "file",
+      directoryPath: "",
+      attachmentId: targetId,
+      attachmentStatus: status
+    };
+  }
   if (resource === "agent-session") {
     if (!workspaceId) {
       return null;
@@ -402,6 +451,57 @@ export function parseMentionItemFromHref(input: {
     };
   }
   return null;
+}
+
+export function agentComposerFileMentionReferences(
+  value: string
+): AgentComposerFileMentionReference[] {
+  const references: AgentComposerFileMentionReference[] = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const start = value.indexOf("[", cursor);
+    if (start < 0) break;
+    const parsed = parseAgentMentionMarkdown(value, start);
+    if (parsed?.item.kind === "file" && parsed.item.attachmentId) {
+      references.push({
+        start,
+        end: parsed.end,
+        id: parsed.item.attachmentId,
+        name: parsed.item.name,
+        status: parsed.item.attachmentStatus ?? "ready"
+      });
+      cursor = parsed.end;
+      continue;
+    }
+    cursor = start + 1;
+  }
+  return references;
+}
+
+export function updateAgentComposerFileMentionStatuses(
+  value: string,
+  statuses: ReadonlyMap<string, AgentComposerFileMentionStatus>
+): string {
+  const references = agentComposerFileMentionReferences(value);
+  if (references.length === 0) return value;
+  let cursor = 0;
+  let result = "";
+  for (const reference of references) {
+    result += value.slice(cursor, reference.start);
+    result += createAgentComposerFileMentionMarkdown({
+      id: reference.id,
+      name: reference.name,
+      status: statuses.get(reference.id) ?? reference.status
+    });
+    cursor = reference.end;
+  }
+  return result + value.slice(cursor);
+}
+
+function normalizeAgentComposerFileMentionStatus(
+  value: unknown
+): AgentComposerFileMentionStatus {
+  return value === "uploading" || value === "error" ? value : "ready";
 }
 
 function isLocalDirectoryMentionHref(href: string): boolean {

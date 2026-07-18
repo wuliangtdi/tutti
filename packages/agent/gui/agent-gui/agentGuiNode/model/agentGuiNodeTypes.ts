@@ -134,7 +134,10 @@ interface AgentComposerFileBlockBase {
   mimeType?: string;
   path?: string;
   hostPath?: string;
+  url?: string;
+  uri?: string;
   assetId?: string;
+  uploadStatus?: string;
   sizeBytes?: number;
   uploading?: boolean;
   uploadError?: string;

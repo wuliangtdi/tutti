@@ -7,7 +7,7 @@ import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-p
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
-import type { AgentDroppedFileReferenceResolver } from "../model/agentDroppedFileReferences";
+import type { AgentExternalPromptFilePreparer } from "../model/agentExternalPromptFiles";
 import type { AgentProjectPathChangeMetadata } from "../AgentComposerSettingsMenus";
 import type { AgentSlashCommandCapability } from "../model/agentSlashCommandProviderPolicy";
 import type {
@@ -309,7 +309,8 @@ export interface AgentComposerProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveDroppedFileReferences?: AgentDroppedFileReferenceResolver | null;
+  prepareExternalPromptFiles?: AgentExternalPromptFilePreparer | null;
+  promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   contextMentionProviders?: readonly AgentContextMentionProvider[];

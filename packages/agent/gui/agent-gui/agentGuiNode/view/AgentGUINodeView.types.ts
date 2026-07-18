@@ -507,7 +507,8 @@ export interface AgentGUINodeViewProps {
   onWorkspaceFileReferencesAdded?: (
     references: readonly WorkspaceFileReference[]
   ) => void | Promise<void>;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
   onConversationRailWidthChanged: (widthPx: number) => void;
   labels: AgentGUIViewLabels;
   workspaceUserProjectI18n: WorkspaceUserProjectI18nRuntime;

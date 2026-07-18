@@ -15,8 +15,10 @@ import type {
   AgentComposerDraftLargeText
 } from "../model/agentGuiNodeTypes";
 import {
+  agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
+  agentComposerDraftPrompt,
   buildAgentComposerDraft,
   MAX_AGENT_COMPOSER_DRAFT_IMAGES,
   updateAgentComposerDraft
@@ -27,7 +29,15 @@ import type {
 } from "../agentRichText/AgentRichTextEditor";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import { parseMentionItemFromHref } from "../agentRichText/agentFileMentionExtension";
-import type { AgentDroppedFileReferenceResolver } from "../model/agentDroppedFileReferences";
+import {
+  createAgentExternalPromptFilePreparation,
+  remainingAgentComposerPromptAssetSlots,
+  type AgentExternalPromptFilePreparer
+} from "../model/agentExternalPromptFiles";
+import {
+  agentComposerFileMentionReferences,
+  updateAgentComposerFileMentionStatuses
+} from "../agentRichText/agentMentionMarkdown";
 import {
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction
@@ -44,6 +54,21 @@ import type { AgentGUIComposerContentType } from "../engagement/agentGUIEngageme
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
   mentionItems: readonly AgentContextMentionItem[];
+}
+
+function updateDraftPromptAndReconcileFiles(
+  draft: AgentComposerDraft,
+  prompt: string
+): AgentComposerDraft {
+  const referencedIds = new Set(
+    agentComposerFileMentionReferences(prompt).map((reference) => reference.id)
+  );
+  return updateAgentComposerDraft(draft, {
+    prompt,
+    files: agentComposerDraftFiles(draft).filter((file) =>
+      referencedIds.has(file.id)
+    )
+  });
 }
 
 function useStableEventCallback<Args extends unknown[], Result>(
@@ -63,8 +88,8 @@ interface UseComposerDraftAttachmentsInput {
   goalDraftObjective: string | null;
   isGoalModeActive: boolean;
   promptImagesSupported: boolean;
-  promptFileUploadSupported: boolean;
   promptFilesSupported: boolean;
+  promptAssetLimit?: number | null;
   pastedTextStagingSupported: boolean;
   editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
   draftPromptRef: RefObject<string>;
@@ -85,21 +110,20 @@ interface UseComposerDraftAttachmentsInput {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveDroppedFileReferences?: AgentDroppedFileReferenceResolver | null;
+  prepareExternalPromptFiles?: AgentExternalPromptFilePreparer | null;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
 }
 
 export function useComposerDraftAttachments({
   workspaceId,
   workspacePath,
-  draftContent,
   draftScopeKey,
   draftByScopeKeyRef,
   goalDraftObjective,
   isGoalModeActive,
   promptImagesSupported,
-  promptFileUploadSupported,
   promptFilesSupported,
+  promptAssetLimit,
   pastedTextStagingSupported,
   editorHandleRef,
   draftPromptRef,
@@ -113,10 +137,12 @@ export function useComposerDraftAttachments({
   onPromptImagesUnsupported,
   onContentEntered,
   onRequestWorkspaceReferences,
-  resolveDroppedFileReferences,
+  prepareExternalPromptFiles,
   onLinkAction
 }: UseComposerDraftAttachmentsInput) {
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
+  const activeDraftScopeKeyRef = useRef(draftScopeKey);
+  activeDraftScopeKeyRef.current = draftScopeKey;
   const reportContentEntered = useStableEventCallback(
     (contentType: AgentGUIComposerContentType): void => {
       onContentEntered?.(contentType);
@@ -126,6 +152,10 @@ export function useComposerDraftAttachments({
     (sourceScopeKey: string, nextDraft: AgentComposerDraft): void => {
       draftByScopeKeyRef.current[sourceScopeKey] = nextDraft;
       if (sourceScopeKey === draftScopeKey) {
+        draftPromptRef.current = agentComposerDraftPrompt(nextDraft);
+        draftImagesRef.current = agentComposerDraftImages(nextDraft);
+        draftFilesRef.current = agentComposerDraftFiles(nextDraft);
+        draftLargeTextsRef.current = agentComposerDraftLargeTexts(nextDraft);
         onDraftContentChange(nextDraft);
       } else {
         onDraftContentChange(nextDraft, sourceScopeKey);
@@ -154,9 +184,8 @@ export function useComposerDraftAttachments({
         draftPromptRef.current = nextGoalPrompt;
         setPaletteDraftPrompt(nextDraft);
         setIsPaletteOpen(true);
-        publishScopedDraft(
-          draftScopeKey,
-          updateAgentComposerDraft(draftContent, { prompt: nextGoalPrompt })
+        updateScopedDraft(draftScopeKey, (currentDraft) =>
+          updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
         );
         return;
       }
@@ -166,18 +195,16 @@ export function useComposerDraftAttachments({
         draftPromptRef.current = nextGoalPrompt;
         setPaletteDraftPrompt(nextGoalObjective);
         setIsPaletteOpen(true);
-        publishScopedDraft(
-          draftScopeKey,
-          updateAgentComposerDraft(draftContent, { prompt: nextGoalPrompt })
+        updateScopedDraft(draftScopeKey, (currentDraft) =>
+          updateDraftPromptAndReconcileFiles(currentDraft, nextGoalPrompt)
         );
         return;
       }
       draftPromptRef.current = nextDraft;
       setPaletteDraftPrompt(nextDraft);
       setIsPaletteOpen(true);
-      publishScopedDraft(
-        draftScopeKey,
-        updateAgentComposerDraft(draftContent, { prompt: nextDraft })
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateDraftPromptAndReconcileFiles(currentDraft, nextDraft)
       );
     }
   );
@@ -189,17 +216,10 @@ export function useComposerDraftAttachments({
     const nextPrompt = goalDraftObjective ?? "";
     draftPromptRef.current = nextPrompt;
     setPaletteDraftPrompt(nextPrompt);
-    publishScopedDraft(
-      draftScopeKey,
-      updateAgentComposerDraft(draftContent, { prompt: nextPrompt })
+    updateScopedDraft(draftScopeKey, (currentDraft) =>
+      updateDraftPromptAndReconcileFiles(currentDraft, nextPrompt)
     );
-  }, [
-    draftContent,
-    draftScopeKey,
-    goalDraftObjective,
-    isGoalModeActive,
-    publishScopedDraft
-  ]);
+  }, [draftScopeKey, goalDraftObjective, isGoalModeActive, updateScopedDraft]);
 
   const addDraftImages = useCallback(
     (images: AgentRichTextPastedImage[]): void => {
@@ -211,9 +231,17 @@ export function useComposerDraftAttachments({
         return;
       }
       const currentDraftImages = draftImagesRef.current;
-      const remainingSlots = Math.max(
-        0,
-        MAX_AGENT_COMPOSER_DRAFT_IMAGES - currentDraftImages.length
+      const remainingSlots = Math.min(
+        Math.max(
+          0,
+          MAX_AGENT_COMPOSER_DRAFT_IMAGES - currentDraftImages.length
+        ),
+        remainingAgentComposerPromptAssetSlots({
+          images: currentDraftImages.length,
+          files: draftFilesRef.current.length,
+          largeTexts: draftLargeTextsRef.current.length,
+          limit: promptAssetLimit
+        })
       );
       if (remainingSlots === 0) {
         return;
@@ -364,6 +392,7 @@ export function useComposerDraftAttachments({
       onPromptImagesUnsupported,
       publishScopedDraft,
       promptImagesSupported,
+      promptAssetLimit,
       reportContentEntered,
       updateScopedDraft,
       workspaceId
@@ -389,11 +418,43 @@ export function useComposerDraftAttachments({
     [draftScopeKey, publishScopedDraft]
   );
 
-  const removeDraftFile = useCallback(
-    (id: string): void => {
-      const nextDraftFiles = draftFilesRef.current.filter(
-        (file) => file.id !== id
+  const addDraftFiles = useCallback(
+    (files: readonly File[]): void => {
+      if (
+        files.length === 0 ||
+        !promptFilesSupported ||
+        !prepareExternalPromptFiles ||
+        !editorHandleRef.current
+      ) {
+        return;
+      }
+      const remainingSlots = remainingAgentComposerPromptAssetSlots({
+        images: draftImagesRef.current.length,
+        files: draftFilesRef.current.length,
+        largeTexts: draftLargeTextsRef.current.length,
+        limit: promptAssetLimit
+      });
+      if (remainingSlots === 0) {
+        return;
+      }
+      const preparation = createAgentExternalPromptFilePreparation(
+        files.slice(0, remainingSlots)
       );
+      reportAgentComposerDiagnostic(agentActivityRuntime, {
+        details: {
+          acceptedFileCount: preparation.pendingFiles.length,
+          existingFileCount: draftFilesRef.current.length,
+          requestedFileCount: files.length
+        },
+        event: "agent.gui.composer.file_preparation.requested",
+        level: "info",
+        source: "agent-gui",
+        workspaceId
+      });
+      const nextDraftFiles = [
+        ...draftFilesRef.current,
+        ...preparation.pendingFiles
+      ];
       draftFilesRef.current = nextDraftFiles;
       publishScopedDraft(
         draftScopeKey,
@@ -404,8 +465,82 @@ export function useComposerDraftAttachments({
           largeTexts: draftLargeTextsRef.current
         })
       );
+      editorHandleRef.current.insertComposerFiles(
+        preparation.pendingFiles.map((file) => ({
+          id: file.id,
+          name: file.name,
+          status: "uploading"
+        }))
+      );
+      void preparation.complete(prepareExternalPromptFiles).then((settled) => {
+        const settledById = new Map(settled.map((file) => [file.id, file]));
+        const sourceScopeKey = draftScopeKey;
+        const currentDraft = draftByScopeKeyRef.current[sourceScopeKey];
+        const referencedIds = new Set(
+          currentDraft
+            ? agentComposerFileMentionReferences(
+                agentComposerDraftPrompt(currentDraft)
+              ).map((reference) => reference.id)
+            : []
+        );
+        const visibleSettled = settled.filter((file) =>
+          referencedIds.has(file.id)
+        );
+        const editorUpdated =
+          activeDraftScopeKeyRef.current === sourceScopeKey &&
+          editorHandleRef.current?.updateComposerFiles(
+            visibleSettled.map((file) => ({
+              id: file.id,
+              name: file.name,
+              status: file.uploadError ? "error" : "ready"
+            }))
+          );
+        const statusById = new Map(
+          visibleSettled.map((file) => [
+            file.id,
+            file.uploadError ? ("error" as const) : ("ready" as const)
+          ])
+        );
+        const updatedDraft = updateScopedDraft(sourceScopeKey, (latestDraft) =>
+          updateAgentComposerDraft(latestDraft, {
+            prompt: editorUpdated
+              ? agentComposerDraftPrompt(latestDraft)
+              : updateAgentComposerFileMentionStatuses(
+                  agentComposerDraftPrompt(latestDraft),
+                  statusById
+                ),
+            files: agentComposerDraftFiles(latestDraft).map(
+              (file) => settledById.get(file.id) ?? file
+            )
+          })
+        );
+        const errorCount = settled.filter((file) => file.uploadError).length;
+        reportAgentComposerDiagnostic(agentActivityRuntime, {
+          details: {
+            draftUpdateApplied: Boolean(updatedDraft),
+            errorCount,
+            settledFileCount: settled.length,
+            visibleFileCount: updatedDraft
+              ? agentComposerDraftFiles(updatedDraft).length
+              : null
+          },
+          event: "agent.gui.composer.file_preparation.settled",
+          level: errorCount > 0 || !updatedDraft ? "warn" : "info",
+          source: "agent-gui",
+          workspaceId
+        });
+      });
     },
-    [draftScopeKey, publishScopedDraft]
+    [
+      agentActivityRuntime,
+      draftScopeKey,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
+      promptFilesSupported,
+      publishScopedDraft,
+      updateScopedDraft,
+      workspaceId
+    ]
   );
 
   const removeDraftLargeText = useCallback(
@@ -467,6 +602,16 @@ export function useComposerDraftAttachments({
     (text: string): void => {
       const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       if (!normalizedText.trim()) {
+        return;
+      }
+      if (
+        remainingAgentComposerPromptAssetSlots({
+          images: draftImagesRef.current.length,
+          files: draftFilesRef.current.length,
+          largeTexts: draftLargeTextsRef.current.length,
+          limit: promptAssetLimit
+        }) === 0
+      ) {
         return;
       }
       reportContentEntered("large_text");
@@ -551,6 +696,7 @@ export function useComposerDraftAttachments({
       agentActivityRuntime,
       draftScopeKey,
       pastedTextStagingSupported,
+      promptAssetLimit,
       publishScopedDraft,
       reportContentEntered,
       updateScopedDraft,
@@ -561,59 +707,13 @@ export function useComposerDraftAttachments({
   const applyReferencePickResult = useCallback(
     async (result: WorkspaceReferencePickResult) => {
       if (result.files.length > 0) {
-        const uploadPromptContent = promptFileUploadSupported
-          ? agentActivityRuntime?.uploadPromptContent
-          : undefined;
-        const uploadedFiles = await Promise.all(
-          result.files.map(async (file) => {
-            const hostPath = file.hostPath?.trim() ?? "";
-            if (!hostPath) {
-              return file;
-            }
-            if (!uploadPromptContent) {
-              throw new Error(
-                "Prompt file uploads are not supported by this agent runtime."
-              );
-            }
-            const uploaded = await uploadPromptContent({
-              workspaceId,
-              content: [
-                {
-                  type: "file",
-                  hostPath,
-                  name: file.displayName,
-                  kind: "file"
-                }
-              ]
-            });
-            const uploadedFile = uploaded.content.find(
-              (block) => block.type === "file"
-            );
-            const uploadedPath = uploadedFile?.path?.trim() ?? "";
-            if (!uploadedPath) {
-              throw new Error("Prompt file upload completed without path.");
-            }
-            return {
-              ...file,
-              path: uploadedPath,
-              ...(uploadedFile?.name
-                ? { displayName: uploadedFile.name }
-                : file.displayName
-                  ? { displayName: file.displayName }
-                  : {}),
-              ...(uploadedFile?.sizeBytes
-                ? { sizeBytes: uploadedFile.sizeBytes }
-                : {})
-            };
-          })
-        );
-        editorHandleRef.current?.insertWorkspaceReferences(uploadedFiles);
+        editorHandleRef.current?.insertWorkspaceReferences(result.files);
       }
       if (result.mentionItems.length > 0) {
         editorHandleRef.current?.insertMentionItems(result.mentionItems);
       }
     },
-    [agentActivityRuntime, promptFileUploadSupported, workspaceId]
+    []
   );
 
   const handleWorkspaceReferencePicker = useCallback(async () => {
@@ -622,28 +722,6 @@ export function useComposerDraftAttachments({
     }
     await applyReferencePickResult(await onRequestWorkspaceReferences());
   }, [applyReferencePickResult, onRequestWorkspaceReferences]);
-
-  const applyDroppedFileReferences = useCallback(
-    async (files: readonly File[]) => {
-      if (
-        !promptFilesSupported ||
-        !resolveDroppedFileReferences ||
-        files.length === 0
-      ) {
-        return;
-      }
-      const references = await resolveDroppedFileReferences(files);
-      if (references.length === 0) {
-        return;
-      }
-      await applyReferencePickResult({ files: references, mentionItems: [] });
-    },
-    [
-      applyReferencePickResult,
-      promptFilesSupported,
-      resolveDroppedFileReferences
-    ]
-  );
 
   // @ 面板里点任务/应用行的「查看产物」入口:保留面板,打开引用 picker 并定位到该实体;
   // 选中的文件仍按常规插入,但不会把该任务/应用本身作为 mention 插入。
@@ -691,7 +769,7 @@ export function useComposerDraftAttachments({
 
   return {
     addDraftImages,
-    applyDroppedFileReferences,
+    addDraftFiles,
     clearGoalModeBadge,
     expandDraftLargeTextToPrompt,
     handleDraftChange,
@@ -699,7 +777,6 @@ export function useComposerDraftAttachments({
     handleOpenReferencesForEntity,
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
-    removeDraftFile,
     removeDraftImage,
     removeDraftLargeText
   };

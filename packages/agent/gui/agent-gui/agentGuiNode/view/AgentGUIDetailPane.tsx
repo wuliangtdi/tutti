@@ -97,7 +97,8 @@ export interface AgentGUIDetailPaneProps {
         entity?: AgentContextMentionItem | null
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
-  resolveDroppedFileReferences?: AgentComposerProps["resolveDroppedFileReferences"];
+  prepareExternalPromptFiles?: AgentComposerProps["prepareExternalPromptFiles"];
+  promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
@@ -176,7 +177,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   onCapabilitySettingsRequest,
   onAgentProviderLogin,
   onRequestWorkspaceReferences,
-  resolveDroppedFileReferences = null,
+  prepareExternalPromptFiles = null,
+  promptAssetLimit = null,
   selectProjectDirectory,
   onRequestGitBranches,
   onRequestComposerFocus,
@@ -483,7 +485,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onLinkAction: stableLinkAction,
       onHandoffConversation: stableHandoffConversation,
       onRequestWorkspaceReferences: stableRequestWorkspaceReferences,
-      resolveDroppedFileReferences,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       selectProjectDirectory: stableSelectProjectDirectory,
       onRequestGitBranches: stableRequestGitBranches,
       contextMentionProviders
@@ -521,7 +524,8 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onCapabilitySettingsRequest,
       contextMentionProviders,
       removeQueuedPrompt,
-      resolveDroppedFileReferences,
+      prepareExternalPromptFiles,
+      promptAssetLimit,
       sendQueuedPromptNext,
       showPromptImagesUnsupported,
       showStopButton,

@@ -114,7 +114,8 @@ export function AgentGUINodeView({
   detailMinWidthPx,
   uiLanguage,
   onWorkspaceFileReferencesAdded,
-  resolveDroppedFileReferences = null,
+  prepareExternalPromptFiles = null,
+  promptAssetLimit = null,
   onConversationRailWidthChanged,
   labels,
   workspaceUserProjectI18n,
@@ -737,7 +738,8 @@ export function AgentGUINodeView({
               onCapabilitySettingsRequest={onCapabilitySettingsRequest}
               onAgentProviderLogin={onAgentProviderLogin}
               onRequestWorkspaceReferences={requestWorkspaceReferences}
-              resolveDroppedFileReferences={resolveDroppedFileReferences}
+              prepareExternalPromptFiles={prepareExternalPromptFiles}
+              promptAssetLimit={promptAssetLimit}
               selectProjectDirectory={selectProjectDirectory}
               onRequestGitBranches={onRequestGitBranches}
               onRequestComposerFocus={requestComposerFocus}

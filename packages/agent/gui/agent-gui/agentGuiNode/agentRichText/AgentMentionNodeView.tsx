@@ -8,7 +8,11 @@ import {
   type ReactNode
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { MentionPill } from "@tutti-os/ui-system/components";
+import {
+  MentionPill,
+  TruncatingPillLabel
+} from "@tutti-os/ui-system/components";
+import { Spinner } from "@tutti-os/ui-system";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
 import { useTranslation } from "../../../i18n/index";
 import {
@@ -37,6 +41,7 @@ function parseFileCountAttr(value: unknown): number {
 }
 
 interface AgentMentionNodeViewModel {
+  attachmentStatus?: "uploading" | "ready" | "error";
   ariaLabel: string;
   /** 宿主注册的自定义 mention kind(kind === "custom" 专用)。 */
   customKind?: string;
@@ -213,6 +218,13 @@ function mentionViewModel(
   const path = attrString(attrs, "path") || href;
   const entryKind = attrString(attrs, "entryKind") || "unknown";
   return {
+    attachmentStatus:
+      attrString(attrs, "attachmentStatus") === "uploading" ||
+      attrString(attrs, "attachmentStatus") === "error"
+        ? (attrString(attrs, "attachmentStatus") as "uploading" | "error")
+        : attrString(attrs, "attachmentId")
+          ? "ready"
+          : undefined,
     ariaLabel: name,
     directoryPath: attrString(attrs, "directoryPath") || dirnameFromPath(path),
     entryKind,
@@ -306,8 +318,10 @@ function AgentMentionLegacyFileNodeView({
       as="span"
       aria-label={mention.ariaLabel}
       className={`agent-rich-text-mention-node group tsh-agent-object-token tsh-agent-object-token--file ${
-        selected ? "is-selected" : ""
-      }`}
+        mention.attachmentStatus === "error"
+          ? "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
+          : ""
+      } ${selected ? "is-selected" : ""}`}
       contentEditable={false}
       data-agent-file-directory-path={mention.directoryPath}
       data-agent-file-entry-kind={mention.entryKind}
@@ -322,6 +336,12 @@ function AgentMentionLegacyFileNodeView({
           })}
       data-agent-mention-href={mention.href}
       data-agent-mention-kind={mention.kind}
+      data-uploading={
+        mention.attachmentStatus === "uploading" ? "true" : undefined
+      }
+      data-upload-error={
+        mention.attachmentStatus === "error" ? "true" : undefined
+      }
       {...(mention.thumbnailUrl
         ? { "data-agent-mention-thumbnail-url": mention.thumbnailUrl }
         : {})}
@@ -360,14 +380,28 @@ function AgentMentionLegacyFileNodeView({
           className="relative grid size-4 shrink-0 place-items-center"
           aria-hidden={isEditable ? undefined : true}
         >
-          <span
-            className={`tsh-agent-object-token__icon transition-opacity ${
-              isEditable
-                ? "group-hover:opacity-0 group-focus-within:opacity-0"
-                : ""
-            }`}
-            aria-hidden="true"
-          />
+          {mention.attachmentStatus === "uploading" ? (
+            <Spinner
+              className={
+                isEditable
+                  ? "transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                  : undefined
+              }
+              size={14}
+              strokeWidth={2.4}
+              trackColor="var(--transparency-hover)"
+              testId="agent-gui-composer-file-upload-spinner"
+            />
+          ) : (
+            <span
+              className={`tsh-agent-object-token__icon transition-opacity ${
+                isEditable
+                  ? "group-hover:opacity-0 group-focus-within:opacity-0"
+                  : ""
+              }`}
+              aria-hidden="true"
+            />
+          )}
           {isEditable ? (
             <button
               aria-label={removeActionAriaLabel}

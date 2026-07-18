@@ -26,11 +26,16 @@ export interface AgentMentionFileItem {
   name: string;
   entryKind: AgentFileMentionKind;
   directoryPath: string;
+  /** Present only for a regular file attached from the local composer. */
+  attachmentId?: string;
+  attachmentStatus?: AgentComposerFileMentionStatus;
   score?: number;
   thumbnailUrl?: string | null;
   mentionNavigation?: AgentMentionFileNavigationAction;
   childCount?: number;
 }
+
+export type AgentComposerFileMentionStatus = "uploading" | "ready" | "error";
 
 export interface AgentMentionSessionItem {
   kind: "session";

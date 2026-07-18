@@ -790,8 +790,8 @@ export function StandaloneAgentWindow({
               workspaceFileReferenceAdapter={
                 agentGuiHostInput.workspaceFileReferenceAdapter
               }
-              resolveDroppedFileReferences={
-                agentGuiHostInput.resolveDroppedFileReferences
+              prepareExternalPromptFiles={
+                agentGuiHostInput.prepareExternalPromptFiles
               }
               onRequestGitBranches={agentGuiHostInput.onRequestGitBranches}
               referenceSourceAggregator={

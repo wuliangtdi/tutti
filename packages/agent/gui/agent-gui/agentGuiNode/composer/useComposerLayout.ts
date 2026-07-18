@@ -7,7 +7,6 @@ import {
   type SetStateAction
 } from "react";
 import type {
-  AgentComposerDraftFile,
   AgentComposerDraftImage,
   AgentComposerDraftLargeText,
   AgentGUIComposerSettingsVM
@@ -59,7 +58,6 @@ interface UseComposerLayoutInput {
   dockComposerTextHeight: number;
   setDockComposerTextHeight: Dispatch<SetStateAction<number>>;
   draftImages: AgentComposerDraftImage[];
-  draftFiles: AgentComposerDraftFile[];
   draftLargeTexts: AgentComposerDraftLargeText[];
 }
 
@@ -87,7 +85,6 @@ export function useComposerLayout({
   dockComposerTextHeight,
   setDockComposerTextHeight,
   draftImages,
-  draftFiles,
   draftLargeTexts
 }: UseComposerLayoutInput) {
   const labels = { promptTipsPrefix };
@@ -296,7 +293,6 @@ export function useComposerLayout({
       window.removeEventListener("resize", measure);
     };
   }, [
-    draftFiles.length,
     draftImages.length,
     draftLargeTexts.length,
     isHeroLayout,

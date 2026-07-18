@@ -121,10 +121,6 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
   ) => AgentHostAsyncResult<AgentHostResolveWorkspaceGitPatchSupportResult>;
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
-  getReferenceForFile?: (file: File) => {
-    kind: "file" | "folder";
-    path: string;
-  };
   readFile: (input: {
     path: string;
   }) => AgentHostAsyncResult<AgentHostReadWorkspaceFileResult>;

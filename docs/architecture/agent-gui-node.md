@@ -334,6 +334,10 @@ A controller may compose flows but cannot become a second lifecycle state machin
 
 Activation and existing-Session submit share a canonical prompt envelope. Submit eligibility includes text and renderable structured content; an individual composer does not redefine it.
 
+External OS file paste and drop create snapshot prompt attachments. AgentGUI owns clipboard/drop classification, inline mention position, and draft reconciliation. The injected `prepareExternalPromptFiles` host port owns native-path lookup, byte-size enforcement, persistence, and remote transport. Each input file has one `sourceIndex` result; one failure must not fail sibling files. A prepared result includes a provider-readable `path` or `url`, while a failure carries a typed error code. Host count and byte limits are enforced before expensive reads or persistence.
+
+Workspace picker results and internal workspace-reference drags remain live references. They enter the rich-text document as mentions and never pass through external-file preparation. Removing an inline external-file mention removes its draft intent; a later async result must not revive it or lose its error reason when the draft is in another scope.
+
 ### 6.2 Public node contract
 
 `AgentGUINodeProps` groups fields by semantic responsibility:
