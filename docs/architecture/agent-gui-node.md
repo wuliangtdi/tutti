@@ -244,6 +244,10 @@ When runtime sections are enabled, projection unions IDs from the current sectio
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
+Contain selection and presentation identity at the Rail boundary. Each section receives the active ID only when it owns the canonical or overlay row; unrelated sections receive `null` so their memoized props remain equal. Rail pane, section, and row receive a dedicated Rail-label projection whose identity changes for locale changes, not provider-specific detail copy. Event handlers shared by every section keep stable identities and read the current scope and lock state when invoked.
+
+Keep section header/action chrome independent from changing item collections. A memoized header receives scalar presentation fields and stable event-time actions; it must not receive the section object or rebuild project/session semantics. Split the header into narrow render islands. Frequently changing derived booleans such as project drag disabled, project action locked, and batch deletion disabled may cross the Section presentation boundary through separate primitive Context projections. The Rail pane owns those providers outside the memoized Section so a projection-only update does not execute item projection; only the frame, forwarded-ref button leaf, or open menu content that renders the value may consume it. Do not combine those values into one Context object or copy them into persistent state. Menu disclosure is view-local state: keep each Radix root and trigger mounted for focus and keyboard behavior, but instantiate portaled content only while that menu is open. A closed menu has no availability-state consumer. The project header remains the native drag source, each project section updates the insertion position across its full area, and the Rail scroll viewport owns the final drop so section gaps cannot discard an already visible insertion target. This is a presentation boundary, not a second Rail or lifecycle store; stable event-time guards remain authoritative for action delivery.
+
 Relative time uses one renderer-realm minute clock. Timestamp leaves subscribe directly; do not thread a tick prop through Rail pane/section/row and rerender the interactive subtree every minute.
 
 ### 4.6 Detail and transcript
@@ -472,7 +476,8 @@ Do not start by adding a fallback to the visible component.
 
 ## 10. Validation
 
-Architecture boundaries:
+Follow the repository [Validation Selection](../conventions/testing.md#validation-selection).
+The Agent architecture boundary commands available to that workflow are:
 
 ```sh
 pnpm check:agent-host-boundary
@@ -480,15 +485,6 @@ pnpm check:agent-activity-runtime-boundaries
 pnpm check:agent-provider-strategy-boundaries
 pnpm check:agent-gui-degradation
 pnpm check:renderer-boundaries
-```
-
-Focused AgentGUI checks:
-
-```sh
-pnpm --filter @tutti-os/agent-gui test
-pnpm --filter @tutti-os/agent-gui typecheck
-pnpm --filter @tutti-os/agent-activity-core test
-pnpm check:changed
 ```
 
 `check:agent-gui-degradation` is executable architecture. Its business-file 800-line limit and budgets for effects, memoization, render-mirror refs, provider branches, timers, component stores, and module globals may only stay level or decrease. Tighten the baseline when a metric drops; never raise it to merge new drift.

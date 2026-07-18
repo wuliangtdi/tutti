@@ -42,6 +42,7 @@ import { areAgentGUINodePropsEqual } from "./AgentGUINode.types";
 import { AgentGUIMentionServiceBoundary } from "./AgentGUIMentionServiceBoundary";
 import {
   useAgentGUIViewLabels,
+  useAgentGUIConversationRailLabels,
   useAgentGUIWorkspaceFileReferenceCopy
 } from "./AgentGUINode.labels";
 import {
@@ -352,6 +353,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   const displayProviderLabel = viewModel.rail.activeConversation
     ? resolveAgentGUIProviderDisplayLabel(activeProvider, fallbackAgentTitle)
     : selectedAgentTargetLabel;
+  const conversationRailLabels = useAgentGUIConversationRailLabels(t);
   const labels = useAgentGUIViewLabels({
     disabledHomeSuggestions,
     displayProviderLabel,
@@ -682,6 +684,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                 handleConversationRailWidthChanged
               }
               labels={labels}
+              conversationRailLabels={conversationRailLabels}
               workspaceUserProjectI18n={workspaceUserProjectI18n}
               workspaceFileManagerCopy={workspaceFileManagerI18n}
               workspaceFileReferenceAdapter={workspaceFileReferenceAdapter}

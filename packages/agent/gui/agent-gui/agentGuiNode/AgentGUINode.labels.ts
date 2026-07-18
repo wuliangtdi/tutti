@@ -6,10 +6,19 @@ import type { AgentGUIHomeSuggestionId } from "../../types";
 import { resolveAgentGUIProviderDisplayLabel } from "./model/agentGuiProviderIdentity";
 import { buildAgentHomeSuggestions } from "./model/agentHomeSuggestions";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView";
-import { agentGUIConversationRailLabels } from "./view/agentGUIConversationRailLabels";
+import {
+  agentGUIConversationRailLabels,
+  type AgentGUIConversationRailLabels
+} from "./view/agentGUIConversationRailLabels";
 import { agentGUIProviderManagerLabels } from "./view/agentGUIProviderManagerLabels";
 
 export { buildAgentHomeSuggestions };
+
+export function useAgentGUIConversationRailLabels(
+  t: TranslateFn
+): AgentGUIConversationRailLabels {
+  return useMemo(() => agentGUIConversationRailLabels(t), [t]);
+}
 
 const workspaceFileReferenceLocaleKeyByPickerKey: Record<string, string> = {
   "actions.cancel": "common.cancel",
@@ -323,7 +332,6 @@ export function useAgentGUIViewLabels(input: {
       emptyProviderForProvider: (provider: string) =>
         resolveAgentGUIProviderDisplayLabel(provider, fallbackAgentTitle),
       conversations: t("agentHost.agentGui.conversations"),
-      newConversation: t("agentHost.agentGui.newConversation"),
       accountMenuTitle: t("agentHost.agentGui.accountMenuTitle"),
       accountMenuMember: t("agentHost.agentGui.accountMenuMember"),
       accountMenuUpgrade: t("agentHost.agentGui.accountMenuUpgrade"),

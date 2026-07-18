@@ -562,7 +562,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     selectedProjectPath,
     promptTipRef,
     promptInputAreaRef,
-    isPromptTipOverflowing,
     setIsPromptTipOverflowing,
     dockComposerInputHeight,
     setDockComposerInputHeight,

@@ -174,6 +174,41 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
       expect(onRequestRenameConversation).not.toHaveBeenCalled()
     );
   });
+
+  it("keeps the focused trigger mounted and unmounts content after Escape", async () => {
+    renderRailItem({ isRailInteractionLocked: () => false });
+
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    const trigger = screen.getByTestId("agent-gui-conversation-item-session-1");
+    const selectButton = screen.getByRole("button", { name: /Session 1/ });
+    selectButton.focus();
+    fireEvent.contextMenu(trigger, { button: 0, detail: 0 });
+    expect(
+      await screen.findByRole("menuitem", { name: "Rename" })
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menuitem")).toBeNull());
+  });
+
+  it("runs an unlocked action before lazy menu content unmounts", async () => {
+    const onRequestRenameConversation = vi.fn();
+    renderRailItem({
+      isRailInteractionLocked: () => false,
+      onRequestRenameConversation
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const renameItem = await screen.findByRole("menuitem", { name: "Rename" });
+    fireEvent.pointerUp(renameItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(onRequestRenameConversation).toHaveBeenCalledTimes(1)
+    );
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
 });
 
 function renderRailItem(overrides: {

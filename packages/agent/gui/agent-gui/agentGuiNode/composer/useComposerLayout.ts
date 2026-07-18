@@ -47,7 +47,6 @@ interface UseComposerLayoutInput {
   selectedProjectPath: string;
   promptTipRef: RefObject<HTMLSpanElement | null>;
   promptInputAreaRef: RefObject<HTMLDivElement | null>;
-  isPromptTipOverflowing: boolean;
   setIsPromptTipOverflowing: Dispatch<SetStateAction<boolean>>;
   dockComposerInputHeight: number;
   setDockComposerInputHeight: Dispatch<SetStateAction<number>>;
@@ -74,7 +73,6 @@ export function useComposerLayout({
   selectedProjectPath,
   promptTipRef,
   promptInputAreaRef,
-  isPromptTipOverflowing,
   setIsPromptTipOverflowing,
   dockComposerInputHeight,
   setDockComposerInputHeight,
@@ -153,12 +151,7 @@ export function useComposerLayout({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [
-    activePromptTipId,
-    activePromptTipText,
-    isPromptTipOverflowing,
-    previewMode
-  ]);
+  }, [activePromptTipId, activePromptTipText, previewMode]);
   useLayoutEffect(() => {
     if (isHeroLayout) {
       setDockComposerInputHeight(DOCK_COMPOSER_INPUT_MIN_HEIGHT);
