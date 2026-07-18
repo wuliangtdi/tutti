@@ -20,6 +20,7 @@ import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import {
   agentComposerFileMentionReferences,
   createAgentComposerFileMentionMarkdown,
+  createAgentSessionHandoffPrompt,
   updateAgentComposerFileMentions
 } from "./agentMentionMarkdown";
 
@@ -589,6 +590,19 @@ describe("agent session mention links", () => {
       })
     ).toBe(
       "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1)"
+    );
+  });
+
+  it("builds the canonical session handoff draft with a trailing cursor space", () => {
+    expect(
+      createAgentSessionHandoffPrompt({
+        agentSessionId: "session-1",
+        agentTargetId: "local:claude-code",
+        label: "Session 1",
+        workspaceId: "room-1"
+      })
+    ).toBe(
+      "[@Session 1](mention://agent-session/session-1?agentTargetId=local%3Aclaude-code&workspaceId=room-1) "
     );
   });
 

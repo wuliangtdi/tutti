@@ -85,6 +85,14 @@ accepted for host capabilities that are not agent activity data:
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Session Handoff Drafts
+
+External AgentGUI hosts can use `createAgentSessionHandoffPrompt` to prefill a
+destination Agent composer with the same canonical complete-session mention as
+AgentGUI's built-in Handoff menu. The helper owns mention serialization and the
+trailing rich-text caret space; hosts continue to own destination selection and
+window launch behavior.
+
 ## Boundary Rule
 
 `AgentActivity*` types from `@tutti-os/agent-activity-core` are the canonical

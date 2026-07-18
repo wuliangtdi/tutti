@@ -109,6 +109,27 @@ export function createAgentSessionMarkdownLink(input: {
   });
 }
 
+export interface CreateAgentSessionHandoffPromptInput {
+  agentSessionId: string;
+  agentTargetId?: string | null;
+  label: string;
+  workspaceId: string;
+}
+
+/**
+ * Builds the canonical composer draft for handing a complete Agent session to
+ * another Agent. The trailing space is the editable caret anchor used by the
+ * rich-text composer after the atomic session mention.
+ */
+export function createAgentSessionHandoffPrompt(
+  input: CreateAgentSessionHandoffPromptInput
+): string {
+  return `${createAgentSessionMarkdownLink({
+    ...input,
+    withAtPrefix: true
+  })} `;
+}
+
 export function formatAgentMentionMarkdown(
   item: AgentContextMentionItem
 ): string {

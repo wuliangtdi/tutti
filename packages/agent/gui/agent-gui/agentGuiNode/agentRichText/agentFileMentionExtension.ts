@@ -45,6 +45,7 @@ export type {
 } from "./agentFileMentionContracts";
 export { attrsToMentionItem, mentionItemToAttrs } from "./agentMentionAttrs";
 export {
+  createAgentSessionHandoffPrompt,
   createAgentSessionMarkdownLink,
   createAgentSessionMentionHref,
   formatAgentFileMentionMarkdown,
@@ -53,6 +54,7 @@ export {
   parseAgentMentionMarkdown,
   parseMentionItemFromHref
 } from "./agentMentionMarkdown";
+export type { CreateAgentSessionHandoffPromptInput } from "./agentMentionMarkdown";
 export const agentFileMentionPluginKey = new PluginKey(
   "agentFileMentionSuggestion"
 );

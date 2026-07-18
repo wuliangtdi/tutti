@@ -17,6 +17,8 @@ export type {
   AgentGUIReferenceProvenanceFilterCatalog
 } from "./AgentGUI";
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
+export { createAgentSessionHandoffPrompt } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
+export type { CreateAgentSessionHandoffPromptInput } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export type {
   AgentExternalPromptFilePreparationErrorCode,
