@@ -60,12 +60,13 @@ paths and reads or atomically replaces `installation.json` and `active.json`.
 Service code must not reconstruct the daemon state root.
 
 The active record registers a system Agent Target with an
-`agent_extension` launch reference fixed to `<agentKey>@<version>`. The Target
-provides the cached canonical icon, optional sidebar icon, and optional home
-hero image as data URLs, so renderer code does not add presentation assets or
-provider branches for every extension. The canonical icon remains the identity
-used by conversations, Message Center, and mentions; the sidebar icon may add
-tile chrome tailored to the provider rail. All assets originate in the verified
+`agent_extension` launch reference fixed to `<agentKey>@<version>`. The
+Target carries the package icon, optional sidebar icon, and optional home hero
+image as data URLs, so renderer code does not add presentation assets or
+provider branches for every extension. The desktop Target projection promotes
+the package `sidebarIcon` to the colored identity reused by the provider rail,
+conversation identity, Message Center, and mentions; package `icon` becomes
+the mask-safe glyph for conversation rows. All assets originate in the verified
 package and remain pinned to the active installation version.
 
 At launch the runtime controller asks `AgentRuntimeResolver` for unknown

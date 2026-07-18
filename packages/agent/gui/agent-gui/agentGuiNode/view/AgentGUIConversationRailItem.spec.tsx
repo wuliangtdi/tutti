@@ -112,12 +112,14 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
   });
 
   it("renders an open extension target icon through the monochrome mask", () => {
-    const iconUrl = "data:image/svg+xml;base64,kilo";
+    const iconUrl = "data:image/svg+xml;base64,kilo-colored";
+    const maskIconUrl = "data:image/svg+xml;base64,kilo-mask";
     const { container } = renderRailItem({
       agentTargets: [
         {
           agentTargetId: "extension:kilo",
           iconUrl,
+          maskIconUrl,
           provider: "acp:kilo",
           workspaceId: "workspace-1"
         }
@@ -135,7 +137,7 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     expect(icon).not.toBeNull();
     expect(
       icon?.style.getPropertyValue("--agent-gui-conversation-provider-icon-url")
-    ).toBe(`url("${iconUrl}")`);
+    ).toBe(`url("${maskIconUrl}")`);
   });
 
   it("blocks the div context-menu trigger while rail reconciliation is pending", () => {

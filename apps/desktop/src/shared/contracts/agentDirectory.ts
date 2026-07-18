@@ -17,6 +17,7 @@ export interface DesktopAgentTargetPresentation {
   enabled: boolean;
   iconKey?: string | null;
   iconUrl: string;
+  maskIconUrl?: string | null;
   sidebarIconUrl?: string | null;
   heroImageUrl?: string | null;
   availability: AgentGUIAgent["availability"];

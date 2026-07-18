@@ -180,6 +180,65 @@ test("desktop agents service maps enabled daemon targets into the AgentGUI agent
   ]);
 });
 
+test("desktop agents service reuses an Extension sidebar icon as its identity while retaining its mask icon", () => {
+  const presentations = mapAgentTargetsToPresentations([
+    {
+      createdAtUnixMs: 1780272000000,
+      enabled: true,
+      heroImageUrl: null,
+      iconKey: "extension:gemini",
+      iconUrl: "data:image/svg+xml;base64,mask",
+      id: "extension:gemini",
+      launchRef: {
+        extensionInstallationId: "gemini@1.0.3",
+        type: "agent_extension"
+      },
+      name: "Gemini CLI",
+      provider: "acp:gemini",
+      sidebarIconUrl: "data:image/svg+xml;base64,colored",
+      sortOrder: 700,
+      source: "system",
+      updatedAtUnixMs: 1780272000000
+    }
+  ]);
+
+  assert.deepEqual(presentations.map(selectIconPresentation), [
+    {
+      agentTargetId: "extension:gemini",
+      iconUrl: "data:image/svg+xml;base64,colored",
+      maskIconUrl: "data:image/svg+xml;base64,mask",
+      sidebarIconUrl: "data:image/svg+xml;base64,colored"
+    }
+  ]);
+  assert.deepEqual(
+    mapAgentTargetPresentationsToAgents(presentations).map(
+      selectIconPresentation
+    ),
+    [
+      {
+        agentTargetId: "extension:gemini",
+        iconUrl: "data:image/svg+xml;base64,colored",
+        maskIconUrl: "data:image/svg+xml;base64,mask",
+        sidebarIconUrl: "data:image/svg+xml;base64,colored"
+      }
+    ]
+  );
+});
+
+function selectIconPresentation(input: {
+  agentTargetId: string;
+  iconUrl: string;
+  maskIconUrl?: string | null;
+  sidebarIconUrl?: string | null;
+}) {
+  return {
+    agentTargetId: input.agentTargetId,
+    iconUrl: input.iconUrl,
+    maskIconUrl: input.maskIconUrl ?? null,
+    sidebarIconUrl: input.sidebarIconUrl ?? null
+  };
+}
+
 function createAgentTarget(input: {
   enabled?: boolean;
   id: string;

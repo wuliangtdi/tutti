@@ -61,6 +61,7 @@ export function createSharedAgentGUIAgentTarget(input: {
   badge?: AgentGUIAgentTargetBadge | null;
   ownerLabel?: string | null;
   iconUrl?: string | null;
+  maskIconUrl?: string | null;
   sidebarIconUrl?: string | null;
   unavailableReason?: string | null;
   disabled?: boolean;
@@ -87,6 +88,9 @@ export function createSharedAgentGUIAgentTarget(input: {
       ? { ownerLabel: input.ownerLabel.trim() }
       : {}),
     ...(input.iconUrl?.trim() ? { iconUrl: input.iconUrl.trim() } : {}),
+    ...(input.maskIconUrl?.trim()
+      ? { maskIconUrl: input.maskIconUrl.trim() }
+      : {}),
     ...(input.sidebarIconUrl?.trim()
       ? { sidebarIconUrl: input.sidebarIconUrl.trim() }
       : {}),
@@ -246,6 +250,7 @@ function normalizeAgentGUIAgentTarget(
     badge,
     description,
     iconUrl,
+    maskIconUrl,
     sidebarIconUrl,
     heroImageUrl,
     ownerLabel,
@@ -275,6 +280,7 @@ function normalizeAgentGUIAgentTarget(
     ...(normalizedBadge ? { badge: normalizedBadge } : {}),
     ...(description?.trim() ? { description: description.trim() } : {}),
     ...(iconUrl?.trim() ? { iconUrl: iconUrl.trim() } : {}),
+    ...(maskIconUrl?.trim() ? { maskIconUrl: maskIconUrl.trim() } : {}),
     ...(sidebarIconUrl?.trim()
       ? { sidebarIconUrl: sidebarIconUrl.trim() }
       : {}),

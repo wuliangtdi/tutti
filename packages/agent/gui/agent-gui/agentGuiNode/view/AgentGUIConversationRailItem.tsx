@@ -52,6 +52,7 @@ function agentGUIConversationIconUrl(
   });
   return (
     resolveAgentGuiSessionProviderFlatIconUrl(provider) ||
+    targetPresentation?.maskIconUrl?.trim() ||
     targetPresentation?.iconUrl?.trim() ||
     null
   );
