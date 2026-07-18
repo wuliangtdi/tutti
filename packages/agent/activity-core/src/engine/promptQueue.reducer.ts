@@ -29,6 +29,7 @@ import {
   canRequestQueuedPromptSendNow,
   type PromptQueueSendNowStrategy
 } from "./promptQueue.sendNow.ts";
+import { resolveQueueDrainDecision } from "./promptQueue.drainDecision.ts";
 import {
   deriveCanonicalSubmitAvailability,
   type CanonicalSessionLifecycleView
@@ -550,30 +551,26 @@ function drainSession(
   const originalState = state;
   let record = state.recordsBySessionId[agentSessionId];
   if (!record) return unchanged(state);
+  let barrierPending = false;
   if (record.deliveryBarrierTurnId) {
     const barrierTurn =
       lifecycle.turnsById[
         canonicalTurnKey(agentSessionId, record.deliveryBarrierTurnId)
       ];
     if (!barrierTurn || barrierTurn.phase !== "settled") {
-      return unchanged(state);
+      // The barrier only serializes plain new-turn sends; it does not gate
+      // drain readiness on its own. Whether it blocks the head is decided
+      // below, alongside every other blocker, so a guidance head steering
+      // this very turn is not deadlocked behind its own barrier.
+      barrierPending = true;
+    } else {
+      record = { ...record, deliveryBarrierTurnId: null };
+      const compacted = compactQueueRecord(record);
+      state = compacted
+        ? replaceRecord(state, agentSessionId, compacted)
+        : deleteRecord(state, agentSessionId);
+      if (!compacted) return result(state);
     }
-    record = { ...record, deliveryBarrierTurnId: null };
-    const compacted = compactQueueRecord(record);
-    state = compacted
-      ? replaceRecord(state, agentSessionId, compacted)
-      : deleteRecord(state, agentSessionId);
-    if (!compacted) return result(state);
-  }
-  const head = record.prompts[0];
-  if (
-    !head ||
-    record.inFlight ||
-    record.uncertainDelivery ||
-    record.suspendReason ||
-    record.failedPromptId === head.id
-  ) {
-    return state === originalState ? unchanged(state) : result(state);
   }
   const availability = deriveCanonicalSubmitAvailability(
     lifecycle,
@@ -583,18 +580,20 @@ function drainSession(
   // it can steer is decided here, against the availability observed at drain
   // time. A prompt queued as guidance behind a turn that has since settled is
   // sent as a plain new-turn submit instead of a doomed steer.
-  const sendAsGuidance =
-    head.guidance === true &&
-    availability.state === "blocked" &&
-    availability.reason === "active_turn";
-  if (availability.state !== "available" && !sendAsGuidance) {
-    return result(state);
+  const decision = resolveQueueDrainDecision(
+    record,
+    availability,
+    barrierPending
+  );
+  if (decision.kind === "blocked") {
+    return state === originalState ? unchanged(state) : result(state);
   }
+  const head = record.prompts[0]!;
   const sequence = state.nextCommandSequence;
   const commandId = queueSendCommandId(record.agentSessionId, sequence);
   return {
     commands: [
-      sendCommandFromQueuedPrompt(record, head, commandId, sendAsGuidance)
+      sendCommandFromQueuedPrompt(record, head, commandId, decision.guidance)
     ],
     state: replaceRecord(
       { ...state, nextCommandSequence: sequence + 1 },
@@ -603,7 +602,7 @@ function drainSession(
         ...record,
         inFlight: {
           commandId,
-          ...(sendAsGuidance ? { guidance: true as const } : {}),
+          ...(decision.guidance ? { guidance: true as const } : {}),
           kind: "send",
           promptId: head.id
         }

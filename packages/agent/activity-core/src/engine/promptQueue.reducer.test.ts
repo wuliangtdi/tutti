@@ -124,71 +124,22 @@ test("drain after settle strips a stale guidance flag from the queue head", () =
     true
   );
 
-  const accepted = reduce(
+  // turn-1 settles before prompt-1's own send is even confirmed and before
+  // the promoted steer ever went out: the stale guidance flag must be
+  // stripped and prompt-2 drains as a plain new-turn send, not a doomed
+  // steer into a turn that no longer exists.
+  const settled = reduce(
     promoted.state,
     commandResult(
       commandId(first.commands[0]),
       "queue/sendPrompt",
       "succeeded"
     ),
-    running,
-    { sendValidation: validSend("turn-1", "running", 2) }
-  );
-  assert.deepEqual(accepted.commands, []);
-
-  // turn-1 settles before the promoted steer ever went out: it must drain as
-  // a plain new-turn send, not a doomed guidance request.
-  const settled = reduce(
-    accepted.state,
-    turnUpserted(settledTurn("turn-1", 3)),
-    canonicalLifecycle("settled", 3, "turn-1")
+    canonicalLifecycle("settled", 3, "turn-1"),
+    { sendValidation: validSend("turn-1", "settled", 3) }
   );
   assert.equal(send(settled.commands[0]).promptId, "prompt-2");
   assert.equal(send(settled.commands[0]).guidance, undefined);
-});
-
-test("no-active-turn guidance failure demotes the prompt and retries it as a new turn", () => {
-  const running = canonicalLifecycle("running", 1);
-  const queued = reduce(
-    createInitialPromptQueueState(),
-    enqueue("prompt-1"),
-    running
-  );
-  const guided = reduce(queued.state, sendNow("prompt-1"), running);
-  assert.equal(send(guided.commands[0]).guidance, true);
-  assert.equal(
-    guided.state.recordsBySessionId["session-1"]?.inFlight?.guidance,
-    true
-  );
-
-  const failed = reduce(
-    guided.state,
-    commandResult(
-      commandId(guided.commands[0]),
-      "queue/sendPrompt",
-      "failed",
-      {
-        errorMessage: "agent session has no active turn",
-        errorReason: "agent.no_active_turn"
-      }
-    ),
-    canonicalLifecycle("settled", 2)
-  );
-  const record = failed.state.recordsBySessionId["session-1"];
-  assert.equal(record?.failedPromptId, null);
-  assert.equal(record?.prompts.length, 1);
-  assert.equal(failed.commands.length, 1);
-  assert.equal(failed.commands[0]?.type, "session/reconcile");
-
-  // The retry drains on the next canonical update as a plain new-turn send —
-  // never as another doomed guidance request that would loop forever.
-  const retried = reduce(
-    failed.state,
-    turnUpserted(settledTurn("turn-2", 3)),
-    canonicalLifecycle("settled", 3, "turn-2")
-  );
-  assert.equal(send(retried.commands[0]).promptId, "prompt-1");
-  assert.equal(send(retried.commands[0]).guidance, undefined);
 });
 
 test("guidance failure without the no-active-turn reason still blocks the queue", () => {
@@ -201,12 +152,9 @@ test("guidance failure without the no-active-turn reason still blocks the queue"
   const guided = reduce(queued.state, sendNow("prompt-1"), running);
   const failed = reduce(
     guided.state,
-    commandResult(
-      commandId(guided.commands[0]),
-      "queue/sendPrompt",
-      "failed",
-      { errorMessage: "boom" }
-    ),
+    commandResult(commandId(guided.commands[0]), "queue/sendPrompt", "failed", {
+      errorMessage: "boom"
+    }),
     canonicalLifecycle("settled", 2)
   );
   assert.equal(
@@ -565,6 +513,223 @@ test("session removal cleans queue-owned delivery state", () => {
   assert.equal(removed.state.recordsBySessionId["session-1"], undefined);
 });
 
+test("contract: plain queued head stays blocked behind a pending delivery barrier", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const accepted = reduce(
+    state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
+  );
+  // The barrier from prompt-1's own delivery is still pending (turn-1 is
+  // still running): a plain prompt-2 must stay queued behind it.
+  assert.deepEqual(accepted.commands, []);
+  assert.equal(
+    accepted.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+  assert.equal(
+    accepted.state.recordsBySessionId["session-1"]?.prompts[0]?.id,
+    "prompt-2"
+  );
+});
+
+test("contract: send-now guidance drains through a pending delivery barrier into the active turn", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const accepted = reduce(
+    state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
+  );
+  assert.equal(
+    accepted.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+
+  // prompt-2 is promoted to steer turn-1 while the barrier from prompt-1's
+  // own delivery is still pending on that exact turn. Guidance is exempt
+  // from the barrier it is steering, so it must drain immediately instead
+  // of deadlocking behind its own target turn.
+  const promoted = reduce(accepted.state, sendNow("prompt-2"), running);
+  assert.equal(send(promoted.commands[0]).guidance, true);
+  assert.equal(send(promoted.commands[0]).promptId, "prompt-2");
+  assert.equal(
+    promoted.state.recordsBySessionId["session-1"]?.inFlight?.guidance,
+    true
+  );
+  assert.equal(
+    promoted.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+});
+
+test("contract: a delivered guidance send preserves the barrier for the next plain prompt", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const accepted = reduce(
+    state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
+  );
+  const promoted = reduce(accepted.state, sendNow("prompt-2"), running);
+  assert.equal(send(promoted.commands[0]).guidance, true);
+
+  // The guidance steer into turn-1 is delivered, but turn-1 keeps running.
+  const delivered = reduce(
+    promoted.state,
+    commandResult(
+      commandId(promoted.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 3) }
+  );
+  assert.deepEqual(delivered.commands, []);
+  assert.equal(
+    delivered.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+
+  // A plain prompt-3 queued after the guidance delivery must still stay
+  // blocked behind the still-pending barrier: the guidance send did not
+  // clear it.
+  const withPlain = reduce(delivered.state, enqueue("prompt-3"), running);
+  assert.deepEqual(withPlain.commands, []);
+  assert.equal(
+    withPlain.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+  assert.equal(
+    withPlain.state.recordsBySessionId["session-1"]?.prompts[0]?.id,
+    "prompt-3"
+  );
+
+  // Once turn-1 actually settles, the barrier clears and prompt-3 drains as
+  // a plain new-turn send.
+  const settled = reduce(
+    withPlain.state,
+    turnUpserted(settledTurn("turn-1", 4)),
+    canonicalLifecycle("settled", 4, "turn-1")
+  );
+  assert.equal(send(settled.commands[0]).promptId, "prompt-3");
+  assert.equal(send(settled.commands[0]).guidance, undefined);
+  assert.equal(
+    settled.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    null
+  );
+});
+
+test("contract: successive guidance promotions each deliver into the same active turn", () => {
+  const available = canonicalLifecycle("settled", 1, "turn-0");
+  const first = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const state = reduce(first.state, enqueue("prompt-2"), available).state;
+  const running = canonicalLifecycle("running", 2, "turn-1");
+  const accepted = reduce(
+    state,
+    commandResult(
+      commandId(first.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 2) }
+  );
+
+  const firstGuidance = reduce(accepted.state, sendNow("prompt-2"), running);
+  assert.equal(send(firstGuidance.commands[0]).guidance, true);
+  assert.equal(send(firstGuidance.commands[0]).promptId, "prompt-2");
+
+  const firstDelivered = reduce(
+    firstGuidance.state,
+    commandResult(
+      commandId(firstGuidance.commands[0]),
+      "queue/sendPrompt",
+      "succeeded"
+    ),
+    running,
+    { sendValidation: validSend("turn-1", "running", 3) }
+  );
+  assert.equal(
+    firstDelivered.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+
+  // A second prompt queued behind the still-pending barrier stays blocked as
+  // a plain send...
+  const withThird = reduce(firstDelivered.state, enqueue("prompt-3"), running);
+  assert.deepEqual(withThird.commands, []);
+
+  // ...but a second, successive guidance promotion also drains through the
+  // very same persisting barrier into the very same active turn.
+  const secondGuidance = reduce(withThird.state, sendNow("prompt-3"), running);
+  assert.equal(send(secondGuidance.commands[0]).guidance, true);
+  assert.equal(send(secondGuidance.commands[0]).promptId, "prompt-3");
+  assert.equal(
+    secondGuidance.state.recordsBySessionId["session-1"]?.deliveryBarrierTurnId,
+    "turn-1"
+  );
+});
+
+test("contract: guidance send-now stays blocked while availability is blocked by a pending interaction", () => {
+  const lifecycle = canonicalLifecycle("settled", 2, "turn-1", true);
+  const queued = reduce(
+    createInitialPromptQueueState(),
+    enqueueGuidance("prompt-1"),
+    lifecycle
+  );
+  // Guidance is only exempt from the barrier while availability is blocked
+  // on the active turn it steers; a pending interaction blocks for an
+  // unrelated reason and guidance does not bypass it.
+  assert.deepEqual(queued.commands, []);
+  assert.equal(
+    queued.state.recordsBySessionId["session-1"]?.prompts[0]?.id,
+    "prompt-1"
+  );
+  assert.deepEqual(deriveCanonicalSubmitAvailability(lifecycle, "session-1"), {
+    state: "blocked",
+    reason: "waiting"
+  });
+});
+
 function reduce(
   state: ReturnType<typeof createInitialPromptQueueState>,
   intent: Parameters<typeof promptQueueReducer>[1],
@@ -740,6 +905,21 @@ function enqueue(promptId: string) {
       id: promptId,
       content: [{ type: "text" as const, text: promptId }],
       createdAtUnixMs: 1,
+      submitDiagnostics
+    },
+    workspaceId: "workspace-1"
+  };
+}
+
+function enqueueGuidance(promptId: string) {
+  return {
+    type: "queue/enqueued" as const,
+    agentSessionId: "session-1",
+    prompt: {
+      id: promptId,
+      content: [{ type: "text" as const, text: promptId }],
+      createdAtUnixMs: 1,
+      guidance: true,
       submitDiagnostics
     },
     workspaceId: "workspace-1"
