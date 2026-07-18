@@ -212,7 +212,6 @@ describe("useComposerDraftAttachments", () => {
         {
           sourceIndex: 0,
           status: "error",
-          error: "stage failed",
           errorCode: "file_too_large",
           retryable: false
         }
@@ -241,7 +240,7 @@ describe("useComposerDraftAttachments", () => {
     );
 
     await waitFor(() => expect(reportDiagnostic).toHaveBeenCalledTimes(2));
-    expect(hostToastError).toHaveBeenCalledWith("File exceeds 2 GB");
+    expect(hostToastError).toHaveBeenCalledWith("File is too large");
     expect(reportDiagnostic).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

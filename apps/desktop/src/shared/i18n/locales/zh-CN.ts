@@ -140,8 +140,6 @@ export const zhCN = {
       collapseConversationRail: "隐藏侧边栏",
       expandConversationRail: "显示侧边栏",
       fallbackAgentLabel: "Agent",
-      externalFileFolderUnsupported: "暂不支持在这里附加文件夹",
-      externalFilePreparationFailed: "暂时无法处理这个文件",
       newConversation: "新建会话",
       openNewWindow: "打开新窗口",
       untitledConversation: "未命名对话",

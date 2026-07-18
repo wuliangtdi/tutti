@@ -142,8 +142,6 @@ export const en = {
       collapseConversationRail: "Hide sidebar",
       expandConversationRail: "Show sidebar",
       fallbackAgentLabel: "Agent",
-      externalFileFolderUnsupported: "Folders cannot be attached here.",
-      externalFilePreparationFailed: "Unable to prepare this file.",
       newConversation: "New session",
       openNewWindow: "Open new window",
       untitledConversation: "Untitled conversation",

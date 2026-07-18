@@ -18,6 +18,7 @@ export const AGENT_COMPOSER_FILE_MENTION_KIND = "composer-file";
 
 export interface AgentComposerFileMentionReference {
   end: number;
+  errorCode?: string;
   id: string;
   name: string;
   start: number;
@@ -472,6 +473,7 @@ export function agentComposerFileMentionReferences(
       references.push({
         start,
         end: parsed.end,
+        errorCode: parsed.item.attachmentErrorCode,
         id: parsed.item.attachmentId,
         name: parsed.item.name,
         status: parsed.item.attachmentStatus ?? "ready"
@@ -484,20 +486,30 @@ export function agentComposerFileMentionReferences(
   return references;
 }
 
-export function updateAgentComposerFileMentionStatuses(
+export interface AgentComposerFileMentionUpdate {
+  errorCode?: string;
+  status: AgentComposerFileMentionStatus;
+}
+
+export function updateAgentComposerFileMentions(
   value: string,
-  statuses: ReadonlyMap<string, AgentComposerFileMentionStatus>
+  updates: ReadonlyMap<string, AgentComposerFileMentionUpdate>
 ): string {
   const references = agentComposerFileMentionReferences(value);
   if (references.length === 0) return value;
   let cursor = 0;
   let result = "";
   for (const reference of references) {
+    const update = updates.get(reference.id);
+    const status = update?.status ?? reference.status;
     result += value.slice(cursor, reference.start);
     result += createAgentComposerFileMentionMarkdown({
+      ...(status === "error"
+        ? { errorCode: update?.errorCode ?? reference.errorCode }
+        : {}),
       id: reference.id,
       name: reference.name,
-      status: statuses.get(reference.id) ?? reference.status
+      status
     });
     cursor = reference.end;
   }

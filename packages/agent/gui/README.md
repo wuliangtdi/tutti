@@ -44,8 +44,20 @@ local persistence and returns `{ path, name, sizeBytes }`.
 If the method is absent or staging fails, the attachment remains in an explicit
 failed state and retains its in-memory text. AgentGUI must not silently put the
 payload back into the input. The user can explicitly choose “Show in text
-field” to do that. Generic `uploadPromptContent` remains the contract for
-images and host-local files; it is not a pasted-text capability signal.
+field” to do that. Generic `uploadPromptContent` remains the image-upload
+contract; it is not a pasted-text or external-file capability signal.
+
+## External File Preparation
+
+OS clipboard and drop files use the required workspace
+`prepareExternalPromptFiles` host port. AgentGUI owns classification, pending
+mentions, and draft reconciliation. The host owns native-path lookup, size
+enforcement, persistence, and remote transport.
+
+The preparer returns one result per input `sourceIndex`. Prepared files require
+a provider-readable `path` or `url`; failures require a typed `errorCode`.
+Hosts must isolate per-file failures and reject oversized inputs before reading
+or persisting their bytes.
 
 Slash commands come from the runtime session command snapshot. AgentGUI keeps
 legacy provider-default slash entries unless the host passes

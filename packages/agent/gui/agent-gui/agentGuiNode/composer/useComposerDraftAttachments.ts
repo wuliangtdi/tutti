@@ -32,13 +32,14 @@ import type {
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import { parseMentionItemFromHref } from "../agentRichText/agentFileMentionExtension";
 import {
+  agentExternalPromptFileErrorI18nKey,
   createAgentExternalPromptFilePreparation,
   remainingAgentComposerPromptAssetSlots,
   type AgentExternalPromptFilePreparer
 } from "../model/agentExternalPromptFiles";
 import {
   agentComposerFileMentionReferences,
-  updateAgentComposerFileMentionStatuses
+  updateAgentComposerFileMentions
 } from "../agentRichText/agentMentionMarkdown";
 import { updateDraftPromptAndReconcileFiles } from "../model/agentComposerDraftFileReconciliation";
 import {
@@ -488,19 +489,22 @@ export function useComposerDraftAttachments({
               status: file.uploadError ? "error" : "ready"
             }))
           );
-        const statusById = new Map(
+        const mentionUpdatesById = new Map(
           visibleSettled.map((file) => [
             file.id,
-            file.uploadError ? ("error" as const) : ("ready" as const)
+            {
+              errorCode: file.uploadErrorCode,
+              status: file.uploadError ? ("error" as const) : ("ready" as const)
+            }
           ])
         );
         const updatedDraft = updateScopedDraft(sourceScopeKey, (latestDraft) =>
           updateAgentComposerDraft(latestDraft, {
             prompt: editorUpdated
               ? agentComposerDraftPrompt(latestDraft)
-              : updateAgentComposerFileMentionStatuses(
+              : updateAgentComposerFileMentions(
                   agentComposerDraftPrompt(latestDraft),
-                  statusById
+                  mentionUpdatesById
                 ),
             files: agentComposerDraftFiles(latestDraft).map(
               (file) => settledById.get(file.id) ?? file
@@ -510,11 +514,15 @@ export function useComposerDraftAttachments({
         const errorCount = settled.filter((file) => file.uploadError).length;
         if (errorCount > 0) {
           const failedFiles = settled.filter((file) => file.uploadError);
-          const errorMessage = failedFiles.every(
-            (file) => file.uploadErrorCode === "file_too_large"
+          const firstErrorCode = failedFiles[0]?.uploadErrorCode;
+          const sharedErrorCode = failedFiles.every(
+            (file) => file.uploadErrorCode === firstErrorCode
           )
-            ? translate("agentHost.agentGui.composerFileTooLarge")
-            : translate("agentHost.agentGui.composerFilePreparationFailed");
+            ? firstErrorCode
+            : undefined;
+          const errorMessage = translate(
+            agentExternalPromptFileErrorI18nKey(sharedErrorCode)
+          );
           showErrorToast(errorMessage);
         }
         reportAgentComposerDiagnostic(agentActivityRuntime, {

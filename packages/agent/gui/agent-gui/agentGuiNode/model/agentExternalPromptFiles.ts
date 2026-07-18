@@ -9,16 +9,23 @@ import {
   type AgentComposerDraftFile
 } from "./agentGuiNodeTypes";
 
-export interface AgentPreparedExternalPromptFile {
+interface AgentPreparedExternalPromptFileMetadata {
   assetId?: string;
   mimeType?: string;
   name: string;
-  path?: string;
   sizeBytes?: number;
   uploadStatus?: string;
   uri?: string;
-  url?: string;
 }
+
+export type AgentPreparedExternalPromptFile =
+  AgentPreparedExternalPromptFileMetadata &
+    ({ path: string; url?: string } | { path?: string; url: string });
+
+export type AgentExternalPromptFilePreparationErrorCode =
+  | "file_too_large"
+  | "folder_unsupported"
+  | "preparation_failed";
 
 export type AgentExternalPromptFilePreparationResult =
   | {
@@ -29,8 +36,7 @@ export type AgentExternalPromptFilePreparationResult =
   | {
       sourceIndex: number;
       status: "error";
-      error: string;
-      errorCode?: string;
+      errorCode: AgentExternalPromptFilePreparationErrorCode;
       retryable?: boolean;
     };
 
@@ -81,9 +87,10 @@ export function createAgentExternalPromptFilePreparation(
       let results: readonly AgentExternalPromptFilePreparationResult[];
       try {
         results = await prepareExternalPromptFiles(files);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return pendingFiles.map((file) => failedDraftFile(file, message));
+      } catch {
+        return pendingFiles.map((file) =>
+          failedDraftFile(file, "preparation_failed")
+        );
       }
       const resultByIndex = new Map(
         results.map((result) => [result.sourceIndex, result])
@@ -91,23 +98,16 @@ export function createAgentExternalPromptFilePreparation(
       return pendingFiles.map((pendingFile, sourceIndex) => {
         const result = resultByIndex.get(sourceIndex);
         if (!result) {
-          return failedDraftFile(
-            pendingFile,
-            "Prompt file preparation returned no result."
-          );
+          return failedDraftFile(pendingFile, "preparation_failed");
         }
         if (result.status === "error") {
-          return failedDraftFile(pendingFile, result.error, {
-            errorCode: result.errorCode,
+          return failedDraftFile(pendingFile, result.errorCode, {
             retryable: result.retryable
           });
         }
         const prepared = normalizePreparedFile(result.file);
         if (!hasPreparedFileLocator(prepared)) {
-          return failedDraftFile(
-            pendingFile,
-            "Prepared prompt file requires a locator."
-          );
+          return failedDraftFile(pendingFile, "preparation_failed");
         }
         return {
           id: pendingFile.id,
@@ -232,9 +232,15 @@ export function materializeAgentComposerFileMentions(
   return result + prompt.slice(cursor);
 }
 
+type NormalizedPreparedExternalPromptFile =
+  AgentPreparedExternalPromptFileMetadata & {
+    path?: string;
+    url?: string;
+  };
+
 function normalizePreparedFile(
   file: AgentPreparedExternalPromptFile
-): AgentPreparedExternalPromptFile {
+): NormalizedPreparedExternalPromptFile {
   return {
     name: file.name.trim(),
     ...(file.mimeType?.trim() ? { mimeType: file.mimeType.trim() } : {}),
@@ -252,25 +258,39 @@ function normalizePreparedFile(
 }
 
 function hasPreparedFileLocator(
-  file: AgentPreparedExternalPromptFile
+  file: NormalizedPreparedExternalPromptFile
 ): boolean {
   return Boolean(file.path || file.url);
 }
 
 function failedDraftFile(
   file: AgentComposerDraftFile,
-  uploadError: string,
-  options: { errorCode?: string; retryable?: boolean } = {}
+  errorCode: AgentExternalPromptFilePreparationErrorCode,
+  options: { retryable?: boolean } = {}
 ): AgentComposerDraftFile {
   return {
     ...file,
     uploading: false,
-    uploadError: uploadError.trim() || "Prompt file preparation failed.",
-    ...(options.errorCode?.trim()
-      ? { uploadErrorCode: options.errorCode.trim() }
-      : {}),
+    uploadError: errorCode,
+    uploadErrorCode: errorCode,
     ...(typeof options.retryable === "boolean"
       ? { uploadRetryable: options.retryable }
       : {})
   };
+}
+
+export function agentExternalPromptFileErrorI18nKey(
+  errorCode: string | null | undefined
+):
+  | "agentHost.agentGui.composerFileFolderUnsupported"
+  | "agentHost.agentGui.composerFilePreparationFailed"
+  | "agentHost.agentGui.composerFileTooLarge" {
+  switch (errorCode) {
+    case "file_too_large":
+      return "agentHost.agentGui.composerFileTooLarge";
+    case "folder_unsupported":
+      return "agentHost.agentGui.composerFileFolderUnsupported";
+    default:
+      return "agentHost.agentGui.composerFilePreparationFailed";
+  }
 }

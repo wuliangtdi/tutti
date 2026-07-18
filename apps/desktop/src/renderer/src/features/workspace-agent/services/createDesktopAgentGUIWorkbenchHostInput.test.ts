@@ -206,7 +206,7 @@ test("desktop agent GUI prepares path-backed and in-memory external files", asyn
       {
         sourceIndex: 2,
         status: "error",
-        error: "Folders cannot be attached here."
+        errorCode: "folder_unsupported"
       }
     ]
   );

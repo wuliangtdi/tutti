@@ -90,10 +90,10 @@ describe("AgentRichTextEditor file paste", () => {
     );
     expect(failedMention).not.toBeNull();
     expect(failedMention?.textContent).toBe("report.pdf");
-    expect(failedMention).toHaveAttribute("title", "File exceeds 2 GB");
+    expect(failedMention).toHaveAttribute("title", "File is too large");
     expect(failedMention).toHaveAttribute(
       "aria-label",
-      "report.pdf, File exceeds 2 GB"
+      "report.pdf, File is too large"
     );
 
     fireEvent.mouseDown(rendered.getByLabelText("Remove file"));

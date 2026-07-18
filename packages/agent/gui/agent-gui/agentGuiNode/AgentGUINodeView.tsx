@@ -73,7 +73,6 @@ export {
   resolveAgentGUIHeroIconUrl,
   shouldEmphasizeEmptyHeroProvider
 } from "./view/AgentGUIEmptyState";
-
 export function AgentGUINodeView({
   viewModel,
   referenceProvenanceFilter = null,
@@ -714,7 +713,6 @@ export function AgentGUINodeView({
             onPointerMove={handleConversationRailResizePointerMove}
             onPointerUp={endConversationRailResize}
           />
-
           <section id="agent-gui-detail" className={styles.detailPanel}>
             <AgentGUIDetailPane
               viewModel={viewModel}

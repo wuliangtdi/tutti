@@ -20,6 +20,7 @@ import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
+import { agentExternalPromptFileErrorI18nKey } from "../model/agentExternalPromptFiles";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -225,9 +226,11 @@ function mentionViewModel(
           : undefined,
     attachmentErrorLabel:
       attrString(attrs, "attachmentStatus") === "error"
-        ? attrString(attrs, "attachmentErrorCode") === "file_too_large"
-          ? t("agentHost.agentGui.composerFileTooLarge")
-          : t("agentHost.agentGui.composerFilePreparationFailed")
+        ? t(
+            agentExternalPromptFileErrorI18nKey(
+              attrString(attrs, "attachmentErrorCode")
+            )
+          )
         : undefined,
     ariaLabel: name,
     directoryPath: attrString(attrs, "directoryPath") || dirnameFromPath(path),

@@ -47,7 +47,7 @@ import type { IWorkspaceAgentActivityService } from "./workspaceAgentActivitySer
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import { translate } from "../../../i18n/appRuntime.ts";
 import { createDesktopAgentGeneratedFileMentionProvider } from "./internal/createDesktopAgentGeneratedFileMentionProvider.ts";
-import { createDesktopAgentExternalPromptFilePreparer } from "./prepareDesktopAgentExternalPromptFiles.ts";
+import { createDesktopAgentExternalPromptFilePreparer } from "./internal/prepareDesktopAgentExternalPromptFiles.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentActivityRuntime;
@@ -238,12 +238,6 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const prepareExternalPromptFiles =
     createDesktopAgentExternalPromptFilePreparer({
       agentActivityRuntime,
-      folderUnsupportedError: translate(
-        "workspace.agentGui.externalFileFolderUnsupported"
-      ),
-      preparationFailedError: translate(
-        "workspace.agentGui.externalFilePreparationFailed"
-      ),
       platformApi,
       workspaceId
     });

@@ -20,7 +20,7 @@ import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import {
   agentComposerFileMentionReferences,
   createAgentComposerFileMentionMarkdown,
-  updateAgentComposerFileMentionStatuses
+  updateAgentComposerFileMentions
 } from "./agentMentionMarkdown";
 
 const placeholderSchema = new Schema({
@@ -72,9 +72,43 @@ describe("parseAgentMentionMarkdown", () => {
       agentComposerFileMentionReferences(`before ${uploading} after`)
     ).toEqual([expect.objectContaining({ id: "file-1", status: "uploading" })]);
     expect(
-      updateAgentComposerFileMentionStatuses(
+      updateAgentComposerFileMentions(
         uploading,
-        new Map([["file-1", "ready"]])
+        new Map([["file-1", { status: "ready" }]])
+      )
+    ).toBe(
+      createAgentComposerFileMentionMarkdown({
+        id: "file-1",
+        name: "report.pdf",
+        status: "ready"
+      })
+    );
+  });
+
+  it("preserves error codes while updating background composer files", () => {
+    const uploading = createAgentComposerFileMentionMarkdown({
+      id: "file-1",
+      name: "report.pdf",
+      status: "uploading"
+    });
+    const failed = updateAgentComposerFileMentions(
+      uploading,
+      new Map([
+        ["file-1", { errorCode: "file_too_large", status: "error" as const }]
+      ])
+    );
+
+    expect(agentComposerFileMentionReferences(failed)).toEqual([
+      expect.objectContaining({
+        errorCode: "file_too_large",
+        id: "file-1",
+        status: "error"
+      })
+    ]);
+    expect(
+      updateAgentComposerFileMentions(
+        failed,
+        new Map([["file-1", { status: "ready" }]])
       )
     ).toBe(
       createAgentComposerFileMentionMarkdown({

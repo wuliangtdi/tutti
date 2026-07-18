@@ -19,6 +19,7 @@ export type {
 export type { AgentGUIComposerAppendRequest } from "./agent-gui/agentGuiNode/controller/useAgentGUIComposerAppendRequest";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export type {
+  AgentExternalPromptFilePreparationErrorCode,
   AgentExternalPromptFilePreparationResult,
   AgentExternalPromptFilePreparer,
   AgentPreparedExternalPromptFile

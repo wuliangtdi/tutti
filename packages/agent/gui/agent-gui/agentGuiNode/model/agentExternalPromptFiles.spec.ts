@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAgentExternalPromptFilePreparation,
   remainingAgentComposerPromptAssetSlots,
-  type AgentExternalPromptFilePreparer
+  type AgentExternalPromptFilePreparer,
+  type AgentPreparedExternalPromptFile
 } from "./agentExternalPromptFiles";
 
 describe("agentExternalPromptFiles", () => {
@@ -48,7 +49,7 @@ describe("agentExternalPromptFiles", () => {
         {
           sourceIndex: 1,
           status: "error",
-          error: "beta rejected"
+          errorCode: "preparation_failed"
         }
       ]
     );
@@ -84,7 +85,8 @@ describe("agentExternalPromptFiles", () => {
       expect.objectContaining({
         name: "beta.bin",
         uploading: false,
-        uploadError: "beta rejected"
+        uploadError: "preparation_failed",
+        uploadErrorCode: "preparation_failed"
       })
     ]);
     expect(prepareExternalPromptFiles).toHaveBeenCalledWith(files);
@@ -99,14 +101,15 @@ describe("agentExternalPromptFiles", () => {
       {
         sourceIndex: 0,
         status: "prepared",
-        file: { name: "missing.txt" }
+        file: { name: "missing.txt" } as AgentPreparedExternalPromptFile
       }
     ]);
 
     expect(settled[0]).toEqual(
       expect.objectContaining({
         uploading: false,
-        uploadError: "Prepared prompt file requires a locator."
+        uploadError: "preparation_failed",
+        uploadErrorCode: "preparation_failed"
       })
     );
   });
@@ -124,14 +127,15 @@ describe("agentExternalPromptFiles", () => {
           name: "private.txt",
           assetId: "asset-1",
           uri: "object://private.txt"
-        }
+        } as AgentPreparedExternalPromptFile
       }
     ]);
 
     expect(settled[0]).toEqual(
       expect.objectContaining({
         uploading: false,
-        uploadError: "Prepared prompt file requires a locator."
+        uploadError: "preparation_failed",
+        uploadErrorCode: "preparation_failed"
       })
     );
   });
