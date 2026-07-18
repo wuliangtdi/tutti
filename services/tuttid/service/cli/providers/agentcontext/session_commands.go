@@ -46,6 +46,11 @@ type sessionIDInput struct {
 	SessionID string `cli:"session-id" validate:"required"`
 }
 
+type cancelTurnInput struct {
+	SessionID string `cli:"session-id" validate:"required" description:"Agent session id containing the turn to cancel."`
+	TurnID    string `cli:"turn-id" validate:"required" description:"Exact turn id to cancel."`
+}
+
 type sendInput struct {
 	SessionID string   `cli:"session-id" validate:"required"`
 	Guidance  bool     `cli:"guidance" description:"Send this prompt as guidance to the currently active turn instead of starting a new turn."`
@@ -68,6 +73,12 @@ type sessionActionResult struct {
 	LaunchRequested  bool
 	WaitAfterVersion *uint64
 	Warnings         []cliservice.CommandWarning
+}
+
+type cancelTurnCommandResult struct {
+	AgentSessionID string
+	TurnID         string
+	Result         agentservice.CancelTurnResult
 }
 
 func (p Provider) newStartCommand() cliservice.Command {
@@ -442,22 +453,91 @@ func promptImageMimeTypeFromPath(path string) string {
 	}
 }
 
-func (p Provider) newCancelCommand() cliservice.Command {
+func (p Provider) newCancelTurnCommand() cliservice.Command {
+	return framework.Register(framework.CommandSpec[cancelTurnInput]{
+		ID:          appID + ".agent.cancel-turn",
+		Path:        []string{"agent", "cancel-turn"},
+		Summary:     "Cancel an agent turn",
+		Description: "Cancel one exact turn while preserving its agent session for later input.",
+		Kind:        framework.KindAction,
+		Workspace:   framework.WorkspaceRequired,
+		Workspaces:  p.workspaces,
+		Inputs:      framework.FromStruct[cancelTurnInput](),
+		Output:      cancelTurnOutputSpec(),
+		Run:         p.runCancelTurn,
+	})
+}
+
+func (p Provider) runCancelTurn(ctx context.Context, invoke framework.InvokeContext, input cancelTurnInput) (any, error) {
+	if err := p.requireSessions(); err != nil {
+		return nil, err
+	}
+	result, err := p.sessions.CancelTurn(ctx, invoke.WorkspaceID, input.SessionID, input.TurnID)
+	if err != nil {
+		return nil, err
+	}
+	return cancelTurnCommandResult{
+		AgentSessionID: strings.TrimSpace(input.SessionID),
+		TurnID:         strings.TrimSpace(input.TurnID),
+		Result:         result,
+	}, nil
+}
+
+func cancelTurnOutputSpec() framework.OutputSpec {
+	columns := []cliservice.TableColumn{
+		{Key: "id", Label: "Session"},
+		{Key: "turnId", Label: "Turn"},
+		{Key: "canceled", Label: "Canceled"},
+		{Key: "reason", Label: "Reason"},
+	}
+	jsonValue := func(result any) map[string]any {
+		canceled := result.(cancelTurnCommandResult)
+		return map[string]any{
+			"agentSessionId": canceled.AgentSessionID,
+			"turnId":         canceled.TurnID,
+			"canceled":       canceled.Result.Canceled,
+			"reason":         string(canceled.Result.Reason),
+		}
+	}
+	return framework.OutputSpec{
+		DefaultMode: cliservice.OutputModeTable,
+		DefaultView: framework.ViewSummary,
+		JSON:        true,
+		Table: &framework.TableOutputSpec{
+			Columns: columns,
+			Rows: func(result any) []map[string]any {
+				canceled := result.(cancelTurnCommandResult)
+				return []map[string]any{{
+					"id":       canceled.AgentSessionID,
+					"turnId":   canceled.TurnID,
+					"canceled": canceled.Result.Canceled,
+					"reason":   string(canceled.Result.Reason),
+				}}
+			},
+		},
+		JSONViews: map[framework.OutputView]func(any) map[string]any{
+			framework.ViewSummary: jsonValue,
+		},
+	}
+}
+
+func (p Provider) newLegacyCancelCommand() cliservice.Command {
 	return framework.Register(framework.CommandSpec[sessionIDInput]{
 		ID:          appID + ".agent.cancel",
 		Path:        []string{"agent", "cancel"},
-		Summary:     "Cancel an agent session",
-		Description: "Cancel an agent session in the current workspace.",
+		Summary:     "Cancel the active agent turn (deprecated)",
+		Description: "Deprecated compatibility alias. Use agent cancel-turn with an exact session id and turn id.",
 		Kind:        framework.KindAction,
+		Visibility:  cliservice.CapabilityVisibilityIntegration,
 		Workspace:   framework.WorkspaceRequired,
 		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[sessionIDInput](),
 		Output:      sessionActionOutputSpec(),
-		Run:         p.runCancel,
+		Run:         p.runLegacyCancel,
 	})
 }
 
-func (p Provider) runCancel(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
+func (p Provider) runLegacyCancel(ctx context.Context, invoke framework.InvokeContext, input sessionIDInput) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
@@ -466,11 +546,21 @@ func (p Provider) runCancel(ctx context.Context, invoke framework.InvokeContext,
 		return nil, err
 	}
 	if turnID := strings.TrimSpace(session.ActiveTurnID); turnID != "" {
-		if _, err := p.sessions.CancelTurn(ctx, invoke.WorkspaceID, input.SessionID, turnID); err != nil {
-			return nil, err
+		result, cancelErr := p.sessions.CancelTurn(ctx, invoke.WorkspaceID, input.SessionID, turnID)
+		if cancelErr != nil {
+			return nil, cancelErr
+		}
+		if strings.TrimSpace(result.Session.ID) != "" {
+			session = result.Session
 		}
 	}
-	return sessionActionResult{Session: session}, nil
+	return sessionActionResult{
+		Session: session,
+		Warnings: []cliservice.CommandWarning{{
+			Code:    "deprecated_agent_cancel",
+			Message: "agent cancel is deprecated; use agent cancel-turn --session-id <id> --turn-id <id>",
+		}},
+	}, nil
 }
 
 func sessionActionOutputSpec() framework.OutputSpec {

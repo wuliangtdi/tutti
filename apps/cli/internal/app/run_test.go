@@ -167,6 +167,7 @@ func TestRunExactLegacyAgentCommandRetriesIntegrationDiscovery(t *testing.T) {
 func TestLegacyAgentCompatibilityInvocationIsExactAllowlist(t *testing.T) {
 	for _, args := range [][]string{
 		{"agent", "providers"},
+		{"agent", "cancel", "--session-id", "SESSION-1"},
 		{"codex", "start", "--prompt", "review"},
 		{"claude", "start", "--prompt", "review"},
 	} {

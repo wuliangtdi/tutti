@@ -171,7 +171,7 @@ func legacyAgentCompatibilityInvocation(args []string) bool {
 		return false
 	}
 	path := strings.Join(args[:2], " ")
-	return path == "agent providers" || path == "codex start" || path == "claude start"
+	return path == "agent providers" || path == "agent cancel" || path == "codex start" || path == "claude start"
 }
 
 func runHelp(ctx context.Context, commandName string, stdout io.Writer) int {

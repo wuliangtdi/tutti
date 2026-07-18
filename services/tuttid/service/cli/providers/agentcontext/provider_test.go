@@ -82,6 +82,8 @@ type fakeAgentSessions struct {
 	respondInput    agentservice.RespondInput
 	respondResult   agentservice.RespondResult
 	respondErr      error
+	cancelResult    agentservice.CancelTurnResult
+	cancelErr       error
 }
 
 func newTestProvider(workspaces cliservice.WorkspaceCatalog, sessions AgentSessions) Provider {
@@ -102,11 +104,18 @@ func newTestClaudeStartCommand(provider Provider) cliservice.Command {
 	return provider.newStartCommand()
 }
 
-func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, sessionID string, _ string) (agentservice.CancelTurnResult, error) {
+func (f *fakeAgentSessions) CancelTurn(_ context.Context, workspaceID string, sessionID string, turnID string) (agentservice.CancelTurnResult, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
+	f.turnID = turnID
 	f.cancelCallCount++
-	return agentservice.CancelTurnResult{Canceled: true, Reason: agentservice.CancelTurnReasonTurnCanceled}, nil
+	if f.cancelResult.Reason == "" {
+		f.cancelResult = agentservice.CancelTurnResult{
+			Canceled: true,
+			Reason:   agentservice.CancelTurnReasonTurnCanceled,
+		}
+	}
+	return f.cancelResult, f.cancelErr
 }
 
 func (f *fakeAgentSessions) CreateWithResult(_ context.Context, workspaceID string, input agentservice.CreateSessionInput) (agentservice.CreateSessionResult, error) {
@@ -1910,14 +1919,104 @@ func TestSendCommandExposesGuidanceFlagInSchema(t *testing.T) {
 	}
 }
 
-func TestCancelCommandCancelsSession(t *testing.T) {
-	sessions := &fakeAgentSessions{getSession: agentservice.Session{
-		ID: "SESSION-1", Provider: "codex", ActiveTurnID: "turn-1", Visible: true,
-	}}
+func TestCancelTurnCommandCancelsExactTurn(t *testing.T) {
+	sessions := &fakeAgentSessions{}
 	command := newTestProvider(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
 		sessions,
-	).newCancelCommand()
+	).newCancelTurnCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if sessions.cancelCallCount != 1 || sessions.sessionID != "SESSION-1" || sessions.turnID != "turn-1" {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if output.Value["agentSessionId"] != "SESSION-1" || output.Value["turnId"] != "turn-1" ||
+		output.Value["canceled"] != true || output.Value["reason"] != "turn_canceled" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+}
+
+func TestCancelTurnCommandReturnsIdempotentResult(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		reason agentservice.CancelTurnReason
+	}{
+		{name: "already settled", reason: agentservice.CancelTurnReasonAlreadySettled},
+		{name: "not found", reason: agentservice.CancelTurnReasonNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sessions := &fakeAgentSessions{cancelResult: agentservice.CancelTurnResult{Reason: test.reason}}
+			command := newTestProvider(
+				fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+			).newCancelTurnCommand()
+
+			output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+				Input:      map[string]any{"session-id": "SESSION-1", "turn-id": "turn-1"},
+				OutputMode: cliservice.OutputModeJSON,
+			})
+			if err != nil {
+				t.Fatalf("Handler: %v", err)
+			}
+			if output.Value["canceled"] != false || output.Value["reason"] != string(test.reason) {
+				t.Fatalf("output = %#v", output.Value)
+			}
+		})
+	}
+}
+
+func TestCancelTurnCommandRequiresExactTurnID(t *testing.T) {
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{},
+	).newCancelTurnCommand()
+
+	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1"},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("Handler error = %v, want invalid input", err)
+	}
+}
+
+func TestLegacyCancelCommandCancelsActiveTurnWithWarning(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		getSession: agentservice.Session{ID: "SESSION-1", ActiveTurnID: "turn-active"},
+		cancelResult: agentservice.CancelTurnResult{
+			Session:  agentservice.Session{ID: "SESSION-1"},
+			Canceled: true,
+			Reason:   agentservice.CancelTurnReasonTurnCanceled,
+		},
+	}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newLegacyCancelCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input:      map[string]any{"session-id": "SESSION-1"},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration ||
+		sessions.turnID != "turn-active" || sessions.cancelCallCount != 1 {
+		t.Fatalf("command = %#v sessions = %#v", command.Capability, sessions)
+	}
+	if len(output.Warnings) != 1 || output.Warnings[0].Code != "deprecated_agent_cancel" {
+		t.Fatalf("warnings = %#v", output.Warnings)
+	}
+}
+
+func TestLegacyCancelCommandWithoutActiveTurnIsNoOpWithWarning(t *testing.T) {
+	sessions := &fakeAgentSessions{getSession: agentservice.Session{ID: "SESSION-1"}}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newLegacyCancelCommand()
 
 	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"session-id": "SESSION-1"},
@@ -1925,11 +2024,8 @@ func TestCancelCommandCancelsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.cancelCallCount != 1 || sessions.sessionID != "SESSION-1" {
-		t.Fatalf("sessions = %#v", sessions)
-	}
-	if output.Rows[0]["id"] != "SESSION-1" {
-		t.Fatalf("output = %#v", output)
+	if sessions.cancelCallCount != 0 || len(output.Warnings) != 1 {
+		t.Fatalf("sessions = %#v warnings = %#v", sessions, output.Warnings)
 	}
 }
 

@@ -36,6 +36,22 @@ input and therefore exits with `2`; other daemon failures exit with `1`.
 Without `--json`, ordinary human-facing failures continue to write concise
 text to stderr.
 
+## Agent Turn Cancellation
+
+Agent cancellation is Turn-scoped. Use
+`agent cancel-turn --session-id <id> --turn-id <id>` to cancel one exact Turn
+while preserving the session for later input. The explicit Turn id prevents a
+caller from accidentally canceling a newer Turn that became active after it
+last inspected the session.
+
+JSON output returns `agentSessionId`, `turnId`, `canceled`, and the idempotent
+result `reason` (`turn_canceled`, `already_settled`, or `not_found`). There is
+no CLI operation that cancels or terminates an Agent session.
+
+The old `agent cancel --session-id <id>` path remains an integration-only
+compatibility alias. It resolves the currently active Turn, emits a
+`deprecated_agent_cancel` warning, and must not be used by new integrations.
+
 ## Boundaries
 
 The daemon has two CLI command surfaces:
