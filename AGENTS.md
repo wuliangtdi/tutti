@@ -4,13 +4,14 @@
 
 `tutti` is a local-first desktop monorepo.
 
-- `services/tuttid`: business rules, durable local state, daemon workflows
+- `services/tuttid`: daemon product rules, durable local state, HTTP/query, and adapters
+- `packages/agent/host`: provider-neutral agent lifecycle application core
 - `apps/desktop`: Electron shell, preload, renderer UI, desktop integration
 - `packages/clients/*`: generated and hand-written domain clients
 - `packages/configs/*`: shared TypeScript and formatting config
 - `config`: sources used to generate runtime defaults
 
-Keep business logic in `services/tuttid`. Do not let `apps/desktop` become a second business core. Do not create vague packages such as `shared`, `common`, `utils`, or `client-sdk`.
+Keep daemon/product-specific business logic in `services/tuttid`; keep extracted cross-consumer application cores in their owning package. Do not let `apps/desktop` become a second business core. Do not create vague packages such as `shared`, `common`, `utils`, or `client-sdk`.
 
 ## Routing
 

@@ -14,7 +14,9 @@ module, read this architecture document first:
 
 - [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md)
 
-Then read the package/activity boundary document:
+When changing `AgentActivityRuntime`, `agent-activity-core`, workspace engine,
+event/reconcile behavior, package exports, or a host adapter, also read the
+package/activity boundary document:
 
 - [docs/architecture/agent-activity-packages.md](../../../docs/architecture/agent-activity-packages.md)
 
@@ -29,20 +31,23 @@ reference architecture:
 - Treat `AgentActivityRuntime` as the production source for agent activity data
   and commands.
 - Keep `AgentHostApi` usage limited to host capabilities such as files,
-  clipboard, account/project lookup, diagnostics, and local helper flows.
+  clipboard, account/project lookup, Agent Target setup/probes, diagnostics,
+  and local helper flows.
+- Treat Session, Turn, Interaction, Goal, and operation state as canonical
+  domain facts. Transcript rows and React component state are not lifecycle
+  authority.
+- Use exact workspace/session/turn/request/target identity. Do not infer it from
+  provider names, titles, timestamps, array position, or the latest row.
+- Keep shared behavior provider-neutral: consume descriptor, strategy, and
+  capability contracts rather than branching on provider names.
 - Trace the full chain before fixing a local AgentGuiNode symptom: activation,
   selected session, session list, timeline, composer, submit, approval,
   interactive prompt, provider capability, generated files, mention resolution,
   or layout.
 - Prefer pure model/projection helpers and focused controller helpers over
   adding orchestration to React components.
-- After any AgentGUI or AgentGuiNode fix, feature, module extraction, or flow
-  refactor, run the documentation impact and self-evolution prompt in
-  [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md):
-  decide `discard`, `improve`, `merge`, or `create`; prefer improving existing
-  lessons over adding duplicates; remove instance-specific or sensitive details
-  before proposing any durable note. For any decision except `discard`, update
-  the corresponding durable document in the same change. Data-flow,
+- After any AgentGUI fix, feature, extraction, or flow refactor, run the root
+  documentation-impact and `Self-Evolution Notes` checks. Data-flow,
   interaction-state, loading, resume, send, approval, timeline, or ownership
   changes usually update
   [docs/architecture/agent-gui-node.md](../../../docs/architecture/agent-gui-node.md);
@@ -60,6 +65,14 @@ After changing AgentGUI data flow, run:
 
 ```sh
 pnpm check:agent-activity-runtime-boundaries
+```
+
+Also select the boundary matching the change:
+
+```sh
+pnpm check:agent-provider-strategy-boundaries # provider strategy/capability
+pnpm check:agent-gui-degradation              # AgentGUI structure/state ownership
+pnpm check:agent-host-boundary                 # Host/tuttid lifecycle boundary
 ```
 
 For focused package changes, prefer:

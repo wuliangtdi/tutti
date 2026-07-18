@@ -7,6 +7,11 @@ GUI surfaces. The goal is to make the agent session data flow reusable by other
 repositories while keeping host-specific transport and desktop integration out
 of the shared packages.
 
+System-wide ownership and flow rules live in
+[Agent GUI Node](./agent-gui-node.md). This document is the detailed package
+contract for activity-core/runtime/adapter changes, not required reading for a
+presentation-only edit.
+
 ## Design Goals
 
 - Put reusable agent session state, event merging, and attention selectors
@@ -132,7 +137,7 @@ It owns:
   `src/engine/`): intent dispatch loop, domain-composed pure reducers,
   command-description effect executor, expiry-intent clock, and intent frame
   batching, with scheduler/clock/command ports injected by the host (see
-  `docs/architecture/agent-gui-refactor-plan.md` section 3.3)
+  [Agent GUI Node](./agent-gui-node.md#4-workspace-frontend-engine))
 
 It does not own:
 
@@ -164,9 +169,11 @@ It owns:
 It may depend on `@tutti-os/agent-activity-core`.
 
 Agent GUI must read and write agent session/activity data through
-`AgentActivityRuntime`. `AgentHostApi` remains available for host capabilities
-such as files, clipboard, runtime metadata, account lookup, composer options,
-and temporary desktop-only session-control behavior.
+`AgentActivityRuntime`. The effective `AgentHostApi` is limited to host
+capabilities such as files, clipboard, runtime metadata, account/project
+lookup, diagnostics, setup, and OS/Workbench helpers. Its input type still
+accepts a legacy `agentSessions` shape, but `toAgentHostRuntimeApi` strips that
+shape; production AgentGUI must not use it as an activity source.
 Conversation rail sections are also an `AgentActivityRuntime` contract:
 AgentGUI calls `listSessionSections` for the first page of every returned rail
 section and `listSessionSectionPage` for Show more by `sectionKey` and cursor.
@@ -504,8 +511,14 @@ export interface AgentActivityAdapter {
   deleteSession(
     input: AgentActivityDeleteSessionInput
   ): Promise<AgentActivityDeleteSessionResult>;
+  deleteSessions(
+    input: AgentActivityDeleteSessionsInput
+  ): Promise<AgentActivityDeleteSessionsResult>;
   renameSession(
     input: AgentActivityRenameSessionInput
+  ): Promise<AgentActivitySession>;
+  setSessionPinned(
+    input: AgentActivitySetSessionPinnedInput
   ): Promise<AgentActivitySession>;
 }
 ```
@@ -635,8 +648,7 @@ The host owns:
 
 ## Needs Attention Contract
 
-The future Agent Message Center counts user-actionable items, not all session
-messages.
+Agent Message Center counts user-actionable items, not all session messages.
 
 The initial selector surface is:
 
@@ -694,7 +706,9 @@ For Agent GUI behavior:
 For runtime boundary enforcement:
 
 - `pnpm check:agent-activity-runtime-boundaries`
-- the same check is included in `pnpm check:full`
+- `pnpm check:agent-provider-strategy-boundaries`
+- `pnpm check:agent-gui-degradation`
+- these checks are included in `pnpm check:full`
 
 ## Non-Goals
 
