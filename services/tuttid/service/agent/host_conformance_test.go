@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -201,6 +202,7 @@ type legacyHostConformanceDriver struct {
 	goalInbox      *conformanceGoalInboxStore
 	commitObserver *conformanceCommitObserver
 	recoverySteps  *[]string
+	createdTurns   map[string]string
 	directHost     bool
 }
 
@@ -213,6 +215,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		interactions: map[string][]agentactivitybiz.Interaction{},
 	}
 	d.operations = &runtimeOperationMemoryStore{}
+	d.createdTurns = make(map[string]string)
 	steps := make([]string, 0)
 	d.recoverySteps = &steps
 	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
@@ -402,6 +405,14 @@ func (d *legacyHostConformanceDriver) Create(
 	if len(d.runtime.execCalls) > beforeExec {
 		turnID = "turn-1"
 		d.recordSubmittedTurn(workspaceID, session.ID, turnID)
+		if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
+			d.createdTurns[clientSubmitID] = turnID
+		}
+	} else if clientSubmitID := strings.TrimSpace(input.ClientSubmitID); clientSubmitID != "" {
+		turnID = d.createdTurns[clientSubmitID]
+		if turnID == "" {
+			return hostconformance.SessionObservation{}, "", fmt.Errorf("typed create submit %q has no canonical turn", clientSubmitID)
+		}
 	}
 	return legacyHostSessionObservation(session), turnID, nil
 }
