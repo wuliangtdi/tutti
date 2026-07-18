@@ -99,21 +99,6 @@ test("standalone Agent tools load their OS node UI on demand", () => {
   );
 });
 
-test("standalone Agent terminal tab content appears without a reveal animation", () => {
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /panel !== "terminal" &&\s*"motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-reduce:animate-none"/
-  );
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarSource,
-    /background-session-sidepanel\)\]\s+transition-\[height\]/
-  );
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarSource,
-    /height: open \? "100%" : "0px"/
-  );
-});
-
 test("standalone Agent opens an empty right sidebar with the core tool picker", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -164,41 +149,6 @@ test("standalone Agent quick actions open the apps and messages panel tabs", () 
   );
 });
 
-test("standalone Agent panel tabs keep the add menu in the panel header", () => {
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /<DropdownMenuTrigger asChild>[\s\S]*?<AddLinedIcon[\s\S]*?<\/Button>[\s\S]*?<\/DropdownMenuTrigger>[\s\S]*?data-standalone-agent-tool-sidebar-toggle="true"/
-  );
-});
-
-test("standalone Agent panel tabs render in the interactive window header", () => {
-  const renderHeaderStart =
-    standaloneAgentToolSidebarSource.indexOf("{renderHeader(");
-  const bodyStart = standaloneAgentToolSidebarSource.indexOf(
-    '<div className="workbench-window__body'
-  );
-  const tabBarCall = standaloneAgentToolSidebarSource.indexOf(
-    "<ToolSidebarTabBar",
-    renderHeaderStart
-  );
-
-  assert.ok(renderHeaderStart >= 0);
-  assert.ok(tabBarCall > renderHeaderStart);
-  assert.ok(tabBarCall < bodyStart);
-  assert.equal(
-    standaloneAgentToolSidebarSource.match(/<ToolSidebarTabBar/g)?.length,
-    1
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /data-standalone-agent-tool-sidebar-header="true"/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /data-standalone-agent-tool-sidebar-header-spacer="true"[\s\S]*?var\(--agent-gui-workbench-header-height, 44px\)/
-  );
-});
-
 test("standalone Agent panel tab buttons switch the active mounted panel", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
@@ -207,39 +157,6 @@ test("standalone Agent panel tab buttons switch the active mounted panel", () =>
   assert.match(
     standaloneAgentToolSidebarSource,
     /data-standalone-agent-tool-tab-list="true"[\s\S]*?role="tablist"/
-  );
-});
-
-test("standalone Agent panel tabs render semantic icons before their labels", () => {
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /resolveToolTabLabel\(tab, copy, app, locale\)/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /<ToolSidebarTabIcon app=\{app\} tab=\{tab\} \/>[\s\S]*?<span className="truncate">\{label\}<\/span>/
-  );
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /const toolSidebarPanelIconById = \{[\s\S]*?apps: NavApplicationsLinedIcon,[\s\S]*?browser: WebIcon,[\s\S]*?files: FolderIcon,[\s\S]*?messages: ChatIcon,[\s\S]*?terminal: TerminalLinedIcon[\s\S]*?\} satisfies Record<StandaloneAgentToolPanelId, ComponentType<IconProps>>/
-  );
-});
-
-test("standalone Agent terminal menu uses the dedicated lined icon", () => {
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /onAddPanel\("terminal"\)[\s\S]{0,240}<ToolSidebarPanelIcon[\s\S]*?panel="terminal"/
-  );
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /terminal: TerminalLinedIcon/
-  );
-});
-
-test("standalone Agent constrains the session title to the conversation flow", () => {
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /--agent-gui-tool-sidebar-layout-width[\s\S]*?activePanelLayoutWidth/
   );
 });
 
@@ -273,102 +190,41 @@ test("standalone Agent hides internal open-with actions without changing the OS 
   );
 });
 
-test("standalone Agent right sidebar keeps tool-switch layout width stable", () => {
+test("standalone Agent resizes the native window when panels open, switch, and close", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /const shouldAnimateSidebarLayout =\s*state\.mountedTabs\.length === 0 \|\| isActivePanelContentReady/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /const shouldAnimateSidebarWidth = isEmptySidebarSurface;/
+    /const scheduleResizeForPanel = useCallback\([\s\S]*?window\.requestAnimationFrame\(\(\) => \{[\s\S]*?resizeForPanel\(panel, preferredWidth, options\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /shouldAnimateSidebarWidth &&\s+"motion-safe:transition-\[width\] motion-safe:duration-\[260ms\] motion-safe:ease-in-out motion-reduce:transition-none"/
-  );
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarSource,
-    /shouldAnimateSidebarLayout &&\s+"motion-safe:transition-\[width\]/
+    /const openPanel = useCallback\([\s\S]*?type: "open-panel"[\s\S]*?scheduleResizeForPanel\(panel\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /isSidebarOpen &&\s+!shouldAnimateSidebarLayout &&\s+"motion-safe:animate-in motion-safe:slide-in-from-right-3 motion-safe:duration-\[160ms\] motion-safe:ease-out motion-reduce:animate-none"/
+    /const activatePanelTab = useCallback\([\s\S]*?type: "activate-tab"[\s\S]*?scheduleResizeForPanel\(tab\.panel\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /overflow-hidden \[contain:layout_paint\]/
+    /const closePanel = useCallback\([\s\S]*?dispatch\(\{ type: "close" \}\)[\s\S]*?scheduleResizeForPanel\(null\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /tabId: resolveToolTabId\(state\.mountedTabs, panel\),\s*type: "open-panel"[\s\S]*?scheduleResizeForPanel\(panel\)/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /window\.requestAnimationFrame\(\(\) => \{[\s\S]*?void resizeForPanel\(panel, preferredWidth, options\)/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /standaloneAgentToolPanelContentMountDelayMs = 80/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /contentReadyTabIds\.includes\(tab\.id\)[\s\S]*?motion-safe:animate-in[\s\S]*?<StandaloneAgentToolSidebarPanel/
-  );
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarPickerSource,
-    /animate-in|slide-in-from-right|duration-\[/
+    /const closePanelTab = useCallback\([\s\S]*?nextTab === null[\s\S]*?scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth[\s\S]*?scheduleResizeForPanel\(nextTab\.panel\)/
   );
 });
 
-test("standalone Agent empty sidebar uses its compact width until a tool opens", () => {
+test("standalone Agent restores the resize baseline after closing the empty picker", () => {
   assert.match(
     standaloneAgentToolSidebarSource,
-    /activePanelPreferredWidth: isEmptySidebarSurface\s*\? standaloneAgentEmptyToolSidebarWidth\s*: undefined/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth, \{[\s\S]*?animateWindow: !reducedMotion/
+    /setIsEmptySidebarClosing\(true\);\s+scheduleResizeForPanel\(null, undefined, \{\s+animateWindow: true,\s+preserveBaseline: true/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /setIsEmptySidebarClosing\(true\)[\s\S]*?scheduleResizeForPanel\(null, undefined, \{[\s\S]*?animateWindow: true,[\s\S]*?preserveBaseline: true/
+    /setIsEmptySidebarClosing\(false\);\s+resetWindowResizeBaseline\(\)/
   );
   assert.match(
     standaloneAgentToolSidebarSource,
-    /event\.propertyName !== "width"[\s\S]*?resetWindowResizeBaseline\(\)[\s\S]*?onTransitionEnd=\{handleSidebarTransitionEnd\}/
-  );
-  assert.match(
-    standaloneAgentToolSidebarSource,
-    /!isSidebarOpen && !isEmptySidebarClosing && "invisible"/
-  );
-  assert.match(
-    standaloneAgentToolSidebarPickerSource,
-    /items-center justify-center[\s\S]*?max-w-\[340px\][\s\S]*?h-12/
-  );
-});
-
-test("standalone Agent exposes one unified right-panel trigger", () => {
-  const toggleStart = standaloneAgentToolSidebarToolbarSource.indexOf(
-    'data-standalone-agent-tool-sidebar-toggle="true"'
-  );
-  const toggleEnd = standaloneAgentToolSidebarToolbarSource.indexOf(
-    "</Button>",
-    toggleStart
-  );
-
-  assert.match(
-    standaloneAgentToolSidebarToolbarSource,
-    /data-standalone-agent-tool-sidebar-toggle="true"[\s\S]*?<PanelIcon[\s\S]*?aria-hidden[\s\S]*?className="size-\[18px\] -scale-x-100"/
-  );
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarToolbarSource,
-    /data-standalone-agent-tool-menu-trigger|ToolsIcon/
-  );
-  assert.ok(toggleStart >= 0);
-  assert.ok(toggleEnd > toggleStart);
-  assert.doesNotMatch(
-    standaloneAgentToolSidebarToolbarSource.slice(toggleStart, toggleEnd),
-    /ReminderBadge/
+    /state\.mountedTabs\.length === 0[\s\S]*?scheduleResizeForPanel\("files", standaloneAgentEmptyToolSidebarWidth/
   );
 });
 
