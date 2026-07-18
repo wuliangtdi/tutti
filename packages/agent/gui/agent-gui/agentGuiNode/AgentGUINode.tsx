@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import { createWorkspaceFileManagerI18nRuntime } from "@tutti-os/workspace-file-manager";
 import { useReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/react";
@@ -98,6 +98,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = frame;
   const railAutoCollapseWidthPx =
     conversationRailAutoCollapseWidthPx ?? undefined;
+  const widthRef = useRef(width);
+  widthRef.current = width;
   const {
     composerAppend: composerAppendRequest = null,
     composerFocusSequence: composerFocusRequestSequence = null,
@@ -217,7 +219,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         const nextWidthPx = resolveNextAgentGUIConversationRailWidthPx({
           currentWidthPx: current.conversationRailWidthPx,
           requestedWidthPx: widthPx,
-          containerWidthPx: width
+          containerWidthPx: widthRef.current
         });
 
         if (current.conversationRailWidthPx === nextWidthPx) {
@@ -229,7 +231,7 @@ export const AgentGUINode = memo(function AgentGUINode({
         };
       });
     },
-    [onUpdateNode, previewMode, width]
+    [onUpdateNode, previewMode]
   );
   const isConversationRailManuallyCollapsed =
     state.conversationRailCollapsed === true;

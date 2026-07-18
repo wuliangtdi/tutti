@@ -302,6 +302,32 @@
   [packages/workbench/surface/src/host/missionControlAdapter.ts](../../../packages/workbench/surface/src/host/missionControlAdapter.ts)
   [packages/workbench/surface/src/host/missionControlAdapter.test.ts](../../../packages/workbench/surface/src/host/missionControlAdapter.test.ts)
 
+### React Compiler removes a manual identity memo
+
+- Symptom:
+  React profiling reports a grouped prop as referentially unequal but deeply
+  equal on every render even though source code wraps it in `useMemo`.
+- Quick checks:
+  Inspect the renderer's dev transform and production bundle. A source pattern
+  such as `useMemo(() => nextValue, [nextValue.field])` may compile to
+  `const value = nextValue`, restoring the fresh input reference.
+- Root cause:
+  The memo callback returns an existing input object while its dependency list
+  intentionally describes selected fields. React Compiler infers the input
+  object as the value dependency and may remove this identity-only memo.
+- Fix:
+  Build an explicit projection object from every semantic field and let React
+  Compiler cache that allocation by those fields. Do not use a component ref or
+  `useMemo(() => freshInput)` to absorb upstream reference churn.
+- Validation:
+  Add a compiler regression test for the projection, run the desktop production
+  build, and inspect the emitted cache conditions. They must compare semantic
+  fields rather than assign the fresh input object directly. Re-record a React
+  performance trace to verify deeply-equal grouped-prop changes disappear.
+- References:
+  [useStableDesktopAgentGUIHostProps.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useStableDesktopAgentGUIHostProps.ts)
+  [useStableDesktopAgentGUIHostProps.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/ui/useStableDesktopAgentGUIHostProps.test.ts)
+
 ### Workbench host rebuilds when dock business status changes
 
 - Symptom:

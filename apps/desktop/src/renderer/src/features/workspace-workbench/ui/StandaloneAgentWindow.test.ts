@@ -52,7 +52,11 @@ test("standalone Agent reuses the OS account menu in the sidebar footer", () => 
   );
   assert.match(
     workbenchBodySource,
-    /renderSlots=\{\{[\s\S]*sidebarFooter: previewMode \? undefined : renderSidebarFooter[\s\S]*\}\}/
+    /renderSlots:\s*\{\s*sidebarFooter: previewMode \? undefined : renderSidebarFooter\s*\}/
+  );
+  assert.match(
+    workbenchBodySource,
+    /renderSlots=\{agentGUIHostProps\.renderSlots\}/
   );
 });
 

@@ -14,6 +14,7 @@ import {
 import { AgentGUINode } from "./AgentGUINode";
 import { createLocalAgentGUIAgentTarget } from "../../agentTargets";
 import { buildAgentComposerDraft } from "./model/agentComposerDraft";
+import { resolveNextAgentGUIConversationRailWidthPx } from "./model/agentGuiRailLayout";
 
 const { agentGuiNodeViewSpy } = vi.hoisted(() => ({
   agentGuiNodeViewSpy: vi.fn()
@@ -212,6 +213,56 @@ describe("AgentGUINode memoization", () => {
     );
 
     expect(agentGuiNodeViewSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the rail resize callback stable and reads the latest frame width", () => {
+    mockViewModel = createViewModel();
+    const onUpdateNode = vi.fn();
+    const initial = createProps();
+    const props = {
+      ...initial,
+      hostActions: { ...initial.hostActions, onUpdateNode }
+    };
+    const { rerender } = render(<AgentGUINode {...props} />);
+    const firstViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailWidthChanged: (widthPx: number) => void;
+        }
+      | undefined;
+    expect(firstViewProps).toBeDefined();
+    const firstCallback = firstViewProps!.onConversationRailWidthChanged;
+
+    rerender(
+      <AgentGUINode {...props} frame={{ ...props.frame, width: 640 }} />
+    );
+    const secondViewProps = agentGuiNodeViewSpy.mock.calls.at(-1)?.[0] as
+      | {
+          onConversationRailWidthChanged: (widthPx: number) => void;
+        }
+      | undefined;
+    expect(secondViewProps).toBeDefined();
+    const secondCallback = secondViewProps!.onConversationRailWidthChanged;
+
+    expect(secondCallback).toBe(firstCallback);
+    firstCallback(600);
+    const updater = onUpdateNode.mock.calls.at(-1)?.[0] as (
+      current: AgentGUINodeData
+    ) => AgentGUINodeData;
+    const current = createState({ conversationRailWidthPx: 320 });
+    expect(updater(current).conversationRailWidthPx).toBe(
+      resolveNextAgentGUIConversationRailWidthPx({
+        currentWidthPx: current.conversationRailWidthPx,
+        requestedWidthPx: 600,
+        containerWidthPx: 640
+      })
+    );
+    expect(updater(current).conversationRailWidthPx).not.toBe(
+      resolveNextAgentGUIConversationRailWidthPx({
+        currentWidthPx: current.conversationRailWidthPx,
+        requestedWidthPx: 600,
+        containerWidthPx: props.frame.width
+      })
+    );
   });
 });
 
