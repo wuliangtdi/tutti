@@ -30,6 +30,8 @@ export type AgentExternalPromptFilePreparationResult =
       sourceIndex: number;
       status: "error";
       error: string;
+      errorCode?: string;
+      retryable?: boolean;
     };
 
 export type AgentExternalPromptFilePreparer = (
@@ -95,7 +97,10 @@ export function createAgentExternalPromptFilePreparation(
           );
         }
         if (result.status === "error") {
-          return failedDraftFile(pendingFile, result.error);
+          return failedDraftFile(pendingFile, result.error, {
+            errorCode: result.errorCode,
+            retryable: result.retryable
+          });
         }
         const prepared = normalizePreparedFile(result.file);
         if (!hasPreparedFileLocator(prepared)) {
@@ -254,11 +259,18 @@ function hasPreparedFileLocator(
 
 function failedDraftFile(
   file: AgentComposerDraftFile,
-  uploadError: string
+  uploadError: string,
+  options: { errorCode?: string; retryable?: boolean } = {}
 ): AgentComposerDraftFile {
   return {
     ...file,
     uploading: false,
-    uploadError: uploadError.trim() || "Prompt file preparation failed."
+    uploadError: uploadError.trim() || "Prompt file preparation failed.",
+    ...(options.errorCode?.trim()
+      ? { uploadErrorCode: options.errorCode.trim() }
+      : {}),
+    ...(typeof options.retryable === "boolean"
+      ? { uploadRetryable: options.retryable }
+      : {})
   };
 }

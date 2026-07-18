@@ -29,6 +29,9 @@ export function mentionItemToAttrs(
       ...(item.attachmentId ? { attachmentId: item.attachmentId } : {}),
       ...(item.attachmentStatus
         ? { attachmentStatus: item.attachmentStatus }
+        : {}),
+      ...(item.attachmentErrorCode
+        ? { attachmentErrorCode: item.attachmentErrorCode }
         : {})
     };
   }
@@ -363,6 +366,11 @@ export function attrsToMentionItem(
         : attrs.attachmentId
           ? "ready"
           : undefined,
+    attachmentErrorCode:
+      typeof attrs.attachmentErrorCode === "string" &&
+      attrs.attachmentErrorCode.trim()
+        ? attrs.attachmentErrorCode.trim()
+        : undefined,
     thumbnailUrl: resolveAgentMentionFileThumbnailUrl({
       entryKind: normalizeEntryKind(attrs.entryKind),
       href: href || path,

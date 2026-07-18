@@ -25,6 +25,7 @@ export interface AgentComposerFileMentionReference {
 }
 
 export function createAgentComposerFileMentionMarkdown(input: {
+  errorCode?: string;
   id: string;
   name: string;
   status: AgentComposerFileMentionStatus;
@@ -33,7 +34,10 @@ export function createAgentComposerFileMentionMarkdown(input: {
     providerId: AGENT_COMPOSER_FILE_MENTION_KIND,
     entityId: input.id,
     label: input.name,
-    scope: { status: input.status }
+    scope: {
+      ...(input.errorCode?.trim() ? { errorCode: input.errorCode.trim() } : {}),
+      status: input.status
+    }
   });
 }
 
@@ -112,6 +116,7 @@ export function formatAgentMentionMarkdown(
   if (item.kind === "file") {
     if (item.attachmentId) {
       return createAgentComposerFileMentionMarkdown({
+        errorCode: item.attachmentErrorCode,
         id: item.attachmentId,
         name: item.name,
         status: item.attachmentStatus ?? "ready"
@@ -339,7 +344,8 @@ export function parseMentionItemFromHref(input: {
       entryKind: "file",
       directoryPath: "",
       attachmentId: targetId,
-      attachmentStatus: status
+      attachmentStatus: status,
+      attachmentErrorCode: mention.scope?.errorCode?.trim() || undefined
     };
   }
   if (resource === "agent-session") {

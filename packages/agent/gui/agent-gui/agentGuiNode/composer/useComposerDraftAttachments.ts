@@ -7,7 +7,9 @@ import {
   type SetStateAction
 } from "react";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
+import { useOptionalAgentHostApi } from "../../../agentActivityHost";
 import { useOptionalAgentActivityRuntime } from "../../../agentActivityRuntime";
+import { translate } from "../../../i18n/index";
 import type {
   AgentComposerDraft,
   AgentComposerDraftFile,
@@ -38,6 +40,7 @@ import {
   agentComposerFileMentionReferences,
   updateAgentComposerFileMentionStatuses
 } from "../agentRichText/agentMentionMarkdown";
+import { updateDraftPromptAndReconcileFiles } from "../model/agentComposerDraftFileReconciliation";
 import {
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction
@@ -54,21 +57,6 @@ import type { AgentGUIComposerContentType } from "../engagement/agentGUIEngageme
 export interface WorkspaceReferencePickResult {
   files: readonly WorkspaceFileReference[];
   mentionItems: readonly AgentContextMentionItem[];
-}
-
-function updateDraftPromptAndReconcileFiles(
-  draft: AgentComposerDraft,
-  prompt: string
-): AgentComposerDraft {
-  const referencedIds = new Set(
-    agentComposerFileMentionReferences(prompt).map((reference) => reference.id)
-  );
-  return updateAgentComposerDraft(draft, {
-    prompt,
-    files: agentComposerDraftFiles(draft).filter((file) =>
-      referencedIds.has(file.id)
-    )
-  });
 }
 
 function useStableEventCallback<Args extends unknown[], Result>(
@@ -140,6 +128,7 @@ export function useComposerDraftAttachments({
   prepareExternalPromptFiles,
   onLinkAction
 }: UseComposerDraftAttachmentsInput) {
+  const agentHostApi = useOptionalAgentHostApi();
   const agentActivityRuntime = useOptionalAgentActivityRuntime();
   const activeDraftScopeKeyRef = useRef(draftScopeKey);
   activeDraftScopeKeyRef.current = draftScopeKey;
@@ -148,6 +137,9 @@ export function useComposerDraftAttachments({
       onContentEntered?.(contentType);
     }
   );
+  const showErrorToast = useStableEventCallback((message: string): void => {
+    agentHostApi?.toast?.error(message);
+  });
   const publishScopedDraft = useStableEventCallback(
     (sourceScopeKey: string, nextDraft: AgentComposerDraft): void => {
       draftByScopeKeyRef.current[sourceScopeKey] = nextDraft;
@@ -490,6 +482,7 @@ export function useComposerDraftAttachments({
           activeDraftScopeKeyRef.current === sourceScopeKey &&
           editorHandleRef.current?.updateComposerFiles(
             visibleSettled.map((file) => ({
+              errorCode: file.uploadErrorCode,
               id: file.id,
               name: file.name,
               status: file.uploadError ? "error" : "ready"
@@ -515,6 +508,15 @@ export function useComposerDraftAttachments({
           })
         );
         const errorCount = settled.filter((file) => file.uploadError).length;
+        if (errorCount > 0) {
+          const failedFiles = settled.filter((file) => file.uploadError);
+          const errorMessage = failedFiles.every(
+            (file) => file.uploadErrorCode === "file_too_large"
+          )
+            ? translate("agentHost.agentGui.composerFileTooLarge")
+            : translate("agentHost.agentGui.composerFilePreparationFailed");
+          showErrorToast(errorMessage);
+        }
         reportAgentComposerDiagnostic(agentActivityRuntime, {
           details: {
             draftUpdateApplied: Boolean(updatedDraft),
@@ -538,6 +540,7 @@ export function useComposerDraftAttachments({
       promptAssetLimit,
       promptFilesSupported,
       publishScopedDraft,
+      showErrorToast,
       updateScopedDraft,
       workspaceId
     ]

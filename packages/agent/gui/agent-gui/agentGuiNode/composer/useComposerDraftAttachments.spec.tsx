@@ -1,11 +1,15 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileReference } from "@tutti-os/workspace-file-reference/contracts";
 import {
   AgentActivityRuntimeProvider,
   type AgentActivityRuntime
 } from "../../../agentActivityRuntime";
+import {
+  resetAgentHostApiForTests,
+  setAgentHostApiForTests
+} from "../../../agentActivityHost";
 import { buildAgentComposerDraft } from "../model/agentComposerDraft";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
@@ -25,6 +29,10 @@ function deferred<T>() {
 }
 
 describe("useComposerDraftAttachments", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    resetAgentHostApiForTests();
+  });
   it("publishes an uploading file before applying prepared locators", async () => {
     const preparation =
       deferred<readonly AgentExternalPromptFilePreparationResult[]>();
@@ -162,7 +170,33 @@ describe("useComposerDraftAttachments", () => {
     );
   });
 
+  it("preserves a newly inserted file across a stale editor update", () => {
+    const input = createInput({
+      draft: buildAgentComposerDraft({ prompt: "" }),
+      prepareExternalPromptFiles: () => new Promise(() => undefined)
+    });
+    const rendered = renderHook(() => useComposerDraftAttachments(input));
+
+    act(() => {
+      rendered.result.current.addDraftFiles([
+        new File(["pdf"], "report.pdf", { type: "application/pdf" })
+      ]);
+      rendered.result.current.handleDraftChange("");
+    });
+
+    expect(input.draftByScopeKeyRef.current.home).toEqual([
+      { type: "text", text: "" },
+      expect.objectContaining({
+        type: "file",
+        name: "report.pdf",
+        uploading: true
+      })
+    ]);
+  });
+
   it("reports external file preparation lifecycle without file metadata", async () => {
+    const hostToastError = vi.fn();
+    setAgentHostApiForTests({ toast: { error: hostToastError } } as never);
     const reportDiagnostic = vi.fn();
     const runtime = {
       origin: "test",
@@ -178,7 +212,9 @@ describe("useComposerDraftAttachments", () => {
         {
           sourceIndex: 0,
           status: "error",
-          error: "stage failed"
+          error: "stage failed",
+          errorCode: "file_too_large",
+          retryable: false
         }
       ]
     );
@@ -205,6 +241,7 @@ describe("useComposerDraftAttachments", () => {
     );
 
     await waitFor(() => expect(reportDiagnostic).toHaveBeenCalledTimes(2));
+    expect(hostToastError).toHaveBeenCalledWith("File exceeds 10 MB");
     expect(reportDiagnostic).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({

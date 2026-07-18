@@ -140,7 +140,8 @@ export function useAgentRichTextEditorHandle(input: {
                 entryKind: "file" as const,
                 directoryPath: "",
                 attachmentId: item.id,
-                attachmentStatus: item.status
+                attachmentStatus: item.status,
+                attachmentErrorCode: item.errorCode
               })),
               {
                 prefixCaretAnchor: isPromptVisualLineStart(
@@ -171,7 +172,8 @@ export function useAgentRichTextEditorHandle(input: {
           transaction = transaction.setNodeMarkup(position, undefined, {
             ...node.attrs,
             name: update.name,
-            attachmentStatus: update.status
+            attachmentStatus: update.status,
+            attachmentErrorCode: update.errorCode ?? ""
           });
           changed = true;
           return false;

@@ -55,6 +55,7 @@ export interface AgentRichTextEditorHandle {
 }
 
 export interface AgentRichTextComposerFileMention {
+  errorCode?: string;
   id: string;
   name: string;
   status: AgentComposerFileMentionStatus;

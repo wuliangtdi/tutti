@@ -141,6 +141,8 @@ interface AgentComposerFileBlockBase {
   sizeBytes?: number;
   uploading?: boolean;
   uploadError?: string;
+  uploadErrorCode?: string;
+  uploadRetryable?: boolean;
 }
 
 export interface AgentComposerRegularFileBlock extends AgentComposerFileBlockBase {

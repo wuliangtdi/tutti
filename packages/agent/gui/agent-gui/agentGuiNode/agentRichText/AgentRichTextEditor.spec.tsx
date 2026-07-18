@@ -77,12 +77,24 @@ describe("AgentRichTextEditor file paste", () => {
 
     act(() =>
       ref.current?.updateComposerFiles([
-        { id: "file-1", name: "report.pdf", status: "error" }
+        {
+          errorCode: "file_too_large",
+          id: "file-1",
+          name: "report.pdf",
+          status: "error"
+        }
       ])
     );
-    expect(
-      rendered.container.querySelector('[data-upload-error="true"]')
-    ).not.toBeNull();
+    const failedMention = rendered.container.querySelector(
+      '[data-upload-error="true"]'
+    );
+    expect(failedMention).not.toBeNull();
+    expect(failedMention?.textContent).toBe("report.pdf");
+    expect(failedMention).toHaveAttribute("title", "File exceeds 10 MB");
+    expect(failedMention).toHaveAttribute(
+      "aria-label",
+      "report.pdf, File exceeds 10 MB"
+    );
 
     fireEvent.mouseDown(rendered.getByLabelText("Remove file"));
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(""));

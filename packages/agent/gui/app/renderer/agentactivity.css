@@ -4403,6 +4403,12 @@ aside.workspace-agents-status-panel
   color: var(--folder);
 }
 
+[data-agent-file-mention="true"][data-agent-mention-kind="file"][data-upload-error="true"].tsh-agent-object-token--file {
+  border-color: color-mix(in srgb, var(--state-danger) 42%, transparent);
+  background: color-mix(in srgb, var(--state-danger) 8%, transparent);
+  color: var(--state-danger);
+}
+
 [data-agent-file-mention="true"][data-agent-mention-kind="file"][data-agent-file-entry-kind="directory"]
   .tsh-agent-object-token__icon {
   mask-image: url("./assets/icons/folder-filled.svg");

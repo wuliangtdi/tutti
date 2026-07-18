@@ -29,6 +29,7 @@ export interface AgentMentionFileItem {
   /** Present only for a regular file attached from the local composer. */
   attachmentId?: string;
   attachmentStatus?: AgentComposerFileMentionStatus;
+  attachmentErrorCode?: string;
   score?: number;
   thumbnailUrl?: string | null;
   mentionNavigation?: AgentMentionFileNavigationAction;

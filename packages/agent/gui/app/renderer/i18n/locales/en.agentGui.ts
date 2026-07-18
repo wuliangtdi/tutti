@@ -671,6 +671,8 @@ export const enAgentGui = {
   fileMentionTabHint:
     "Tab switch category | ←→ enter/leave folder | ↑↓ switch selection",
   fileDropHint: "Drop files to add them to the session",
+  composerFileTooLarge: "File exceeds 10 MB",
+  composerFilePreparationFailed: "File preparation failed",
   mentionPalette: "Mention context",
   addReference: "Add reference",
   addContent: "Add files and more",

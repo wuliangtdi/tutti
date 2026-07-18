@@ -42,6 +42,7 @@ function parseFileCountAttr(value: unknown): number {
 
 interface AgentMentionNodeViewModel {
   attachmentStatus?: "uploading" | "ready" | "error";
+  attachmentErrorLabel?: string;
   ariaLabel: string;
   /** 宿主注册的自定义 mention kind(kind === "custom" 专用)。 */
   customKind?: string;
@@ -225,6 +226,12 @@ function mentionViewModel(
         : attrString(attrs, "attachmentId")
           ? "ready"
           : undefined,
+    attachmentErrorLabel:
+      attrString(attrs, "attachmentStatus") === "error"
+        ? attrString(attrs, "attachmentErrorCode") === "file_too_large"
+          ? t("agentHost.agentGui.composerFileTooLarge")
+          : t("agentHost.agentGui.composerFilePreparationFailed")
+        : undefined,
     ariaLabel: name,
     directoryPath: attrString(attrs, "directoryPath") || dirnameFromPath(path),
     entryKind,
@@ -277,7 +284,8 @@ function AgentMentionLegacyFileNodeView({
   node,
   selected
 }: NodeViewProps): JSX.Element {
-  const mention = mentionViewModel(node.attrs ?? {}, () => "");
+  const { t } = useTranslation();
+  const mention = mentionViewModel(node.attrs ?? {}, t);
   const [isEditable, setIsEditable] = useState(editor.isEditable);
   const extensionOptions = extension.options as {
     removeActionAriaLabel?: string;
@@ -316,12 +324,14 @@ function AgentMentionLegacyFileNodeView({
   return (
     <NodeViewWrapper
       as="span"
-      aria-label={mention.ariaLabel}
+      aria-label={
+        mention.attachmentErrorLabel
+          ? `${mention.ariaLabel}, ${mention.attachmentErrorLabel}`
+          : mention.ariaLabel
+      }
       className={`agent-rich-text-mention-node group tsh-agent-object-token tsh-agent-object-token--file ${
-        mention.attachmentStatus === "error"
-          ? "border-[color:color-mix(in_srgb,var(--danger)_55%,var(--line-1))]"
-          : ""
-      } ${selected ? "is-selected" : ""}`}
+        selected ? "is-selected" : ""
+      }`}
       contentEditable={false}
       data-agent-file-directory-path={mention.directoryPath}
       data-agent-file-entry-kind={mention.entryKind}
@@ -342,6 +352,7 @@ function AgentMentionLegacyFileNodeView({
       data-upload-error={
         mention.attachmentStatus === "error" ? "true" : undefined
       }
+      title={mention.attachmentErrorLabel ?? undefined}
       {...(mention.thumbnailUrl
         ? { "data-agent-mention-thumbnail-url": mention.thumbnailUrl }
         : {})}

@@ -208,7 +208,8 @@ export function createAgentFileMentionExtension(
         sourceLabel: { default: "" },
         preview: { default: "" },
         attachmentId: { default: "" },
-        attachmentStatus: { default: "" }
+        attachmentStatus: { default: "" },
+        attachmentErrorCode: { default: "" }
       };
     },
 
