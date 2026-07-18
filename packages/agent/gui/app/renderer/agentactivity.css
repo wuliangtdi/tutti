@@ -10674,7 +10674,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .workspace-agents-status-panel__detail-subagent-name {
-  color: var(--text-primary);
+  color: var(--text-secondary);
   margin-left: 4px;
 }
 
