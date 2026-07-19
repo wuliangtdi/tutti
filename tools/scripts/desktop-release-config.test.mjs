@@ -574,6 +574,10 @@ test("desktop release workflow publishes macOS and Windows release assets", asyn
   assert.match(windowsJobMatch[0], /runs-on:\s+windows-latest/);
   assert.match(
     windowsJobMatch[0],
+    /name:\s+Normalize shell scripts to LF/
+  );
+  assert.match(
+    windowsJobMatch[0],
     /bash \.\/tools\/scripts\/build-desktop-package\.sh win/
   );
   assert.match(windowsJobMatch[0], /npm_config_script_shell/);

@@ -454,6 +454,27 @@ jobs:
           ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
           fetch-depth: 0
 
+      - name: Normalize shell scripts to LF
+        run: |
+          # Windows checkouts may materialize CRLF even when the git index is LF.
+          # Bash packaging scripts fail immediately on `\r` (often in under 2s).
+          python - <<'PY'
+          from pathlib import Path
+
+          roots = [Path("tools/scripts"), Path("apps/desktop/scripts")]
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in root.rglob("*"):
+                  if path.suffix.lower() not in {".sh", ".bash"}:
+                      continue
+                  data = path.read_bytes()
+                  normalized = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                  if normalized != data:
+                      path.write_bytes(normalized)
+                      print(f"normalized LF: {path.as_posix()}")
+          PY
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
