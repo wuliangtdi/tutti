@@ -22,8 +22,14 @@ export {
   type AgentHandoffMenuLabels,
   type AgentHandoffMenuProps
 } from "./agent-gui/agentGuiNode/composer/AgentHandoffMenu";
-export { createAgentSessionHandoffPrompt } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
-export type { CreateAgentSessionHandoffPromptInput } from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
+export {
+  createAgentSessionHandoffPrompt,
+  createAgentSessionMarkdownLink
+} from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
+export type {
+  CreateAgentSessionHandoffPromptInput,
+  CreateAgentSessionMarkdownLinkInput
+} from "./agent-gui/agentGuiNode/agentRichText/agentMentionMarkdown";
 export type { AgentComposerDraftFile } from "./agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 export type {
   AgentExternalPromptFilePreparationErrorCode,
