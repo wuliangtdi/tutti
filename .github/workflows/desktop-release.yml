@@ -489,7 +489,12 @@ jobs:
           # Windows code signing is optional for now. Keep electron-builder from
           # auto-discovering unrelated certificates on the hosted runner.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm --filter @tutti-os/desktop build:win
+        run: |
+          # On Windows, pnpm package scripts default to cmd.exe. The desktop
+          # packaging entrypoints are bash scripts, so invoke them directly and
+          # force bash for any nested package scripts as well.
+          export npm_config_script_shell="$(command -v bash)"
+          bash ./tools/scripts/build-desktop-package.sh win
 
       - name: Verify prerelease updater metadata
         if: ${{ needs.resolve.outputs.release_channel != 'stable' }}
