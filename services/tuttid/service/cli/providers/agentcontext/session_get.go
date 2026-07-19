@@ -12,6 +12,7 @@ import (
 
 const (
 	getViewSession              = "session"
+	getViewTurns                = "turns"
 	getViewConversation         = "conversation"
 	getViewTrace                = "trace"
 	defaultConversationTurns    = 3
@@ -23,20 +24,21 @@ type sessionGetResult struct {
 	View           string
 	Session        agentservice.Session
 	Turns          []sessionGetTurnResult
+	TurnSummaries  []agentactivitybiz.SessionTurnSummary
 	Trace          *sessionGetTraceResult
 	HasMoreTurns   bool
 	ImageLocalPath imageLocalPathResolver
 }
 
 type sessionGetTurnResult struct {
-	Turn            agentactivitybiz.Turn
+	Turn            agentactivitybiz.SessionTurnSummary
 	Messages        []agentservice.SessionMessage
 	FinalMessage    *agentservice.SessionMessage
 	HasMoreMessages bool
 }
 
 type sessionGetTraceResult struct {
-	Turn agentactivitybiz.Turn
+	Turn agentactivitybiz.SessionTurnSummary
 	Page agentservice.SessionMessagesPage
 }
 
@@ -60,30 +62,46 @@ func (p Provider) getSessionContext(ctx context.Context, workspaceID string, inp
 	if err != nil {
 		return nil, err
 	}
-	allTurns, err := p.sessions.ListTurns(ctx, workspaceID, input.SessionID)
-	if err != nil {
-		return nil, err
-	}
 	result := sessionGetResult{
 		View:           view,
 		Session:        session,
 		ImageLocalPath: p.imageLocalPathResolver(ctx, workspaceID),
 	}
 	if view == getViewTrace {
-		trace, err := p.getSessionTrace(ctx, workspaceID, input, allTurns)
+		trace, err := p.getSessionTrace(ctx, workspaceID, input)
 		if err != nil {
 			return nil, err
 		}
 		result.Trace = &trace
 		return result, nil
 	}
+	if strings.TrimSpace(input.TurnID) != "" {
+		turn, err := p.resolveSessionTurn(ctx, workspaceID, input.SessionID, input.TurnID)
+		if err != nil {
+			return nil, err
+		}
+		turns, err := p.getSessionConversation(ctx, workspaceID, input.SessionID, []agentactivitybiz.SessionTurnSummary{turn})
+		if err != nil {
+			return nil, err
+		}
+		result.Turns = turns
+		return result, nil
+	}
 
-	turns, hasMore, err := p.getSessionConversation(ctx, workspaceID, input, allTurns)
+	page, err := p.listSessionTurns(ctx, workspaceID, input)
+	if err != nil {
+		return nil, err
+	}
+	result.HasMoreTurns = page.HasMore
+	if view == getViewTurns {
+		result.TurnSummaries = page.Turns
+		return result, nil
+	}
+	turns, err := p.getSessionConversation(ctx, workspaceID, input.SessionID, page.Turns)
 	if err != nil {
 		return nil, err
 	}
 	result.Turns = turns
-	result.HasMoreTurns = hasMore
 	return result, nil
 }
 
@@ -93,14 +111,22 @@ func validateGetSessionInput(input getSessionInput) (string, error) {
 		view = getViewConversation
 	}
 	turnID := strings.TrimSpace(input.TurnID)
+	beforeTurnID := strings.TrimSpace(input.BeforeTurnID)
 	switch view {
 	case getViewSession:
-		if input.Turns != nil || turnID != "" || input.Messages != nil || input.BeforeVersion > 0 {
+		if input.Turns != nil || turnID != "" || beforeTurnID != "" || input.Messages != nil || input.BeforeVersion > 0 {
 			return "", fmt.Errorf("%w: --view session does not accept turn or message selectors", cliservice.ErrInvalidInput)
 		}
+	case getViewTurns:
+		if turnID != "" {
+			return "", fmt.Errorf("%w: --turn-id requires --view conversation or --view trace", cliservice.ErrInvalidInput)
+		}
+		if input.Messages != nil || input.BeforeVersion > 0 {
+			return "", fmt.Errorf("%w: --messages and --before-version require --view trace", cliservice.ErrInvalidInput)
+		}
 	case getViewConversation:
-		if turnID != "" && input.Turns != nil {
-			return "", fmt.Errorf("%w: --turn-id and --turns are mutually exclusive", cliservice.ErrInvalidInput)
+		if turnID != "" && (input.Turns != nil || beforeTurnID != "") {
+			return "", fmt.Errorf("%w: --turn-id cannot be combined with --turns or --before-turn-id", cliservice.ErrInvalidInput)
 		}
 		if input.Messages != nil || input.BeforeVersion > 0 {
 			return "", fmt.Errorf("%w: --messages and --before-version require --view trace", cliservice.ErrInvalidInput)
@@ -112,6 +138,9 @@ func validateGetSessionInput(input getSessionInput) (string, error) {
 		if input.Turns != nil {
 			return "", fmt.Errorf("%w: --turns is not supported with --view trace", cliservice.ErrInvalidInput)
 		}
+		if beforeTurnID != "" {
+			return "", fmt.Errorf("%w: --before-turn-id is not supported with --view trace", cliservice.ErrInvalidInput)
+		}
 	default:
 		return "", fmt.Errorf("%w: unsupported view %q", cliservice.ErrInvalidInput, view)
 	}
@@ -121,33 +150,29 @@ func validateGetSessionInput(input getSessionInput) (string, error) {
 func (p Provider) getSessionConversation(
 	ctx context.Context,
 	workspaceID string,
-	input getSessionInput,
-	allTurns []agentactivitybiz.Turn,
-) ([]sessionGetTurnResult, bool, error) {
-	selected, hasMore, err := selectConversationTurns(allTurns, input)
-	if err != nil {
-		return nil, false, err
-	}
+	sessionID string,
+	selected []agentactivitybiz.SessionTurnSummary,
+) ([]sessionGetTurnResult, error) {
 	results := make([]sessionGetTurnResult, 0, len(selected))
 	for _, turn := range selected {
-		page, err := p.sessions.ListMessages(ctx, workspaceID, input.SessionID, agentservice.ListMessagesInput{
+		page, err := p.sessions.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
 			TurnID: turn.TurnID,
 			Limit:  defaultConversationMessages,
 			Order:  agentactivitybiz.MessageOrderDesc,
 		})
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		reverseSessionGetMessages(page.Messages)
 		messages, final := conversationMessages(page.Messages, turn.FinalAssistantMessageID)
 		if final == nil && strings.TrimSpace(turn.FinalAssistantMessageID) != "" {
-			resolved, err := p.sessions.ListMessages(ctx, workspaceID, input.SessionID, agentservice.ListMessagesInput{
+			resolved, err := p.sessions.ListMessages(ctx, workspaceID, sessionID, agentservice.ListMessagesInput{
 				MessageID: turn.FinalAssistantMessageID,
 				Limit:     1,
 				Order:     agentactivitybiz.MessageOrderDesc,
 			})
 			if err != nil {
-				return nil, false, err
+				return nil, err
 			}
 			if len(resolved.Messages) == 1 && isConversationMessage(resolved.Messages[0]) {
 				message := resolved.Messages[0]
@@ -158,40 +183,34 @@ func (p Provider) getSessionConversation(
 			Turn: turn, Messages: messages, FinalMessage: final, HasMoreMessages: page.HasMore,
 		})
 	}
-	return results, hasMore, nil
+	return results, nil
 }
 
-func selectConversationTurns(allTurns []agentactivitybiz.Turn, input getSessionInput) ([]agentactivitybiz.Turn, bool, error) {
-	turnID := strings.TrimSpace(input.TurnID)
-	if turnID != "" {
-		for _, turn := range allTurns {
-			if strings.TrimSpace(turn.TurnID) == turnID {
-				return []agentactivitybiz.Turn{turn}, false, nil
-			}
-		}
-		return nil, false, fmt.Errorf("%w: turn %q was not found in session", cliservice.ErrInvalidInput, turnID)
-	}
+func (p Provider) listSessionTurns(ctx context.Context, workspaceID string, input getSessionInput) (agentservice.TurnPage, error) {
 	limit := defaultConversationTurns
 	if input.Turns != nil {
 		limit = int(*input.Turns)
 	}
-	selected := make([]agentactivitybiz.Turn, 0, min(limit, len(allTurns)))
-	for index := len(allTurns) - 1; index >= 0 && len(selected) < limit; index-- {
-		selected = append(selected, allTurns[index])
+	var before *agentactivitybiz.SessionTurnCursor
+	if beforeTurnID := strings.TrimSpace(input.BeforeTurnID); beforeTurnID != "" {
+		turn, err := p.resolveSessionTurn(ctx, workspaceID, input.SessionID, beforeTurnID)
+		if err != nil {
+			return agentservice.TurnPage{}, err
+		}
+		before = &agentactivitybiz.SessionTurnCursor{StartedAtUnixMS: turn.StartedAtUnixMS, TurnID: turn.TurnID}
 	}
-	return selected, len(allTurns) > len(selected), nil
+	return p.sessions.ListTurns(ctx, workspaceID, input.SessionID, agentservice.ListTurnsInput{Before: before, Limit: limit})
 }
 
 func (p Provider) getSessionTrace(
 	ctx context.Context,
 	workspaceID string,
 	input getSessionInput,
-	turns []agentactivitybiz.Turn,
 ) (sessionGetTraceResult, error) {
 	turnID := strings.TrimSpace(input.TurnID)
-	turn, ok := findSessionGetTurn(turns, turnID)
-	if !ok {
-		return sessionGetTraceResult{}, fmt.Errorf("%w: turn %q was not found in session", cliservice.ErrInvalidInput, turnID)
+	turn, err := p.resolveSessionTurn(ctx, workspaceID, input.SessionID, turnID)
+	if err != nil {
+		return sessionGetTraceResult{}, err
 	}
 	limit := defaultTraceMessages
 	if input.Messages != nil {
@@ -210,13 +229,20 @@ func (p Provider) getSessionTrace(
 	return sessionGetTraceResult{Turn: turn, Page: page}, nil
 }
 
-func findSessionGetTurn(turns []agentactivitybiz.Turn, turnID string) (agentactivitybiz.Turn, bool) {
-	for _, turn := range turns {
-		if strings.TrimSpace(turn.TurnID) == turnID {
-			return turn, true
-		}
+func (p Provider) resolveSessionTurn(ctx context.Context, workspaceID string, sessionID string, turnID string) (agentactivitybiz.SessionTurnSummary, error) {
+	turnID = strings.TrimSpace(turnID)
+	turn, found, err := p.sessions.GetTurn(ctx, workspaceID, sessionID, turnID)
+	if err != nil {
+		return agentactivitybiz.SessionTurnSummary{}, err
 	}
-	return agentactivitybiz.Turn{}, false
+	if !found {
+		return agentactivitybiz.SessionTurnSummary{}, fmt.Errorf("%w: turn %q was not found in session", cliservice.ErrInvalidInput, turnID)
+	}
+	return agentactivitybiz.SessionTurnSummary{
+		TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+		FinalAssistantMessageID: turn.FinalAssistantMessageID,
+		StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
+	}, nil
 }
 
 func conversationMessages(
@@ -264,12 +290,15 @@ func sessionGetJSONValue(result any) map[string]any {
 		"session": sessionInspectValue(got.Session),
 	}
 	switch got.View {
+	case getViewTurns:
+		value["turns"] = sessionGetTurnSummaryValues(got.TurnSummaries)
+		value["hasMoreTurns"] = got.HasMoreTurns
 	case getViewConversation:
 		value["turns"] = sessionGetTurnValues(got.Turns, got.ImageLocalPath)
 		value["hasMoreTurns"] = got.HasMoreTurns
 	case getViewTrace:
 		trace := got.Trace
-		value["turn"] = sessionGetTraceTurnValue(trace.Turn)
+		value["turn"] = sessionGetTurnValue(trace.Turn)
 		value["messages"] = messageTraceValues(trace.Page.Messages, got.ImageLocalPath)
 		value["latestVersion"] = trace.Page.LatestVersion
 		value["hasMoreMessages"] = trace.Page.HasMore
@@ -277,10 +306,18 @@ func sessionGetJSONValue(result any) map[string]any {
 	return value
 }
 
+func sessionGetTurnSummaryValues(turns []agentactivitybiz.SessionTurnSummary) []any {
+	values := make([]any, 0, len(turns))
+	for _, turn := range turns {
+		values = append(values, sessionGetTurnValue(turn))
+	}
+	return values
+}
+
 func sessionGetTurnValues(turns []sessionGetTurnResult, imageLocalPath imageLocalPathResolver) []any {
 	values := make([]any, 0, len(turns))
 	for _, turn := range turns {
-		value := sessionGetTraceTurnValue(turn.Turn)
+		value := sessionGetTurnValue(turn.Turn)
 		value["messages"] = messageCompactValues(turn.Messages, imageLocalPath)
 		value["finalMessage"] = nil
 		if turn.FinalMessage != nil {
@@ -292,8 +329,14 @@ func sessionGetTurnValues(turns []sessionGetTurnResult, imageLocalPath imageLoca
 	return values
 }
 
-func sessionGetTraceTurnValue(turn agentactivitybiz.Turn) map[string]any {
-	value := turnCompactValue(turn)
+func sessionGetTurnValue(turn agentactivitybiz.SessionTurnSummary) map[string]any {
+	value := map[string]any{
+		"turnId": strings.TrimSpace(turn.TurnID),
+		"phase":  strings.TrimSpace(turn.Phase),
+	}
+	if outcome := strings.TrimSpace(turn.Outcome); outcome != "" {
+		value["outcome"] = outcome
+	}
 	if origin := strings.TrimSpace(turn.Origin); origin != "" {
 		value["origin"] = origin
 	}

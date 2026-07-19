@@ -31,9 +31,10 @@ type sessionSummaryInput struct {
 
 type getSessionInput struct {
 	SessionID     string `cli:"session-id" validate:"required" description:"Agent session id to inspect."`
-	View          string `cli:"view" enum:"session,conversation,trace" description:"Context view: session, conversation, or trace."`
-	Turns         *int64 `cli:"turns" validate:"min=1,max=20" description:"Number of recent turns for the conversation view; defaults to 3."`
+	View          string `cli:"view" enum:"session,turns,conversation,trace" description:"Context view: session, turns, conversation, or trace."`
+	Turns         *int64 `cli:"turns" validate:"min=1,max=20" description:"Number of recent turns for turns or conversation view; defaults to 3."`
 	TurnID        string `cli:"turn-id" description:"Exact turn to inspect in conversation or trace view."`
+	BeforeTurnID  string `cli:"before-turn-id" description:"Return an older turns or conversation page before this turn."`
 	Messages      *int64 `cli:"messages" validate:"min=1,max=100" description:"Number of recent trace messages; defaults to 20."`
 	BeforeVersion int64  `cli:"before-version" validate:"min=0" description:"Return an older trace page before this message version."`
 }
@@ -54,7 +55,6 @@ type sessionSummaryResult struct {
 	ImageLocalPath imageLocalPathResolver
 	Page           agentservice.SessionMessagesPage
 	Session        agentservice.Session
-	Warnings       []cliservice.CommandWarning
 }
 
 type waitCommandResult struct {
@@ -121,9 +121,6 @@ func (p Provider) newSessionSummaryCommand() cliservice.Command {
 			DefaultView: framework.ViewSummary,
 			JSON:        true,
 			JSONViews:   map[framework.OutputView]func(any) map[string]any{framework.ViewSummary: sessionSummaryJSONValue},
-			Warnings: func(result any) []cliservice.CommandWarning {
-				return append([]cliservice.CommandWarning(nil), result.(sessionSummaryResult).Warnings...)
-			},
 		},
 		Run: p.runSessionSummary,
 	})
@@ -194,10 +191,6 @@ func (p Provider) runSessionSummary(ctx context.Context, invoke framework.Invoke
 		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
 		Page:           page,
 		Session:        session,
-		Warnings: []cliservice.CommandWarning{{
-			Code:    "deprecated_agent_session_summary",
-			Message: "agent session-summary is deprecated; use agent get --session-id <id>",
-		}},
 	}, nil
 }
 

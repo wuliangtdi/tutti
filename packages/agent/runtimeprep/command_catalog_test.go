@@ -391,6 +391,7 @@ func TestFallbackCommandGuideUsesProvidedCLIName(t *testing.T) {
 		t.Fatalf("guide = %q, want tutti-dev await fallback command", guide)
 	}
 	if !strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --json") ||
+		!strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --view turns --json") ||
 		!strings.Contains(guide, "tutti-dev agent get --session-id <session-id> --turn-id <turn-id> --view trace --json") {
 		t.Fatalf("guide = %q, want tutti-dev agent get fallback command", guide)
 	}

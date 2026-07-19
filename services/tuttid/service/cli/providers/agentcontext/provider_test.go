@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,8 @@ type fakeAgentSessions struct {
 	messagesByTurn  map[string][]agentservice.SessionMessage
 	messageInputs   []agentservice.ListMessagesInput
 	turns           []agentactivitybiz.Turn
+	turnInputs      []agentservice.ListTurnsInput
+	getTurnIDs      []string
 	listCallCount   int
 	messageCallIDs  []string
 	createCallCount int
@@ -159,10 +162,40 @@ func (f *fakeAgentSessions) Get(_ context.Context, workspaceID string, sessionID
 	return agentservice.Session{ID: sessionID, Provider: "codex", Visible: true}, nil
 }
 
-func (f *fakeAgentSessions) ListTurns(_ context.Context, workspaceID string, sessionID string) ([]agentactivitybiz.Turn, error) {
+func (f *fakeAgentSessions) GetTurn(_ context.Context, workspaceID string, sessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
 	f.workspaceID = workspaceID
 	f.sessionID = sessionID
-	return f.turns, nil
+	f.getTurnIDs = append(f.getTurnIDs, turnID)
+	for _, turn := range f.turns {
+		if turn.TurnID == turnID {
+			return turn, true, nil
+		}
+	}
+	return agentactivitybiz.Turn{}, false, nil
+}
+
+func (f *fakeAgentSessions) ListTurns(_ context.Context, workspaceID string, sessionID string, input agentservice.ListTurnsInput) (agentservice.TurnPage, error) {
+	f.workspaceID = workspaceID
+	f.sessionID = sessionID
+	f.turnInputs = append(f.turnInputs, input)
+	turns := make([]agentactivitybiz.SessionTurnSummary, 0, input.Limit)
+	for index := len(f.turns) - 1; index >= 0 && len(turns) < input.Limit+1; index-- {
+		turn := f.turns[index]
+		if input.Before != nil && (turn.StartedAtUnixMS > input.Before.StartedAtUnixMS ||
+			(turn.StartedAtUnixMS == input.Before.StartedAtUnixMS && turn.TurnID >= input.Before.TurnID)) {
+			continue
+		}
+		turns = append(turns, agentactivitybiz.SessionTurnSummary{
+			TurnID: turn.TurnID, Phase: turn.Phase, Outcome: turn.Outcome,
+			FinalAssistantMessageID: turn.FinalAssistantMessageID,
+			StartedAtUnixMS:         turn.StartedAtUnixMS, SettledAtUnixMS: turn.SettledAtUnixMS, Origin: turn.Origin,
+		})
+	}
+	hasMore := len(turns) > input.Limit
+	if hasMore {
+		turns = turns[:input.Limit]
+	}
+	return agentservice.TurnPage{Turns: turns, HasMore: hasMore}, nil
 }
 
 func (f *fakeAgentSessions) GetComposerOptions(_ context.Context, input agentservice.ComposerOptionsInput) (agentservice.ComposerOptions, error) {
@@ -1928,6 +1961,86 @@ func TestGetCommandReturnsRecentConversationTurnsNewestFirst(t *testing.T) {
 			t.Fatalf("message input = %#v", input)
 		}
 	}
+	if len(sessions.turnInputs) != 1 || sessions.turnInputs[0].Limit != defaultConversationTurns || sessions.turnInputs[0].Before != nil {
+		t.Fatalf("turn inputs = %#v", sessions.turnInputs)
+	}
+}
+
+func TestGetCommandPagesMetadataOnlyTurnsBeyondFirstTwenty(t *testing.T) {
+	turns := make([]agentactivitybiz.Turn, 0, 25)
+	for index := 1; index <= 25; index++ {
+		turns = append(turns, agentactivitybiz.Turn{
+			TurnID: fmt.Sprintf("turn-%02d", index), Phase: agentactivitybiz.TurnPhaseSettled,
+			Outcome: agentactivitybiz.TurnOutcomeCompleted, StartedAtUnixMS: int64(index),
+		})
+	}
+	sessions := &fakeAgentSessions{turns: turns}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newGetCommand()
+
+	first, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1", "view": getViewTurns, "turns": "20"},
+	})
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	firstTurns := first.Value["turns"].([]any)
+	if len(firstTurns) != 20 || firstTurns[0].(map[string]any)["turnId"] != "turn-25" ||
+		firstTurns[19].(map[string]any)["turnId"] != "turn-06" || first.Value["hasMoreTurns"] != true {
+		t.Fatalf("first page = %#v", first.Value)
+	}
+	if len(sessions.messageInputs) != 0 {
+		t.Fatalf("metadata-only view called ListMessages: %#v", sessions.messageInputs)
+	}
+
+	second, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{
+			"session-id": "SESSION-1", "view": getViewTurns, "turns": "20", "before-turn-id": "turn-06",
+		},
+	})
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+	secondTurns := second.Value["turns"].([]any)
+	if len(secondTurns) != 5 || secondTurns[0].(map[string]any)["turnId"] != "turn-05" ||
+		secondTurns[4].(map[string]any)["turnId"] != "turn-01" || second.Value["hasMoreTurns"] != false {
+		t.Fatalf("second page = %#v", second.Value)
+	}
+	if len(sessions.getTurnIDs) != 1 || sessions.getTurnIDs[0] != "turn-06" || len(sessions.turnInputs) != 2 ||
+		sessions.turnInputs[1].Before == nil || sessions.turnInputs[1].Before.StartedAtUnixMS != 6 {
+		t.Fatalf("turn reads = %#v inputs = %#v", sessions.getTurnIDs, sessions.turnInputs)
+	}
+}
+
+func TestGetCommandExactConversationUsesSingleTurnLookup(t *testing.T) {
+	sessions := &fakeAgentSessions{
+		turns: []agentactivitybiz.Turn{{
+			TurnID: "turn-exact", Phase: agentactivitybiz.TurnPhaseSettled,
+			FinalAssistantMessageID: "final-exact", StartedAtUnixMS: 10,
+		}},
+		messagesByTurn: map[string][]agentservice.SessionMessage{"turn-exact": {{
+			AgentSessionID: "SESSION-1", TurnID: "turn-exact", MessageID: "final-exact",
+			Role: "assistant", Kind: "text", Payload: map[string]any{"content": "done"}, Version: 1,
+		}}},
+	}
+	command := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions,
+	).newGetCommand()
+
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"session-id": "SESSION-1", "turn-id": "turn-exact"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	turns := output.Value["turns"].([]any)
+	if len(turns) != 1 || turns[0].(map[string]any)["turnId"] != "turn-exact" || output.Value["hasMoreTurns"] != false {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	if len(sessions.getTurnIDs) != 1 || sessions.getTurnIDs[0] != "turn-exact" || len(sessions.turnInputs) != 0 {
+		t.Fatalf("turn reads = %#v list inputs = %#v", sessions.getTurnIDs, sessions.turnInputs)
+	}
 }
 
 func TestGetCommandReturnsSessionOnlyView(t *testing.T) {
@@ -1998,6 +2111,9 @@ func TestGetCommandReturnsBoundedTurnTraceInChronologicalOrder(t *testing.T) {
 	if input.TurnID != "turn-1" || input.Limit != 2 || input.BeforeVersion != 9 || input.Order != agentactivitybiz.MessageOrderDesc {
 		t.Fatalf("message input = %#v", input)
 	}
+	if len(sessions.turnInputs) != 0 || len(sessions.getTurnIDs) != 1 || sessions.getTurnIDs[0] != "turn-1" {
+		t.Fatalf("trace turn reads = %#v list inputs = %#v", sessions.getTurnIDs, sessions.turnInputs)
+	}
 }
 
 func TestGetCommandValidatesProgressiveViewSelectors(t *testing.T) {
@@ -2014,6 +2130,12 @@ func TestGetCommandValidatesProgressiveViewSelectors(t *testing.T) {
 		},
 		"turn selectors are exclusive": {
 			"session-id": "SESSION-1", "turn-id": "turn-1", "turns": "2",
+		},
+		"turns view rejects exact turn": {
+			"session-id": "SESSION-1", "view": getViewTurns, "turn-id": "turn-1",
+		},
+		"trace rejects turn cursor": {
+			"session-id": "SESSION-1", "view": getViewTrace, "turn-id": "turn-1", "before-turn-id": "turn-0",
 		},
 		"message lower bound": {
 			"session-id": "SESSION-1", "view": getViewTrace, "turn-id": "turn-1", "messages": "0",
@@ -2255,8 +2377,7 @@ func TestSessionSummaryIncludesCompactSession(t *testing.T) {
 	if !ok || session["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("output = %#v", output.Value)
 	}
-	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration ||
-		len(output.Warnings) != 1 || output.Warnings[0].Code != "deprecated_agent_session_summary" {
+	if command.Capability.Visibility != cliservice.CapabilityVisibilityIntegration || len(output.Warnings) != 0 {
 		t.Fatalf("capability = %#v warnings = %#v", command.Capability, output.Warnings)
 	}
 }

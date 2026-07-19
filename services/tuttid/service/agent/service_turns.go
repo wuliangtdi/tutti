@@ -38,35 +38,66 @@ type CancelTurnResult struct {
 	Reason   CancelTurnReason
 }
 
-// ListTurns returns the persisted Turn history for one existing session in
-// durable chronological order. It is a read-only adapter query; lifecycle
-// decisions remain in Host.
-func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessionID string) ([]agentactivitybiz.Turn, error) {
+type ListTurnsInput struct {
+	Before *agentactivitybiz.SessionTurnCursor
+	Limit  int
+}
+
+type TurnPage struct {
+	Turns   []agentactivitybiz.SessionTurnSummary
+	HasMore bool
+}
+
+// GetTurn returns canonical Turn truth through Host without starting or
+// resuming a provider runtime.
+func (s *Service) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return agentactivitybiz.Turn{}, false, err
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return nil, ErrInvalidArgument
+	turnID = strings.TrimSpace(turnID)
+	if workspaceID == "" || agentSessionID == "" || turnID == "" {
+		return agentactivitybiz.Turn{}, false, ErrInvalidArgument
 	}
-	if s.TurnStore != nil {
-		turns, err := s.TurnStore.ListSessionTurns(ctx, workspaceID, agentSessionID)
+	return s.ApplicationHost().GetTurn(ctx, agenthost.SessionRef{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	}, turnID)
+}
+
+// ListTurns returns one bounded, newest-first metadata page for an existing
+// session. The adapter owns this CLI/query projection; lifecycle decisions
+// remain in Host.
+func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessionID string, input ListTurnsInput) (TurnPage, error) {
+	if err := ctx.Err(); err != nil {
+		return TurnPage{}, err
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if workspaceID == "" || agentSessionID == "" || input.Limit < 1 {
+		return TurnPage{}, ErrInvalidArgument
+	}
+	if s.TurnSummaryReader != nil {
+		page, err := s.TurnSummaryReader.ListSessionTurnSummaries(ctx, agentactivitybiz.ListSessionTurnSummariesInput{
+			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Before: input.Before, Limit: input.Limit,
+		})
 		if err != nil {
-			return nil, err
+			return TurnPage{}, err
 		}
-		if len(turns) > 0 {
-			return append([]agentactivitybiz.Turn(nil), turns...), nil
+		if len(page.Turns) > 0 {
+			return TurnPage{
+				Turns: append([]agentactivitybiz.SessionTurnSummary(nil), page.Turns...), HasMore: page.HasMore,
+			}, nil
 		}
 	}
 	exists, err := s.sessionExists(ctx, workspaceID, agentSessionID)
 	if err != nil {
-		return nil, err
+		return TurnPage{}, err
 	}
 	if !exists {
-		return nil, ErrSessionNotFound
+		return TurnPage{}, ErrSessionNotFound
 	}
-	return []agentactivitybiz.Turn{}, nil
+	return TurnPage{Turns: []agentactivitybiz.SessionTurnSummary{}}, nil
 }
 
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a

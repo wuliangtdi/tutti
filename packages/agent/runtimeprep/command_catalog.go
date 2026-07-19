@@ -500,6 +500,7 @@ func fallbackCommandGuide(cliName string) string {
 		fmt.Sprintf("- List agent sessions: `%s agent sessions`", cliName),
 		fmt.Sprintf("- Wait for the next agent stop point without fetching execution messages: `%s agent wait --session-id <session-id> --json` - Use this after `agent start` or `agent send`; use `agent get` when you need recent conversation context.", cliName),
 		fmt.Sprintf("- Get recent agent conversation: `%s agent get --session-id <session-id> --json` - Returns the latest three Turns newest-first, with chronological body messages and an explicit finalMessage for each Turn.", cliName),
+		fmt.Sprintf("- Discover agent Turns without messages: `%s agent get --session-id <session-id> --view turns --json` - Page older Turns with --before-turn-id using the oldest returned turn id when hasMoreTurns is true.", cliName),
 		fmt.Sprintf("- Inspect one agent Turn trace: `%s agent get --session-id <session-id> --turn-id <turn-id> --view trace --json` - Use only when tool-call detail is needed; add --messages or --before-version for bounded paging.", cliName),
 		fmt.Sprintf("- Get resources from one agent turn: `%s agent turn-resources --session-id <session-id> --turn-id <turn-id> --json`", cliName),
 		fmt.Sprintf("- Show active peer agents: `%s agent active-peers --json`", cliName),

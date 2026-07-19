@@ -11,7 +11,7 @@ Before starting a new agent session, run `{{CLI_COMMAND}} agent list --json`. Se
 
 ## Forward Image Context
 
-When a handoff needs images from a caller turn, use `{{CLI_COMMAND}} agent get --session-id <caller-session-id> --turns 20 --json` only to discover candidate turn ids, then query each selected turn with `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`. Treat returned `images[].localPath` values as authoritative; do not scan attachment directories or construct paths from attachment ids.
+When a handoff needs images from a caller turn, use the metadata-only `{{CLI_COMMAND}} agent get --session-id <caller-session-id> --view turns --turns 20 --json` to discover candidate turn ids without loading conversation messages. If `hasMoreTurns` is true, continue with `--before-turn-id <oldest-returned-turn-id>`. Then query each selected turn with `{{CLI_COMMAND}} agent turn-resources --session-id <caller-session-id> --turn-id <turnId> --json`. Treat returned `images[].localPath` values as authoritative; do not scan attachment directories or construct paths from attachment ids.
 
 Add one `--image <localPath>` to `agent start` for each image chosen as structured visual input. If preserving prompt ordering is more useful, reference the image in the prompt as `[@filename](/absolute/path)` instead. Do not send the same image both ways unless the user explicitly asks, and continue without image arguments when no selected image has a usable local path.
 
