@@ -48,10 +48,16 @@ writeFileSync(
 );
 
 log(`installing chrome-devtools-mcp@${BROWSER_MCP_VERSION} into ${outDir}`);
+// Windows Node cannot spawn the `npm` shim without the `.cmd` extension.
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 execFileSync(
-  "npm",
+  npmCommand,
   ["install", "--omit=dev", "--no-audit", "--no-fund", "--ignore-scripts"],
-  { cwd: outDir, stdio: "inherit" }
+  {
+    cwd: outDir,
+    shell: process.platform === "win32",
+    stdio: "inherit"
+  }
 );
 
 const entry = join(outDir, entryRelPath);
