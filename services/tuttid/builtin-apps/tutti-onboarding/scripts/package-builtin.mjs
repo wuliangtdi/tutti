@@ -38,6 +38,23 @@ const requiredPackageFiles = [
   "bootstrap.sh"
 ];
 const cliSegmentPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const isWindows = process.platform === "win32";
+
+function resolveCommand(command) {
+  if (!isWindows) {
+    return command;
+  }
+  if (command === "pnpm") {
+    return "pnpm.cmd";
+  }
+  if (command === "npm") {
+    return "npm.cmd";
+  }
+  if (command === "npx") {
+    return "npx.cmd";
+  }
+  return command;
+}
 const defaultCliHandlerTimeoutMs = 30000;
 const minCliHandlerTimeoutMs = 1000;
 const maxCliHandlerTimeoutMs = 600000;
@@ -97,7 +114,7 @@ async function packageBuiltin({ checkOnly = false } = {}) {
       `.${path.basename(zipPath)}.${process.pid}.${randomUUID()}.tmp`
     );
     try {
-      await run("zip", ["-qry", tempZipPath, "."], { cwd: packageRoot });
+      await createZipArchive(packageRoot, tempZipPath);
       await rename(tempZipPath, zipPath);
     } finally {
       await rm(tempZipPath, { force: true });
@@ -213,7 +230,21 @@ async function sleep(ms) {
 }
 
 async function runViteBuild() {
-  await run("pnpm", ["exec", "vite", "build"], { cwd: appDir });
+  await run(resolveCommand("pnpm"), ["exec", "vite", "build"], {
+    cwd: appDir
+  });
+}
+
+async function createZipArchive(sourceDir, outputZipPath) {
+  // Prefer the system zip tool on Unix. Windows runners usually lack `zip`,
+  // but ship `tar` which can emit zip archives via -a.
+  if (isWindows) {
+    await run("tar", ["-a", "-c", "-f", outputZipPath, "."], {
+      cwd: sourceDir
+    });
+    return;
+  }
+  await run("zip", ["-qry", outputZipPath, "."], { cwd: sourceDir });
 }
 
 function generatedZipPath(manifest) {
@@ -373,7 +404,9 @@ async function validatePackageRoot(root) {
     throw new Error("AGENTS.md must be non-empty.");
   }
   const bootstrapStat = await stat(path.join(root, "bootstrap.sh"));
-  if ((bootstrapStat.mode & 0o111) === 0) {
+  // Windows filesystems do not preserve POSIX execute bits the same way; the
+  // packaging step still chmods the file for Unix consumers of the zip.
+  if (!isWindows && (bootstrapStat.mode & 0o111) === 0) {
     throw new Error("bootstrap.sh must be executable.");
   }
   await assertNoSymlinks(root);
@@ -552,11 +585,13 @@ async function readJson(filePath) {
 }
 
 async function run(command, args, options = {}) {
+  const resolvedCommand = resolveCommand(command);
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(resolvedCommand, args, {
       cwd: options.cwd ?? appDir,
       env: options.env ?? process.env,
-      shell: false,
+      // `.cmd` shims on Windows require a shell; keep direct exec elsewhere.
+      shell: isWindows && /\.cmd$/i.test(resolvedCommand),
       stdio: "inherit"
     });
     child.on("error", reject);
@@ -566,7 +601,9 @@ async function run(command, args, options = {}) {
         return;
       }
       reject(
-        new Error(`${command} ${args.join(" ")} exited with code ${code}`)
+        new Error(
+          `${resolvedCommand} ${args.join(" ")} exited with code ${code}`
+        )
       );
     });
   });
