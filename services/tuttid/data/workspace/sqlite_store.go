@@ -91,7 +91,22 @@ func sqliteDSN(dbPath string, readOnly bool) string {
 		query.Set("mode", "ro")
 		query.Add("_pragma", "query_only(1)")
 	}
-	return (&url.URL{Scheme: "file", Path: dbPath, RawQuery: query.Encode()}).String()
+
+	// modernc.org/sqlite expects a SQLite URI. On Windows, an absolute path must
+	// become file:///C:/... — url.URL{Path:"C:/..."} wrongly yields file:C:/...
+	// which can fail later with opaque errors such as "out of memory" on WAL.
+	path := filepath.ToSlash(dbPath)
+	if filepath.IsAbs(dbPath) || filepath.VolumeName(dbPath) != "" {
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+	}
+
+	return (&url.URL{
+		Scheme:   "file",
+		Path:     path,
+		RawQuery: query.Encode(),
+	}).String()
 }
 
 func (s *SQLiteStore) openReadPool(ctx context.Context) error {
