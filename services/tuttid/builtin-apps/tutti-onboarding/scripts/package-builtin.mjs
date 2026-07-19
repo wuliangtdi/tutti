@@ -239,7 +239,19 @@ async function createZipArchive(sourceDir, outputZipPath) {
   // Prefer the system zip tool on Unix. Windows runners usually lack `zip`,
   // but ship `tar` which can emit zip archives via -a.
   if (isWindows) {
-    await run("tar", ["-a", "-c", "-f", outputZipPath, "."], {
+    // Windows tar treats "D:\\..." absolute paths as remote hosts
+    // ("Cannot connect to D: resolve failed"). Always pass a relative -f path.
+    await mkdir(path.dirname(outputZipPath), { recursive: true });
+    const relativeZipPath = path
+      .relative(sourceDir, outputZipPath)
+      .split(path.sep)
+      .join("/");
+    if (!relativeZipPath || path.isAbsolute(relativeZipPath)) {
+      throw new Error(
+        `Unable to resolve a relative zip path from ${sourceDir} to ${outputZipPath}`
+      );
+    }
+    await run("tar", ["-a", "-c", "-f", relativeZipPath, "."], {
       cwd: sourceDir
     });
     return;
