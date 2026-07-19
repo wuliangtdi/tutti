@@ -540,26 +540,51 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
-test("desktop release workflow publishes only macOS release assets for now", async () => {
+test("desktop release workflow publishes macOS and Windows release assets", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const stageJobMatch = workflow.match(
     /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  );
+  const windowsJobMatch = workflow.match(
+    /build-windows:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
   const notifyJobMatch = workflow.match(
     /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
   assert.ok(stageJobMatch, "stage job should exist");
+  assert.ok(windowsJobMatch, "windows build job should exist");
   assert.ok(notifyJobMatch, "draft notify job should exist");
-  assert.doesNotMatch(workflow, /\n\s{2}build-windows:\n/);
   assert.doesNotMatch(workflow, /\n\s{2}build-linux:\n/);
-  assert.match(stageJobMatch[0], /needs:\s+\[resolve, build-macos\]/);
-  assert.doesNotMatch(stageJobMatch[0], /build-windows|build-linux/);
+  assert.match(
+    stageJobMatch[0],
+    /needs:\s+\[resolve, build-macos, build-windows\]/
+  );
+  assert.doesNotMatch(stageJobMatch[0], /build-linux/);
   assert.match(
     stageJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-macos-\*/
   );
   assert.match(stageJobMatch[0], /merge-multiple:\s+false/);
+  assert.match(
+    stageJobMatch[0],
+    /name:\s+tutti-desktop-release-assets-windows/
+  );
+  assert.match(stageJobMatch[0], /name:\s+Stage Windows release artifacts/);
+  assert.match(windowsJobMatch[0], /runs-on:\s+windows-latest/);
+  assert.match(
+    windowsJobMatch[0],
+    /pnpm --filter @tutti-os\/desktop build:win/
+  );
+  assert.match(
+    windowsJobMatch[0],
+    /name:\s+Collect Windows release artifacts/
+  );
+  assert.match(
+    windowsJobMatch[0],
+    /name:\s+tutti-desktop-release-assets-windows/
+  );
+  assert.match(windowsJobMatch[0], /path:\s+windows-release-assets\//);
   assert.doesNotMatch(
     notifyJobMatch[0],
     /pattern:\s+tutti-desktop-release-assets-macos/

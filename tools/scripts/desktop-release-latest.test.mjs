@@ -70,7 +70,9 @@ test("desktop release latest metadata exposes CloudFront URLs for every asset", 
     );
     assert.deepEqual(latest.preferredDownloads, {
       macosUniversalDmg:
-        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-mac-universal.dmg"
+        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-mac-universal.dmg",
+      windowsX64Exe:
+        "https://d111111abcdef8.cloudfront.net/desktop-release-assets/v1.2.3/Tutti-1.2.3-win-x64.exe"
     });
     assert.ok(latest.assets.every((asset) => !("cdnUrl" in asset)));
     assert.equal(latest.downloads, undefined);

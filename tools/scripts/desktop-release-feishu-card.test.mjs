@@ -129,6 +129,7 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
 
   assert.deepEqual(actionLabels, [
     "下载 macOS",
+    "下载 Windows",
     "打开 Release 页面",
     "查看流水线"
   ]);

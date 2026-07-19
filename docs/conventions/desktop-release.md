@@ -125,15 +125,33 @@ Expected release artifacts include:
 - update metadata such as `.yml` and `.blockmap`
 - `SHA256SUMS.txt`
 
-The release workflow builds macOS x64, arm64, and universal packages as a
-three-entry GitHub Actions matrix. Each architecture uploads an isolated
-intermediate artifact. The stage job flattens those artifacts and rebuilds one
-channel updater manifest (`latest-mac.yml`, `rc-mac.yml`, or `beta-mac.yml`)
-from the three signed ZIP files, including fresh SHA-512 digests and sizes.
-This prevents same-named per-architecture updater manifests from overwriting
-one another when matrix artifacts are downloaded.
+The release workflow builds:
 
-Release notes and Feishu notifications should point the primary macOS download at the universal `.dmg`. The x64 and arm64 artifacts remain attached to the GitHub Release for users or deployment tools that want an architecture-specific installer.
+- macOS x64, arm64, and universal packages as a three-entry GitHub Actions
+  matrix on `macos-latest`
+- Windows x64 NSIS packages on `windows-latest`
+
+Each macOS architecture uploads an isolated intermediate artifact. The stage
+job flattens those artifacts and rebuilds one channel updater manifest
+(`latest-mac.yml`, `rc-mac.yml`, or `beta-mac.yml`) from the three signed ZIP
+files, including fresh SHA-512 digests and sizes. This prevents same-named
+per-architecture updater manifests from overwriting one another when matrix
+artifacts are downloaded.
+
+Windows packages upload a single intermediate artifact that includes the NSIS
+`.exe`, optional `.blockmap`, and Windows updater metadata (`latest.yml`,
+`rc.yml`, or `beta.yml`). The stage job copies those files into the shared
+`release-assets` directory after the macOS merge step.
+
+Windows code signing is currently optional. The Windows build job disables
+electron-builder certificate auto-discovery so hosted runners do not pick up
+unrelated certificates. When Windows signing secrets are introduced later, wire
+them into `build-windows` without changing the staged artifact names.
+
+Release notes and Feishu notifications should point the primary macOS download
+at the universal `.dmg` and the primary Windows download at the x64 `.exe`.
+The macOS x64 and arm64 artifacts remain attached to the GitHub Release for
+users or deployment tools that want an architecture-specific installer.
 
 ## Auto Update
 

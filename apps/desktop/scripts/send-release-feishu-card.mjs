@@ -285,13 +285,15 @@ function buildCardPayload({
   runUrl,
   summary,
   tag,
-  target
+  target,
+  winUrl
 }) {
   const shortTarget = target ? target.slice(0, 7) : "unknown";
   const deployBranch = resolveDisplayValue(branch);
   const deployActor = resolveDisplayValue(actor);
   const actions = [
     { label: "下载 macOS", url: macUrl },
+    { label: "下载 Windows", url: winUrl },
     { label: "打开 Release 页面", url: releaseUrl },
     { label: "查看流水线", url: runUrl }
   ]
@@ -450,9 +452,16 @@ async function main() {
     releaseAssetBaseUrl,
     tag
   );
-  const release = mirroredMacUrl
-    ? null
-    : await loadRelease(repository, tag, resolveGithubToken());
+  const mirroredWinUrl = resolveMirroredAssetUrl(
+    mirroredAssetNames,
+    /-win-.*\.exe$/i,
+    releaseAssetBaseUrl,
+    tag
+  );
+  const release =
+    mirroredMacUrl && mirroredWinUrl
+      ? null
+      : await loadRelease(repository, tag, resolveGithubToken());
   const summary = await loadReleaseSummary(
     readOption(args, "summary", "RELEASE_SUMMARY_PATH")
   );
@@ -466,7 +475,10 @@ async function main() {
     runUrl,
     summary,
     tag,
-    target
+    target,
+    winUrl:
+      mirroredWinUrl ||
+      findAssetUrl(release, /-win-.*\.exe$/i, releaseAssetBaseUrl)
   });
 
   if (dryRun) {
