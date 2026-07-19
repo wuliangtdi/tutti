@@ -63,6 +63,27 @@ type GoalProvenanceLedger interface {
 	LookupGoalProvenance(context.Context, LookupGoalProvenanceInput) (GoalProvenanceBinding, bool, error)
 }
 
+// AgentStateReader exposes the durable, canonical workspace activity read
+// model without coupling consumers to daemon/activity's in-memory relay state.
+// Presence and host-owned execution attribution are deliberately outside this
+// contract and remain the responsibility of the composing host.
+type AgentStateReader interface {
+	GetAgentState(context.Context, string) (AgentState, bool, error)
+}
+
+// AgentState is a workspace-scoped canonical activity snapshot.
+// AgentSessionState composes the existing Session and Turn entities instead of
+// copying their fields into another presentation DTO.
+type AgentState struct {
+	WorkspaceID string
+	Sessions    []AgentSessionState
+}
+
+type AgentSessionState struct {
+	Session    Session
+	LatestTurn *Turn
+}
+
 type ClearSessionsResult struct {
 	TransactionID     string           `json:"-"`
 	CommitDelta       TransactionDelta `json:"-"`
