@@ -93,6 +93,12 @@ AgentGUI's built-in Handoff menu. The helper owns mention serialization and the
 trailing rich-text caret space; hosts continue to own destination selection and
 window launch behavior.
 
+Hosts that copy a session reference without launching a handoff must use
+`createAgentSessionMarkdownLink`. This is the same canonical serializer used by
+AgentGUI's Copy as reference action. Pass `withAtPrefix: true` when the copied
+value should paste back into Agent and room-chat composers as an `@` session
+mention; unlike the handoff helper, it does not append a trailing caret space.
+
 ## Boundary Rule
 
 `AgentActivity*` types from `@tutti-os/agent-activity-core` are the canonical
