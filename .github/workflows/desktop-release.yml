@@ -533,6 +533,8 @@ jobs:
         run: |
           # Flatten electron-builder outputs so stage can copy files without
           # depending on the preserved apps/desktop/dist/ prefix from upload.
+          # Only copy files that exist: stable builds emit latest.yml, while rc
+          # and beta channels emit channel-specific updater metadata.
           mkdir -p windows-release-assets
           shopt -s nullglob
           copied=0
@@ -544,18 +546,24 @@ jobs:
             apps/desktop/dist/beta.yml
           do
             for file in ${pattern}; do
-              cp -f "${file}" windows-release-assets/
-              copied=$((copied + 1))
+              if [[ -f "${file}" ]]; then
+                cp -f "${file}" windows-release-assets/
+                copied=$((copied + 1))
+              fi
             done
           done
           if (( copied == 0 )); then
             echo "No Windows release artifacts found under apps/desktop/dist" >&2
+            ls -la apps/desktop/dist >&2 || true
             exit 1
           fi
           if ! compgen -G "windows-release-assets/*-win-*.exe" >/dev/null; then
             echo "Windows NSIS installer (.exe) is required." >&2
+            ls -la apps/desktop/dist >&2 || true
+            ls -la windows-release-assets >&2 || true
             exit 1
           fi
+          ls -la windows-release-assets
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v7
@@ -621,19 +629,28 @@ jobs:
       - name: Stage Windows release artifacts
         run: |
           shopt -s nullglob
-          windows_files=(
-            release-assets-windows/*-win-*.exe
-            release-assets-windows/*-win-*.exe.blockmap
-            release-assets-windows/latest.yml
-            release-assets-windows/rc.yml
+          windows_files=()
+          for pattern in \
+            release-assets-windows/*-win-*.exe \
+            release-assets-windows/*-win-*.exe.blockmap \
+            release-assets-windows/latest.yml \
+            release-assets-windows/rc.yml \
             release-assets-windows/beta.yml
-          )
+          do
+            for file in ${pattern}; do
+              if [[ -f "${file}" ]]; then
+                windows_files+=("${file}")
+              fi
+            done
+          done
           if (( ${#windows_files[@]} == 0 )); then
             echo "No Windows release artifacts found under release-assets-windows" >&2
+            ls -la release-assets-windows >&2 || true
             exit 1
           fi
           if ! compgen -G "release-assets-windows/*-win-*.exe" >/dev/null; then
             echo "Windows NSIS installer (.exe) is required." >&2
+            ls -la release-assets-windows >&2 || true
             exit 1
           fi
           cp -f "${windows_files[@]}" release-assets/
